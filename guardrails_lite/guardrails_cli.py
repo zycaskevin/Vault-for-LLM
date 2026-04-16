@@ -1,0 +1,570 @@
+"""
+Guardrails Lite — CLI 入口。
+
+用法：
+  guardrails init              # 初始化專案
+  guardrails add "標題"         # 加入知識
+  guardrails compile           # 編譯 raw/ → db + compiled/
+  guardrails search "查詢"     # 搜尋知識
+  guardrails list              # 列出知識
+  guardrails lint              # 健康檢查
+  guardrails doctor            # 環境診斷
+  guardrails stats             # 統計
+  guardrails install-embedding # 安裝嵌入模型
+  guardrails config set/get    # 配置管理
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import Optional
+
+
+# ── 專案偵測 ─────────────────────────────────────────────
+
+def find_project_dir() -> Path:
+    """往上找含有 guardrails.db 或 raw/ 的目錄。"""
+    cwd = Path.cwd()
+    for d in [cwd] + list(cwd.parents):
+        if (d / "guardrails.db").exists() or (d / "raw").is_dir():
+            return d
+    return cwd
+
+
+# ── 子命令 ──────────────────────────────────────────────
+
+def cmd_init(args):
+    """初始化 Guardrails Lite 專案。"""
+    project_dir = Path(args.project_dir or ".")
+    dirs = ["raw", "compiled", "L0-identity", "L1-core-facts", "L2-context", "L3-knowledge"]
+
+    for d in dirs:
+        (project_dir / d).mkdir(parents=True, exist_ok=True)
+        print(f"  ✅ {d}/")
+
+    # 初始化資料庫
+    from guardrails_lite.guardrails_db import GuardrailsDB
+    db_path = project_dir / "guardrails.db"
+    with GuardrailsDB(str(db_path)) as db:
+        db.set_config("embedding_provider", "auto")
+        db.set_config("embedding_model", "mix")
+        db.set_config("embedding_dim", "384")
+
+    # .gitignore 追加
+    gitignore = project_dir / ".gitignore"
+    gi_lines = []
+    if gitignore.exists():
+        gi_lines = gitignore.read_text().splitlines()
+
+    additions = ["# Guardrails Lite", "*.db", "__pycache__/", ".cache/"]
+    for a in additions:
+        if a not in gi_lines:
+            gi_lines.append(a)
+    gitignore.write_text("\n".join(gi_lines) + "\n", encoding="utf-8")
+
+    print(f"\n✅ 專案初始化完成: {project_dir.resolve()}")
+    print("下一步：")
+    print("  1. 在 raw/ 放入 .md 知識檔案")
+    print("  2. guardrails compile")
+    print("  3. guardrails search \"查詢\"")
+
+
+def cmd_add(args):
+    """新增一筆知識。"""
+    from guardrails_lite.guardrails_db import GuardrailsDB
+
+    project_dir = find_project_dir()
+
+    # 如果指定 --file，讀取檔案內容
+    content = args.content
+    if args.file:
+        content = Path(args.file).read_text(encoding="utf-8")
+
+    # 如果只有標題沒內容，開編輯器或 stdin
+    if not content:
+        print(f"標題: {args.title}")
+        print("請輸入內容（Ctrl+D 結束）:")
+        content = sys.stdin.read()
+
+    with GuardrailsDB(str(project_dir / "guardrails.db")) as db:
+        kid = db.add_knowledge(
+            title=args.title,
+            content_raw=content,
+            layer=args.layer or "L3",
+            category=args.category or "general",
+            tags=args.tags or "",
+            trust=args.trust or 0.5,
+            source="cli",
+        )
+        print(f"✅ 新增知識 ID={kid}")
+
+    # 也寫到 raw/
+    raw_file = project_dir / "raw" / f"{args.title.replace(' ', '_').replace('/', '-')}.md"
+    fm = {
+        "title": args.title,
+        "layer": args.layer or "L3",
+        "category": args.category or "general",
+        "tags": args.tags or "",
+        "trust": args.trust or 0.5,
+    }
+    raw_file.write_text(
+        f"---\n{json.dumps(fm, ensure_ascii=False, indent=2)}\n---\n\n{content}\n",
+        encoding="utf-8",
+    )
+    print(f"✅ 同步寫入 raw/{raw_file.name}")
+
+
+def cmd_compile(args):
+    """編譯 raw/ → db + compiled/。"""
+    from guardrails_lite.guardrails_db import GuardrailsDB
+    from guardrails_lite.guardrails_compile import GuardrailsCompiler
+
+    project_dir = find_project_dir()
+    db_path = project_dir / "guardrails.db"
+
+    # 載入嵌入（如果啟用）
+    embed = None
+    if not args.no_embed:
+        try:
+            from guardrails_lite.guardrails_embed import create_embedding_provider
+            db_temp = GuardrailsDB(str(db_path))
+            db_temp.connect()
+            provider_name = db_temp.get_config("embedding_provider", "auto")
+            model_key = db_temp.get_config("embedding_model", "mix")
+            db_temp.close()
+            if provider_name != "none":
+                embed = create_embedding_provider(provider=provider_name, model_key=model_key)
+                print(f"[compile] 嵌入: {provider_name} ({model_key})")
+        except Exception as e:
+            print(f"[compile] ⚠️ 嵌入未啟用: {e}")
+
+    db = GuardrailsDB(str(db_path))
+    db.connect()
+    compiler = GuardrailsCompiler(project_dir, db=db, embed_provider=embed)
+    stats = compiler.compile(dry_run=args.dry_run)
+    db.close()
+
+    print(f"\n📊 編譯結果:")
+    print(f"  檔案: {stats['total_files']}")
+    print(f"  新增: {stats['new']}")
+    print(f"  更新: {stats['updated']}")
+    print(f"  跳過: {stats['skipped']}")
+    print(f"  錯誤: {stats['errors']}")
+
+
+def cmd_search(args):
+    """搜尋知識。"""
+    from guardrails_lite.guardrails_db import GuardrailsDB
+    from guardrails_lite.guardrails_search import GuardrailsSearch
+    from guardrails_lite.guardrails_embed import create_embedding_provider
+
+    project_dir = find_project_dir()
+    db_path = project_dir / "guardrails.db"
+
+    db = GuardrailsDB(str(db_path))
+    db.connect()
+
+    # 嵌入
+    embed = None
+    if not args.keyword_only:
+        try:
+            provider_name = db.get_config("embedding_provider", "auto")
+            model_key = db.get_config("embedding_model", "mix")
+            if provider_name != "none":
+                embed = create_embedding_provider(provider=provider_name, model_key=model_key)
+        except Exception:
+            pass
+
+    mode = "keyword" if args.keyword_only else args.mode
+    search = GuardrailsSearch(db, embed_provider=embed)
+
+    results = search.search(
+        args.query,
+        mode=mode,
+        limit=args.limit,
+        min_trust=args.min_trust,
+        layer=args.layer,
+        category=args.category,
+    )
+
+    if not results:
+        print("🔍 沒有找到匹配的知識")
+    else:
+        print(f"🔍 找到 {len(results)} 筆 ({results[0].get('_mode', 'unknown')} 模式):\n")
+        for r in results:
+            score = r.get("_score", 0)
+            mode = r.get("_mode", "?")
+            trust = r.get("trust", 0)
+            layer = r.get("layer", "?")
+            print(f"  [{layer}] {r['title']} (trust={trust}, score={score:.3f}, {mode})")
+            # 顯示 AAAK 摘要
+            aaak = r.get("content_aaak", "") or r.get("content_raw", "")
+            if aaak:
+                preview = aaak[:120].replace("\n", " ")
+                print(f"       {preview}...")
+            print()
+
+    db.close()
+
+
+def cmd_list(args):
+    """列出知識。"""
+    from guardrails_lite.guardrails_db import GuardrailsDB
+
+    project_dir = find_project_dir()
+    db = GuardrailsDB(str(project_dir / "guardrails.db"))
+    db.connect()
+
+    items = db.list_knowledge(
+        layer=args.layer,
+        category=args.category,
+        min_trust=args.min_trust,
+        limit=args.limit,
+    )
+
+    if not items:
+        print("📭 知識庫是空的")
+    else:
+        print(f"📋 {len(items)} 筆知識:\n")
+        for item in items:
+            print(f"  [{item['layer']}] {item['title']}")
+            print(f"       cat={item['category']} trust={item['trust']} tags={item['tags']}")
+            print()
+
+    db.close()
+
+
+def cmd_lint(args):
+    """健康檢查。"""
+    from guardrails_lite.guardrails_db import GuardrailsDB
+
+    project_dir = find_project_dir()
+    db = GuardrailsDB(str(project_dir / "guardrails.db"))
+    db.connect()
+
+    issues = []
+
+    # 1. 檢查空內容
+    empty = db.conn.execute(
+        "SELECT id, title FROM knowledge WHERE content_raw = '' OR content_raw IS NULL"
+    ).fetchall()
+    for row in empty:
+        issues.append(f"⚠️ ID={row['id']} [{row['title']}]: 內容為空")
+
+    # 2. 檢查重複 hash
+    dupes = db.conn.execute(
+        "SELECT content_hash, COUNT(*) as cnt FROM knowledge "
+        "WHERE content_hash != '' GROUP BY content_hash HAVING cnt > 1"
+    ).fetchall()
+    for row in dupes:
+        issues.append(f"⚠️ 重複內容: hash={row['content_hash']} ({row['cnt']} 筆)")
+
+    # 3. 檢查低信任
+    low_trust = db.conn.execute(
+        "SELECT id, title, trust FROM knowledge WHERE trust < 0.3"
+    ).fetchall()
+    for row in low_trust:
+        issues.append(f"⚠️ ID={row['id']} [{row['title']}]: 信任度過低 ({row['trust']})")
+
+    # 4. 檢查缺嵌入
+    if db._vec_available:
+        no_embed = db.conn.execute(
+            "SELECT COUNT(*) as cnt FROM knowledge k "
+            "LEFT JOIN knowledge_vec v ON k.id = v.knowledge_id "
+            "WHERE v.knowledge_id IS NULL"
+        ).fetchone()
+        if no_embed["cnt"] > 0:
+            issues.append(f"ℹ️ {no_embed['cnt']} 筆知識缺少嵌入向量")
+
+    # 5. 統計
+    stats = db.stats()
+    issues.append(f"📊 知識 {stats['knowledge_count']} 筆, 嵌入 {stats['embedding_count']} 筆")
+
+    if all("📊" in i for i in issues):
+        print("✅ Lint 通過，沒有問題！")
+    else:
+        print(f"🔍 Lint 結果 ({len([i for i in issues if '⚠️' in i])} 個問題):\n")
+        for issue in issues:
+            print(f"  {issue}")
+
+    db.close()
+
+
+def cmd_doctor(args):
+    """環境診斷。"""
+    print("🏥 Guardrails Lite 環境診斷\n")
+
+    checks = []
+
+    # Python 版本
+    checks.append(("Python", f"{sys.version}", True))
+
+    # sqlite-vec
+    try:
+        import sqlite_vec
+        checks.append(("sqlite-vec", f"✅ {sqlite_vec.__version__ if hasattr(sqlite_vec, '__version__') else 'loaded'}", True))
+    except ImportError:
+        checks.append(("sqlite-vec", "❌ 未安裝 (pip install sqlite-vec)", False))
+
+    # onnxruntime
+    try:
+        import onnxruntime
+        checks.append(("onnxruntime", f"✅ {onnxruntime.__version__}", True))
+    except ImportError:
+        checks.append(("onnxruntime", "❌ 未安裝 (pip install onnxruntime)", False))
+
+    # optimum
+    try:
+        from optimum.onnxruntime import ORTModelForFeatureExtraction
+        checks.append(("optimum[onnxruntime]", "✅", True))
+    except ImportError:
+        checks.append(("optimum[onnxruntime]", "❌ 未安裝 (pip install optimum[onnxruntime])", False))
+
+    # Ollama
+    try:
+        import urllib.request
+        req = urllib.request.Request("http://localhost:11434/api/tags")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read())
+            models = [m["name"] for m in data.get("models", [])]
+            checks.append(("Ollama", f"✅ {len(models)} models", True))
+    except Exception:
+        checks.append(("Ollama", "❌ 未連線", False))
+
+    # 專案目錄
+    project_dir = find_project_dir()
+    db_exists = (project_dir / "guardrails.db").exists()
+    raw_exists = (project_dir / "raw").is_dir()
+    checks.append(("專案", f"{'✅' if db_exists else '❌'} DB | {'✅' if raw_exists else '❌'} raw/", db_exists and raw_exists))
+
+    # 嵌入模型快取
+    cache_dir = Path.home() / ".cache" / "guardrails-lite" / "models"
+    if cache_dir.exists():
+        models = [d.name for d in cache_dir.iterdir() if d.is_dir()]
+        checks.append(("嵌入模型快取", f"✅ {len(models)} 模型", True))
+    else:
+        checks.append(("嵌入模型快取", "❌ 無 (guardrails install-embedding)", False))
+
+    # 輸出
+    all_ok = True
+    for name, status, ok in checks:
+        print(f"  {name:25s} {status}")
+        if not ok:
+            all_ok = False
+
+    print()
+    if all_ok:
+        print("✅ 環境完好！")
+    else:
+        print("⚠️ 有些依賴缺失，但不影響基本關鍵字搜尋")
+        print("   安裝語意搜尋: pip install onnxruntime optimum[onnxruntime]")
+
+
+def cmd_install_embedding(args):
+    """安裝嵌入模型。"""
+    from guardrails_lite.guardrails_embed import MODELS, ONNXEmbeddingProvider
+
+    print("📦 Guardrails Lite 嵌入模型安裝\n")
+    print("可選模型:")
+    for key, info in MODELS.items():
+        print(f"  {key}: {info['name']} ({info['language']}, {info['dim']}d, ~{info['size_mb']}MB)")
+
+    model_key = args.model
+    if model_key not in MODELS:
+        model_key = input("\n選擇模型 (zh/en/mix): ").strip().lower()
+        if model_key not in MODELS:
+            model_key = "mix"
+
+    info = MODELS[model_key]
+    print(f"\n下載 {info['name']} (~{info['size_mb']}MB)...")
+
+    embed = ONNXEmbeddingProvider(model_key=model_key)
+    # 觸發下載
+    try:
+        vec = embed.encode("測試")
+        print(f"✅ 模型已安裝！維度: {len(vec[0])}d")
+    except Exception as e:
+        print(f"❌ 安裝失敗: {e}")
+        return
+
+    # 更新 config
+    from guardrails_lite.guardrails_db import GuardrailsDB
+    project_dir = find_project_dir()
+    db = GuardrailsDB(str(project_dir / "guardrails.db"))
+    db.connect()
+    db.set_config("embedding_provider", "onnx")
+    db.set_config("embedding_model", model_key)
+    db.set_config("embedding_dim", str(info["dim"]))
+    db.close()
+
+    # 重建向量表（維度可能不同）
+    print("重建向量索引...")
+    db2 = GuardrailsDB(str(project_dir / "guardrails.db"))
+    db2.connect()
+    db2._init_vec_table()
+    db2.close()
+
+    print(f"\n✅ 完成！語意搜尋已啟用")
+    print(f"   試試: guardrails search \"查詢\"")
+
+
+def cmd_stats(args):
+    """顯示統計。"""
+    from guardrails_lite.guardrails_db import GuardrailsDB
+
+    project_dir = find_project_dir()
+    db_path = project_dir / "guardrails.db"
+
+    if not db_path.exists():
+        print("❌ 尚未初始化，先執行 guardrails init")
+        return
+
+    db = GuardrailsDB(str(db_path))
+    db.connect()
+    stats = db.stats()
+
+    print("📊 Guardrails Lite 統計\n")
+    print(f"  知識筆數:   {stats['knowledge_count']}")
+    print(f"  嵌入筆數:   {stats['embedding_count']}")
+    print(f"  向量搜尋:   {'✅' if stats['vec_available'] else '❌'}")
+    print(f"  DB 大小:    {stats['db_size_mb']} MB")
+    print(f"  DB 路徑:    {stats['db_path']}")
+
+    # 分層統計
+    rows = db.conn.execute(
+        "SELECT layer, COUNT(*) as cnt FROM knowledge GROUP BY layer ORDER BY layer"
+    ).fetchall()
+    if rows:
+        print("\n  分層:")
+        for row in rows:
+            print(f"    {row['layer']}: {row['cnt']} 筆")
+
+    # 分類統計
+    rows = db.conn.execute(
+        "SELECT category, COUNT(*) as cnt FROM knowledge GROUP BY category ORDER BY cnt DESC"
+    ).fetchall()
+    if rows:
+        print("\n  分類:")
+        for row in rows:
+            print(f"    {row['category']}: {row['cnt']} 筆")
+
+    db.close()
+
+
+def cmd_config(args):
+    """配置管理。"""
+    from guardrails_lite.guardrails_db import GuardrailsDB
+
+    project_dir = find_project_dir()
+    db = GuardrailsDB(str(project_dir / "guardrails.db"))
+    db.connect()
+
+    if args.config_action == "set" and len(args.config_args) >= 2:
+        key, value = args.config_args[0], args.config_args[1]
+        db.set_config(key, value)
+        print(f"✅ {key} = {value}")
+    elif args.config_action == "get" and len(args.config_args) >= 1:
+        key = args.config_args[0]
+        value = db.get_config(key)
+        print(f"{key} = {value}")
+    elif args.config_action == "list":
+        rows = db.conn.execute("SELECT key, value FROM config").fetchall()
+        for row in rows:
+            print(f"  {row['key']} = {row['value']}")
+    else:
+        print("用法: guardrails config set <key> <value>")
+        print("      guardrails config get <key>")
+        print("      guardrails config list")
+
+    db.close()
+
+
+# ── CLI 入口 ─────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="guardrails",
+        description="Guardrails Lite — 純本地下知識系統",
+    )
+    sub = parser.add_subparsers(dest="command", help="子命令")
+
+    # init
+    p = sub.add_parser("init", help="初始化專案")
+    p.add_argument("project_dir", nargs="?", default=".")
+
+    # add
+    p = sub.add_parser("add", help="新增知識")
+    p.add_argument("title", help="標題")
+    p.add_argument("--content", "-c", default="", help="內容")
+    p.add_argument("--file", "-f", help="從檔案讀取內容")
+    p.add_argument("--layer", choices=["L0", "L1", "L2", "L3"], default="L3")
+    p.add_argument("--category", default="general")
+    p.add_argument("--tags", default="")
+    p.add_argument("--trust", type=float, default=0.5)
+
+    # compile
+    p = sub.add_parser("compile", help="編譯 raw/ → db + compiled/")
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--no-embed", action="store_true", help="跳過嵌入生成")
+
+    # search
+    p = sub.add_parser("search", help="搜尋知識")
+    p.add_argument("query", help="搜尋查詢")
+    p.add_argument("--mode", choices=["auto", "keyword", "vector", "hybrid"], default="auto")
+    p.add_argument("--keyword-only", "-k", action="store_true")
+    p.add_argument("--limit", "-n", type=int, default=10)
+    p.add_argument("--min-trust", type=float, default=0.0)
+    p.add_argument("--layer", choices=["L0", "L1", "L2", "L3"])
+    p.add_argument("--category")
+
+    # list
+    p = sub.add_parser("list", help="列出知識")
+    p.add_argument("--layer", choices=["L0", "L1", "L2", "L3"])
+    p.add_argument("--category")
+    p.add_argument("--min-trust", type=float, default=0.0)
+    p.add_argument("--limit", "-n", type=int, default=50)
+
+    # lint
+    p = sub.add_parser("lint", help="健康檢查")
+
+    # doctor
+    p = sub.add_parser("doctor", help="環境診斷")
+
+    # stats
+    p = sub.add_parser("stats", help="統計")
+
+    # install-embedding
+    p = sub.add_parser("install-embedding", help="安裝嵌入模型")
+    p.add_argument("--model", choices=["zh", "en", "mix"], default="mix")
+
+    # config
+    p = sub.add_parser("config", help="配置管理")
+    p.add_argument("config_action", choices=["set", "get", "list"])
+    p.add_argument("config_args", nargs="*")
+
+    args = parser.parse_args()
+
+    cmd_map = {
+        "init": cmd_init,
+        "add": cmd_add,
+        "compile": cmd_compile,
+        "search": cmd_search,
+        "list": cmd_list,
+        "lint": cmd_lint,
+        "doctor": cmd_doctor,
+        "stats": cmd_stats,
+        "install-embedding": cmd_install_embedding,
+        "config": cmd_config,
+    }
+
+    if args.command in cmd_map:
+        cmd_map[args.command](args)
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()

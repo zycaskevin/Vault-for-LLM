@@ -378,16 +378,16 @@ def cmd_doctor(args):
         except ImportError:
             checks.append(("optimum[onnxruntime]", "❌ 未安裝 (pip install optimum[onnxruntime])", False))
 
-    # Ollama
+    # Ollama（非必要）
     try:
         import urllib.request
         req = urllib.request.Request("http://localhost:11434/api/tags")
         with urllib.request.urlopen(req, timeout=3) as resp:
             data = json.loads(resp.read())
             models = [m["name"] for m in data.get("models", [])]
-            checks.append(("Ollama", f"✅ {len(models)} models", True))
+            checks.append(("Ollama", f"✅ {len(models)} models (可作嵌入後端)", True))
     except Exception:
-        checks.append(("Ollama", "❌ 未連線", False))
+        checks.append(("Ollama", "— 未連線（非必要）", True))
 
     # 專案目錄
     project_dir = find_project_dir()

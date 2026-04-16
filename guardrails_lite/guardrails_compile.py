@@ -292,6 +292,30 @@ class GuardrailsCompiler:
             if self.embed is not None and stats["new"] + stats["updated"] > 0:
                 self._rebuild_embeddings(dry_run)
 
+            # ── Deduplicate：去除 title 重複（永遠執行）──
+            if not dry_run:
+                dupes = self.db.conn.execute(
+                    "SELECT title, COUNT(*) as cnt FROM knowledge GROUP BY title HAVING cnt > 1"
+                ).fetchall()
+                for row in dupes:
+                    # 保留最早的那筆（id 最小的）
+                    ids = self.db.conn.execute(
+                        "SELECT id FROM knowledge WHERE title = ? ORDER BY id",
+                        (row["title"],),
+                    ).fetchall()
+                    for d in ids[1:]:  # 跳過第一筆（保留）
+                        self.db.conn.execute("DELETE FROM knowledge WHERE id = ?", (d["id"],))
+                        # 也刪向量
+                        try:
+                            self.db.conn.execute("DELETE FROM knowledge_vec WHERE knowledge_id = ?", (d["id"],))
+                        except Exception:
+                            pass
+                    self.db.conn.commit()
+                    removed = len(ids) - 1
+                    if removed > 0:
+                        print(f"[compiler] 🧹 去重: [{row['title']}] 刪除 {removed} 筆重複")
+                        stats["skipped"] += removed
+
             # 更新 compiled/
             if not dry_run:
                 self._update_compiled()
@@ -318,12 +342,21 @@ class GuardrailsCompiler:
         content_hash = hashlib.sha256(body.encode()).hexdigest()[:16]
         title = metadata.get("title", "") or md_file.stem.replace("-", " ").strip()
 
-        # 檢查是否已存在（用 title 或 source_file）
+        # 檢查是否已存在（用 source_file 或 title）
         source_file = str(md_file.relative_to(self.raw_dir))
+        # 先用 source_file 找
         existing = self.db.conn.execute(
             "SELECT id, content_hash FROM knowledge WHERE source LIKE ?",
             (f"%{source_file}%",),
         ).fetchone()
+        if not existing:
+            # 用 title 找同名知識（add 命令可能已經建了）
+            existing = self.db.conn.execute(
+                "SELECT id, content_hash FROM knowledge WHERE title = ?",
+                (title,),
+            ).fetchone()
+            if existing:
+                print(f"[compiler] 🔄 同名知識已存在 (id={existing['id']}), 更新: {title}")
 
         if existing and existing["content_hash"] == content_hash:
             return "skipped"  # 沒變

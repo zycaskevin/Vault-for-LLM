@@ -1,12 +1,12 @@
 ---
 category: decision
 hash: c202b607d3a47c3b
-id: 4
+id: 2
 layer: L3
 tags: ''
 title: 20260416 guardrails compiler fixes
 trust: 0.5
-updated_at: '2026-04-16T23:45:27.614147+00:00'
+updated_at: '2026-04-16T23:50:07.902725+00:00'
 ---
 
 TITLE:20260416 guardrails compiler fixes

@@ -1,12 +1,12 @@
 ---
 category: error
 hash: 49607633de6403fc
-id: 6
+id: 4
 layer: L3
 tags: ''
 title: 20260416 guardrails lint health check
 trust: 0.5
-updated_at: '2026-04-16T23:45:27.624427+00:00'
+updated_at: '2026-04-16T23:50:07.912656+00:00'
 ---
 
 TITLE:20260416 guardrails lint health check

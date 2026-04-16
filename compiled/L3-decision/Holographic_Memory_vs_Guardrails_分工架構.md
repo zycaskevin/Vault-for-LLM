@@ -1,12 +1,12 @@
 ---
 category: decision
 hash: 37d1fa6cac5a9019
-id: 13
+id: 12
 layer: L3
 tags: memory-system,guardrails,holographic,architecture,design-decision
 title: Holographic Memory vs Guardrails 分工架構
 trust: 1.0
-updated_at: '2026-04-16T23:45:27.660868+00:00'
+updated_at: '2026-04-16T23:50:10.258380+00:00'
 ---
 
 TITLE:Holographic Memory vs Guardrails 分工架構

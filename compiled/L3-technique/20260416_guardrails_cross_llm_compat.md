@@ -1,12 +1,12 @@
 ---
 category: technique
 hash: 2a823fcb5770228f
-id: 5
+id: 3
 layer: L3
 tags: ''
 title: 20260416 guardrails cross llm compat
 trust: 0.5
-updated_at: '2026-04-16T23:45:27.619113+00:00'
+updated_at: '2026-04-16T23:50:07.907752+00:00'
 ---
 
 TITLE:20260416 guardrails cross llm compat

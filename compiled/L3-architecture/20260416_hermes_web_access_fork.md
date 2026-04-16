@@ -1,12 +1,12 @@
 ---
 category: architecture
 hash: 97d31cf81c2fe98c
-id: 7
+id: 5
 layer: L3
 tags: ''
 title: 20260416 hermes web access fork
 trust: 0.5
-updated_at: '2026-04-16T23:45:27.629269+00:00'
+updated_at: '2026-04-16T23:50:07.917712+00:00'
 ---
 
 TITLE:20260416 hermes web access fork

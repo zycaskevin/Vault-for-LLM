@@ -1,12 +1,12 @@
 ---
 category: architecture
 hash: e19dc9df524e02bb
-id: 20
+id: 19
 layer: L3
 tags: ai,knowledge-management,llm,compilation
 title: 20260411 web clips technical llm wiki concept
 trust: 0.5
-updated_at: '2026-04-16T23:45:27.699010+00:00'
+updated_at: '2026-04-16T23:50:10.296861+00:00'
 ---
 
 TITLE:20260411 web clips technical llm wiki concept

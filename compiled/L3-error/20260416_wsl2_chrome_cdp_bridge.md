@@ -1,12 +1,12 @@
 ---
 category: error
 hash: 234e92228130a7d9
-id: 12
+id: 10
 layer: L3
 tags: ''
 title: 20260416 wsl2 chrome cdp bridge
 trust: 0.5
-updated_at: '2026-04-16T23:45:27.655396+00:00'
+updated_at: '2026-04-16T23:50:07.942656+00:00'
 ---
 
 TITLE:20260416 wsl2 chrome cdp bridge

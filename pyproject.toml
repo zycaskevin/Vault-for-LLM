@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "guardrails-knowledge"
+version = "0.1.0"
+description = "Local-first knowledge system with sqlite-vec + ONNX embeddings. No cloud, no Docker, no PyTorch required."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Vault user", email = "maintainer@example.com"},
+]
+keywords = ["knowledge-base", "vector-search", "sqlite", "onnx", "embeddings", "local-first"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+]
+
+dependencies = [
+    "pyyaml>=6.0",
+    "sqlite-vec>=0.1.6",
+]
+
+[project.optional-dependencies]
+semantic = [
+    "onnxruntime>=1.16",
+    "optimum[onnxruntime]>=2.0",
+    "transformers>=4.35",
+    "sentencepiece>=0.1",
+]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.1",
+]
+
+[project.scripts]
+guardrails = "vault.guardrails_cli:main"
+
+[tool.setuptools.packages.find]
+include = ["vault*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

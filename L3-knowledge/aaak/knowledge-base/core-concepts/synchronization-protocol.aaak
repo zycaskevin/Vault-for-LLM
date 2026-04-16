@@ -1,0 +1,3 @@
+CAT:error | T:同步協定 (Synchronization Protoco… | S:# 同步協定 (Synchronization Protocol) | F1:git fetch origin | F2:不同檔案 → 自動合併 | F3:同檔案不同段落 → 自動合併 | F4:同段落衝突 → 進入人工審核 | F5:CEO 更新 > 其他龍蝦 | A1:需要人工解決 |
+
+<! | SRC:synchronization-protocol.md

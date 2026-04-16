@@ -1,0 +1,2 @@
+CAT:error | T:n8n Workflow Builder | S:# n8n Workflow Builder | F1:`N8N_URL` — n8n instance URL (e.g. `https://your-… | F2:`N8N_API_KEY` — n8n API key (Settings → API → Cre… | F3:Understand the automation** — Clarify trigger (we… | F4:Always set `"executionOrder": "v1"`** in settings | F5:Node names must be unique** within a workflow | A1:must be unique** within a workflow
+- **… | SRC:n8n-builder.md

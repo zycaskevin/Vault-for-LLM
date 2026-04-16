@@ -1,0 +1,3 @@
+CAT:technique | T:Issue 發送技能 | S:# Issue 發送技能 | F1:發現開源插件有性能問題或 bug | F2:需要向開源項目提交優化建議 | F3:需要發送高質量的 Issue（包含測試數據） | F4:檢查配置文件確認我們是否修改過 | F5:對比原版設計和我們的配置 | A1:需要向開源項目提交優化建議
+- 需要發送高質量的 Issue（包含測試數據）
+… | A2:需要 GitHub Token（存儲在 . | SRC:issue-sender.md

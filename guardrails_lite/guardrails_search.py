@@ -175,10 +175,10 @@ class GuardrailsSearch:
             results = [r for r in results if r.get("category") == category]
 
         for r in results:
-            # cosine distance: 0=相同, 2=相反, 一般範圍 0~1.5
-            # 轉成 0~1 的相似度分數
+            # sqlite-vec cosine distance: 0=相同, 1=正交, 2=相反
+            # 轉成 0~1 的相似度分數：score = 1 - distance/2
             dist = r.get("_distance", 1.0) or 0.0
-            r["_score"] = max(0.0, 1.0 - dist)  # distance 越小越好
+            r["_score"] = max(0.0, 1.0 - dist / 2)
             r["_mode"] = "vector"
 
         return results[:limit]

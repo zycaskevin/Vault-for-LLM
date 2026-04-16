@@ -1,0 +1,1 @@
+CAT:error | T:Holographic Memory vs GR 分工 | S:# Holographic Memory vs GR 分工 | F1:偏好（Arthur 喜歡什麼、不喜歡什麼） | F2:人際關係（誰是誰） | F3:即時決策（這次對話才決定的事） | F4:小事實（生日、時區、模型名稱） | F5:L0 身份 / L1 核心事實 / L2 動態上下文 / L3 深度知識 | TAGS:[memory-system, guardrails, holographic | SRC:20260417-holographic-vs-guardrails-分工.md

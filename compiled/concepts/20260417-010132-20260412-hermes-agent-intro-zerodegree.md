@@ -1,0 +1,1 @@
+CAT:technique | T:删掉 OC-claw！HERMES 才是真王炸，一键本地部… | S:# 删掉 OC-claw！HERMES 才是真王炸，一键本地部署 + TG接入全教程（避坑指南） | F1:觀看次數**：待獲取 | F2:點讚數**：待獲取 | F3:評論數**：待獲取 | F4:發布日期**：2026-04-10 | F5:頻道訂閱數**：待獲取 | TAGS:["Hermes Agent", "AI Agent", "OpenClaw" | SRC:20260412-hermes-agent-intro-zerodegree.md

@@ -1,0 +1,4 @@
+CAT:concept | T:主動式 Agent 設計 | S:# 主動式 Agent 設計 | F1:抑制機制：知道什麼時候不該動 | F2:激活機制：知道什麼時候該動 | F3:精確顆粒度：等什麼/何時動 | F4:定期檢查系統狀態 | F5:主動發現問題 | A1:要素
+
+### 1. | A2:should_intervene(context):
+    if conte… | SRC:proactive-agent.md

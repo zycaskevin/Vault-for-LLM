@@ -1,0 +1,1 @@
+CAT:error | T:SUPA 連接失敗 | S:# SUPA 連接失敗 | F1:配置代理服務 | F2:添加網絡狀態檢測 | F3:提供離線模式 | F4:記錄連接問題以便診斷 | SRC:supabase-connection.md

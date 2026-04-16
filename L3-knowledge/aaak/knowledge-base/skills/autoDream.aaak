@@ -1,0 +1,4 @@
+CAT:technique | T:autoDream | 記憶蒸餾系統 | S:# autoDream | 記憶蒸餾系統 | F1:`config/autoDream.yaml` - 蒸餾配置 / Distillation con… | F2:v1.0.0**: 初始版本，實裝自動蒸餾系統 / Initial version with au… | F3:原始：1021 行（~51KB） | F4:蒸餾後：82 行（~4KB） | F5:壓縮率：93.6% | A1:要性和傷疤格式保留內容，將記憶文件壓縮至目標行數。 | A2:要
+  scar:
+    enabled: true      # 傷疤格式… | A3:要，傷疤保留
+✅ 蒸餾完成：82 行（93. | SRC:autoDream.md

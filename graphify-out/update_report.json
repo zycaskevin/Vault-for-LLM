@@ -1,0 +1,18 @@
+{
+  "timestamp": "2026-04-17T01:01:22.683296",
+  "graphify_success": true,
+  "last_commit": "bfbb2c3ecbcc1a8d",
+  "changes": {
+    "remote_commits": [],
+    "local_changes": [
+      "M .graphify_state.json",
+      " M graphify-out/GRAPH_REPORT.md",
+      " M graphify-out/update_report.json"
+    ],
+    "summary": "變更類型: modified_file | 3 個本地變更",
+    "change_types": [
+      "modified_file"
+    ]
+  },
+  "action_taken": "graphify_rebuild"
+}

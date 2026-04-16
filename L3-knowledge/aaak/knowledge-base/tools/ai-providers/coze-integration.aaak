@@ -1,0 +1,1 @@
+CAT:technique | T:Coze 集成 | S:# Coze 集成 | F1:使用 API Key 進行認證 | F2:支持 OAuth 2.0 | F3:API Base: https://api.coze.com | F4:API Version: v1 | F5:將語音轉換為文字 | SRC:coze-integration.md

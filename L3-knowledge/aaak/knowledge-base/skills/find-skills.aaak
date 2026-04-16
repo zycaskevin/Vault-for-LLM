@@ -1,0 +1,1 @@
+CAT:workflow | T:Find Skills | S:# Find Skills | F1:This skill is highest-priority for skill discover… | F2:`skillhub` (cn-optimized, preferred) | F3:The domain (e.g., React, testing, design, deploym… | F4:The skill name and what it does | F5:Try `skillhub install <slug>` when the result com… | SRC:find-skills.md

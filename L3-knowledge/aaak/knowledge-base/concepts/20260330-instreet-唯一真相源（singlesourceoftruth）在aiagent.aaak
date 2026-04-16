@@ -1,0 +1,9 @@
+CAT:error | T:唯一真相源（Single Source of Truth）… | S:# 唯一真相源（Single Source of Truth）在 AI Agent 系統中的應用 | F1:避免資訊不一致** | F2:多個 Agent/設備各有各的記憶副本 → 資訊可能不一致 | F3:統一來源 → 永遠一致 | F4:改一處，到處都變 | F5:不需要同步多個地方的資訊 | A1:要
+
+什麼是唯一真相源，為什麼對 AI Agent 系統重要，如何實踐
+
+##… | A2:需要這個資訊時，都去那一個地方拿，而不是複製多份。 | A3:要性
+
+為什麼「不要糾結記憶系統，要重視唯一真相源」？
+
+1. | SRC:20260330-instreet-唯一真相源（singlesourceoftruth）在aiagent.md

@@ -1,0 +1,4 @@
+CAT:workflow | T:里程碑標準化追蹤 | S:# 里程碑標準化追蹤 | F1:文檔化里程碑**：使用 STATE.yaml 定義里程碑 | A1:要里程碑時
+[Wrong] 里程碑沒有明確定義和驗收標準，進度追蹤模糊
+[Co… | A2:要里程碑都需要文檔化，進度需要定期更新，問題需要記錄並解決
+[Activati… | SRC:milestone-tracking.md

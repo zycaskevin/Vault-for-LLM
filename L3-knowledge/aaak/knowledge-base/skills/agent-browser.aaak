@@ -1,0 +1,1 @@
+CAT:error | T:Browser Automation with agent… | S:# Browser Automation with agent-browser | F1:Navigate**: `agent-browser open <url>` | F2:Clicking links or buttons that navigate | F3:Form submissions | F4:Dynamic content loading (dropdowns, modals) | F5:The page has unlabeled icon buttons or visual-onl… | SRC:agent-browser.md

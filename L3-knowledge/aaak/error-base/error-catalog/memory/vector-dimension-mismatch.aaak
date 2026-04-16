@@ -1,0 +1,1 @@
+CAT:error | T:Vector 維度不匹配 | S:# Vector 維度不匹配 | F1:刪除舊數據庫: `rm -rf /root/.hermes/memory/lancedb-pro` | A1:必須重新創建數據庫。 | SRC:vector-dimension-mismatch.md

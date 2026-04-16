@@ -1,0 +1,4 @@
+CAT:error | T:記憶系統清理與重構經驗 | S:# 記憶系統清理與重構經驗 | F1:HM → HM 遷移後，HM 遺留物（ChromaDB、MEMORY_OPENCLAW.md、se… | F2:最佳實踐**：遷移完成後立即清理舊系統遺留，不要拖延。設置明確的「過渡期最後日期」 | F3:本次清理回收：services/(1.3MB/38腳本)、24個廢棄scripts、.hermes… | F4:L1：MEMORY.md / USER.md（每輪注入，有容量限制） | F5:L2：session_search（FTS5 搜索過去對話） | A1:要果斷
+- HM → HM 遷移後，HM 遺留物（ChromaDB、MEMOR… | A2:要拖延。 | A3:必須定期壓縮
+
+### 3. | SRC:memory-system-cleanup-20260415.md

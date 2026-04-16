@@ -1,0 +1,1 @@
+CAT:error | T:Agent 角色定義 | S:# Agent 角色定義 | F1:職責**: 總管，協調所有任務 | F2:技能**: find-skills, clawsend, firecrawl-skills | F3:權限**: 最高 | F4:職責**: 技術負責人 | F5:技能**: clawsend, k8s-debug, firecrawl-skills | SRC:agent-roles.md

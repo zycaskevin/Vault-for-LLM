@@ -1,0 +1,4 @@
+CAT:lesson | T:📊 Token 消耗分析報告 | S:# 📊 Token 消耗分析報告 | F1:檔案位置：** `/workspace/projects/workspace/skills/mem… | F2:Cron ID：** `744de56a-bd08-457c-9ca6-f072a4f1e2bf` | F3:下次執行：** 今天 23:30 | F4:每次消耗：** ~31,000 tokens（isolated session + light-c… | F5:每日估算：** ~1,488k tokens（48 次/天） | A1:要消耗源：Cron Jobs
+
+### 記憶總結 Cron（每 30 分鐘）
+… | SRC:2026-04-12-token-analysis.md

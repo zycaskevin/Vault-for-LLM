@@ -1,0 +1,1 @@
+CAT:concept | T:PM 去中心化協調模式 | S:# PM 去中心化協調模式 | F1:Main session = coordinator ONLY | F2:所有執行通過子代理完成 | F3:STATE.yaml 作為協調中心 | F4:新任務到達 | F5:PM: `pm-{project}-{scope}` | SRC:pm-delegation.md

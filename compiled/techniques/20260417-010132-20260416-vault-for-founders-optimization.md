@@ -1,0 +1,1 @@
+CAT:technique | T:Vault for Founders 啟發 — 百科六大優化 | S:# Vault for Founders 啟發 — 百科六大優化 | F1:current-projects.md 移除 OC-claw 相關 | F2:加入 GR 開源計畫、content_log、Nancy_report_bot | F3:技術棧表格化 | F4:scripts/frontmatter-spec.md 統一格式 | F5:title/category/layer/tags/trust/source/created 必填 | SRC:20260416-vault-for-founders-optimization.md

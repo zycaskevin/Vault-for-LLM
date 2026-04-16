@@ -1,0 +1,1 @@
+CAT:concept | T:SUPA 數據庫設計 | S:# SUPA 數據庫設計 | F1:messages(conversation_id, created_at) | F2:memory(user_id, memory_type) | A1:要數據庫。 | SRC:database-design.md

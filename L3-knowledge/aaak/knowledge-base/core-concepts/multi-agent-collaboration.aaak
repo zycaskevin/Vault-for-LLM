@@ -1,0 +1,1 @@
+CAT:concept | T:多智能體協作模式 | S:# 多智能體協作模式 | F1:Main session = coordinator ONLY（僅協調，不執行） | F2:所有執行通過子代理完成 | F3:新任務到達 | F4:PM: `pm-{project}-{scope}` | F5:子代理: `{scope}-{task-id}` | SRC:multi-agent-collaboration.md

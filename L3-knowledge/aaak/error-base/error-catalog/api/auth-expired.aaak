@@ -1,0 +1,1 @@
+CAT:error | T:API 認證過期 | S:# API 認證過期 | F1:刷新 Token | F2:定期刷新 Token | F3:使用刷新 Token | F4:監控 Token 過期時間 | SRC:auth-expired.md

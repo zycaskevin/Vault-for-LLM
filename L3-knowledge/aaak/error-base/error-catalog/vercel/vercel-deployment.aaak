@@ -1,0 +1,1 @@
+CAT:error | T:Vercel 部署錯誤 | S:# Vercel 部署錯誤 | F1:等待 Vercel 自動重新部署 | F2:部署前本地驗證函數兼容性 | F3:使用標準函數而非自定義 | SRC:vercel-deployment.md

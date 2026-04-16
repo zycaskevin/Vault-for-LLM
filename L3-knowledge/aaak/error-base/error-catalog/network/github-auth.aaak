@@ -1,0 +1,1 @@
+CAT:error | T:GitHub 認證失敗 | S:# GitHub 認證失敗 | F1:刷新 GitHub Token | F2:定期檢查 Token 有效性 | F3:記錄 Token 過期時間 | F4:配置多個備用 Token | SRC:github-auth.md

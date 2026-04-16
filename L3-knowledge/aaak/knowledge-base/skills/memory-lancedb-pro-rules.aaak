@@ -1,0 +1,6 @@
+CAT:error | T:memory-lancedb-pro 插件鐵律 | S:# memory-lancedb-pro 插件鐵律 | F1:存儲後立即用關鍵詞 `memory_recall` 驗證檢索 | F2:如果沒找到，重寫並重新存儲 | F3:缺少任何一層 = 不完整 | F4:繼續下一個話題前必須確保兩層都已存儲並驗證 | F5:同時更新相關的 SKILL.md 文件以避免重複 | A1:必須立即存儲兩層記憶到 LanceDB：**
+
+**技術層**（categor… | A2:要求**：
+- 存儲後立即用關鍵詞 `memory_recall` 驗證檢索
+… | A3:必須簡短且原子化（< 500 字符）
+- 永遠不要存儲原始對話摘要、大塊數據或… | SRC:memory-lancedb-pro-rules.md

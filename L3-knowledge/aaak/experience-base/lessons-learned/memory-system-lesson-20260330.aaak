@@ -1,0 +1,5 @@
+CAT:error | T:記憶系統安裝與優化經驗（2026-03-30） | S:# 記憶系統安裝與優化經驗（2026-03-30） | F1:✅ 記憶回憶的準確性 | F2:✅ Token 消耗變化 | F3:✅ 摘要生成成功率 | F4:📊 數據庫大小（LCM + LanceDB） | F5:🧹 記憶質量檢查 | A1:必須仔細閱讀完整 README，安裝後必須啟用完整功能並測試
+[Activat… | A2:要時調整參數
+[Behavior Change] 啟用記憶回憶前評估 toke… | A3:要生成延遲
+
+[Situation] lossless-claw-enhanc… | SRC:memory-system-lesson-20260330.md

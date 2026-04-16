@@ -1,0 +1,2 @@
+CAT:error | T:vLLM 超時錯誤處理記錄 | S:# vLLM 超時錯誤處理記錄 | F1:輸入 token 數 > 2000 | F2:增加請求超時時間至 300 秒 | F3:優化 vLLM 配置參數 | F4:模型首次推理需要較長 warm-up 時間 | F5:建立模型 warm-up 程序 | A1:需要較長 warm-up 時間
+2. | TAGS:["vllm", "timeout", "error" | SRC:20260411-system-logs-error-vllm-timeout.md

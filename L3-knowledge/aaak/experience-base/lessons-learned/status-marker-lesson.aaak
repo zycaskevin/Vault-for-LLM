@@ -1,0 +1,1 @@
+CAT:error | T:狀態標記的可靠性 | S:# 狀態標記的可靠性 | F1:[Situation] cron 狀態標記為 error 但功能正常執行 [Wrong] 僅依賴狀… | F2:[Metadata]: {"source": "2026-03-23", "author": "E… | SRC:status-marker-lesson.md

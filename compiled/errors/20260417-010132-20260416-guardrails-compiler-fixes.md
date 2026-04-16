@@ -1,0 +1,1 @@
+CAT:error | T:GR Compiler 修復記錄 | S:# GR Compiler 修復記錄 | F1:原因：update_recent_sessions() 從 ~/.hermes/cron/outp… | F2:但那個目錄 100% 是 cron job 輸出（618 cron vs 71 telegram … | F3:修復：改從 state.db sessions 表查詢，WHERE source NOT LIKE… | F4:加去重：同一對話因 context compaction 會拆成多個 session，用 firs… | F5:LIMIT 30 → 去重後取 10 | SRC:20260416-guardrails-compiler-fixes.md

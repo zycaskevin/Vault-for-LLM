@@ -1,0 +1,1 @@
+CAT:concept | T:Firecrawl CLI | S:# Firecrawl CLI | F1:Concurrency**: Max parallel jobs. Run parallel op… | F2:Credits**: Remaining API credits. Each scrape/cra… | SRC:firecrawl-skills.md

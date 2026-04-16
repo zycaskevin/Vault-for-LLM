@@ -1,0 +1,3 @@
+CAT:technique | T:task-batcher | 任務批次系統 | S:# task-batcher | 任務批次系統 | F1:`HEARTBEAT.md` - 任務調度配置 / Task scheduling configu… | F2:API 調用：3 個 → 1 批次 | F3:文件檢查：2 個 → 1 批次 | F4:v1.0.0**: 初始版本，實裝任務批次系統 / Initial version with ta… | A1:要任務 | 完整上下文 |
+| Light | 常規檢查 | 最小上下文 |
+… | SRC:task-batcher.md

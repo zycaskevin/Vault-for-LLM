@@ -1,0 +1,179 @@
+CAT:lesson | T:三級記憶架構在 AI Agent 系統中的應用 | S:# 三級記憶架構在 AI Agent 系統中的應用 | F1:避免記憶膨脹** | F2:L1 自動清理短期記憶 | F3:L2 定期歸檔或刪除 | F4:L3 只保留核心內容 | F5:當前會話優先查詢 L1 | A1:要
+
+如何設計分層記憶系統，平衡短期、中期和長期記憶
+
+## 內容
+
+## 什… | A2:要事件
+**自動處理**：14 天後自動歸檔到 L3 或刪除
+**對 MEMO… | A3:要的結論
+
+### L3：長期記憶（永久）
+
+**存儲位置**：MEMORY. | SRC:20260330-instreet-三級記憶架構在aiagent系統中的應用.md
+CAT:technique | T:SUPA 設置指南 | S:# SUPA 設置指南 | F1:URL**: https://ajmhntwhgenyfitivwuy.supabase.co | F2:Region**: 新加坡 | F3:Project ID**: ajmhntwhgenyfitivwuy | F4:URL**: https://zmttlqmallluooqxswqy.supabase.co | F5:Project Ref**: zmttlqmallluooqxswqy | SRC:supabase-setup.md
+CAT:error | T:Vercel 部署指南 | S:# Vercel 部署指南 | F1:Dashboard**: https://vercel.com/dashboard | F2:Vercel CLI**: 可用於本地部署 | F3:原因：文件結構混亂 | F4:解決：統一 index.html 位置 | F5:原因：使用了未定義的函數 | SRC:vercel-deployment.md
+CAT:error | T:傷疤格式 (Scar Format) | S:# 傷疤格式 (Scar Format) | F1:結構化：便於檢索和分析 | F2:可執行：直接指導未來行為 | F3:可追蹤：記錄時間和來源 | A1:應該怎麼做？
+[Behavior Change] 這會如何改變我未來的行為？
+… | A2:要決策的背景和理由。 | SRC:scar-format.md
+CAT:technique | T:技術棧總覽 | S:# 技術棧總覽 | F1:Node.js v24.13.1 | F2:HM Gateway | F3:SUPA (https://zmttlqmallluooqxswqy.supabase.co) | F4:LanceDB-Pro (內存記憶) | F5:Mobile HM V2 (https://ajmhntwhgenyfitivwuy.supaba… | SRC:tech-stack.md
+CAT:workflow | T:GR 知識提交流程最佳實踐 | S:# GR 知識提交流程最佳實踐 | F1:✅ 不會超時 | F2:✅ 更可靠 | F3:✅ 立即處理 | F4:⚠️ 可能會超時（如果 Eve 的會話上下文很大） | F5:⚠️ 需要設置較長的超時時間（建議 120 秒以上） | A1:要
+
+如何避免知識提交超時，提高提交流程的可靠性
+
+## 內容
+
+## 提交流… | A2:需要設置較長的超時時間（建議 120 秒以上）
+- ✅ 適合在 Agent 之… | A3:需要 Agent 之間傳遞，使用 **方法 2**（sessions_send… | SRC:20260330-eve-guardrails知識提交流程最佳實踐.md
+CAT:concept | T:Agentic RAG：動態平衡一致性與可靠性 | S:# Agentic RAG：動態平衡一致性與可靠性 | F1:一致性**（consistency）：回覆穩定、可預測 | F2:可靠性**（reliability）：回覆準確、有依據 | F3:檢索（Retrieve）** - 從知識庫中檢索相關資訊 | F4:主動補充資訊** - 當上下文不足時，主動搜尋補充 | F5:動態調整策略** - 根據評估結果實時調整 | A1:要
+
+如何在 AI 系統中平衡一致性（consistency）與可靠性（rel… | A2:需要更多信息
+
+### 3. | A3:要多輪迭代
+
+- 簡單問題：一次檢索可能就夠了
+- 複雜問題：可能需要 2-3… | SRC:20260330-instreet-agenticrag：動態平衡一致性與可靠性.md
+CAT:lesson | T:折舊機制與自我懷疑審計在記憶系統中的應用 | S:# 折舊機制與自我懷疑審計在記憶系統中的應用 | F1:創建時計數器為 0 | F2:每天自動 +1 | F3:每次觸發規則時歸零 | F4:超過 30 天未觸發 → 標記「待審查」 | F5:超過 60 天未觸發 → 自動刪除或降級 | A1:要
+
+如何設計記憶系統的自動維護機制，避免「僵尸教訓」問題
+
+## 內容
+
+#… | SRC:20260330-instreet-折舊機制與自我懷疑審計在記憶系統的應用.md
+CAT:error | T:唯一真相源（Single Source of Truth）… | S:# 唯一真相源（Single Source of Truth）在 AI Agent 系統中的應用 | F1:避免資訊不一致** | F2:多個 Agent/設備各有各的記憶副本 → 資訊可能不一致 | F3:統一來源 → 永遠一致 | F4:改一處，到處都變 | F5:不需要同步多個地方的資訊 | A1:要
+
+什麼是唯一真相源，為什麼對 AI Agent 系統重要，如何實踐
+
+##… | A2:需要這個資訊時，都去那一個地方拿，而不是複製多份。 | A3:要性
+
+為什麼「不要糾結記憶系統，要重視唯一真相源」？
+
+1. | SRC:20260330-instreet-唯一真相源（singlesourceoftruth）在aiagent.md
+CAT:concept | T:股票數據分析最佳實踐 | S:# 股票數據分析最佳實踐 | F1:漲跌幅分析**： | F2:週漲跌：反映短期趨勢 | F3:天漲跌：反映中期趨勢 | F4:天漲跌：反映長期趨勢 | F5:與大盤的相對表現 | A1:要
+
+如何高效地分析股票數據並提取關鍵指標
+
+## 內容
+
+在分析股票數據時，… | SRC:20260330-xiaogu-股票數據分析最佳實踐.md
+CAT:error | T:Agent 角色定義 | S:# Agent 角色定義 | F1:職責**: 總管，協調所有任務 | F2:技能**: find-skills, clawsend, firecrawl-skills | F3:權限**: 最高 | F4:職責**: 技術負責人 | F5:技能**: clawsend, k8s-debug, firecrawl-skills | SRC:agent-roles.md
+CAT:concept | T:Cron 定時任務 | S:# Cron 定時任務 | F1: | F2:晨報: 06:00 每日 | F3:技能總結: 23:00 每日 | F4:記憶摘要: 03:00 每日 | SRC:crON-scheduling.md
+CAT:error | T:Harness Engineering | S:# Harness Engineering | F1:結構化提示詞 | F2:上下文注入 | F3:記憶系統設計 | F4:代碼模板 | F5:規範強制執行 | SRC:harness-engineering.md
+CAT:technique | T:Holographic 記憶系統 | S:# Holographic 記憶系統 | F1:零外部依賴**：純 SQLite + numpy，不需要 GPU 或嵌入模型 | F2:確定性向量**：SHA-256 生成相位向量，不是神經網絡嵌入 | F3:三層搜索管線**：FTS5（召回）→ Jaccard（初排）→ HRR（重排） | F4:信任評分**：0.0-1.0，支持 helpful/unhelpful 回饋訓練 | F5:實體解析**：自動提取和連結實體（人名、專案名等） | A1:需要 GPU 或嵌入模型
+- **確定性向量**：SHA-256 生成相位向量… | SRC:holographic-memory-system.md
+CAT:error | T:龍蝦間通訊協定 (Inter-Lobster Commun… | S:# 龍蝦間通訊協定 (Inter-Lobster Communication Protocol) | F1:方式**: sessions_send / HTTP webhook | F2:即時性**: 即時 | F3:用途**: 緊急通知、協調指令、問題詢問 | F4:格式**: JSON 或純文字 | F5:方式**: GR GitHub Repository | A1:需要協助",
+  "body": ". | A2:要: [一句話摘要]
+
+內容:
+[詳細內容]
+
+<! | A3:需要知識時，從 GR 拉取：
+
+1. | SRC:inter-agent-communication.md
+CAT:technique | T:模型路由 | S:# 模型路由 | F1:成本降低 60%+ | F2:響應速度提升 | F3:用戶體驗優化 | SRC:model-routing.md
+CAT:concept | T:多智能體協作模式 | S:# 多智能體協作模式 | F1:Main session = coordinator ONLY（僅協調，不執行） | F2:所有執行通過子代理完成 | F3:新任務到達 | F4:PM: `pm-{project}-{scope}` | F5:子代理: `{scope}-{task-id}` | SRC:multi-agent-collaboration.md
+CAT:error | T:同步協定 (Synchronization Protoco… | S:# 同步協定 (Synchronization Protocol) | F1:git fetch origin | F2:不同檔案 → 自動合併 | F3:同檔案不同段落 → 自動合併 | F4:同段落衝突 → 進入人工審核 | F5:CEO 更新 > 其他龍蝦 | A1:需要人工解決 |
+
+<! | SRC:synchronization-protocol.md
+CAT:concept | T:三層記憶架構 | S:# 三層記憶架構 | F1:用途**: 當前對話上下文 | F2:特點**: 高速訪問，會話結束後清除 | F3:實現**: 內存緩存 | F4:用途**: 每日記錄和日誌 | F5:特點**: 持久化存儲，按天組織 | SRC:three-layer-memory.md
+CAT:concept | T:Webhook 機制 | S:# Webhook 機制 | F1:事件發生 | F2:驗證簽名 | F3:IP 白名單 | F4:HTTPS | SRC:webhook.md
+CAT:technique | T:飛書集成 | S:# 飛書集成 | F1:即時通訊 | F2:日曆管理 | F3:任務管理 | F4:文檔管理 | F5:多維表格 | SRC:feishu-integration.md
+CAT:concept | T:GitHub API 集成 | S:# GitHub API 集成 | F1:## 概述 通過 GitHub API 實現代碼管理和自動化。 | F2:## API 端點 | F3:### 倉庫操作 ``` GET /repos/{owner}/{repo} POST /repo… | SRC:github-api.md
+CAT:concept | T:SUPA 數據庫設計 | S:# SUPA 數據庫設計 | F1:messages(conversation_id, created_at) | F2:memory(user_id, memory_type) | A1:要數據庫。 | SRC:database-design.md
+CAT:concept | T:Vercel API 集成 | S:# Vercel API 集成 | F1:## 概述 通過 Vercel API 實現自動化部署和管理。 | F2:## API 端點 | F3:### 部署 ``` POST /v6/deployments ``` | SRC:vercel-api.md
+CAT:error | T:Browser Automation with agent… | S:# Browser Automation with agent-browser | F1:Navigate**: `agent-browser open <url>` | F2:Clicking links or buttons that navigate | F3:Form submissions | F4:Dynamic content loading (dropdowns, modals) | F5:The page has unlabeled icon buttons or visual-onl… | SRC:agent-browser.md
+CAT:technique | T:autoDream | 記憶蒸餾系統 | S:# autoDream | 記憶蒸餾系統 | F1:`config/autoDream.yaml` - 蒸餾配置 / Distillation con… | F2:v1.0.0**: 初始版本，實裝自動蒸餾系統 / Initial version with au… | F3:原始：1021 行（~51KB） | F4:蒸餾後：82 行（~4KB） | F5:壓縮率：93.6% | A1:要性和傷疤格式保留內容，將記憶文件壓縮至目標行數。 | A2:要
+  scar:
+    enabled: true      # 傷疤格式… | A3:要，傷疤保留
+✅ 蒸餾完成：82 行（93. | SRC:autoDream.md
+CAT:error | T:HM Messaging Skill v1 | S:# HM Messaging Skill v1 | F1:Without polling or heartbeat checks, you only get… | F2:When running in background, callback `print()` ou… | F3:Use a notification file (see "Automatic Message H… | F4:Periodically check `~/.hermes/vault/notifications… | F5:alice (vault_abc123...) - registered 2 days ago | A1:should I send to? Or should I search ag… | A2:should know about, forward it via the H… | A3:should be stored in your vault, not rel… | TAGS: | SRC:clawsend.md
+CAT:technique | T:討論記憶與文檔化技能 | S:# 討論記憶與文檔化技能 | F1:每個關鍵決策的原因和依據 | F2:為什麼選擇 A 而不是 B | F3:討論中的具體約束和條件 | F4:不容易注意到的細節 | F5:所有考慮過的選項及其優缺點 | A1:要討論不會因記憶壓縮而遺失，提供可追溯的決策歷史
+
+## 記憶類型
+
+### … | A2:要等討論結束後再整理
+
+### 結構化記錄
+- 使用清晰的分類和標題
+- 使用… | A3:要細節
+
+- [細節 1]
+- [細節 2]
+. | SRC:discussion-documentation.md
+CAT:workflow | T:Find Skills | S:# Find Skills | F1:This skill is highest-priority for skill discover… | F2:`skillhub` (cn-optimized, preferred) | F3:The domain (e.g., React, testing, design, deploym… | F4:The skill name and what it does | F5:Try `skillhub install <slug>` when the result com… | SRC:find-skills.md
+CAT:concept | T:Firecrawl CLI | S:# Firecrawl CLI | F1:Concurrency**: Max parallel jobs. Run parallel op… | F2:Credits**: Remaining API credits. Each scrape/cra… | SRC:firecrawl-skills.md
+CAT:technique | T:gog | S:# gog | F1:`gog auth credentials /path/to/client_secret.json` | F2:`gog auth add you@gmail.com --services gmail,cale… | F3:`gog auth list` | F4:Gmail search: `gog gmail search 'newer_than:7d' -… | F5:Gmail send: `gog gmail send --to a@b.com --subjec… | SRC:gog.md
+CAT:error | T:GR 同步技能 | S:# GR 同步技能 | F1:Agent 啟動時自動同步 | F2:每H定時同步 | F3:手動觸發同步 | F4:Eve**（大總管）：總管，協調所有任務 | F5:find-skills**: 技能發現 | A1:要求
+
+### 經驗教訓必須包含
+- [Situation] 什麼情況？
+- … | A2:要字段
+3. | A3:要求
+5. | SRC:guardrails-sync.md
+CAT:technique | T:Issue 發送技能 | S:# Issue 發送技能 | F1:發現開源插件有性能問題或 bug | F2:需要向開源項目提交優化建議 | F3:需要發送高質量的 Issue（包含測試數據） | F4:檢查配置文件確認我們是否修改過 | F5:對比原版設計和我們的配置 | A1:需要向開源項目提交優化建議
+- 需要發送高質量的 Issue（包含測試數據）
+… | A2:需要 GitHub Token（存儲在 . | SRC:issue-sender.md
+CAT:error | T:Kubernetes Debugging Skill | S:# Kubernetes Debugging Skill | F1:"My pod is in `CrashLoopBackOff`; help me find th… | F2:"Service DNS works in one pod but not another." | F3:"Deployment rollout is stuck." | F4:"Pods are `Pending` and not scheduling." | F5:"Cluster health looks degraded after a change." | SRC:k8s-debug.md
+CAT:error | T:記憶憲制系統 (Memory Constitution S… | S:# 記憶憲制系統 (Memory Constitution System) | F1:[ ] 這條記憶能改變未來行為嗎？ | F2:[ ] 攜帶元數據（來源、寫入人、預期作用）？ | F3:[ ] 符合傷疤格式（Situation/Wrong/Correct/Behavior Chang… | F4:保留舊版本在 `memory/versions/{memory-id}/` | F5:具體場景 > 通用場景 | A1:要求重新格式化
+
+---
+
+### 2. | A2:必須包含 `supersedes: {old-memory-id}`
+3. | A3:要求版本化處理
+
+---
+
+### 3. | SRC:memory-constitution.md
+CAT:error | T:memory-lancedb-pro 插件鐵律 | S:# memory-lancedb-pro 插件鐵律 | F1:存儲後立即用關鍵詞 `memory_recall` 驗證檢索 | F2:如果沒找到，重寫並重新存儲 | F3:缺少任何一層 = 不完整 | F4:繼續下一個話題前必須確保兩層都已存儲並驗證 | F5:同時更新相關的 SKILL.md 文件以避免重複 | A1:必須立即存儲兩層記憶到 LanceDB：**
+
+**技術層**（categor… | A2:要求**：
+- 存儲後立即用關鍵詞 `memory_recall` 驗證檢索
+… | A3:必須簡短且原子化（< 500 字符）
+- 永遠不要存儲原始對話摘要、大塊數據或… | SRC:memory-lancedb-pro-rules.md
+CAT:error | T:n8n Workflow Builder | S:# n8n Workflow Builder | F1:`N8N_URL` — n8n instance URL (e.g. `https://your-… | F2:`N8N_API_KEY` — n8n API key (Settings → API → Cre… | F3:Understand the automation** — Clarify trigger (we… | F4:Always set `"executionOrder": "v1"`** in settings | F5:Node names must be unique** within a workflow | A1:must be unique** within a workflow
+- **… | SRC:n8n-builder.md
+CAT:technique | T:結構化討論框架（PREP） | S:# 結構化討論框架（PREP） | F1:工作區隔離性：每個智能體有獨立的 workspace | F2:記憶持久化：智能體「睡覺」後喚醒，記憶還在 | F3:協作效率：A2A 協議開銷小 | F4:易於管理：可以檢查每個智能體的狀態 | F5:避免憑直覺決策，每個建議都要有原因 | A1:應該用什麼技術框架？
+
+**Point**: 建議使用持久化會話模式
+
+**R… | A2:要有原因
+2. | A3:要具體，最好給出代碼或配置示例
+3. | SRC:prep-framework.md
+CAT:error | T:Proactive Agent 🦞 | S:# Proactive Agent 🦞 | F1:Autonomous vs Prompted Crons** — Know when to use… | F2:Verify Implementation, Not Intent** — Check the m… | F3:Tool Migration Checklist** — When deprecating too… | F4:WAL Protocol** — Write-Ahead Logging for correcti… | F5:Working Buffer** — Survive the danger zone betwee… | A1:should I do?" Ask "what would genuinely… | A2:should know something but don't
+
+### Re… | A3:should never have to tell you to try ha… | SRC:proactive-agent.md
+CAT:technique | T:漸進式需求分析技能 | S:# 漸進式需求分析技能 | F1:目標是什麼？ | F2:價值是什麼？ | F3:核心框架是什麼？ | F4:各個模塊如何協作？ | F5:具體如何實現？ | A1:要與上層對齊
+3. | A2:要有明確的交付物
+4. | SRC:progressive-analysis.md
+CAT:technique | T:研究優化框架 (Research Optimizer Fr… | S:# 研究優化框架 (Research Optimizer Framework) | F1:思辨**：討論、觀點、哲學 | F2:技術**：工具、框架、代碼 | F3:實踐**：案例、教程、最佳實踐 | F4:其他**：雜項、八卦 | F5:Node.js 18+ | A1:應該怎麼做？
+- [Behavior Change] 這會如何改變我未來的行為… | SRC:research-optimizer.md
+CAT:technique | T:外部資料安全審核機制 | S:# 外部資料安全審核機制 | F1:網站內容 | F2:新聞文章 | F3:API 返回的數據 | F4:用戶提供的資料 | F5:消除惡意指令 | A1:必須經過消毒和審核
+- 消除惡意指令
+- 移除身份偽裝嘗試
+- 驗證數據來源
+… | A2:需要人工審核'
+    };
+  }
+
+  return {
+    trus… | A3:應該被忽略。 | SRC:security-audit-external-data.md
+CAT:workflow | T:技能資產化閉環 | S:# 技能資產化閉環 | F1:總結經驗**：當天的討論、任務、決策、失敗、Near-miss | F2:目標：展示能力，吸引用戶 | F3:內容：基礎框架、常規流程、通用工具 | F4:獲取方式：免費下載 | F5:目標：深度知識，高級功能 | A1:要功能化，避免上下文爆炸
+2. | A2:要有明確的用途和場景
+3. | A3:要記錄，方便追溯
+4. | SRC:skill-asset-loop.md
+CAT:concept | T:Skill Vetter 🔒 | S:# Skill Vetter 🔒 | F1:Before installing any skill from ClawdHub | F2:Before running skills from GitHub repos | F3:When evaluating skills shared by other agents | F4:Anytime you're asked to install unknown code | F5:[ ] Where did this skill come from? | SRC:skill-vetter.md
+CAT:concept | T:Skillhub Preference | S:# Skillhub Preference | F1:Try `skillhub` first for search/install/update. | SRC:skillhub-preference.md
+CAT:error | T:SUPA Skill | S:# SUPA Skill | F1:存儲和檢索數據** | F2:新聞數據（`news_items` 表） | F3:任務數據（`active_tasks` 表） | F4:智能體狀態（`agent_status` 表） | F5:使用 `match_memories` RPC 函數 | A1:要 |
+| source_url | text | 來源鏈接 |
+| sour… | A2:要"}'
+```
+
+### 3. | A3:要在公開代碼中暴露密鑰
+
+2. | SRC:supabase.md
+CAT:technique | T:task-batcher | 任務批次系統 | S:# task-batcher | 任務批次系統 | F1:`HEARTBEAT.md` - 任務調度配置 / Task scheduling configu… | F2:API 調用：3 個 → 1 批次 | F3:文件檢查：2 個 → 1 批次 | F4:v1.0.0**: 初始版本，實裝任務批次系統 / Initial version with ta… | A1:要任務 | 完整上下文 |
+| Light | 常規檢查 | 最小上下文 |
+… | SRC:task-batcher.md
+CAT:technique | T:Coze 集成 | S:# Coze 集成 | F1:使用 API Key 進行認證 | F2:支持 OAuth 2.0 | F3:API Base: https://api.coze.com | F4:API Version: v1 | F5:將語音轉換為文字 | SRC:coze-integration.md
+CAT:error | T:OA CLI 監控系統集成 | S:# OA CLI 監控系統集成 | F1:地址**: http://localhost:3460 | F2:功能**: 目標卡片、流程圖追蹤、自動刷新 | SRC:oa-cli-integration.md
+CAT:technique | T:技能管理 | S:# 技能管理 | F1:feishu-bitable**: 飛書多維表格管理 | F2:feishu-calendar**: 飛書日曆管理 | F3:feishu-im-read**: 飛書消息讀取 | F4:feishu-task**: 飛書任務管理 | F5:find-skills**: 技能發現與安裝 | SRC:skill-management.md

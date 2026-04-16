@@ -1,0 +1,1 @@
+CAT:concept | T:GR 百科 — 跨 LLM 相容指南 | S:# GR 百科 — 跨 LLM 相容指南 | F1:L2 動態上下文：L2-context/recent-sessions/current.md | F2:L3 深度知識：SUPA guardrails_knowledge 表 | F3:本地備份：compiled/ 目錄下有 AAAK 壓縮版 | F4:每次送訊息前，自動跑關鍵字搜尋 GR | F5:把相關知識塞進背景資料 | SRC:20260416-guardrails-cross-llm-compat.md

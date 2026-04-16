@@ -1,0 +1,1 @@
+CAT:error | T:Kubernetes Debugging Skill | S:# Kubernetes Debugging Skill | F1:"My pod is in `CrashLoopBackOff`; help me find th… | F2:"Service DNS works in one pod but not another." | F3:"Deployment rollout is stuck." | F4:"Pods are `Pending` and not scheduling." | F5:"Cluster health looks degraded after a change." | SRC:k8s-debug.md

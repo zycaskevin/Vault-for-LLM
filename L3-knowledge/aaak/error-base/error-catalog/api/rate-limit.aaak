@@ -1,0 +1,1 @@
+CAT:error | T:API 速率限制 | S:# API 速率限制 | F1:實現指數退避 | F2:實現速率限制器 | F3:使用本地緩存 | F4:批量請求 | SRC:rate-limit.md

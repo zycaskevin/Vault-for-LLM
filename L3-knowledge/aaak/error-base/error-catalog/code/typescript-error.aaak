@@ -1,0 +1,1 @@
+CAT:error | T:TypeScript 編譯錯誤 | S:# TypeScript 編譯錯誤 | F1:檢查模塊路徑 | F2:使用統一的路徑別名 | F3:定期檢查依賴完整性 | SRC:typescript-error.md

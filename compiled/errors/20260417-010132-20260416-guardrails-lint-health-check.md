@@ -1,0 +1,1 @@
+CAT:error | T:GR Lint 健康檢查實作 | S:# GR Lint 健康檢查實作 | F1:孤立條目偵測** — 沒有 tags（只有 category tag）的條目 | F2:related:xxx 被當成 tag 計算，需要過濾 | F3:category_tags 已排除（error/technique/workflow/compar… | F4:連鎖更新目前只檢查 tag 交集，還沒做自動補 tags | SRC:20260416-guardrails-lint-health-check.md

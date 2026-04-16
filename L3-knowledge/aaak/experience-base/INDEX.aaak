@@ -1,0 +1,67 @@
+CAT:lesson | T:📊 Token 消耗分析報告 | S:# 📊 Token 消耗分析報告 | F1:檔案位置：** `/workspace/projects/workspace/skills/mem… | F2:Cron ID：** `744de56a-bd08-457c-9ca6-f072a4f1e2bf` | F3:下次執行：** 今天 23:30 | F4:每次消耗：** ~31,000 tokens（isolated session + light-c… | F5:每日估算：** ~1,488k tokens（48 次/天） | A1:要消耗源：Cron Jobs
+
+### 記憶總結 Cron（每 30 分鐘）
+… | SRC:2026-04-12-token-analysis.md
+CAT:concept | T:成本控制最佳實踐 | S:# 成本控制最佳實踐 | F1:,000 Tokens 截斷 | F2:永不發送完整歷史 | F3:每夜記憶摘要 | F4:壓縮日常對話為高密度標籤 | F5:API 調用前扣除點數 | A1:需要嚴格的成本控制機制。 | A2:要
+- 每夜記憶摘要
+- 壓縮日常對話為高密度標籤
+
+### 3. | SRC:cost-control.md
+CAT:error | T:監控系統設計最佳實踐 | S:# 監控系統設計最佳實踐 | F1:日誌 (Logging) | F2:指標 (Metrics) | F3:追蹤 (Tracing) | F4:及時發現問題 | F5:避免告警疲勞 | SRC:monitoring-strategy.md
+CAT:concept | T:PM 去中心化協調模式 | S:# PM 去中心化協調模式 | F1:Main session = coordinator ONLY | F2:所有執行通過子代理完成 | F3:STATE.yaml 作為協調中心 | F4:新任務到達 | F5:PM: `pm-{project}-{scope}` | SRC:pm-delegation.md
+CAT:concept | T:主動式 Agent 設計 | S:# 主動式 Agent 設計 | F1:抑制機制：知道什麼時候不該動 | F2:激活機制：知道什麼時候該動 | F3:精確顆粒度：等什麼/何時動 | F4:定期檢查系統狀態 | F5:主動發現問題 | A1:要素
+
+### 1. | A2:should_intervene(context):
+    if conte… | SRC:proactive-agent.md
+CAT:concept | T:系統穩定性最佳實踐 | S:# 系統穩定性最佳實踐 | F1:及時發現問題 | F2:預防勝於治療 | F3:減少人工干預 | F4:提高效率 | F5:所有操作都有記錄 | SRC:system-stability.md
+CAT:concept | T:MAGI 系統案例研究 | S:# MAGI 系統案例研究 | F1:多模型辯論 | F2:準確率 88% | F3:多模型投票 | F4:準確率 72% | F5:根據分歧程度選擇模式 | A1:需要根據場景選擇合適模式。 | SRC:magi-system.md
+CAT:technique | T:經驗教訓 - 2026-04-06 | S:# 經驗教訓 - 2026-04-06 | F1:配置：`config/autoDream.yaml`, `scripts/autoDream.sh` | F2:觸發條件：每天 03:00 或超過 500 行 | F3:保留策略：score≥9 原樣保留，score≥7 保留摘要，scar 格式特殊保留 | F4:成果：1021 行 → 82 行（93.6% 壓縮） | F5:Task Status Check: 15分 → 60分（節省 75%） | A1:要，scar 格式特殊保留
+- 成果：1021 行 → 82 行（93. | A2:需要自動化維護，不能只增不減；設置自動蒸餾機制是必要的基礎設施。 | A3:要性選擇
+- 成果：預計總節省 60-70%
+
+[Behavior Chang… | SRC:20260406-130632.md
+CAT:workflow | T:自動化的重要性 | S:# 自動化的重要性 | F1:減少人工干預成本 | F2:提高整體系統效率 | F3:監控系統是自動化的基礎 | A1:要性
+
+## 核心洞察
+
+對重複性任務優先自動化，減少人工干預成本。 | SRC:automation-importance.md
+CAT:workflow | T:自動化的重要性 | S:# 自動化的重要性 | F1:[Situation] 發現重複性任務時 [Wrong] 依賴人工執行重複性任務 [Correct… | F2:[Metadata]: {"source": "2026-03-27", "author": "E… | SRC:automation-lesson.md
+CAT:lesson | T:從回答到深度思考 | S:# 從回答到深度思考 | F1:第1步**：問自己「如果答案是反直覺的，會是什麼」 | F2:對話深度提升：不只是回答問題，而是深度思考 | F3:看到多個維度：正向、反向、綜合 | F4:避免思維定勢：打破常規思維 | A1:需要深度思考時
+
+[Metadata]: {"source": "2026-0… | SRC:deep-thinking.md
+CAT:technique | T:從消費到可執行 | S:# 從消費到可執行 | F1:分類**：把熱鬧分成幾類（思辨、技術、實踐、其他） | F2:研究效率提升：從「讀完所有」到「提取可執行」 | F3:行動轉化效率：從「閱讀」到「10-30分鐘完成」 | A1:要有明確輸出，從「消費熱鬧」到「可執行動作」。 | A2:要有明確輸出，從「讀完所有」到「提取可執行」，10-30分鐘可完成
+[Acti… | SRC:from-consumption-to-action.md
+CAT:error | T:基礎設施投資的長期價值 | S:# 基礎設施投資的長期價值 | F1:M**：錯誤復發率降低 50%，知識復用率 30% | F2:M**：錯誤復發率降低 80%，生產力提升 30% | F3:年**：成為企業級知識中樞，錯誤復發率降低 95% | SRC:infrastructure-investment.md
+CAT:error | T:知識中樞的戰略價值 | S:# 知識中樞的戰略價值 | F1:🔒 知識資產化：將零散知識轉化為可管理的資產 | F2:🔄 跨系統復用：所有新系統都可復用現有知識 | F3:📉 錯誤不復發：曾犯過的錯誤不會再犯 | F4:🚀 加速創新：新系統從「零開始」變為「站在巨人肩膀上」 | SRC:knowledge-hub-value.md
+CAT:lesson | T:記憶清洗經驗教訓 | S:# 記憶清洗經驗教訓 | F1:[Situation] 執行記憶清洗過程中發現大量記憶衝突（162 個） [Wrong] 初始設計… | SRC:memory-cleaning-lesson.md
+CAT:concept | T:記憶憲制系統實施經驗 | S:# 記憶憲制系統實施經驗 | F1:[Situation] 需要建立規範化的記憶管理系統 [Wrong] 沒有明確的記憶寫入標準，導致… | SRC:memory-constitution-lesson.md
+CAT:technique | T:記憶系統治理 | S:# 記憶系統治理 | F1:立法席位**：檢查記憶是否有資格寫入（能改變行為） | A1:需要治理機制，不只是技術實現。 | SRC:memory-governance.md
+CAT:error | T:記憶系統清理與重構經驗 | S:# 記憶系統清理與重構經驗 | F1:HM → HM 遷移後，HM 遺留物（ChromaDB、MEMORY_OPENCLAW.md、se… | F2:最佳實踐**：遷移完成後立即清理舊系統遺留，不要拖延。設置明確的「過渡期最後日期」 | F3:本次清理回收：services/(1.3MB/38腳本)、24個廢棄scripts、.hermes… | F4:L1：MEMORY.md / USER.md（每輪注入，有容量限制） | F5:L2：session_search（FTS5 搜索過去對話） | A1:要果斷
+- HM → HM 遷移後，HM 遺留物（ChromaDB、MEMOR… | A2:要拖延。 | A3:必須定期壓縮
+
+### 3. | SRC:memory-system-cleanup-20260415.md
+CAT:error | T:記憶系統安裝與優化經驗（2026-03-30） | S:# 記憶系統安裝與優化經驗（2026-03-30） | F1:✅ 記憶回憶的準確性 | F2:✅ Token 消耗變化 | F3:✅ 摘要生成成功率 | F4:📊 數據庫大小（LCM + LanceDB） | F5:🧹 記憶質量檢查 | A1:必須仔細閱讀完整 README，安裝後必須啟用完整功能並測試
+[Activat… | A2:要時調整參數
+[Behavior Change] 啟用記憶回憶前評估 toke… | A3:要生成延遲
+
+[Situation] lossless-claw-enhanc… | SRC:memory-system-lesson-20260330.md
+CAT:workflow | T:里程碑標準化追蹤 | S:# 里程碑標準化追蹤 | F1:文檔化里程碑**：使用 STATE.yaml 定義里程碑 | A1:要里程碑時
+[Wrong] 里程碑沒有明確定義和驗收標準，進度追蹤模糊
+[Co… | A2:要里程碑都需要文檔化，進度需要定期更新，問題需要記錄並解決
+[Activati… | SRC:milestone-tracking.md
+CAT:error | T:監控系統的關鍵作用 | S:# 監控系統的關鍵作用 | F1:及早發現問題 | F2:減少故障時間 | F3:監控數據是決策的基礎 | SRC:monitoring-system.md
+CAT:concept | T:參數檢查的重要性 | S:# 參數檢查的重要性 | F1:[Situation] 使用 edit 工具時參數混用導致失敗 [Wrong] edit 工具的 … | F2:[Metadata]: {"source": "2026-03-20", "author": "E… | SRC:parameter-check-lesson.md
+CAT:technique | T:報告標準化交付 | S:# 報告標準化交付 | F1:方便手機查看 | F2:方便保存和分享 | F3:支持團隊協作 | F4:隨時隨地訪問 | SRC:report-standardization.md
+CAT:technique | T:研究優化框架驗證 | S:# 研究優化框架驗證 | F1:分類**：把熱鬧分成幾類（思辨、技術、實踐、其他） | A1:要有明確輸出，從「讀完所有」到「提取可執行」，效率提升 10 倍以上
+[Act… | SRC:research-optimization.md
+CAT:lesson | T:傷疤格式更有用 | S:# 傷疤格式更有用 | F1:記憶系統性提升：記憶自動驗證行為改變 | F2:行為模式積累：長期來看會形成明確的行為模式 | F3:可執行性強：每條記憶都包含激活條件 | SRC:scar-format.md
+CAT:concept | T:穩定期的價值 | S:# 穩定期的價值 | F1:[Situation] 開發任務完成並部署后 [Wrong] 急於開始新任務，不給系統穩定時間 [… | F2:[Metadata]: {"source": "2026-03-27", "author": "E… | SRC:stability-period-lesson.md
+CAT:error | T:狀態標記的可靠性 | S:# 狀態標記的可靠性 | F1:[Situation] cron 狀態標記為 error 但功能正常執行 [Wrong] 僅依賴狀… | F2:[Metadata]: {"source": "2026-03-23", "author": "E… | SRC:status-marker-lesson.md
+CAT:error | T:系統穩定性持續驗證 | S:# 系統穩定性持續驗證 | F1:Cron 任務運作穩定**：所有定時任務正常執行，無錯誤累積 | F2:自動化流程可靠**：技能總結、記憶總結、晨報等任務按時完成 | F3:Agent 健康度良好**：所有 Agent 持續可用 | F4:服務連接穩定**：SUPA、飛書、Dashboard 等核心服務正常工作 | F5:驗證了 AI 無人公司架構的可靠性 | A1:需要持續監控和驗證，不能僅憑初始測試判斷。 | SRC:system-stability-verification.md
+CAT:lesson | T:系統轉型期管理 | S:# 系統轉型期管理 | F1:## 核心洞察 | F2:開發完成后給系統穩定運行時間，觀察系統在穩定期的表現。 | F3:## 經驗教訓 | SRC:system-transition-management.md
+CAT:lesson | T:用戶偏好的重要性 | S:# 用戶偏好的重要性 | F1:溝通語言**：繁體中文 | F2:報告格式**：飛書雲文檔 | F3:通訊渠道**：飛書 (Feishu) | A1:要性
+
+## 核心洞察
+
+遵循用戶的溝通偏好、交付格式偏好、終端設備偏好。 | SRC:user-preference.md
+CAT:error | T:用戶體驗的細節優化 | S:# 用戶體驗的細節優化 | F1:簡化流程 | F2:減少步驟 | F3:提供默認值 | F4:優化錯誤提示 | F5:考慮邊緣情況 | SRC:ux-optimization.md

@@ -1,0 +1,1 @@
+CAT:concept | T:Vercel API 集成 | S:# Vercel API 集成 | F1:## 概述 通過 Vercel API 實現自動化部署和管理。 | F2:## API 端點 | F3:### 部署 ``` POST /v6/deployments ``` | SRC:vercel-api.md

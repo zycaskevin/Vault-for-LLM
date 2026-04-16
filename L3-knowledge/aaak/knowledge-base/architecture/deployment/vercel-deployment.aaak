@@ -1,0 +1,1 @@
+CAT:error | T:Vercel 部署指南 | S:# Vercel 部署指南 | F1:Dashboard**: https://vercel.com/dashboard | F2:Vercel CLI**: 可用於本地部署 | F3:原因：文件結構混亂 | F4:解決：統一 index.html 位置 | F5:原因：使用了未定義的函數 | SRC:vercel-deployment.md

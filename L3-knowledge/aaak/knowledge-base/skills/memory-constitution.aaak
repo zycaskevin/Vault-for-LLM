@@ -1,0 +1,10 @@
+CAT:error | T:記憶憲制系統 (Memory Constitution S… | S:# 記憶憲制系統 (Memory Constitution System) | F1:[ ] 這條記憶能改變未來行為嗎？ | F2:[ ] 攜帶元數據（來源、寫入人、預期作用）？ | F3:[ ] 符合傷疤格式（Situation/Wrong/Correct/Behavior Chang… | F4:保留舊版本在 `memory/versions/{memory-id}/` | F5:具體場景 > 通用場景 | A1:要求重新格式化
+
+---
+
+### 2. | A2:必須包含 `supersedes: {old-memory-id}`
+3. | A3:要求版本化處理
+
+---
+
+### 3. | SRC:memory-constitution.md

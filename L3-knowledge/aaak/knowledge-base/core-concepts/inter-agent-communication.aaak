@@ -1,0 +1,9 @@
+CAT:error | T:龍蝦間通訊協定 (Inter-Lobster Commun… | S:# 龍蝦間通訊協定 (Inter-Lobster Communication Protocol) | F1:方式**: sessions_send / HTTP webhook | F2:即時性**: 即時 | F3:用途**: 緊急通知、協調指令、問題詢問 | F4:格式**: JSON 或純文字 | F5:方式**: GR GitHub Repository | A1:需要協助",
+  "body": ". | A2:要: [一句話摘要]
+
+內容:
+[詳細內容]
+
+<! | A3:需要知識時，從 GR 拉取：
+
+1. | SRC:inter-agent-communication.md

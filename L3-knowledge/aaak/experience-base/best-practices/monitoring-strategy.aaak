@@ -1,0 +1,1 @@
+CAT:error | T:監控系統設計最佳實踐 | S:# 監控系統設計最佳實踐 | F1:日誌 (Logging) | F2:指標 (Metrics) | F3:追蹤 (Tracing) | F4:及時發現問題 | F5:避免告警疲勞 | SRC:monitoring-strategy.md

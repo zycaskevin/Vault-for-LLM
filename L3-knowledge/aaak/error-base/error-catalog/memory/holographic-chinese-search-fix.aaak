@@ -1,0 +1,5 @@
+CAT:error | T:Holographic 記憶系統中文搜索修復 | S:# Holographic 記憶系統中文搜索修復 | F1:FTS5 搜尋中文關鍵詞（如「記憶系統」）返回 0 結果 | F2:HRR 向量相似度對中文文本返回近似隨機值（約 -0.01） | F3:Jaccard 詞重疊計算也因中文無空格而不工作 | F4:FTS5**：使用 `unicode61` tokenizer，對中文只做單字切分，無法匹配複合詞 | F5:CJK 文本用 jieba 分詞 | A1:需要 BGE-M3 / Rerank Model
+
+- HRR 已是VEC（S… | A2:必須使用 jieba 分詞，不可用空格分割
+2. | A3:必須預分詞後存入
+3. | SRC:holographic-chinese-search-fix.md

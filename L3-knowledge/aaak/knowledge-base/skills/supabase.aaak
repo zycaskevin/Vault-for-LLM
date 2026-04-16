@@ -1,0 +1,8 @@
+CAT:error | T:SUPA Skill | S:# SUPA Skill | F1:存儲和檢索數據** | F2:新聞數據（`news_items` 表） | F3:任務數據（`active_tasks` 表） | F4:智能體狀態（`agent_status` 表） | F5:使用 `match_memories` RPC 函數 | A1:要 |
+| source_url | text | 來源鏈接 |
+| sour… | A2:要"}'
+```
+
+### 3. | A3:要在公開代碼中暴露密鑰
+
+2. | SRC:supabase.md

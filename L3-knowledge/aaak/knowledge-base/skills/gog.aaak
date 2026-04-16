@@ -1,0 +1,1 @@
+CAT:technique | T:gog | S:# gog | F1:`gog auth credentials /path/to/client_secret.json` | F2:`gog auth add you@gmail.com --services gmail,cale… | F3:`gog auth list` | F4:Gmail search: `gog gmail search 'newer_than:7d' -… | F5:Gmail send: `gog gmail send --to a@b.com --subjec… | SRC:gog.md

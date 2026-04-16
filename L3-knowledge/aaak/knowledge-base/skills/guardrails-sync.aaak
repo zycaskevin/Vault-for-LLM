@@ -1,0 +1,7 @@
+CAT:error | T:GR 同步技能 | S:# GR 同步技能 | F1:Agent 啟動時自動同步 | F2:每H定時同步 | F3:手動觸發同步 | F4:Eve**（大總管）：總管，協調所有任務 | F5:find-skills**: 技能發現 | A1:要求
+
+### 經驗教訓必須包含
+- [Situation] 什麼情況？
+- … | A2:要字段
+3. | A3:要求
+5. | SRC:guardrails-sync.md

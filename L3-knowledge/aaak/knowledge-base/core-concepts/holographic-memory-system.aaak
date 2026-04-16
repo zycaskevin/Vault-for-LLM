@@ -1,0 +1,2 @@
+CAT:technique | T:Holographic 記憶系統 | S:# Holographic 記憶系統 | F1:零外部依賴**：純 SQLite + numpy，不需要 GPU 或嵌入模型 | F2:確定性向量**：SHA-256 生成相位向量，不是神經網絡嵌入 | F3:三層搜索管線**：FTS5（召回）→ Jaccard（初排）→ HRR（重排） | F4:信任評分**：0.0-1.0，支持 helpful/unhelpful 回饋訓練 | F5:實體解析**：自動提取和連結實體（人名、專案名等） | A1:需要 GPU 或嵌入模型
+- **確定性向量**：SHA-256 生成相位向量… | SRC:holographic-memory-system.md

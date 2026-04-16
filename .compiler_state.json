@@ -1,0 +1,25 @@
+{
+  "last_run": "2026-04-17T06:07:51.852258",
+  "raw_stats": {
+    "total_files": 18,
+    "total_size": 0,
+    "file_hashes": {},
+    "last_modified": "2026-04-17T06:07:51.852278"
+  },
+  "compiled_stats": {
+    "total_files": 18,
+    "total_size": 0,
+    "last_compiled": "2026-04-17T06:07:51.852281"
+  },
+  "last_success": "2026-04-17T06:07:51.852282",
+  "processed_files": {},
+  "supabase_sync": {
+    "inserted": 0,
+    "updated": 18,
+    "failed": 0
+  },
+  "lint": {
+    "orphaned_entries": 11,
+    "concept_gaps": 10
+  }
+}

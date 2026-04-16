@@ -1,0 +1,10 @@
+{
+  "timestamp": "2026-04-16T23:08:37.750978",
+  "processed_count": 10,
+  "failed_count": 0,
+  "total_time_seconds": 45.01491594314575,
+  "avg_time_per_file": 4.501491594314575,
+  "source": "all",
+  "limit": 10,
+  "test_mode": false
+}

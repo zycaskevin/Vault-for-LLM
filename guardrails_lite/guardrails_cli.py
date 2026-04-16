@@ -367,12 +367,16 @@ def cmd_doctor(args):
     except ImportError:
         checks.append(("onnxruntime", "❌ 未安裝 (pip install onnxruntime)", False))
 
-    # optimum
+    # optimum[onnxruntime]
     try:
         from optimum.onnxruntime import ORTModelForFeatureExtraction
         checks.append(("optimum[onnxruntime]", "✅", True))
     except ImportError:
-        checks.append(("optimum[onnxruntime]", "❌ 未安裝 (pip install optimum[onnxruntime])", False))
+        try:
+            import optimum
+            checks.append(("optimum[onnxruntime]", f"⚠️ optimum {optimum.__version__} 已裝，缺 onnxruntime", False))
+        except ImportError:
+            checks.append(("optimum[onnxruntime]", "❌ 未安裝 (pip install optimum[onnxruntime])", False))
 
     # Ollama
     try:

@@ -575,7 +575,7 @@ def cmd_import(args):
             db_check = GuardrailsDB(str(db_path))
             db_check.connect()
             has_context = db_check.conn.execute(
-                "SELECT COUNT(*) FROM knowledge WHERE content_aaak LIKE '【%' LIMIT 1"
+                "SELECT COUNT(*) FROM knowledge WHERE content_aaak LIKE '%【%' LIMIT 1"
             ).fetchone()[0]
             db_check.close()
             if has_context > 0:

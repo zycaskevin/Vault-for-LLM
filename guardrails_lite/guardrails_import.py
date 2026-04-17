@@ -128,7 +128,7 @@ def contextualize_chunks(
                 data=payload,
                 headers={"Content-Type": "application/json"},
             )
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=120) as resp:
                 result = json.loads(resp.read())
                 context = result.get("response", "").strip()
 

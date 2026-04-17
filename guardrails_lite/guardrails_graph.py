@@ -10,6 +10,7 @@ Guardrails Lite — 輕量知識圖譜模組。
 
 import re
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Optional
 
 from .guardrails_db import GuardrailsDB
@@ -36,10 +37,12 @@ class GuardrailsGraph:
 
     # ── 自動推斷 ────────────────────────────────────────────
 
-    def infer_from_knowledge(self, knowledge_id: int) -> list[int]:
+    def infer_from_knowledge(self, knowledge_id: int, build_edges: bool = True) -> list[int]:
         """
         從一筆知識的 tags/title/content 自動推斷實體和關聯。
         回傳新建/關聯的 entity ID 列表。
+        
+        build_edges=False 時只提取實體，不建邊（用於批次建邊場景）。
         """
         k = self.db.get_knowledge(knowledge_id)
         if not k:
@@ -51,8 +54,9 @@ class GuardrailsGraph:
         # 1. 推斷實體
         entity_ids = self._extract_entities(text, knowledge_id)
 
-        # 2. 推斷關聯（共用實體的知識條目之間自動連邊）
-        new_edges = self._infer_edges_from_shared_entities(knowledge_id)
+        # 2. 推斷關聯（只在單條建構時才用）
+        if build_edges:
+            self._infer_edges_from_shared_entities(knowledge_id)
 
         return entity_ids
 
@@ -60,28 +64,95 @@ class GuardrailsGraph:
         """
         掃描所有知識條目，推斷實體和關聯。
         回傳統計：新建實體數、新建邊數。
+        用批次 SQL 替代 O(N²) 逐條查詢。
         """
         rows = self.db.conn.execute("SELECT id FROM knowledge").fetchall()
         entities_created = 0
-        edges_created = 0
 
         for row in rows:
             kid = row[0]
-            result = self.infer_from_knowledge(kid)
+            result = self.infer_from_knowledge(kid, build_edges=False)
             entities_created += len(result)
 
-        # 共用實體的自動連邊
-        rows = self.db.conn.execute("SELECT id FROM knowledge").fetchall()
-        for row in rows:
-            kid = row[0]
-            new = self._infer_edges_from_shared_entities(kid)
-            edges_created += new
+        # 批次推斷邊：共用實體的知識條目自動連邊
+        edges_created = self._infer_all_edges_batch()
 
+        total_knowledge = len(rows)
         return {
             "entities_created": entities_created,
             "edges_created": edges_created,
-            "total_knowledge": len(rows),
+            "total_knowledge": total_knowledge,
         }
+
+    def _infer_all_edges_batch(self) -> int:
+        """批次推斷所有共用實體的邊，用 INSERT 批次寫入。"""
+        # 找出至少被 2 筆知識共用的實體
+        # 只保留連接 2-8 筆知識的實體（最具區分度）
+        # 超連接的（>8 筆）實體如 "error"、"git" 沒有區分度，會產生太多噪音邊
+        shared = self.db.conn.execute(
+            "SELECT entity_id, COUNT(DISTINCT knowledge_id) as cnt "
+            "FROM entity_knowledge "
+            "GROUP BY entity_id HAVING cnt >= 2 AND cnt <= 8"
+        ).fetchall()
+
+        if not shared:
+            return 0
+
+        # 批次收集所有 (source_id, target_id, relation)
+        edges_to_add = []
+        now = datetime.now(timezone.utc).isoformat()
+
+        # 先查所有需要的 entity names
+        entity_ids = [row[0] for row in shared]
+        id_list = ",".join(str(eid) for eid in entity_ids)
+        entity_names = {}
+        for row in self.db.conn.execute(
+            f"SELECT id, name FROM entities WHERE id IN ({id_list})"
+        ).fetchall():
+            entity_names[row[0]] = row[1]
+
+        # 批次查所有 entity_knowledge
+        ek_rows = self.db.conn.execute(
+            f"SELECT entity_id, knowledge_id FROM entity_knowledge "
+            f"WHERE entity_id IN ({id_list})"
+        ).fetchall()
+
+        # 按 entity_id 分組
+        entity_to_kids = defaultdict(list)
+        for ek in ek_rows:
+            entity_to_kids[ek[0]].append(ek[1])
+
+        # 限制每個實體最多連 20 筆知識，避免邊爆炸
+        MAX_KIDS_PER_ENTITY = 20
+
+        edges_created = 0
+        for entity_id, kids in entity_to_kids.items():
+            kids = kids[:MAX_KIDS_PER_ENTITY]
+            name = entity_names.get(entity_id, "entity")
+            for i in range(len(kids)):
+                for j in range(i + 1, len(kids)):
+                    edges_to_add.append((kids[i], kids[j], f"shared_{name}", 0.5, 1, now))
+
+        # 批次 INSERT（用 executemany + 忽略重複）
+        if edges_to_add:
+            try:
+                self.db.conn.executemany(
+                    "INSERT OR IGNORE INTO edges(source_id, target_id, relation, weight, auto_inferred, created_at) "
+                    "VALUES(?,?,?,?,?,?)",
+                    edges_to_add,
+                )
+                self.db.conn.commit()
+                edges_created = len(edges_to_add)
+            except Exception as e:
+                print(f"⚠️ 批次建邊失敗，回退逐條: {e}")
+                for edge in edges_to_add:
+                    try:
+                        self.db.add_edge(edge[0], edge[1], edge[2], edge[3], auto_inferred=True)
+                        edges_created += 1
+                    except Exception:
+                        pass
+
+        return edges_created
 
     def _extract_entities(self, text: str, knowledge_id: int) -> list[int]:
         """從文字中提取實體，存入 DB 並連結到知識條目。"""

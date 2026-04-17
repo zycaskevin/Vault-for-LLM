@@ -25,14 +25,16 @@ class GuardrailsSearch:
     def __init__(
         self,
         db: GuardrailsDB,
-        embed_provider: Optional[EmbeddingProvider] = None,
+        embed_provider=None,
         embed_provider_name: str = "auto",
         embed_model_key: str = "mix",
+        graph=None,
     ):
         self.db = db
         self._embed = embed_provider
         self._embed_provider_name = embed_provider_name
         self._embed_model_key = embed_model_key
+        self._graph = graph  # GuardrailsGraph 實例（可選）
 
     @property
     def has_embeddings(self) -> bool:
@@ -62,6 +64,7 @@ class GuardrailsSearch:
         min_trust: float = 0.0,
         layer: Optional[str] = None,
         category: Optional[str] = None,
+        graph_expand: int = 0,
     ) -> list[dict]:
         """
         搜尋知識庫。
@@ -71,23 +74,32 @@ class GuardrailsSearch:
         - "keyword": 純關鍵字
         - "vector": 純向量
         - "hybrid": 混合（RRF 融合）
+
+        graph_expand:
+        - 0: 不使用圖譜擴展（預設）
+        - 1: 擴展 1 跳（直接鄰居）
+        - 2: 擴展 2 跳
         """
         if mode == "keyword":
-            return self.search_keyword(query, limit, min_trust, layer, category)
-
-        if mode == "vector":
+            results = self.search_keyword(query, limit, min_trust, layer, category)
+        elif mode == "vector":
             results = self.search_vector(query, limit * 2, min_trust, layer, category)
-            return results[:limit]
-
-        if mode == "hybrid":
-            return self.search_hybrid(query, limit, min_trust, layer, category)
-
-        # auto: 智慧降級
-        embed = self._get_embed()
-        if embed is not None and self.db._vec_available:
-            return self.search_hybrid(query, limit, min_trust, layer, category)
+            results = results[:limit]
+        elif mode == "hybrid":
+            results = self.search_hybrid(query, limit, min_trust, layer, category)
         else:
-            return self.search_keyword(query, limit, min_trust, layer, category)
+            # auto: 智慧降級
+            embed = self._get_embed()
+            if embed is not None and self.db._vec_available:
+                results = self.search_hybrid(query, limit, min_trust, layer, category)
+            else:
+                results = self.search_keyword(query, limit, min_trust, layer, category)
+
+        # 圖譜擴展
+        if graph_expand > 0 and self._graph is not None:
+            results = self._apply_graph_expand(results, graph_expand, limit)
+
+        return results
 
     # ── 關鍵字搜尋 ──────────────────────────────────────────
 
@@ -234,6 +246,47 @@ class GuardrailsSearch:
             results.append(item)
 
         return results
+
+    # ── 圖譜擴展 ──────────────────────────────────────────────
+
+    def _apply_graph_expand(
+        self, results: list[dict], expand_depth: int, limit: int
+    ) -> list[dict]:
+        """
+        對搜尋結果應用圖譜擴展。
+        沿著圖譜邊找相鄰知識，合併到搜尋結果中。
+        """
+        if not results or self._graph is None:
+            return results
+
+        # 已有的結果 ID 集合
+        seen_ids = {r["id"] for r in results}
+        expanded = list(results)
+
+        # 對每個搜尋結果，找圖譜鄰居
+        for r in results:
+            neighbors = self.db.get_neighbors(r["id"], max_depth=expand_depth)
+            for n in neighbors:
+                if n["id"] not in seen_ids:
+                    seen_ids.add(n["id"])
+                    k = self.db.get_knowledge(n["id"])
+                    if k:
+                        d = dict(k)
+                        # 圖譜擴展的分數衰減：距離越遠分數越低
+                        base_score = r.get("_score", 0.5)
+                        d["_score"] = base_score * (0.7 ** n["distance"])
+                        d["_mode"] = "graph_expand"
+                        d["_graph_distance"] = n["distance"]
+                        d["_relation"] = n["relation"]
+                        expanded.append(d)
+
+        # 重新排序：原搜尋結果優先，圖譜擴展次之
+        expanded.sort(key=lambda x: (
+            -x.get("_score", 0),
+            x.get("_graph_distance", 0),
+        ))
+
+        return expanded[:limit]
 
     # ── 工具 ──────────────────────────────────────────────
 

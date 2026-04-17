@@ -1,0 +1,390 @@
+"""
+Vault for LLM — 輕量知識圖譜模組。
+
+功能：
+- 自動從 tags/title 內容推斷實體和關聯
+- BFS 圖譜遍歷（get_neighbors）
+- Mermaid / Graphviz 可視化匯出
+- search 時圖譜擴展（graph_expand）
+"""
+
+import re
+from collections import defaultdict
+from typing import Optional
+
+from .guardrails_db import GuardrailsDB
+
+
+class GuardrailsGraph:
+    """Vault for LLM 圖譜引擎。"""
+
+    # 常見的實體類型推斷規則
+    ENTITY_RULES = {
+        "tool": ["ollama", "sqlite", "sqlite-vec", "onnx", "onnxruntime", "python",
+                 "conda", "docker", "ffmpeg", "supabase", "chromadb", "vllm",
+                 "langchain", "llamaindex", "git", "github"],
+        "model": ["qwen", "gpt", "claude", "llama", "mistral", "glm", "gemini",
+                  "phi", "deepseek", "mixtral", "miniLM"],
+        "concept": ["embed", "vector", "rag", "chunk", "token", "prompt",
+                    "fine-tuning", "推理", "嵌入", "分塊", "圖譜", "搜尋",
+                    "編譯", "知識庫", "語意", "降級", "context"],
+        "platform": ["windows", "wsl", "wsl2", "linux", "macos", "gpu", "cpu"],
+    }
+
+    def __init__(self, db: GuardrailsDB):
+        self.db = db
+
+    # ── 自動推斷 ────────────────────────────────────────────
+
+    def infer_from_knowledge(self, knowledge_id: int) -> list[int]:
+        """
+        從一筆知識的 tags/title/content 自動推斷實體和關聯。
+        回傳新建/關聯的 entity ID 列表。
+        """
+        k = self.db.get_knowledge(knowledge_id)
+        if not k:
+            return []
+
+        # 收集所有文字
+        text = f"{k['title']} {k['tags']} {k['content_raw']} {k['category']}"
+
+        # 1. 推斷實體
+        entity_ids = self._extract_entities(text, knowledge_id)
+
+        # 2. 推斷關聯（共用實體的知識條目之間自動連邊）
+        new_edges = self._infer_edges_from_shared_entities(knowledge_id)
+
+        return entity_ids
+
+    def infer_all(self) -> dict:
+        """
+        掃描所有知識條目，推斷實體和關聯。
+        回傳統計：新建實體數、新建邊數。
+        """
+        rows = self.db.conn.execute("SELECT id FROM knowledge").fetchall()
+        entities_created = 0
+        edges_created = 0
+
+        for row in rows:
+            kid = row[0]
+            result = self.infer_from_knowledge(kid)
+            entities_created += len(result)
+
+        # 共用實體的自動連邊
+        rows = self.db.conn.execute("SELECT id FROM knowledge").fetchall()
+        for row in rows:
+            kid = row[0]
+            new = self._infer_edges_from_shared_entities(kid)
+            edges_created += new
+
+        return {
+            "entities_created": entities_created,
+            "edges_created": edges_created,
+            "total_knowledge": len(rows),
+        }
+
+    def _extract_entities(self, text: str, knowledge_id: int) -> list[int]:
+        """從文字中提取實體，存入 DB 並連結到知識條目。"""
+        text_lower = text.lower()
+        entity_ids = []
+
+        for entity_type, keywords in self.ENTITY_RULES.items():
+            for kw in keywords:
+                if kw in text_lower:
+                    eid = self.db.add_entity(kw, entity_type)
+                    self.db.link_entity_knowledge(eid, knowledge_id)
+                    entity_ids.append(eid)
+
+        # 從知識條目的 tags 欄位提取（逗號/空格分隔，# 前綴）
+        k = self.db.get_knowledge(knowledge_id)
+        if k and k.get("tags"):
+            tags_str = k["tags"]
+            for token in re.split(r'[,;，；\s]+', tags_str):
+                token = token.strip("# \t")
+                if 2 <= len(token) <= 20 and any(c.isalpha() for c in token):
+                    token_lower = token.lower()
+                    # 跳過停用詞
+                    stopwords = {"the", "a", "an", "is", "or", "and", "not", "if",
+                                 "of", "in", "on", "to", "for", "with", "from"}
+                    if token_lower in stopwords:
+                        continue
+                    eid = self.db.add_entity(token_lower, "tag")
+                    self.db.link_entity_knowledge(eid, knowledge_id)
+                    entity_ids.append(eid)
+
+        # 從 title 提取關鍵概念（短詞組）
+        if k and k.get("title"):
+            title = k["title"]
+            # 提取英文關鍵字（2+ 字母的單詞）
+            en_words = re.findall(r'\b[a-z]{3,}\b', title.lower())
+            # 跳過太通用的詞
+            skip_words = {"the", "for", "and", "with", "from", "this", "that",
+                          "how", "why", "what", "when", "are", "can", "all",
+                          "not", "but", "has", "its", "our", "you", "was"}
+            for word in en_words:
+                if word not in skip_words and word not in [e for e in entity_ids]:
+                    # 只有在知識條目的 title 或 content 中出現 2+ 次的才有意義
+                    eid = self.db.add_entity(word, "concept")
+                    self.db.link_entity_knowledge(eid, knowledge_id)
+                    entity_ids.append(eid)
+
+        return entity_ids
+
+    def _infer_edges_from_shared_entities(self, knowledge_id: int) -> int:
+        """
+        如果兩筆知識共用同一個實體，自動建立 related_to 邊。
+        回傳新建邊數。
+        """
+        # 找出此條知識關聯的所有實體
+        entities = self.db.get_entities_for_knowledge(knowledge_id)
+        if not entities:
+            return 0
+
+        new_edges = 0
+        for entity in entities:
+            # 找出同實體的其他知識條目
+            related_ids = self.db.get_knowledge_for_entity(entity["name"])
+            for other_id in related_ids:
+                if other_id != knowledge_id:
+                    edge_id = self.db.add_edge(
+                        knowledge_id, other_id,
+                        relation=f"shared_{entity['name']}",
+                        weight=0.5,
+                        auto_inferred=True,
+                    )
+                    # add_edge 會去重，但回傳的 id 可能是舊的
+                    # 我們無法直接判斷是否新建，簡單處理
+                    new_edges += 1
+
+        return new_edges
+
+    # ── 手動建立邊 ─────────────────────────────────────────
+
+    def link(self, source_id: int, target_id: int,
+             relation: str = "related_to", weight: float = 1.0) -> int:
+        """手動建立知識條目之間的關聯。"""
+        return self.db.add_edge(source_id, target_id, relation, weight)
+
+    def unlink(self, edge_id: int) -> bool:
+        """刪除一條邊。"""
+        return self.db.delete_edge(edge_id)
+
+    # ── 圖譜查詢 ────────────────────────────────────────────
+
+    def expand(self, node_id: int, max_depth: int = 2) -> list[dict]:
+        """
+        從一個節點出發，BFS 擴展到鄰居。
+        回傳鄰居列表，每個包含 id, distance, relation, weight。
+        """
+        neighbors = self.db.get_neighbors(node_id, max_depth=max_depth)
+
+        # 補上鄰居的標題和摘要
+        for n in neighbors:
+            k = self.db.get_knowledge(n["id"])
+            if k:
+                n["title"] = k["title"]
+                n["layer"] = k.get("layer", "")
+                n["category"] = k.get("category", "")
+                n["content_preview"] = (k.get("content_aaak") or k.get("content_raw", ""))[:80]
+
+        return neighbors
+
+    def graph_search(self, query: str, limit: int = 10) -> list[dict]:
+        """
+        圖譜搜尋：根據關鍵字找到起始節點，再沿邊擴展。
+        回傳帶 _graph_distance 的結果列表。
+        """
+        # 先用關鍵字找起始節點
+        seed_results = self.db.search_keyword(query, limit=5)
+        if not seed_results:
+            return []
+
+        # 收集所有直接+間接鄰居
+        all_ids = set()
+        results = []
+
+        for seed in seed_results:
+            seed_id = seed["id"]
+            if seed_id in all_ids:
+                continue
+            all_ids.add(seed_id)
+            seed["_graph_distance"] = 0
+            results.append(seed)
+
+            # 擴展 1 跳
+            neighbors = self.db.get_neighbors(seed_id, max_depth=1)
+            for n in neighbors:
+                if n["id"] not in all_ids:
+                    all_ids.add(n["id"])
+                    k = self.db.get_knowledge(n["id"])
+                    if k:
+                        d = dict(k)
+                        d["_graph_distance"] = n["distance"]
+                        d["_relation"] = n["relation"]
+                        d["_score"] = 0.3  # 圖譜擴展的基礎分數
+                        d["_mode"] = "graph"
+                        results.append(d)
+
+        # 按距離排序，同距離按 trust
+        results.sort(key=lambda x: (x.get("_graph_distance", 99), -x.get("trust", 0)))
+        return results[:limit]
+
+    # ── 可視化匯出 ────────────────────────────────────────────
+
+    def to_mermaid(self, node_id: Optional[int] = None, max_depth: int = 2) -> str:
+        """
+        匯出為 Mermaid 圖表語法。
+        - node_id: 指定起點（None = 全部）
+        - max_depth: 擴展深度
+        """
+        lines = ["graph LR"]
+
+        # 決定節點範圍
+        if node_id is not None:
+            neighbors = self.db.get_neighbors(node_id, max_depth=max_depth)
+            node_ids = {node_id} | {n["id"] for n in neighbors}
+            edges = self.db.get_edges(node_id=node_id, direction="both")
+            # 也加入鄰居的邊
+            for n in neighbors:
+                edges.extend(self.db.get_edges(node_id=n["id"], direction="both"))
+        else:
+            all_edges = self.db.get_edges()
+            node_ids = set()
+            edges = []
+            seen_edge_ids = set()
+            for e in all_edges:
+                if e["id"] not in seen_edge_ids:
+                    edges.append(e)
+                    seen_edge_ids.add(e["id"])
+                node_ids.add(e["source_id"])
+                node_ids.add(e["target_id"])
+
+        # 去重邊
+        seen = set()
+        unique_edges = []
+        for e in edges:
+            key = (e["source_id"], e["target_id"], e["relation"])
+            if key not in seen:
+                seen.add(key)
+                unique_edges.append(e)
+
+        # 生成節點聲明
+        for nid in sorted(node_ids):
+            k = self.db.get_knowledge(nid)
+            if k:
+                label = k["title"][:20].replace('"', "'")
+                layer = k.get("layer", "L3")
+                style = {"L0": ":::core", "L1": ":::fact", "L2": ":::ctx", "L3": ""}.get(layer, "")
+                lines.append(f'    N{nid}["{label}"]{style}')
+
+        # 生成邊
+        relation_labels = {
+            "related_to": "---",
+            "shared_tool": "--工具---",
+            "shared_model": "--模型---",
+            "shared_concept": "--概念---",
+            "shared_platform": "--平台---",
+        }
+
+        for e in unique_edges:
+            # 通用格式
+            rel = e["relation"]
+            if rel.startswith("shared_"):
+                label = rel.replace("shared_", "")
+                arrow = f'--"{label}"-->'
+            else:
+                arrow = "-->"
+            auto_tag = "自動" if e.get("auto_inferred") else "手動"
+            lines.append(f"    N{e['source_id']} {arrow} N{e['target_id']}")
+
+        lines.append("")
+        lines.append("    classDef core fill:#f96,stroke:#333,stroke-width:2px")
+        lines.append("    classDef fact fill:#9cf,stroke:#333")
+        lines.append("    classDef ctx fill:#9f9,stroke:#333")
+
+        return "\n".join(lines)
+
+    def to_graphviz(self, node_id: Optional[int] = None, max_depth: int = 2) -> str:
+        """
+        匯出為 Graphviz DOT 語法。
+        """
+        lines = ['digraph GuardrailsGraph {',
+                 '    rankdir=LR;',
+                 '    node [shape=box, style=filled];',
+                 '']
+
+        # 收集節點和邊（邏輯同 to_mermaid）
+        if node_id is not None:
+            neighbors = self.db.get_neighbors(node_id, max_depth=max_depth)
+            node_ids = {node_id} | {n["id"] for n in neighbors}
+            all_edges = self.db.get_edges(node_id=node_id, direction="both")
+            for n in neighbors:
+                all_edges.extend(self.db.get_edges(node_id=n["id"], direction="both"))
+        else:
+            all_edges = self.db.get_edges()
+            node_ids = set()
+            for e in all_edges:
+                node_ids.add(e["source_id"])
+                node_ids.add(e["target_id"])
+
+        # 節點
+        layer_colors = {"L0": "#ff6666", "L1": "#6699ff", "L2": "#66ff66", "L3": "#ffffff"}
+        for nid in sorted(node_ids):
+            k = self.db.get_knowledge(nid)
+            if k:
+                label = k["title"][:25].replace('"', '\\"')
+                color = layer_colors.get(k.get("layer", "L3"), "#ffffff")
+                lines.append(f'    N{nid} [label="{label}", fillcolor="{color}"];')
+
+        # 邊（去重）
+        seen = set()
+        for e in all_edges:
+            key = (e["source_id"], e["target_id"], e["relation"])
+            if key in seen:
+                continue
+            seen.add(key)
+            rel = e["relation"].replace("shared_", "")
+            auto = " [auto]" if e.get("auto_inferred") else ""
+            lines.append(f'    N{e["source_id"]} -> N{e["target_id"]} '
+                        f'[label="{rel}{auto}"];')
+
+        lines.append('}')
+        return "\n".join(lines)
+
+    # ── 清理 ────────────────────────────────────────────────
+
+    def clear_auto_inferred(self):
+        """清除所有自動推斷的邊和實體（保留手動建立的）。"""
+        self.db.conn.execute("DELETE FROM edges WHERE auto_inferred=1")
+        self.db.conn.commit()
+
+        # 清除沒有關聯的實體
+        self.db.conn.execute(
+            "DELETE FROM entities WHERE id NOT IN "
+            "(SELECT DISTINCT entity_id FROM entity_knowledge)"
+        )
+        self.db.conn.commit()
+
+    def stats(self) -> dict:
+        """圖譜統計。"""
+        edge_count = self.db.conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
+        entity_count = self.db.conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
+        auto_edges = self.db.conn.execute(
+            "SELECT COUNT(*) FROM edges WHERE auto_inferred=1"
+        ).fetchone()[0]
+        manual_edges = edge_count - auto_edges
+
+        # 連通分量（簡單估算）
+        nodes_in_edges = self.db.conn.execute(
+            "SELECT DISTINCT source_id FROM edges UNION "
+            "SELECT DISTINCT target_id FROM edges"
+        ).fetchall()
+        connected_nodes = len(nodes_in_edges)
+
+        return {
+            "edges_total": edge_count,
+            "edges_auto": auto_edges,
+            "edges_manual": manual_edges,
+            "entities_total": entity_count,
+            "connected_nodes": connected_nodes,
+        }

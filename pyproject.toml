@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "guardrails-knowledge"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local-first knowledge system with sqlite-vec + ONNX embeddings. No cloud, no Docker, no PyTorch required."
 readme = "README.md"
 requires-python = ">=3.10"

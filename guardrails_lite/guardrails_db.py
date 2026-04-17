@@ -27,7 +27,7 @@ except ImportError:
 class GuardrailsDB:
     """Guardrails Lite 資料庫層。"""
 
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     def __init__(self, db_path: str | Path = "guardrails.db"):
         self.db_path = Path(db_path)
@@ -124,6 +124,49 @@ class GuardrailsDB:
                 FOREIGN KEY (knowledge_id) REFERENCES knowledge(id)
             )
         """)
+
+        # ── 圖譜_edges 表 ────────────────────────────────────
+        # 輕量知識圖譜：節點 = knowledge 表的條目，邊 = 這裡的關聯
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS edges (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_id   INTEGER NOT NULL,
+                target_id   INTEGER NOT NULL,
+                relation    TEXT NOT NULL DEFAULT 'related_to',
+                weight      REAL  NOT NULL DEFAULT 1.0,
+                auto_inferred INTEGER NOT NULL DEFAULT 0,
+                created_at  TEXT  NOT NULL DEFAULT '',
+                FOREIGN KEY (source_id) REFERENCES knowledge(id),
+                FOREIGN KEY (target_id) REFERENCES knowledge(id)
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_edges_relation ON edges(relation)")
+
+        # 圖譜實體表（自動從 tags/title 推斷的實體）
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS entities (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                name        TEXT NOT NULL UNIQUE,
+                entity_type TEXT NOT NULL DEFAULT 'concept',
+                created_at  TEXT  NOT NULL DEFAULT ''
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name)")
+
+        # 實體↔知識條目的對應
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS entity_knowledge (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity_id   INTEGER NOT NULL,
+                knowledge_id INTEGER NOT NULL,
+                FOREIGN KEY (entity_id) REFERENCES entities(id),
+                FOREIGN KEY (knowledge_id) REFERENCES knowledge(id)
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_ek_entity ON entity_knowledge(entity_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_ek_knowledge ON entity_knowledge(knowledge_id)")
 
         # 向量虛擬表（只有 sqlite-vec 可用時才建）
         if self._vec_available:
@@ -367,6 +410,163 @@ class GuardrailsDB:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    # ── 圖譜操作 ────────────────────────────────────────────
+
+    def add_edge(
+        self,
+        source_id: int,
+        target_id: int,
+        relation: str = "related_to",
+        weight: float = 1.0,
+        auto_inferred: bool = False,
+    ) -> int:
+        """新增一條邊，回傳 edge id。"""
+        now = datetime.now(timezone.utc).isoformat()
+        # 避免重複（同方向同關係）
+        existing = self.conn.execute(
+            "SELECT id FROM edges WHERE source_id=? AND target_id=? AND relation=?",
+            (source_id, target_id, relation),
+        ).fetchone()
+        if existing:
+            return existing[0]
+        cursor = self.conn.execute(
+            "INSERT INTO edges(source_id, target_id, relation, weight, auto_inferred, created_at) "
+            "VALUES(?,?,?,?,?,?)",
+            (source_id, target_id, relation, weight, int(auto_inferred), now),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def delete_edge(self, edge_id: int) -> bool:
+        self.conn.execute("DELETE FROM edges WHERE id=?", (edge_id,))
+        self.conn.commit()
+        return self.conn.total_changes > 0
+
+    def get_edges(
+        self,
+        node_id: Optional[int] = None,
+        relation: Optional[str] = None,
+        direction: str = "both",
+    ) -> list[dict]:
+        """
+        查詢邊。
+        - node_id: 指定節點（可選，None = 全部）
+        - relation: 指定關係類型（可選）
+        - direction: 'outgoing', 'incoming', 'both'
+        """
+        conditions = []
+        params: list = []
+
+        if node_id is not None:
+            if direction in ("outgoing", "both"):
+                conditions.append("source_id=?")
+                params.append(node_id)
+            if direction in ("incoming", "both"):
+                conditions.append("target_id=?")
+                params.append(node_id)
+            if direction == "both":
+                where = f"({' OR '.join(conditions)})"
+            else:
+                where = conditions[0] if conditions else "1=1"
+        else:
+            where = "1=1"
+
+        if relation:
+            where += " AND relation=?"
+            params.append(relation)
+
+        rows = self.conn.execute(
+            f"SELECT * FROM edges WHERE {where} ORDER BY weight DESC", params
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_neighbors(
+        self, node_id: int, max_depth: int = 2, min_weight: float = 0.0
+    ) -> list[dict]:
+        """
+        BFS 遍歷鄰居，回傳 (node_id, distance, path) 列表。
+        max_depth: 最大跳數（預設 2）
+        min_weight: 最小邊權重（過濾弱關聯）
+        """
+        visited = {node_id}
+        frontier = {node_id}
+        results = []
+
+        for depth in range(1, max_depth + 1):
+            next_frontier = set()
+            for nid in frontier:
+                rows = self.conn.execute(
+                    "SELECT source_id, target_id, relation, weight FROM edges "
+                    "WHERE (source_id=? OR target_id=?) AND weight >= ?",
+                    (nid, nid, min_weight),
+                ).fetchall()
+                for row in rows:
+                    neighbor = row["target_id"] if row["source_id"] == nid else row["source_id"]
+                    if neighbor not in visited:
+                        visited.add(neighbor)
+                        next_frontier.add(neighbor)
+                        results.append({
+                            "id": neighbor,
+                            "distance": depth,
+                            "relation": row["relation"],
+                            "weight": row["weight"],
+                        })
+            frontier = next_frontier
+            if not frontier:
+                break
+
+        return results
+
+    # ── 實體操作 ────────────────────────────────────────────
+
+    def add_entity(self, name: str, entity_type: str = "concept") -> int:
+        """新增實體，回傳 entity id（已存在則回傳現有 id）。"""
+        existing = self.conn.execute(
+            "SELECT id FROM entities WHERE name=?", (name,)
+        ).fetchone()
+        if existing:
+            return existing[0]
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = self.conn.execute(
+            "INSERT INTO entities(name, entity_type, created_at) VALUES(?,?,?)",
+            (name, entity_type, now),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def link_entity_knowledge(self, entity_id: int, knowledge_id: int):
+        """連結實體和知識條目。"""
+        existing = self.conn.execute(
+            "SELECT id FROM entity_knowledge WHERE entity_id=? AND knowledge_id=?",
+            (entity_id, knowledge_id),
+        ).fetchone()
+        if not existing:
+            self.conn.execute(
+                "INSERT INTO entity_knowledge(entity_id, knowledge_id) VALUES(?,?)",
+                (entity_id, knowledge_id),
+            )
+            self.conn.commit()
+
+    def get_entities_for_knowledge(self, knowledge_id: int) -> list[dict]:
+        """取得知識條目關聯的所有實體。"""
+        rows = self.conn.execute(
+            "SELECT e.* FROM entities e "
+            "JOIN entity_knowledge ek ON e.id = ek.entity_id "
+            "WHERE ek.knowledge_id=?",
+            (knowledge_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_knowledge_for_entity(self, entity_name: str) -> list[int]:
+        """取得實體關聯的所有知識條目 ID（用於圖譜擴展搜尋）。"""
+        rows = self.conn.execute(
+            "SELECT ek.knowledge_id FROM entities e "
+            "JOIN entity_knowledge ek ON e.id = ek.entity_id "
+            "WHERE e.name=?",
+            (entity_name,),
+        ).fetchall()
+        return [r[0] for r in rows]
+
     # ── 統計 ────────────────────────────────────────────────
 
     def stats(self) -> dict:
@@ -377,9 +577,15 @@ class GuardrailsDB:
                 vec_count = self.conn.execute("SELECT COUNT(*) FROM knowledge_vec").fetchone()[0]
             except Exception:
                 pass
+        # 圖譜統計
+        edge_count = self.conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
+        entity_count = self.conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
+
         return {
             "knowledge_count": k_count,
             "embedding_count": vec_count,
+            "edge_count": edge_count,
+            "entity_count": entity_count,
             "vec_available": self._vec_available,
             "db_path": str(self.db_path),
             "db_size_mb": round(self.db_path.stat().st_size / 1024 / 1024, 2)

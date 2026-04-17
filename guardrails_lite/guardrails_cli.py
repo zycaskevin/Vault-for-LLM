@@ -179,8 +179,17 @@ def cmd_search(args):
         except Exception:
             pass
 
+    # 圖譜（如果需要擴展）
+    graph = None
+    if args.graph_expand > 0:
+        try:
+            from guardrails_lite.guardrails_graph import GuardrailsGraph
+            graph = GuardrailsGraph(db)
+        except Exception as e:
+            print(f"[search] ⚠️ 圖譜未啟用: {e}")
+
     mode = "keyword" if args.keyword_only else args.mode
-    search = GuardrailsSearch(db, embed_provider=embed)
+    search = GuardrailsSearch(db, embed_provider=embed, graph=graph)
 
     results = search.search(
         args.query,
@@ -189,6 +198,7 @@ def cmd_search(args):
         min_trust=args.min_trust,
         layer=args.layer,
         category=args.category,
+        graph_expand=args.graph_expand,
     )
 
     if not results:
@@ -200,7 +210,9 @@ def cmd_search(args):
             mode = r.get("_mode", "?")
             trust = r.get("trust", 0)
             layer = r.get("layer", "?")
-            print(f"  [{layer}] {r['title']} (trust={trust}, score={score:.3f}, {mode})")
+            graph_dist = r.get("_graph_distance")
+            graph_info = f", graph={graph_dist}" if graph_dist is not None else ""
+            print(f"  [{layer}] {r['title']} (trust={trust}, score={score:.3f}, {mode}{graph_info})")
             # 顯示 AAAK 摘要
             aaak = r.get("content_aaak", "") or r.get("content_raw", "")
             if aaak:
@@ -485,6 +497,8 @@ def cmd_stats(args):
     print("📊 Guardrails Lite 統計\n")
     print(f"  知識筆數:   {stats['knowledge_count']}")
     print(f"  嵌入筆數:   {stats['embedding_count']}")
+    print(f"  圖譜邊數:   {stats.get('edge_count', 0)}")
+    print(f"  圖譜實體:   {stats.get('entity_count', 0)}")
     print(f"  向量搜尋:   {'✅' if stats['vec_available'] else '❌'}")
     print(f"  DB 大小:    {stats['db_size_mb']} MB")
     print(f"  DB 路徑:    {stats['db_path']}")
@@ -506,6 +520,158 @@ def cmd_stats(args):
         print("\n  分類:")
         for row in rows:
             print(f"    {row['category']}: {row['cnt']} 筆")
+
+    # 圖譜連通度
+    if stats.get('edge_count', 0) > 0:
+        connected = db.conn.execute(
+            "SELECT COUNT(DISTINCT n) FROM ("
+            "SELECT source_id AS n FROM edges UNION "
+            "SELECT target_id AS n FROM edges)"
+        ).fetchone()[0]
+        print(f"\n  圖譜連通: {connected}/{stats['knowledge_count']} 節點")
+
+    db.close()
+
+
+def cmd_graph(args):
+    """圖譜操作：build / show / export / link / stats。"""
+    from guardrails_lite.guardrails_db import GuardrailsDB
+    from guardrails_lite.guardrails_graph import GuardrailsGraph
+
+    project_dir = find_project_dir()
+    db_path = project_dir / "guardrails.db"
+
+    if not db_path.exists():
+        print("❌ 尚未初始化，先執行 guardrails init")
+        return
+
+    db = GuardrailsDB(str(db_path))
+    db.connect()
+    graph = GuardrailsGraph(db)
+
+    action = args.graph_action
+
+    if action == "build":
+        """自動推斷實體和關聯。"""
+        print("🔄 掃描知識庫，推斷圖譜...")
+        result = graph.infer_all()
+        print(f"\n✅ 圖譜建構完成！")
+        print(f"   掃描條目: {result['total_knowledge']}")
+        print(f"   新增實體: {result['entities_created']}")
+        print(f"   新增關聯: {result['edges_created']}")
+        print(f"\n   試試: guardrails graph show")
+        print(f"         guardrails graph export --format mermaid")
+        print(f"         guardrails search '查詢' --graph-expand 1")
+
+    elif action == "show":
+        """顯示圖譜摘要。"""
+        stats = graph.stats()
+        print("🕸️ Guardrails Lite 圖譜\n")
+        print(f"  邊（總計）: {stats['edges_total']}")
+        print(f"    自動推斷: {stats['edges_auto']}")
+        print(f"    手動建立: {stats['edges_manual']}")
+        print(f"  實體數量:   {stats['entities_total']}")
+        print(f"  連通節點:   {stats['connected_nodes']}")
+
+        # 列出邊
+        edges = db.get_edges()
+        if edges:
+            print(f"\n  最近 {min(len(edges), 20)} 條邊:")
+            for e in edges[:20]:
+                src = db.get_knowledge(e["source_id"])
+                tgt = db.get_knowledge(e["target_id"])
+                src_title = src["title"][:30] if src else f"ID={e['source_id']}"
+                tgt_title = tgt["title"][:30] if tgt else f"ID={e['target_id']}"
+                auto = "自動" if e.get("auto_inferred") else "手動"
+                rel = e["relation"]
+                print(f"    {src_title} → [{rel}] → {tgt_title} ({auto})")
+
+        # 列出實體
+        entities = db.conn.execute("SELECT * FROM entities ORDER BY id DESC LIMIT 20").fetchall()
+        if entities:
+            print(f"\n  最近 {min(len(entities), 20)} 個實體:")
+            for e in entities:
+                # 計算每個實體關聯的知識條目數
+                cnt = db.conn.execute(
+                    "SELECT COUNT(*) FROM entity_knowledge WHERE entity_id=?", (e["id"],)
+                ).fetchone()[0]
+                print(f"    [{e['entity_type']}] {e['name']} ({cnt} 筆知識)")
+
+    elif action == "export":
+        """匯出圖譜為 Mermaid 或 Graphviz 格式。"""
+        node_id = args.node_id
+        fmt = args.format
+        max_depth = args.depth
+
+        if fmt == "mermaid":
+            output = graph.to_mermaid(node_id=node_id, max_depth=max_depth)
+        elif fmt == "dot":
+            output = graph.to_graphviz(node_id=node_id, max_depth=max_depth)
+        else:
+            print(f"❌ 不支援的格式: {fmt} (使用 mermaid 或 dot)")
+            db.close()
+            return
+
+        if args.output:
+            Path(args.output).write_text(output, encoding="utf-8")
+            print(f"✅ 已匯出到 {args.output}")
+        else:
+            print(output)
+
+    elif action == "link":
+        """手動建立兩筆知識之間的關聯。"""
+        source_id = args.source_id
+        target_id = args.target_id
+        relation = args.relation
+        weight = args.weight
+
+        # 檢查 ID 存在
+        if not db.get_knowledge(source_id):
+            print(f"❌ 找不到 ID={source_id} 的知識條目")
+            db.close()
+            return
+        if not db.get_knowledge(target_id):
+            print(f"❌ 找不到 ID={target_id} 的知識條目")
+            db.close()
+            return
+
+        edge_id = db.add_edge(source_id, target_id, relation, weight)
+        src = db.get_knowledge(source_id)
+        tgt = db.get_knowledge(target_id)
+        print(f"✅ 已建立關聯:")
+        print(f"   {src['title']} → [{relation}] → {tgt['title']}")
+        print(f"   權重: {weight}, Edge ID: {edge_id}")
+
+    elif action == "unlink":
+        """刪除一條邊。"""
+        edge_id = args.edge_id
+        if db.delete_edge(edge_id):
+            print(f"✅ 已刪除邊 ID={edge_id}")
+        else:
+            print(f"❌ 找不到邊 ID={edge_id}")
+
+    elif action == "clear":
+        """清除所有自動推斷的邊。"""
+        graph.clear_auto_inferred()
+        print("✅ 已清除所有自動推斷的邊和孤立實體")
+
+    elif action == "expand":
+        """圖譜搜尋：從一個節點出發擴展。"""
+        node_id = args.node_id
+        max_depth = args.depth
+
+        neighbors = graph.expand(node_id, max_depth=max_depth)
+        if not neighbors:
+            print("📭 沒有找到鄰居節點")
+        else:
+            print(f"🕸️ 從 ID={node_id} 出發，找到 {len(neighbors)} 個鄰居:\n")
+            for n in neighbors:
+                title = n.get("title", f"ID={n['id']}")
+                print(f"  [距離 {n['distance']}] {title}")
+                print(f"    關係: {n['relation']}, 權重: {n['weight']}")
+                if n.get("content_preview"):
+                    print(f"    {n['content_preview']}...")
+                print()
 
     db.close()
 
@@ -648,7 +814,7 @@ def main():
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--no-embed", action="store_true", help="跳過嵌入生成")
 
-    # search
+    # search — 加入 --graph-expand
     p = sub.add_parser("search", help="搜尋知識")
     p.add_argument("query", help="搜尋查詢")
     p.add_argument("--mode", choices=["auto", "keyword", "vector", "hybrid"], default="auto")
@@ -657,6 +823,8 @@ def main():
     p.add_argument("--min-trust", type=float, default=0.0)
     p.add_argument("--layer", choices=["L0", "L1", "L2", "L3"])
     p.add_argument("--category")
+    p.add_argument("--graph-expand", type=int, default=0,
+                   help="圖譜擴展跳數（0=不擴展，1=1跳，2=2跳）")
 
     # list
     p = sub.add_parser("list", help="列出知識")
@@ -698,6 +866,36 @@ def main():
     p.add_argument("config_action", choices=["set", "get", "list"])
     p.add_argument("config_args", nargs="*")
 
+    # graph
+    p = sub.add_parser("graph", help="圖譜操作")
+    graph_sub = p.add_subparsers(dest="graph_action", help="圖譜子命令")
+
+    g = graph_sub.add_parser("build", help="自動推斷圖譜")
+    g.add_argument("--clear", action="store_true", help="先清除舊的自動推斷")
+
+    g = graph_sub.add_parser("show", help="顯示圖譜摘要")
+
+    g = graph_sub.add_parser("export", help="匯出圖譜")
+    g.add_argument("--format", "-f", choices=["mermaid", "dot"], default="mermaid")
+    g.add_argument("--node-id", "-n", type=int, help="指定起點節點（預設全部）")
+    g.add_argument("--depth", "-d", type=int, default=2, help="擴展深度")
+    g.add_argument("--output", "-o", help="輸出檔案路徑")
+
+    g = graph_sub.add_parser("link", help="手動建立關聯")
+    g.add_argument("source_id", type=int, help="來源知識 ID")
+    g.add_argument("target_id", type=int, help="目標知識 ID")
+    g.add_argument("--relation", "-r", default="related_to", help="關係類型")
+    g.add_argument("--weight", "-w", type=float, default=1.0, help="權重")
+
+    g = graph_sub.add_parser("unlink", help="刪除關聯")
+    g.add_argument("edge_id", type=int, help="邊 ID")
+
+    g = graph_sub.add_parser("clear", help="清除自動推斷的邊")
+
+    g = graph_sub.add_parser("expand", help="從節點擴展")
+    g.add_argument("node_id", type=int, help="起始節點 ID")
+    g.add_argument("--depth", "-d", type=int, default=2, help="擴展深度")
+
     args = parser.parse_args()
 
     cmd_map = {
@@ -712,6 +910,7 @@ def main():
         "install-embedding": cmd_install_embedding,
         "import": cmd_import,
         "config": cmd_config,
+        "graph": cmd_graph,
     }
 
     if args.command in cmd_map:

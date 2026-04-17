@@ -1,12 +1,12 @@
 ---
 category: architecture
 hash: 84fc366030b0c484
-id: 13
+id: 15
 layer: L3
 tags: Hermes Agent,AI Agent,OpenClaw,本地部署,Telegram,教程,Nous Research
 title: 删掉 OpenClaw！Hermes Agent 才是真王炸，一键本地部署 + TG接入全教程（避坑指南）
 trust: 0.5
-updated_at: '2026-04-16T23:50:10.264802+00:00'
+updated_at: '2026-04-17T02:12:21.969220+00:00'
 ---
 
 TITLE:删掉 OpenClaw！Hermes Agent 才是真王炸，一键本地部署 + TG接入全教程（避坑指南）

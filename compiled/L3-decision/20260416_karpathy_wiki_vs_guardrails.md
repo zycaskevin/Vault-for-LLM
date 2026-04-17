@@ -6,7 +6,7 @@ layer: L3
 tags: ''
 title: 20260416 karpathy wiki vs guardrails
 trust: 0.5
-updated_at: '2026-04-16T23:50:07.922118+00:00'
+updated_at: '2026-04-17T02:12:21.919505+00:00'
 ---
 
 TITLE:20260416 karpathy wiki vs guardrails

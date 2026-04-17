@@ -1,12 +1,12 @@
 ---
 category: architecture
 hash: 4544a3a24dba9bd3
-id: 17
+id: 19
 layer: L3
 tags: OpenClaw,Hermes Agent,記憶系統,AI Agent,研究
 title: openclaw hermes comparison raw
 trust: 0.5
-updated_at: '2026-04-16T23:50:10.286524+00:00'
+updated_at: '2026-04-17T02:12:21.993117+00:00'
 ---
 
 TITLE:openclaw hermes comparison raw

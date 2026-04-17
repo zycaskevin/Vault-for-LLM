@@ -1,12 +1,12 @@
 ---
 category: tool-introduction
 hash: da7f2642f838d025
-id: 14
+id: 16
 layer: L3
 tags: LINE,MCP,Claude Code,AI工具,桌面自動化,台灣
 title: Day 98 用 AI 讀 LINE 訊息？這個工具讓你不用自己翻對話紀錄
 trust: 0.5
-updated_at: '2026-04-16T23:50:10.269926+00:00'
+updated_at: '2026-04-17T02:12:21.975036+00:00'
 ---
 
 TITLE:Day 98 用 AI 讀 LINE 訊息？這個工具讓你不用自己翻對話紀錄

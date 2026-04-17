@@ -1,5 +1,7 @@
 # Vault-for-LLM
 
+**[繁體中文](README.zh-Hant.md) | [简体中文](README.zh-CN.md) | English**
+
 > 🧠 A local-first, open-source knowledge management system for LLM agents.
 > Zero cloud dependency. Zero Docker. Zero PyTorch. Just `pip install` and go.
 

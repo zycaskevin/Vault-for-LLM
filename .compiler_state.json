@@ -1,5 +1,5 @@
 {
-  "last_run": "2026-04-17T11:06:02.055371",
+  "last_run": "2026-04-17T12:08:30.000000",
   "raw_stats": {
     "total_files": 18,
     "total_size": 0,
@@ -9,9 +9,9 @@
   "compiled_stats": {
     "total_files": 18,
     "total_size": 0,
-    "last_compiled": "2026-04-17T10:22:11.916853"
+    "last_compiled": "2026-04-17T12:08:30.000000"
   },
-  "last_success": "2026-04-17T11:06:02.055377",
+  "last_success": "2026-04-17T12:08:30.000000",
   "processed_files": {},
   "supabase_sync": {
     "inserted": 0,

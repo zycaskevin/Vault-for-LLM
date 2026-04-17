@@ -4,6 +4,7 @@ Vault for LLM — CLI 入口。
 用法：
   guardrails init              # 初始化專案
   guardrails add "標題"         # 加入知識
+  guardrails import novel.md   # 匯入長文件（自動分塊）
   guardrails compile           # 編譯 raw/ → db + compiled/
   guardrails search "查詢"     # 搜尋知識
   guardrails list              # 列出知識
@@ -509,6 +510,73 @@ def cmd_stats(args):
     db.close()
 
 
+def cmd_import(args):
+    """匯入長文件，自動分塊進 DB。"""
+    from vault.guardrails_db import GuardrailsDB
+    from vault.guardrails_import import import_document
+
+    project_dir = find_project_dir()
+    db_path = project_dir / "guardrails.db"
+    file_path = Path(args.file)
+
+    if not file_path.exists():
+        print(f"❌ 檔案不存在: {file_path}")
+        return
+
+    # 載入嵌入
+    embed = None
+    if not args.no_embed:
+        try:
+            from vault.guardrails_embed import create_embedding_provider
+            db_temp = GuardrailsDB(str(db_path))
+            db_temp.connect()
+            provider_name = db_temp.get_config("embedding_provider", "auto")
+            model_key = db_temp.get_config("embedding_model", "mix")
+            db_temp.close()
+            if provider_name != "none":
+                embed = create_embedding_provider(provider=provider_name, model_key=model_key)
+                print(f"[import] 嵌入: {provider_name} ({model_key})")
+        except Exception as e:
+            print(f"[import] ⚠️ 嵌入未啟用: {e}")
+
+    db = GuardrailsDB(str(db_path))
+    db.connect()
+
+    strategy = args.strategy
+    title = args.title or file_path.stem.replace("-", " ").replace("_", " ")
+
+    print(f"📖 匯入: {file_path.name}")
+    print(f"   策略: {strategy}")
+    print(f"   標題: {title}")
+
+    try:
+        ids = import_document(
+            file_path=file_path,
+            db=db,
+            embed_provider=embed,
+            strategy=strategy,
+            title=title,
+            layer=args.layer,
+            category=args.category,
+            tags=args.tags,
+            trust=args.trust,
+            chunk_size=args.chunk_size,
+            overlap=args.overlap,
+        )
+
+        print(f"\n✅ 匯入完成！")
+        print(f"   分塊數: {len(ids)}")
+        print(f"   策略: {strategy}")
+        print(f"   ID 範圍: {ids[0]}-{ids[-1] if ids else '?'}")
+
+    except Exception as e:
+        print(f"❌ 匯入失敗: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        db.close()
+
+
 def cmd_config(args):
     """配置管理。"""
     from vault.guardrails_db import GuardrailsDB
@@ -595,6 +663,19 @@ def main():
     p = sub.add_parser("install-embedding", help="安裝嵌入模型")
     p.add_argument("--model", choices=["zh", "en", "mix"], default="mix")
 
+    # import
+    p = sub.add_parser("import", help="匯入長文件（自動分塊）")
+    p.add_argument("file", help="檔案路徑 (.md, .txt)")
+    p.add_argument("--title", "-t", help="文件標題（預設用檔名）")
+    p.add_argument("--strategy", "-s", choices=["chapter", "semantic", "summary-guided", "sliding"], default="chapter", help="分塊策略（預設: chapter）")
+    p.add_argument("--layer", choices=["L0", "L1", "L2", "L3"], default="L3")
+    p.add_argument("--category", default="general")
+    p.add_argument("--tags", default="")
+    p.add_argument("--trust", type=float, default=0.5)
+    p.add_argument("--chunk-size", type=int, default=500, help="滑動視窗塊大小")
+    p.add_argument("--overlap", type=int, default=100, help="滑動視窗重疊")
+    p.add_argument("--no-embed", action="store_true", help="跳過嵌入生成")
+
     # config
     p = sub.add_parser("config", help="配置管理")
     p.add_argument("config_action", choices=["set", "get", "list"])
@@ -612,6 +693,7 @@ def main():
         "doctor": cmd_doctor,
         "stats": cmd_stats,
         "install-embedding": cmd_install_embedding,
+        "import": cmd_import,
         "config": cmd_config,
     }
 

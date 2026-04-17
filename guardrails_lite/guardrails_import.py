@@ -12,6 +12,7 @@ Vault for LLM — 智慧分塊匯入模組（v2）。
 2. semantic — 純語意分塊（相似度驟降處切斷）
 3. summary-guided — 摘要引導分塊（ACL 2025）
 4. sliding — 固定大小滑動視窗（最後降級方案）
+5. proposition — 命題拆解（v3）：LLM 把段落拆成原子命題
 
 Contextual Retrieval：
 - 用 Ollama 本地生成每塊的上下文摘要（1-2句）
@@ -488,13 +489,255 @@ def summary_guided_chunk(
     return merged if merged else [ChunkResult(0, "§1", text, 0, len(text), "summary-guided")]
 
 
+# ── 命題拆解（Proposition-level Chunking, v3）──────────────────
+
+def proposition_chunk(
+    text: str,
+    doc_title: str = "",
+    ollama_model: str = "qwen3:8b",
+    ollama_url: str = "http://localhost:11434",
+    max_propositions_per_chunk: int = 8,
+    paragraph_max_chars: int = 2000,
+) -> list[ChunkResult]:
+    """
+    命題拆解：把文本拆成原子命題（Atomic Propositions）。
+
+    論文基礎：Dense X Retrieval (2023)
+    - 一段 5-15 句的文本包含多個獨立事實
+    - 傳統分塊把整段變一個向量，模糊了具體事實
+    - 拆成命題後每條獨立嵌入，精準命中
+
+    流程：
+    1. 把文本切成段落（以空行或 ## 標題分隔）
+    2. 對每個段落，用 Ollama 拆解成原子命題
+    3. 每個命題成為獨立 ChunkResult
+    4. Ollama 不可用時降級為句子級分塊（每句一命題）
+    """
+    # 先拆段落，跳過 frontmatter
+    paragraphs = _split_into_paragraphs(text, max_chars=paragraph_max_chars)
+
+    if not paragraphs:
+        return [ChunkResult(0, "§1", text, 0, len(text), "proposition")]
+
+    all_props: list[tuple[str, str]] = []  # (proposition, source_heading)
+
+    for para_text, heading in paragraphs:
+        # 短段落（<100字）直接當命題，不調 LLM
+        if len(para_text) < 100:
+            all_props.append((para_text.strip(), heading))
+            continue
+
+        # 程式碼塊段落也直接保留
+        if para_text.strip().startswith("```") or para_text.strip().startswith("    "):
+            all_props.append((para_text.strip(), heading))
+            continue
+
+        # 用 LLM 拆命題
+        props = _decompose_with_ollama(
+            para_text, doc_title=doc_title,
+            heading=heading, ollama_model=ollama_model,
+            ollama_url=ollama_url,
+            max_propositions=max_propositions_per_chunk,
+        )
+        if props:
+            for prop in props:
+                all_props.append((prop, heading))
+        else:
+            # LLM 失敗，降級：把每句當一個命題
+            for sent, _ in split_into_sentences(para_text):
+                if len(sent.strip()) > 10:  # 太短的跳過
+                    all_props.append((sent.strip(), heading))
+
+    if not all_props:
+        return [ChunkResult(0, "§1", text, 0, len(text), "proposition")]
+
+    # 每個命題一個 ChunkResult
+    results = []
+    pos = 0
+    for i, (prop, heading) in enumerate(all_props):
+        end = pos + len(prop)
+        title = f"§{i + 1}"
+        if heading:
+            title = f"{heading} §{i + 1}"
+        results.append(ChunkResult(
+            index=i, title=title, content=prop,
+            start_char=pos, end_char=end, chunk_type="proposition",
+        ))
+        pos = end
+
+    return results
+
+
+def _split_into_paragraphs(
+    text: str, max_chars: int = 2000,
+) -> list[tuple[str, str]]:
+    """
+    拆文本成段落，回傳 [(段落文本, 標題), ...]。
+    以 Markdown 標題 (##, ###) 或空行分隔。
+    自動跳過 YAML frontmatter。
+    過長的段落會被裁剪。
+    """
+    # 跳過 YAML frontmatter
+    if text.strip().startswith("---"):
+        end = text.find("---", 3)
+        if end > 0:
+            text = text[end + 3:].strip()
+
+    paragraphs = []
+    current_heading = ""
+    current_text = ""
+
+    lines = text.split("\n")
+    for line in lines:
+        # 檢查 Markdown 標題
+        heading_match = re.match(r"^(#{1,3})\s+(.+)$", line)
+        if heading_match:
+            # 存現有段落
+            if current_text.strip():
+                paragraphs.append((current_text.strip(), current_heading))
+            current_heading = heading_match.group(2).strip()
+            current_text = ""
+            continue
+
+        current_text += line + "\n"
+
+        # 過長就切斷
+        if len(current_text) >= max_chars:
+            paragraphs.append((current_text.strip(), current_heading))
+            current_text = ""
+
+    # 最後一段
+    if current_text.strip():
+        paragraphs.append((current_text.strip(), current_heading))
+
+    # 過濾太短的段落（可能是 frontmatter 殘留）
+    return [(t, h) for t, h in paragraphs if len(t) >= 20]
+
+
+def _decompose_with_ollama(
+    text: str,
+    doc_title: str = "",
+    heading: str = "",
+    ollama_model: str = "qwen3:8b",
+    ollama_url: str = "http://localhost:11434",
+    max_propositions: int = 8,
+) -> list[str] | None:
+    """
+    用 Ollama 把一段文本拆成原子命題。
+    回傳命題列表，失敗回傳 None。
+    """
+    # 檢查 Ollama 可用性
+    try:
+        req = urllib.request.Request(
+            f"{ollama_url}/api/tags",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            models = json.loads(resp.read()).get("models", [])
+            model_names = [m["name"] for m in models]
+            available = None
+            for preferred in [ollama_model, "qwen3:8b", "qwen2.5:0.5b", "llama3.2:3b", "gemma3:4b"]:
+                for name in model_names:
+                    if preferred in name or name.startswith(preferred.split(":")[0]):
+                        available = name
+                        break
+                if available:
+                    break
+            if not available and model_names:
+                available = model_names[0]
+            if not available:
+                return None
+    except (urllib.error.URLError, ConnectionError, OSError):
+        return None
+
+    context = f"文件《{doc_title}》" if doc_title else "以下文本"
+    if heading:
+        context += f"的「{heading}」段落"
+
+    prompt = (
+        f"你是一個知識管理助手。請把{context}拆解成獨立的原子命題。\n"
+        f"規則：\n"
+        f"1. 每個命題是一個簡潔、自足的事實陳述\n"
+        f"2. 一句話只包含一個事實\n"
+        f"3. 保留原來的專有名詞和數字\n"
+        f"4. 最多 {max_propositions} 個命題\n"
+        f"5. 每行一個命題，不要編號，不要其他說明\n\n"
+        f"---文本開始---\n{text[:1500]}\n---文本結束---"
+    )
+
+    try:
+        payload = json.dumps({
+            "model": available,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"temperature": 0.1, "num_predict": 300},
+        }).encode()
+
+        req = urllib.request.Request(
+            f"{ollama_url}/api/generate",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            result = json.loads(resp.read())
+            response = result.get("response", "").strip()
+
+        # 解析命題（每行一個）
+        # 過濾規則：
+        # 1. 移除編號前綴（1. 2. - 等）
+        # 2. 移除 Markdown 格式（**加粗**、```代碼塊```）
+        # 3. 移除 LLM 冗餘回應（「好的」「以下是」「根據您的要求」）
+        # 4. 移除太短的行（<10 字）和太長的行（>200 字可能是整段重述）
+        # 5. 移除 prompt 洩漏（包含「命題」「拆解」等指令性文字）
+        REJECT_PATTERNS = [
+            r'^(好的|以下是|根據您|希望|我會|我明白了|我已|以下是拆解|根據上述|文檔標題|文档标题)',
+            r'(命題|拆解|規則|簡潔|自足的事實|每行一個|不要編號|不要其他說明|情況性陳述|原子命題|原子命題)',
+            r'^```',  # 代碼塊開始
+            r'^[{}\[\]]',  # JSON/代碼
+        ]
+        propositions = []
+        in_code_block = False
+        for line in response.split("\n"):
+            line = line.strip()
+            # 跳過代碼塊
+            if line.startswith("```"):
+                in_code_block = not in_code_block
+                continue
+            if in_code_block:
+                continue
+            # 移除編號前綴
+            line = re.sub(r"^[\d\-\•\*\)]+[.\s)]*\s*", "", line)
+            # 移除 Markdown 加粗
+            line = re.sub(r"\*\*(.+?)\*\*", r"\1", line)
+            # 移除引用符號
+            line = line.strip("\"'" + "\u201c\u201d\u2018\u2019" + "\u300c\u300d\u300e\u300f")
+            # 過濾條件
+            if not line or len(line) < 10 or len(line) > 200:
+                continue
+            # 拒絕 prompt 洩漏和 LLM 冗餘
+            rejected = False
+            for pat in REJECT_PATTERNS:
+                if re.search(pat, line):
+                    rejected = True
+                    break
+            if rejected:
+                continue
+            propositions.append(line)
+
+        return propositions[:max_propositions] if propositions else None
+
+    except Exception as e:
+        print(f"[proposition] ⚠️ LLM 拆解失敗: {e}")
+        return None
+
+
 # ── 統一匯入介面 ─────────────────────────────────────────
 
 def import_document(
     file_path: str | Path,
     db: GuardrailsDB,
     embed_provider: Optional[EmbeddingProvider] = None,
-    strategy: str = "chapter",  # chapter, semantic, summary-guided, sliding
+    strategy: str = "chapter",  # chapter, semantic, summary-guided, sliding, proposition
     title: Optional[str] = None,
     layer: str = "L3",
     category: str = "general",
@@ -589,8 +832,18 @@ def import_document(
         for chunk in chunks:
             all_chunks.append((chunk, source, f"{title} {chunk.title}"))
 
+    elif strategy == "proposition":
+        chunks = proposition_chunk(
+            text, doc_title=title,
+            ollama_model=ollama_model, ollama_url=ollama_url,
+            max_propositions_per_chunk=8, paragraph_max_chars=2000,
+        )
+        for chunk in chunks:
+            heading = chunk.title.split(" §")[0] if " §" in chunk.title else chunk.title
+            all_chunks.append((chunk, source, f"{title} — {chunk.title}"))
+
     else:
-        raise ValueError(f"未知分塊策略: {strategy}。支援: chapter, semantic, summary-guided, sliding")
+        raise ValueError(f"未知分塊策略: {strategy}。支援: chapter, semantic, summary-guided, sliding, proposition")
 
     # ── 階段二：Contextual Retrieval（可選）────────────────────
     if contextualize:

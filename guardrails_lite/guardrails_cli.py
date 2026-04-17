@@ -682,7 +682,7 @@ def main():
     p = sub.add_parser("import", help="匯入長文件（自動分塊）")
     p.add_argument("file", help="檔案路徑 (.md, .txt)")
     p.add_argument("--title", "-t", help="文件標題（預設用檔名）")
-    p.add_argument("--strategy", "-s", choices=["chapter", "semantic", "summary-guided", "sliding"], default="chapter", help="分塊策略（預設: chapter）")
+    p.add_argument("--strategy", "-s", choices=["chapter", "semantic", "summary-guided", "sliding", "proposition"], default="chapter", help="分塊策略（預設: chapter，proposition 需要 Ollama）")
     p.add_argument("--layer", choices=["L0", "L1", "L2", "L3"], default="L3")
     p.add_argument("--category", default="general")
     p.add_argument("--tags", default="")

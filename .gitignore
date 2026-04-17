@@ -1,123 +1,37 @@
-# ================================
-# 環境變量和密鑰文件
-# ================================
-
-.env
-.env.local
-.env.development
-.env.production
-.env.test
-
-# ================================
-# 密鑰和證書文件
-# ================================
-
-*.key
-*.pem
-*.p12
-*.pfx
-*.crt
-*.cer
-
-# ================================
-# 日誌文件
-# ================================
-
-*.log
-logs/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# ================================
-# 臨時文件
-# ================================
-
-*.tmp
-*.temp
-.cache/
-tmp/
-temp/
-
-# ================================
-# 系統文件
-# ================================
-
-.DS_Store
-Thumbs.db
-*.swp
-*.swo
-*~
-
-# ================================
-# 編輯器配置
-# ================================
-
-.vscode/
-.idea/
-*.sublime-project
-*.sublime-workspace
-
-# ================================
-# 操作系統文件
-# ================================
-
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# ================================
-# Node.js (如果使用)
-# ================================
-
-node_modules/
-dist/
-build/
-.next/
-.nuxt/
-.vuepress/dist/
-.serverless/
-
-# ================================
-# Python (如果使用)
-# ================================
-
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-venv/
-env/
-ENV/
-
-# ================================
-# 敏感數據備份
-# ================================
-
-*.backup
-*.bak
-*.old
-
-# ================================
-# 測試數據 (可選)
-# ================================
-
-# test-data/
-# fixtures/
-
-# Vault for LLM
-guardrails.db
-guardrails.db.bak
-__pycache__/
-.cache/
-*.pyc
 *.egg-info/
 dist/
 build/
+.eggs/
+
+# Guardrails database (contains user data)
+guardrails.db
+guardrails.db-*
 *.db
+
+# Models cache
+.cache/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env & secrets
+.env
+.env.*
+
+# Personal data — NEVER commit these
+L0-identity/identity.md
+L1-core-facts/current-projects.md
+L2-context/
+raw/
+compiled/
+
+# Logs
+*.log

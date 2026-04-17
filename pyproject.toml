@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "guardrails-knowledge"
-version = "0.2.0"
+version = "0.1.0"
 description = "Local-first knowledge system with sqlite-vec + ONNX embeddings. No cloud, no Docker, no PyTorch required."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-    {name = "Vault user", email = "maintainer@example.com"},
+    {name = "Vault-for-LLM Contributors"},
 ]
 keywords = ["knowledge-base", "vector-search", "sqlite", "onnx", "embeddings", "local-first"]
 classifiers = [

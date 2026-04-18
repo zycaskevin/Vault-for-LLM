@@ -1,37 +1,41 @@
-# Python
+# ── Guardrails Runtime ──────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+
+# Runtime reports（不應進 git，每次執行會重新產生）
+duplicate_report.json
+trust_report.json
+lint_report.json
+*_report.json
+
+# 編譯輸出（可重新產生）
+compiled/
+
+# ── Python ───────────────────────────────────────────────
 __pycache__/
 *.py[cod]
+*.pyo
 *.egg-info/
 dist/
 build/
 .eggs/
+*.egg
 
-# Guardrails database (contains user data)
-guardrails.db
-guardrails.db-*
-*.db
-
-# Models cache
-.cache/
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Env & secrets
+# ── 虛擬環境 ─────────────────────────────────────────────
+.venv/
+venv/
+env/
 .env
-.env.*
 
-# Personal data — NEVER commit these
-L0-identity/identity.md
-L1-core-facts/current-projects.md
-L2-context/
-raw/
-compiled/
+# ── 嵌入模型快取（~150MB，不應進 git）─────────────────────
+.cache/
+*.onnx
+*.onnx.data
 
-# Logs
-*.log
+# ── 編輯器 ───────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo

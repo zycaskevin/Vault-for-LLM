@@ -3,8 +3,8 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "guardrails-knowledge"
-version = "0.1.0"
+name = "vault-for-llm"
+version = "0.3.0"
 description = "Local-first knowledge system with sqlite-vec + ONNX embeddings. No cloud, no Docker, no PyTorch required."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -41,9 +41,14 @@ dev = [
     "pytest>=7.0",
     "ruff>=0.1",
 ]
+mcp = [
+    "mcp>=1.0",
+    "pyyaml>=6.0",
+]
 
 [project.scripts]
 guardrails = "vault.guardrails_cli:main"
+guardrails-mcp = "vault.guardrails_mcp:main"
 
 [tool.setuptools.packages.find]
 include = ["vault*"]

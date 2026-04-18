@@ -298,8 +298,8 @@ class GuardrailsSearch:
         """
         # 英文單詞
         english = re.findall(r"[a-zA-Z]{2,}", query)
-        # 中文詞（2-4字元的連續中文字）
-        chinese = re.findall(r"[\u4e00-\u9fff]{2,4}", query)
+        # 中文詞（2-6字元的連續中文字，支援domain-specific domain 5-6 字詞）
+        chinese = re.findall(r"[\u4e00-\u9fff]{2,6}", query)
         # 如果中文只有單字，也拆開
         if not chinese:
             chars = re.findall(r"[\u4e00-\u9fff]", query)

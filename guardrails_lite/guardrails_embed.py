@@ -50,13 +50,14 @@ class EmbeddingProvider:
     """嵌入生成基底類別。"""
 
     def __init__(self, dim: int = 384):
-        self.dim = dim
+        self._dim = dim
 
     def encode(self, texts: str | list[str]) -> list[list[float]]:
         raise NotImplementedError
 
+    @property
     def dim(self) -> int:
-        return self.dim
+        return self._dim
 
 
 class ONNXEmbeddingProvider(EmbeddingProvider):
@@ -65,7 +66,7 @@ class ONNXEmbeddingProvider(EmbeddingProvider):
     def __init__(self, model_key: str = "mix", cache_dir: Optional[str] = None):
         self.model_key = model_key
         self.model_info = MODELS[model_key]
-        self.dim = self.model_info["dim"]
+        self._dim = self.model_info["dim"]
         self.cache_dir = Path(cache_dir or os.path.expanduser("~/.cache/guardrails-lite/models"))
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._session = None
@@ -178,6 +179,7 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
         self.base_url = base_url.rstrip("/")
         self._dim = dim
 
+    @property
     def dim(self) -> int:
         # 動態偵測維度（首次呼叫時）
         if self._dim is None:
@@ -237,6 +239,7 @@ class SentenceTransformerProvider(EmbeddingProvider):
         embeddings = self._model.encode(texts, normalize_embeddings=True)
         return embeddings.tolist()
 
+    @property
     def dim(self) -> int:
         self._load()
         return self._dim

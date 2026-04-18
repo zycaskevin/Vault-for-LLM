@@ -663,123 +663,6 @@ def _decompose_with_llm(
         return None
 
 
-def _decompose_with_ollama(
-    text: str,
-    doc_title: str = "",
-    heading: str = "",
-    ollama_model: str = "qwen3:8b",
-    ollama_url: str = "http://localhost:11434",
-    max_propositions: int = 8,
-) -> list[str] | None:
-    """
-    用 Ollama 把一段文本拆成原子命題。
-    回傳命題列表，失敗回傳 None。
-    """
-    # 檢查 Ollama 可用性
-    try:
-        req = urllib.request.Request(
-            f"{ollama_url}/api/tags",
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            models = json.loads(resp.read()).get("models", [])
-            model_names = [m["name"] for m in models]
-            available = None
-            for preferred in [ollama_model, "qwen3:8b", "qwen2.5:0.5b", "llama3.2:3b", "gemma3:4b"]:
-                for name in model_names:
-                    if preferred in name or name.startswith(preferred.split(":")[0]):
-                        available = name
-                        break
-                if available:
-                    break
-            if not available and model_names:
-                available = model_names[0]
-            if not available:
-                return None
-    except (urllib.error.URLError, ConnectionError, OSError):
-        return None
-
-    context = f"文件《{doc_title}》" if doc_title else "以下文本"
-    if heading:
-        context += f"的「{heading}」段落"
-
-    prompt = (
-        f"你是一個知識管理助手。請把{context}拆解成獨立的原子命題。\n"
-        f"規則：\n"
-        f"1. 每個命題是一個簡潔、自足的事實陳述\n"
-        f"2. 一句話只包含一個事實\n"
-        f"3. 保留原來的專有名詞和數字\n"
-        f"4. 最多 {max_propositions} 個命題\n"
-        f"5. 每行一個命題，不要編號，不要其他說明\n\n"
-        f"---文本開始---\n{text[:1500]}\n---文本結束---"
-    )
-
-    try:
-        payload = json.dumps({
-            "model": available,
-            "prompt": prompt,
-            "stream": False,
-            "options": {"temperature": 0.1, "num_predict": 300},
-        }).encode()
-
-        req = urllib.request.Request(
-            f"{ollama_url}/api/generate",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            result = json.loads(resp.read())
-            response = result.get("response", "").strip()
-
-        # 解析命題（每行一個）
-        # 過濾規則：
-        # 1. 移除編號前綴（1. 2. - 等）
-        # 2. 移除 Markdown 格式（**加粗**、```代碼塊```）
-        # 3. 移除 LLM 冗餘回應（「好的」「以下是」「根據您的要求」）
-        # 4. 移除太短的行（<10 字）和太長的行（>200 字可能是整段重述）
-        # 5. 移除 prompt 洩漏（包含「命題」「拆解」等指令性文字）
-        REJECT_PATTERNS = [
-            r'^(好的|以下是|根據您|希望|我會|我明白了|我已|以下是拆解|根據上述|文檔標題|文档标题)',
-            r'(命題|拆解|規則|簡潔|自足的事實|每行一個|不要編號|不要其他說明|情況性陳述|原子命題|原子命題)',
-            r'^```',  # 代碼塊開始
-            r'^[{}\[\]]',  # JSON/代碼
-        ]
-        propositions = []
-        in_code_block = False
-        for line in response.split("\n"):
-            line = line.strip()
-            # 跳過代碼塊
-            if line.startswith("```"):
-                in_code_block = not in_code_block
-                continue
-            if in_code_block:
-                continue
-            # 移除編號前綴
-            line = re.sub(r"^[\d\-\•\*\)]+[.\s)]*\s*", "", line)
-            # 移除 Markdown 加粗
-            line = re.sub(r"\*\*(.+?)\*\*", r"\1", line)
-            # 移除引用符號
-            line = line.strip("\"'" + "\u201c\u201d\u2018\u2019" + "\u300c\u300d\u300e\u300f")
-            # 過濾條件
-            if not line or len(line) < 10 or len(line) > 200:
-                continue
-            # 拒絕 prompt 洩漏和 LLM 冗餘
-            rejected = False
-            for pat in REJECT_PATTERNS:
-                if re.search(pat, line):
-                    rejected = True
-                    break
-            if rejected:
-                continue
-            propositions.append(line)
-
-        return propositions[:max_propositions] if propositions else None
-
-    except Exception as e:
-        print(f"[proposition] ⚠️ LLM 拆解失敗: {e}")
-        return None
-
-
 # ── 統一匯入介面 ─────────────────────────────────────────
 
 def import_document(
@@ -902,9 +785,10 @@ def import_document(
             chunk_list, doc_title=title,
             llm=llm, ollama_model=ollama_model, ollama_url=ollama_url,
         )
-        # 更新回 all_chunks
+        # 更新回 all_chunks（防 IndexError：長度不同時只取交集）
         for i, (chunk, src, ttl) in enumerate(all_chunks):
-            all_chunks[i] = (contextualized[i], src, ttl)
+            if i < len(contextualized):
+                all_chunks[i] = (contextualized[i], src, ttl)
 
     # ── 階段三：寫入 DB ─────────────────────────────────
     knowledge_ids = []

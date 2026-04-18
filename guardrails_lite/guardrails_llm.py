@@ -66,13 +66,9 @@ class OllamaLLMProvider(LLMProvider):
         self._checked = False
 
     def _ensure_model(self) -> str:
-        """偵測可用模型，只跑一次。"""
-        if self._checked:
-            if self._model is None:
-                raise RuntimeError("Ollama 不可用（初始化時已確認）")
+        """偵測可用模型。失敗時不快取，允許下次重試。"""
+        if self._checked and self._model is not None:
             return self._model
-
-        self._checked = True
 
         try:
             req = urllib.request.Request(
@@ -102,6 +98,7 @@ class OllamaLLMProvider(LLMProvider):
 
             if available:
                 self._model = available
+                self._checked = True
                 print(f"[llm-ollama] ✅ 使用模型: {available}")
                 return available
             else:

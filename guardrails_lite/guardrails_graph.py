@@ -138,20 +138,26 @@ class GuardrailsGraph:
         edges_to_add = []
         now = datetime.now(timezone.utc).isoformat()
 
-        # 先查所有需要的 entity names
+        # 先查所有需要的 entity names（參數化查詢防 SQL injection）
         entity_ids = [row[0] for row in shared]
-        id_list = ",".join(str(eid) for eid in entity_ids)
         entity_names = {}
-        for row in self.db.conn.execute(
-            f"SELECT id, name FROM entities WHERE id IN ({id_list})"
-        ).fetchall():
-            entity_names[row[0]] = row[1]
+        if entity_ids:
+            placeholders = ",".join("?" for _ in entity_ids)
+            for row in self.db.conn.execute(
+                f"SELECT id, name FROM entities WHERE id IN ({placeholders})",
+                entity_ids,
+            ).fetchall():
+                entity_names[row[0]] = row[1]
 
         # 批次查所有 entity_knowledge
-        ek_rows = self.db.conn.execute(
-            f"SELECT entity_id, knowledge_id FROM entity_knowledge "
-            f"WHERE entity_id IN ({id_list})"
-        ).fetchall()
+        ek_rows = []
+        if entity_ids:
+            placeholders = ",".join("?" for _ in entity_ids)
+            ek_rows = self.db.conn.execute(
+                f"SELECT entity_id, knowledge_id FROM entity_knowledge "
+                f"WHERE entity_id IN ({placeholders})",
+                entity_ids,
+            ).fetchall()
 
         # 按 entity_id 分組
         entity_to_kids = defaultdict(list)

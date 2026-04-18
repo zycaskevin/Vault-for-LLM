@@ -151,7 +151,10 @@ def adjust_trust(
         time_factor = 1.0
         if last_touch:
             try:
-                dt = datetime.fromisoformat(last_touch.replace("Z", "").replace("+00:00", ""))
+                # 處理各種 ISO 格式：Z 結尾、+00:00 結尾、無時區
+                ts = last_touch.replace("Z", "+00:00")
+                # Python 3.7+ fromisoformat 支援 +00:00
+                dt = datetime.fromisoformat(ts)
                 days_idle = (now - dt).days
                 # 每 30 天衰減 5%，最多 30%（有存取紀錄的衰減更慢）
                 decay_rate = 0.03 if row[9] > 0 else 0.05

@@ -22,10 +22,10 @@ cd Vault-for-LLM
 pip install -e .
 
 # 3. Initialize
-guardrails init
+vault init
 
 # 4. Verify
-guardrails doctor
+vault doctor
 ```
 
 See [INSTALL.md](INSTALL.md) for detailed installation options (semantic search, Ollama, etc.)
@@ -72,7 +72,7 @@ What you learned, what broke, what worked.
 ### Step 4: Compile
 
 ```bash
-guardrails compile
+vault compile
 ```
 
 This will:
@@ -92,7 +92,7 @@ This will:
 ### Any LLM Agent
 1. Read `README.md` to understand the architecture
 2. Read `L0-identity/identity.md` for user context
-3. Use `guardrails search "query"` for knowledge retrieval
+3. Use `vault search "query"` for knowledge retrieval
 
 ---
 
@@ -100,7 +100,7 @@ This will:
 
 ```bash
 pip install guardrails-knowledge[semantic]
-guardrails install-embedding
+vault install-embedding
 # Choose: zh (Chinese), en (English), mix (Mixed, recommended)
 ```
 

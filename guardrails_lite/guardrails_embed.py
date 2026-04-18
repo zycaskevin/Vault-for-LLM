@@ -17,6 +17,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from .guardrails_log import log
+
 # ── 模型定義 ─────────────────────────────────────────────
 
 MODELS = {
@@ -50,13 +52,14 @@ class EmbeddingProvider:
     """嵌入生成基底類別。"""
 
     def __init__(self, dim: int = 384):
-        self.dim = dim
+        self._dim = dim
 
     def encode(self, texts: str | list[str]) -> list[list[float]]:
         raise NotImplementedError
 
+    @property
     def dim(self) -> int:
-        return self.dim
+        return self._dim
 
 
 class ONNXEmbeddingProvider(EmbeddingProvider):
@@ -65,7 +68,7 @@ class ONNXEmbeddingProvider(EmbeddingProvider):
     def __init__(self, model_key: str = "mix", cache_dir: Optional[str] = None):
         self.model_key = model_key
         self.model_info = MODELS[model_key]
-        self.dim = self.model_info["dim"]
+        self._dim = self.model_info["dim"]
         self.cache_dir = Path(cache_dir or os.path.expanduser("~/.cache/guardrails-lite/models"))
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._session = None
@@ -81,7 +84,7 @@ class ONNXEmbeddingProvider(EmbeddingProvider):
             return onnx_path
 
         # 下載 + 轉換 ONNX
-        print(f"[guardrails-lite] 下載 {model_name} → ONNX...")
+        log.info(f"下載 {model_name} → ONNX...")
         model_dir.mkdir(parents=True, exist_ok=True)
 
         try:
@@ -94,7 +97,7 @@ class ONNXEmbeddingProvider(EmbeddingProvider):
             )
             model.save_pretrained(model_dir)
             tokenizer.save_pretrained(model_dir)
-            print(f"[guardrails-lite] ✅ 模型已下載到 {model_dir}")
+            log.info(f"✅ 模型已下載到 {model_dir}")
             return model_dir / self.model_info["onnx_file"]
         except Exception as e:
             raise RuntimeError(
@@ -124,7 +127,7 @@ class ONNXEmbeddingProvider(EmbeddingProvider):
         sess_options = ort.SessionOptions()
         sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         self._session = ort.InferenceSession(str(onnx_path), sess_options)
-        print(f"[guardrails-lite] ✅ ONNX 模型已載入 ({self.model_info['language']})")
+        log.info(f"✅ ONNX 模型已載入 ({self.model_info['language']})")
 
     def encode(self, texts: str | list[str]) -> list[list[float]]:
         """生成嵌入向量。"""
@@ -178,6 +181,7 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
         self.base_url = base_url.rstrip("/")
         self._dim = dim
 
+    @property
     def dim(self) -> int:
         # 動態偵測維度（首次呼叫時）
         if self._dim is None:
@@ -192,6 +196,32 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
         if isinstance(texts, str):
             texts = [texts]
 
+        # 優先嘗試 batch API (/api/embed)，失敗降級到單條 (/api/embeddings)
+        if len(texts) > 1:
+            try:
+                payload = _json.dumps({
+                    "model": self.model,
+                    "input": texts,
+                }).encode()
+
+                req = urllib.request.Request(
+                    f"{self.base_url}/api/embed",
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                )
+
+                with urllib.request.urlopen(req, timeout=max(60, len(texts) * 5)) as resp:
+                    data = _json.loads(resp.read())
+                    # /api/embed 回傳 {"model":..., "embeddings": [[...], ...]}
+                    if "embeddings" in data:
+                        results = data["embeddings"]
+                        if results and self._dim is None:
+                            self._dim = len(results[0])
+                        return results
+            except (urllib.error.HTTPError, urllib.error.URLError, KeyError):
+                pass  # 降級到單條
+
+        # 單條或 batch 降級
         results = []
         for text in texts:
             payload = _json.dumps({
@@ -205,12 +235,12 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
                 headers={"Content-Type": "application/json"},
             )
 
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=max(30, len(texts) * 5)) as resp:
                 data = _json.loads(resp.read())
                 results.append(data["embedding"])
 
-        # 更新實際維度
-        if results:
+        # 只在首次偵測時設定維度（避免每次 encode 重設）
+        if results and self._dim is None:
             self._dim = len(results[0])
 
         return results
@@ -237,6 +267,7 @@ class SentenceTransformerProvider(EmbeddingProvider):
         embeddings = self._model.encode(texts, normalize_embeddings=True)
         return embeddings.tolist()
 
+    @property
     def dim(self) -> int:
         self._load()
         return self._dim

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "guardrails-knowledge"
-version = "0.1.0"
+version = "0.3.2"
 description = "Local-first knowledge system with sqlite-vec + ONNX embeddings. No cloud, no Docker, no PyTorch required."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -41,9 +41,13 @@ dev = [
     "pytest>=7.0",
     "ruff>=0.1",
 ]
+mcp = [
+    "mcp>=1.0",
+    "anthropic>=0.30",
+]
 
 [project.scripts]
-guardrails = "guardrails_lite.guardrails_cli:main"
+vault = "guardrails_lite.guardrails_cli:main"
 
 [tool.setuptools.packages.find]
 include = ["guardrails_lite*"]

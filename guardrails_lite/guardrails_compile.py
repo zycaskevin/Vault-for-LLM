@@ -22,6 +22,8 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
 
+from .guardrails_log import log
+
 
 def extract_frontmatter(content: str) -> tuple[dict, str]:
     """從 Markdown 提取 YAML frontmatter，回傳 (metadata, body)。"""
@@ -274,7 +276,7 @@ class GuardrailsCompiler:
         try:
             # 收集 raw/ 檔案
             if not self.raw_dir.exists():
-                print(f"[compiler] ⚠️ raw/ 目錄不存在: {self.raw_dir}")
+                log.warning(f"⚠️ raw/ 目錄不存在: {self.raw_dir}")
                 return stats
 
             md_files = sorted(self.raw_dir.rglob("*.md"))
@@ -285,7 +287,7 @@ class GuardrailsCompiler:
                     result = self._compile_file(md_file, dry_run)
                     stats[result] += 1
                 except Exception as e:
-                    print(f"[compiler] ❌ {md_file.name}: {e}")
+                    log.error(f"❌ {md_file.name}: {e}")
                     stats["errors"] += 1
 
             # 重建向量索引（如果有嵌入）
@@ -313,7 +315,7 @@ class GuardrailsCompiler:
                     self.db.conn.commit()
                     removed = len(ids) - 1
                     if removed > 0:
-                        print(f"[compiler] 🧹 去重: [{row['title']}] 刪除 {removed} 筆重複")
+                        log.info(f"🧹 去重: [{row['title']}] 刪除 {removed} 筆重複")
                         stats["skipped"] += removed
 
             # 更新 compiled/
@@ -344,10 +346,11 @@ class GuardrailsCompiler:
 
         # 檢查是否已存在（用 source_file 或 title）
         source_file = str(md_file.relative_to(self.raw_dir))
-        # 先用 source_file 找
+        # 先用 source_file 找（escape LIKE 特殊字元 % 和 _）
+        safe_source = source_file.replace("%", "\\%").replace("_", "\\_")
         existing = self.db.conn.execute(
-            "SELECT id, content_hash FROM knowledge WHERE source LIKE ?",
-            (f"%{source_file}%",),
+            "SELECT id, content_hash FROM knowledge WHERE source LIKE ? ESCAPE '\\'",
+            (f"%{safe_source}%",),
         ).fetchone()
         if not existing:
             # 用 title 找同名知識（add 命令可能已經建了）
@@ -356,7 +359,7 @@ class GuardrailsCompiler:
                 (title,),
             ).fetchone()
             if existing:
-                print(f"[compiler] 🔄 同名知識已存在 (id={existing['id']}), 更新: {title}")
+                log.info(f"🔄 同名知識已存在 (id={existing['id']}), 更新: {title}")
 
         if existing and existing["content_hash"] == content_hash:
             return "skipped"  # 沒變
@@ -375,7 +378,7 @@ class GuardrailsCompiler:
 
         if dry_run:
             action = "更新" if existing else "新增"
-            print(f"  [dry] {action}: {title} (layer={layer}, cat={category})")
+            log.debug(f"[dry] {action}: {title} (layer={layer}, cat={category})")
             return "new" if not existing else "updated"
 
         if existing:
@@ -424,10 +427,10 @@ class GuardrailsCompiler:
             rows = self.db.conn.execute("SELECT id, content_raw FROM knowledge").fetchall()
 
         if not rows:
-            print("[compiler] 所有知識已有嵌入 ✅")
+            log.info("所有知識已有嵌入 ✅")
             return
 
-        print(f"[compiler] 生成 {len(rows)} 筆嵌入...")
+        log.info(f"生成 {len(rows)} 筆嵌入...")
         texts = [r["content_raw"] for r in rows]
         ids = [r["id"] for r in rows]
 
@@ -440,7 +443,7 @@ class GuardrailsCompiler:
             for j, kid in enumerate(batch_ids):
                 self.db.add_embedding(kid, vectors[j])
 
-        print(f"[compiler] ✅ {len(rows)} 筆嵌入完成")
+        log.info(f"✅ {len(rows)} 筆嵌入完成")
 
     def _update_compiled(self):
         """從 DB 更新 compiled/ 目錄。"""
@@ -482,6 +485,6 @@ class GuardrailsCompiler:
             msg = f"guardrails: compile {stats['new']} new, {stats['updated']} updated"
             subprocess.run(["git", "commit", "-m", msg, "--allow-empty"],
                            cwd=str(self.project_dir), capture_output=True, timeout=10)
-            print(f"[compiler] ✅ Git commit: {msg}")
+            log.info(f"✅ Git commit: {msg}")
         except Exception as e:
-            print(f"[compiler] ⚠️ Git commit 失敗（不影響編譯）: {e}")
+            log.warning(f"⚠️ Git commit 失敗（不影響編譯）: {e}")

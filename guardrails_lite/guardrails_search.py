@@ -17,6 +17,7 @@ from .guardrails_embed import (
     MODELS,
     DEFAULT_MODEL_KEY,
 )
+from .guardrails_log import log
 
 
 class GuardrailsSearch:
@@ -117,6 +118,9 @@ class GuardrailsSearch:
         if not terms:
             return []
 
+        # 限制 term 數量避免 SQL 膨脹
+        terms = terms[:8]
+
         # 建構 WHERE 條件
         conditions = []
         params: list = [min_trust]
@@ -175,7 +179,7 @@ class GuardrailsSearch:
         try:
             query_vec = embed.encode(query)[0]
         except Exception as e:
-            print(f"[guardrails-lite] ⚠️ 嵌入失敗，降級到關鍵字: {e}")
+            log.warning(f"⚠️ 嵌入失敗，降級到關鍵字: {e}")
             return self.search_keyword(query, limit, min_trust, layer, category)
 
         results = self.db.search_vector(query_vec, limit=limit * 2, min_trust=min_trust)
@@ -217,23 +221,34 @@ class GuardrailsSearch:
         vec_results = self.search_vector(query, limit=limit * 2, min_trust=min_trust,
                                           layer=layer, category=category)
 
-        # RRF 融合
+        # RRF 融合（以 kid 去重，同一筆知識只出現一次）
         scores: dict[int, float] = {}
         all_items: dict[int, dict] = {}
+        hit_sources: dict[int, set] = {}  # 追蹤每筆知識來自哪些搜尋模式
 
         for rank, item in enumerate(kw_results):
             kid = item["id"]
             scores[kid] = scores.get(kid, 0) + 1.0 / (k + rank + 1)
             all_items[kid] = item
+            hit_sources.setdefault(kid, set()).add("keyword")
 
         for rank, item in enumerate(vec_results):
             kid = item["id"]
             scores[kid] = scores.get(kid, 0) + 1.0 / (k + rank + 1)
             if kid not in all_items:
                 all_items[kid] = item
+                hit_sources.setdefault(kid, set()).add("vector")
             else:
-                # 合併：向量的 metadata 優先
+                # 同時命中 keyword 和 vector → 標記為 hybrid
+                hit_sources[kid].add("vector")
+
+        # 根據命中來源更新 _mode
+        for kid in all_items:
+            sources = hit_sources.get(kid, set())
+            if len(sources) > 1:
                 all_items[kid]["_mode"] = "hybrid"
+            elif sources:
+                all_items[kid]["_mode"] = sources.pop()
 
         # 排序
         sorted_ids = sorted(scores.items(), key=lambda x: x[1], reverse=True)
@@ -298,8 +313,8 @@ class GuardrailsSearch:
         """
         # 英文單詞
         english = re.findall(r"[a-zA-Z]{2,}", query)
-        # 中文詞（2-4字元的連續中文字）
-        chinese = re.findall(r"[\u4e00-\u9fff]{2,4}", query)
+        # 中文詞（2-6字元的連續中文字，支援醫美 domain 5-6 字詞）
+        chinese = re.findall(r"[\u4e00-\u9fff]{2,6}", query)
         # 如果中文只有單字，也拆開
         if not chinese:
             chars = re.findall(r"[\u4e00-\u9fff]", query)

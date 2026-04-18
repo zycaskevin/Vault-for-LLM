@@ -26,7 +26,7 @@ Vault-for-LLM 是一個專為 LLM Agent 設計的**四層分層知識庫**。它
 ## 架構說明
 
 ```
-L0 身份層      → Agent 是誰（每次對話注入）
+L0 身份層      → 使用者是誰（每次對話注入）
 L1 核心事實    → 環境與活躍專案（每次對話注入）
 L2 動態情境    → 近期決策與除錯記錄（每日自動更新）
 L3 深度知識    → 架構、技術、經驗（按需搜尋）
@@ -36,7 +36,7 @@ L3 深度知識    → 架構、技術、經驗（按需搜尋）
 
 | 層級 | 載入時機 | Token 成本 | 範例 |
 |------|----------|-----------|------|
-| L0 | 每次對話 | 極低（<100） | Agent 名稱、角色、基本規則 |
+| L0 | 每次對話 | 極低（<100） | 使用者名稱、角色、偏好 |
 | L1 | 每次對話 | 低（<500） | 作業系統、安裝工具、活躍專案 |
 | L2 | 需要時 | 中（<2000） | 昨天修了什麼 bug、最近的技術決策 |
 | L3 | 按需搜尋 | 按需 | 某框架的踩坑筆記、API 用法 |
@@ -74,7 +74,7 @@ guardrails doctor
 ```
 你的專案/
 ├── guardrails.yaml          ← 專案設定（guardrails init 自動產生）
-├── L0-identity/             ← 身份層（每次對話注入）
+├── L0-identity/             ← 使用者身份（每次對話注入）
 │   └── identity.md
 ├── L1-core-facts/           ← 核心事實（每次對話注入）
 │   └── current-projects.md
@@ -93,7 +93,7 @@ guardrails doctor
 
 ### 通用 LLM Agent
 
-1. 閱讀 `L0-identity/identity.md` 了解用戶
+1. 閱讀 `L0-identity/identity.md` 了解使用者
 2. 閱讀 `L1-core-facts/current-projects.md` 了解現況
 3. 使用 `guardrails search "查詢"` 進行語意搜尋
 

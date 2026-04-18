@@ -2,17 +2,17 @@
 Guardrails Lite — CLI 入口。
 
 用法：
-  guardrails init              # 初始化專案
-  guardrails add "標題"         # 加入知識
-  guardrails import novel.md   # 匯入長文件（自動分塊）
-  guardrails compile           # 編譯 raw/ → db + compiled/
-  guardrails search "查詢"     # 搜尋知識
-  guardrails list              # 列出知識
-  guardrails lint              # 健康檢查
-  guardrails doctor            # 環境診斷
-  guardrails stats             # 統計
-  guardrails install-embedding # 安裝嵌入模型
-  guardrails config set/get    # 配置管理
+  vault init              # 初始化專案
+  vault add "標題"         # 加入知識
+  vault import novel.md   # 匯入長文件（自動分塊）
+  vault compile           # 編譯 raw/ → db + compiled/
+  vault search "查詢"     # 搜尋知識
+  vault list              # 列出知識
+  vault lint              # 健康檢查
+  vault doctor            # 環境診斷
+  vault stats             # 統計
+  vault install-embedding # 安裝嵌入模型
+  vault config set/get    # 配置管理
 """
 
 import argparse
@@ -69,8 +69,8 @@ def cmd_init(args):
     print(f"\n✅ 專案初始化完成: {project_dir.resolve()}")
     print("下一步：")
     print("  1. 在 raw/ 放入 .md 知識檔案")
-    print("  2. guardrails compile")
-    print("  3. guardrails search \"查詢\"")
+    print("  2. vault compile")
+    print("  3. vault search \"查詢\"")
 
 
 def cmd_add(args):
@@ -414,7 +414,7 @@ def cmd_doctor(args):
         models = [d.name for d in cache_dir.iterdir() if d.is_dir()]
         checks.append(("嵌入模型快取", f"✅ {len(models)} 模型", True))
     else:
-        checks.append(("嵌入模型快取", "❌ 無 (guardrails install-embedding)", False))
+        checks.append(("嵌入模型快取", "❌ 無 (vault install-embedding)", False))
 
     # 輸出
     all_ok = True
@@ -476,7 +476,95 @@ def cmd_install_embedding(args):
     db2.close()
 
     print(f"\n✅ 完成！語意搜尋已啟用")
-    print(f"   試試: guardrails search \"查詢\"")
+    print(f"   試試: vault search \"查詢\"")
+
+
+def cmd_export(args):
+    """匯出知識為 AI 可讀格式。"""
+    import yaml
+    from guardrails_lite.guardrails_db import GuardrailsDB
+    from guardrails_lite.guardrails_search import GuardrailsSearch
+
+    project_dir = find_project_dir()
+    db_path = project_dir / "guardrails.db"
+
+    if not db_path.exists():
+        print("❌ 尚未初始化，先執行 vault init")
+        return
+
+    db = GuardrailsDB(str(db_path))
+    db.connect()
+
+    # 匯出模式
+    mode = getattr(args, "export_mode", "context")
+    output = getattr(args, "output", None)
+    query = getattr(args, "query", None)
+    min_trust = getattr(args, "min_trust", 0.0)
+
+    if mode == "context":
+        # Context 匯出：L0 + L1 + 搜尋結果 → 單一 markdown
+        sections = []
+
+        # L0 Identity
+        l0_rows = db.conn.execute(
+            "SELECT title, content_raw FROM knowledge WHERE layer='L0' ORDER BY trust DESC"
+        ).fetchall()
+        if l0_rows:
+            sections.append("## L0 身份認同\n")
+            for row in l0_rows:
+                sections.append(f"### {row['title']}\n{row['content_raw']}\n")
+
+        # L1 Core Facts
+        l1_rows = db.conn.execute(
+            "SELECT title, content_raw FROM knowledge WHERE layer='L1' ORDER BY trust DESC"
+        ).fetchall()
+        if l1_rows:
+            sections.append("## L1 核心事實\n")
+            for row in l1_rows:
+                sections.append(f"### {row['title']}\n{row['content_raw']}\n")
+
+        # 搜尋結果（如果有 query）
+        if query:
+            search = GuardrailsSearch(db)
+            results = search.search(query, mode="hybrid", limit=20, min_trust=min_trust)
+            if results:
+                sections.append(f"## L3 搜尋結果「{query}」\n")
+                for r in results:
+                    trust_badge = f"(trust={r.get('trust', 0):.1f})"
+                    sections.append(f"### {r['title']} {trust_badge}\n{r.get('content_raw', '')[:500]}\n")
+        else:
+            # 沒有 query 就匯出高 trust 的 L3
+            l3_rows = db.conn.execute(
+                "SELECT title, content_raw, trust FROM knowledge WHERE layer='L3' AND trust >= ? ORDER BY trust DESC LIMIT 30",
+                (min_trust or 0.7,),
+            ).fetchall()
+            if l3_rows:
+                sections.append("## L3 深度知識（高信任度）\n")
+                for row in l3_rows:
+                    sections.append(f"### {row['title']} (trust={row['trust']:.1f})\n{row['content_raw'][:500]}\n")
+
+        content = "# Knowledge Context\n\n" + "\n---\n".join(sections)
+
+        if output:
+            Path(output).write_text(content, encoding="utf-8")
+            log.info(f"✅ 已匯出到 {output}")
+        else:
+            print(content)
+
+    elif mode == "json":
+        # JSON 全量匯出
+        rows = db.conn.execute("SELECT * FROM knowledge ORDER BY layer, trust DESC").fetchall()
+        import json
+        data = [dict(r) for r in rows]
+        json_str = json.dumps(data, ensure_ascii=False, indent=2, default=str)
+
+        if output:
+            Path(output).write_text(json_str, encoding="utf-8")
+            log.info(f"✅ 已匯出 {len(data)} 筆知識到 {output}")
+        else:
+            print(json_str)
+
+    db.close()
 
 
 def cmd_stats(args):
@@ -487,7 +575,7 @@ def cmd_stats(args):
     db_path = project_dir / "guardrails.db"
 
     if not db_path.exists():
-        print("❌ 尚未初始化，先執行 guardrails init")
+        print("❌ 尚未初始化，先執行 vault init")
         return
 
     db = GuardrailsDB(str(db_path))
@@ -542,7 +630,7 @@ def cmd_graph(args):
     db_path = project_dir / "guardrails.db"
 
     if not db_path.exists():
-        print("❌ 尚未初始化，先執行 guardrails init")
+        print("❌ 尚未初始化，先執行 vault init")
         return
 
     db = GuardrailsDB(str(db_path))
@@ -559,9 +647,9 @@ def cmd_graph(args):
         print(f"   掃描條目: {result['total_knowledge']}")
         print(f"   新增實體: {result['entities_created']}")
         print(f"   新增關聯: {result['edges_created']}")
-        print(f"\n   試試: guardrails graph show")
-        print(f"         guardrails graph export --format mermaid")
-        print(f"         guardrails search '查詢' --graph-expand 1")
+        print(f"\n   試試: vault graph show")
+        print(f"         vault graph export --format mermaid")
+        print(f"         vault search '查詢' --graph-expand 1")
 
     elif action == "show":
         """顯示圖譜摘要。"""
@@ -779,9 +867,9 @@ def cmd_config(args):
         for row in rows:
             print(f"  {row['key']} = {row['value']}")
     else:
-        print("用法: guardrails config set <key> <value>")
-        print("      guardrails config get <key>")
-        print("      guardrails config list")
+        print("用法: vault config set <key> <value>")
+        print("      vault config get <key>")
+        print("      vault config list")
 
     db.close()
 

@@ -20,13 +20,13 @@ You have a layered knowledge base at the project root (or GUARDRAILS_PATH env va
 1. At conversation start, read L0 + L1
 2. When user mentions past events, search L3 (use `rg` keyword first, then semantic if needed)
 3. After completing valuable work, write a new entry to `raw/` (YAML frontmatter format)
-4. After writing, run `guardrails compile`
+4. After writing, run `vault compile`
 
 ### Search Methods
 - Keyword search: `rg "keyword" raw/ compiled/`
 - Title search: `rg "title:" raw/`
 - Tag search: `rg "tags:.*keyword" raw/`
-- Semantic search: `guardrails search "query"`
+- Semantic search: `vault search "query"`
 
 ### Write Format
 Each knowledge entry uses YAML frontmatter:

@@ -1,6 +1,6 @@
-# Guardrails Lite — Agent Installation Guide
+# Guardrails Knowledge — Agent Installation Guide
 
-> This document is written for AI agents. If you're an AI reading this, follow the steps below to install Guardrails Lite for your user.
+> This document is written for AI agents. If you're an AI reading this, follow the steps below to install Guardrails Knowledge for your user.
 
 ## Quick Install (Recommended)
 
@@ -14,10 +14,10 @@ pip install -e /path/to/Vault-for-LLM
 
 # 3. Initialize a project
 cd /path/to/your/project
-guardrails init
+vault init
 
 # 4. Verify
-guardrails doctor
+vault doctor
 ```
 
 ## Semantic Search (Optional)
@@ -27,11 +27,11 @@ guardrails doctor
 pip install guardrails-knowledge[semantic]
 
 # Download embedding model (interactive)
-guardrails install-embedding
+vault install-embedding
 # Choose: zh (Chinese), en (English), mix (Mixed, recommended)
 
 # Verify
-guardrails doctor
+vault doctor
 # Should show: onnxruntime ✅, optimum[onnxruntime] ✅
 ```
 
@@ -40,31 +40,31 @@ guardrails doctor
 ### Mode 1: Minimal (Keyword search only)
 ```bash
 pip install guardrails-knowledge
-guardrails init
+vault init
 # Search works with keyword matching only
 ```
 
 ### Mode 2: Semantic (Local ONNX embeddings)
 ```bash
 pip install guardrails-knowledge[semantic]
-guardrails init
-guardrails install-embedding
+vault init
+vault install-embedding
 # Search works with vector similarity (recommended)
 ```
 
 ### Mode 3: Ollama (Zero extra install if you have Ollama)
 ```bash
 pip install guardrails-knowledge
-guardrails init
-guardrails config set embedding.provider ollama
-guardrails config set embedding.model nomic-embed-text
+vault init
+vault config set embedding.provider ollama
+vault config set embedding.model nomic-embed-text
 # Uses your existing Ollama installation
 ```
 
 ## Environment Check
 
 ```bash
-guardrails doctor
+vault doctor
 ```
 
 Expected output:
@@ -81,27 +81,27 @@ Ollama               ✅/❌
 
 ```bash
 # 1. Add knowledge (3 ways)
-guardrails add "My Title" --content "Knowledge content here"
-guardrails add "My Title" --file knowledge.md
+vault add "My Title" --content "Knowledge content here"
+vault add "My Title" --file knowledge.md
 # Or just put .md files in raw/ directory
 
 # 2. Compile (raw/ → database + compiled/)
-guardrails compile
+vault compile
 
 # 3. Search
-guardrails search "GPU memory issues"           # auto mode
-guardrails search "GPU memory" --mode keyword    # keyword only
-guardrails search "GPU memory" --mode hybrid     # blended
-guardrails search "GPU memory" --layer L2         # filter by layer
+vault search "GPU memory issues"           # auto mode
+vault search "GPU memory" --mode keyword    # keyword only
+vault search "GPU memory" --mode hybrid     # blended
+vault search "GPU memory" --layer L2         # filter by layer
 
 # 4. List & Stats
-guardrails list
-guardrails list --layer L2 --category error
-guardrails stats
+vault list
+vault list --layer L2 --category error
+vault stats
 
 # 5. Health check
-guardrails lint
-guardrails doctor
+vault lint
+vault doctor
 ```
 
 ## Knowledge File Format

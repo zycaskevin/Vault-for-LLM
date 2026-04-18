@@ -1,5 +1,5 @@
 """
-Guardrails Lite — 智慧分塊匯入模組（v2）。
+Guardrails Lite — 智慧分塊匯入模組（v3）。
 
 論文基礎：
 - Semantic Chunking：計算相鄰句子嵌入相似度，驟降處切斷
@@ -15,10 +15,11 @@ Guardrails Lite — 智慧分塊匯入模組（v2）。
 5. proposition — 命題拆解（v3）：LLM 把段落拆成原子命題
 
 Contextual Retrieval：
-- 用 Ollama 本地生成每塊的上下文摘要（1-2句）
+- 用 LLM Provider 生成每塊的上下文摘要（1-2句）
+- LLM Provider 支援 Ollama / Claude / OpenAI（統一介面）
 - 嵌入時用 context + content 而非純 content
 - 搜尋時 content_raw 存原文，content_aaak 存帶上下文的壓縮版
-- Ollama 不可用時自動降級（不加上下文）
+- LLM 不可用時自動降級（不加上下文）
 """
 
 from __future__ import annotations
@@ -32,6 +33,8 @@ from typing import Optional
 
 from .guardrails_db import GuardrailsDB
 from .guardrails_embed import create_embedding_provider, EmbeddingProvider
+from .guardrails_llm import LLMProvider, OllamaLLMProvider, create_llm_provider
+from .guardrails_log import log
 
 
 # ── 章節偵測正則 ──────────────────────────────────────────
@@ -65,6 +68,7 @@ PARA_SPLIT = re.compile(r"\n\s*\n")
 def contextualize_chunks(
     chunks: list[ChunkResult],
     doc_title: str,
+    llm: Optional[LLMProvider] = None,
     ollama_model: str = "qwen3:8b",
     ollama_url: str = "http://localhost:11434",
     max_context_length: int = 150,
@@ -72,41 +76,24 @@ def contextualize_chunks(
     """
     Contextual Retrieval：為每個分塊生成上下文摘要。
 
-    用 Ollama 本地生成 1-2 句上下文描述，前置到每塊。
+    用 LLM Provider 生成 1-2 句上下文描述，前置到每塊。
     嵌入時用 context + content，搜尋時用原文。
 
     論文基礎：Anthropic Contextual Retrieval (2024/09)
     - 檢索失敗率降低 49%（結合 BM25 可達 67%）
     - 每塊只加 ~50 tokens，成本極低
-    """
-    # 檢查 Ollama 是否可用
-    try:
-        req = urllib.request.Request(
-            f"{ollama_url}/api/tags",
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            models = json.loads(resp.read()).get("models", [])
-            model_names = [m["name"] for m in models]
-            # 找最佳可用模型
-            available = None
-            for preferred in [ollama_model, "qwen3:8b", "llama3.2:3b", "gemma3:4b", "mistral:7b"]:
-                for name in model_names:
-                    if preferred in name or name.startswith(preferred.split(":")[0]):
-                        available = name
-                        break
-                if available:
-                    break
-            if not available and model_names:
-                available = model_names[0]  # 用第一個可用的
-            if not available:
-                print("[contextualize] ⚠️ Ollama 沒有可用模型，跳過上下文增強")
-                return chunks
-    except (urllib.error.URLError, ConnectionError, OSError):
-        print("[contextualize] ⚠️ Ollama 未啟動，跳過上下文增強")
-        return chunks
 
-    print(f"[contextualize] 使用 {available} 生成上下文摘要...")
+    llm: LLMProvider 實例（優先使用）。None 時自動建立 OllamaLLMProvider。
+    """
+    # 建立 LLM Provider
+    if llm is None:
+        try:
+            llm = OllamaLLMProvider(model=ollama_model, base_url=ollama_url)
+        except Exception:
+            log.warning("⚠️ LLM 不可用，跳過上下文增強")
+            return chunks
+
+    log.info(f"使用 {llm.name} 生成上下文摘要...")
 
     for i, chunk in enumerate(chunks):
         prompt = (
@@ -117,21 +104,7 @@ def contextualize_chunks(
         )
 
         try:
-            payload = json.dumps({
-                "model": available,
-                "prompt": prompt,
-                "stream": False,
-                "options": {"temperature": 0.1, "num_predict": 100},
-            }).encode()
-
-            req = urllib.request.Request(
-                f"{ollama_url}/api/generate",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                result = json.loads(resp.read())
-                context = result.get("response", "").strip()
+            context = llm.generate(prompt, max_tokens=100, temperature=0.1)
 
             # 截斷過長的上下文
             if len(context) > max_context_length:
@@ -141,7 +114,7 @@ def contextualize_chunks(
             chunk.context_prefix = context
 
         except Exception as e:
-            print(f"[contextualize] ⚠️ 塊 {i+1} 生成失敗: {e}")
+            log.warning(f"⚠️ 塊 {i+1} 生成失敗: {e}")
             chunk.context_prefix = ""
 
     return chunks
@@ -494,6 +467,7 @@ def summary_guided_chunk(
 def proposition_chunk(
     text: str,
     doc_title: str = "",
+    llm: Optional[LLMProvider] = None,
     ollama_model: str = "qwen3:8b",
     ollama_url: str = "http://localhost:11434",
     max_propositions_per_chunk: int = 8,
@@ -509,9 +483,11 @@ def proposition_chunk(
 
     流程：
     1. 把文本切成段落（以空行或 ## 標題分隔）
-    2. 對每個段落，用 Ollama 拆解成原子命題
+    2. 對每個段落，用 LLM Provider 拆解成原子命題
     3. 每個命題成為獨立 ChunkResult
-    4. Ollama 不可用時降級為句子級分塊（每句一命題）
+    4. LLM 不可用時降級為句子級分塊（每句一命題）
+
+    llm: LLMProvider 實例（優先使用）。None 時自動建立 OllamaLLMProvider。
     """
     # 先拆段落，跳過 frontmatter
     paragraphs = _split_into_paragraphs(text, max_chars=paragraph_max_chars)
@@ -533,12 +509,20 @@ def proposition_chunk(
             continue
 
         # 用 LLM 拆命題
-        props = _decompose_with_ollama(
-            para_text, doc_title=doc_title,
-            heading=heading, ollama_model=ollama_model,
-            ollama_url=ollama_url,
-            max_propositions=max_propositions_per_chunk,
-        )
+        actual_llm = llm
+        if actual_llm is None:
+            try:
+                actual_llm = OllamaLLMProvider(model=ollama_model, base_url=ollama_url)
+            except Exception:
+                actual_llm = None
+
+        if actual_llm is not None:
+            props = _decompose_with_llm(
+                para_text, actual_llm, doc_title=doc_title,
+                heading=heading, max_propositions=max_propositions_per_chunk,
+            )
+        else:
+            props = None
         if props:
             for prop in props:
                 all_props.append((prop, heading))
@@ -614,42 +598,17 @@ def _split_into_paragraphs(
     return [(t, h) for t, h in paragraphs if len(t) >= 20]
 
 
-def _decompose_with_ollama(
+def _decompose_with_llm(
     text: str,
+    llm: LLMProvider,
     doc_title: str = "",
     heading: str = "",
-    ollama_model: str = "qwen3:8b",
-    ollama_url: str = "http://localhost:11434",
     max_propositions: int = 8,
 ) -> list[str] | None:
     """
-    用 Ollama 把一段文本拆成原子命題。
+    用 LLM Provider 把一段文本拆成原子命題。
     回傳命題列表，失敗回傳 None。
     """
-    # 檢查 Ollama 可用性
-    try:
-        req = urllib.request.Request(
-            f"{ollama_url}/api/tags",
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            models = json.loads(resp.read()).get("models", [])
-            model_names = [m["name"] for m in models]
-            available = None
-            for preferred in [ollama_model, "qwen3:8b", "qwen2.5:0.5b", "llama3.2:3b", "gemma3:4b"]:
-                for name in model_names:
-                    if preferred in name or name.startswith(preferred.split(":")[0]):
-                        available = name
-                        break
-                if available:
-                    break
-            if not available and model_names:
-                available = model_names[0]
-            if not available:
-                return None
-    except (urllib.error.URLError, ConnectionError, OSError):
-        return None
-
     context = f"文件《{doc_title}》" if doc_title else "以下文本"
     if heading:
         context += f"的「{heading}」段落"
@@ -666,55 +625,29 @@ def _decompose_with_ollama(
     )
 
     try:
-        payload = json.dumps({
-            "model": available,
-            "prompt": prompt,
-            "stream": False,
-            "options": {"temperature": 0.1, "num_predict": 300},
-        }).encode()
-
-        req = urllib.request.Request(
-            f"{ollama_url}/api/generate",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            result = json.loads(resp.read())
-            response = result.get("response", "").strip()
+        response = llm.generate(prompt, max_tokens=300, temperature=0.1)
 
         # 解析命題（每行一個）
-        # 過濾規則：
-        # 1. 移除編號前綴（1. 2. - 等）
-        # 2. 移除 Markdown 格式（**加粗**、```代碼塊```）
-        # 3. 移除 LLM 冗餘回應（「好的」「以下是」「根據您的要求」）
-        # 4. 移除太短的行（<10 字）和太長的行（>200 字可能是整段重述）
-        # 5. 移除 prompt 洩漏（包含「命題」「拆解」等指令性文字）
         REJECT_PATTERNS = [
             r'^(好的|以下是|根據您|希望|我會|我明白了|我已|以下是拆解|根據上述|文檔標題|文档标题)',
-            r'(命題|拆解|規則|簡潔|自足的事實|每行一個|不要編號|不要其他說明|情況性陳述|原子命題|原子命題)',
-            r'^```',  # 代碼塊開始
-            r'^[{}\[\]]',  # JSON/代碼
+            r'(命題|拆解|規則|簡潔|自足的事實|每行一個|不要編號|不要其他說明|情況性陳述|原子命題)',
+            r'^```',
+            r'^[{}\[\]]',
         ]
         propositions = []
         in_code_block = False
         for line in response.split("\n"):
             line = line.strip()
-            # 跳過代碼塊
             if line.startswith("```"):
                 in_code_block = not in_code_block
                 continue
             if in_code_block:
                 continue
-            # 移除編號前綴
-            line = re.sub(r"^[\d\-\•\*\)]+[.\s)]*\s*", "", line)
-            # 移除 Markdown 加粗
+            line = re.sub(r"^[\d\-\•\*\))]+[.\s)]*\s*", "", line)
             line = re.sub(r"\*\*(.+?)\*\*", r"\1", line)
-            # 移除引用符號
             line = line.strip("\"'" + "\u201c\u201d\u2018\u2019" + "\u300c\u300d\u300e\u300f")
-            # 過濾條件
             if not line or len(line) < 10 or len(line) > 200:
                 continue
-            # 拒絕 prompt 洩漏和 LLM 冗餘
             rejected = False
             for pat in REJECT_PATTERNS:
                 if re.search(pat, line):
@@ -727,7 +660,7 @@ def _decompose_with_ollama(
         return propositions[:max_propositions] if propositions else None
 
     except Exception as e:
-        print(f"[proposition] ⚠️ LLM 拆解失敗: {e}")
+        log.warning(f"⚠️ LLM 拆解失敗: {e}")
         return None
 
 
@@ -747,6 +680,7 @@ def import_document(
     overlap: int = 100,
     similarity_threshold: float = 0.3,
     contextualize: bool = False,
+    llm: Optional[LLMProvider] = None,
     ollama_model: str = "qwen3:8b",
     ollama_url: str = "http://localhost:11434",
 ) -> list[int]:
@@ -835,7 +769,7 @@ def import_document(
     elif strategy == "proposition":
         chunks = proposition_chunk(
             text, doc_title=title,
-            ollama_model=ollama_model, ollama_url=ollama_url,
+            llm=llm, ollama_model=ollama_model, ollama_url=ollama_url,
             max_propositions_per_chunk=8, paragraph_max_chars=2000,
         )
         for chunk in chunks:
@@ -850,11 +784,12 @@ def import_document(
         chunk_list = [c for c, _, _ in all_chunks]
         contextualized = contextualize_chunks(
             chunk_list, doc_title=title,
-            ollama_model=ollama_model, ollama_url=ollama_url,
+            llm=llm, ollama_model=ollama_model, ollama_url=ollama_url,
         )
-        # 更新回 all_chunks
+        # 更新回 all_chunks（防 IndexError：長度不同時只取交集）
         for i, (chunk, src, ttl) in enumerate(all_chunks):
-            all_chunks[i] = (contextualized[i], src, ttl)
+            if i < len(contextualized):
+                all_chunks[i] = (contextualized[i], src, ttl)
 
     # ── 階段三：寫入 DB ─────────────────────────────────
     knowledge_ids = []
@@ -923,6 +858,6 @@ def _add_chunk(
             vectors = embed_provider.encode([embed_text])
             db.add_embedding(kid, vectors[0])
         except Exception as e:
-            print(f"[import] ⚠️ 嵌入失敗 (id={kid}): {e}")
+            log.warning(f"⚠️ 嵌入失敗 (id={kid}): {e}")
 
     return kid

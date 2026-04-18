@@ -10,6 +10,7 @@ Guardrails Lite — SQLite + sqlite-vec 資料庫抽象層。
 
 import json
 import hashlib
+import re
 import sqlite3
 from pathlib import Path
 from datetime import datetime, timezone
@@ -27,7 +28,23 @@ except ImportError:
 class GuardrailsDB:
     """Guardrails Lite 資料庫層。"""
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3  # 每次結構有破壞性變更時 +1
+
+    # 從舊版本到新版本的 migration SQL
+    # 格式：{from_version: [(sql, description), ...]}
+    _MIGRATIONS: dict = {
+        2: [
+            # v2 → v3：加入存取頻率追蹤欄位
+            (
+                "ALTER TABLE knowledge ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0",
+                "新增 access_count 欄位",
+            ),
+            (
+                "ALTER TABLE knowledge ADD COLUMN last_accessed_at TEXT NOT NULL DEFAULT ''",
+                "新增 last_accessed_at 欄位",
+            ),
+        ],
+    }
 
     def __init__(self, db_path: str | Path = "guardrails.db"):
         self.db_path = Path(db_path)
@@ -51,6 +68,7 @@ class GuardrailsDB:
             self.conn.enable_load_extension(False)
 
         self._init_tables()
+        self._run_migrations()
         return self
 
     def close(self):
@@ -92,7 +110,9 @@ class GuardrailsDB:
                 content_hash TEXT NOT NULL DEFAULT '',
                 source       TEXT NOT NULL DEFAULT '',
                 created_at   TEXT  NOT NULL DEFAULT '',
-                updated_at   TEXT  NOT NULL DEFAULT ''
+                updated_at   TEXT  NOT NULL DEFAULT '',
+                access_count      INTEGER NOT NULL DEFAULT 0,
+                last_accessed_at  TEXT    NOT NULL DEFAULT ''
             )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_layer ON knowledge(layer)")
@@ -172,9 +192,9 @@ class GuardrailsDB:
         if self._vec_available:
             self._init_vec_table()
 
-        # 寫入 schema 版本
+        # 寫入 schema 版本（INSERT OR IGNORE：只在全新 DB 寫入，舊 DB 保留原版本號讓 migration 判斷）
         c.execute(
-            "INSERT OR REPLACE INTO config(key, value) VALUES(?, ?)",
+            "INSERT OR IGNORE INTO config(key, value) VALUES(?, ?)",
             ("schema_version", str(self.SCHEMA_VERSION)),
         )
         c.commit()
@@ -207,6 +227,33 @@ class GuardrailsDB:
                 self.conn.commit()
             else:
                 raise
+
+    def _run_migrations(self):
+        """依序執行尚未套用的 schema migration。"""
+        current = int(self._get_config("schema_version", "1"))
+        if current >= self.SCHEMA_VERSION:
+            return
+
+        for from_ver in range(current, self.SCHEMA_VERSION):
+            steps = self._MIGRATIONS.get(from_ver, [])
+            for sql, desc in steps:
+                try:
+                    self.conn.execute(sql)
+                    self.conn.commit()
+                    print(f"[guardrails-lite] ✅ migration v{from_ver}→v{from_ver+1}: {desc}")
+                except Exception as e:
+                    # 欄位已存在（重複執行）→ 忽略
+                    if "duplicate column" in str(e).lower() or "already exists" in str(e).lower():
+                        pass
+                    else:
+                        print(f"[guardrails-lite] ⚠️ migration 失敗: {desc}: {e}")
+
+        # 更新版本號
+        self.conn.execute(
+            "INSERT OR REPLACE INTO config(key, value) VALUES(?, ?)",
+            ("schema_version", str(self.SCHEMA_VERSION)),
+        )
+        self.conn.commit()
 
     # ── Config ─────────────────────────────────────────────
 
@@ -254,6 +301,8 @@ class GuardrailsDB:
              now, now),
         )
         self.conn.commit()
+        # 同步到 FTS5
+        self._fts5_insert(cursor.lastrowid, title, content_raw, content_aaak, tags, category)
         return cursor.lastrowid
 
     def update_knowledge(self, id: int, **fields) -> bool:
@@ -279,8 +328,18 @@ class GuardrailsDB:
         ).fetchone()
         return dict(row) if row else None
 
+    def record_access(self, id: int):
+        """記錄一次存取（用於 trust decay 計算）。"""
+        now = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            "UPDATE knowledge SET access_count = access_count + 1, last_accessed_at = ? WHERE id = ?",
+            (now, id),
+        )
+        self.conn.commit()
+
     def delete_knowledge(self, id: int) -> bool:
         self.conn.execute("DELETE FROM knowledge WHERE id=?", (id,))
+        self._fts5_delete(id)
         if self._vec_available:
             self.conn.execute(
                 "DELETE FROM knowledge_vec WHERE knowledge_id=?", (id,)
@@ -366,6 +425,9 @@ class GuardrailsDB:
             if k_row:
                 d = dict(k_row)
                 d["_distance"] = dist
+                # Trust 加權：高品質知識排在前面
+                # score = (1 - dist/2) * (0.7 + 0.3 * trust)
+                d["_score"] = max(0.0, 1.0 - dist / 2) * (0.7 + 0.3 * d.get("trust", 0.5))
                 results.append(d)
 
         return results
@@ -378,7 +440,18 @@ class GuardrailsDB:
         limit: int = 10,
         min_trust: float = 0.0,
     ) -> list[dict]:
-        """純關鍵字搜尋（LIKE匹配），降級方案。"""
+        """
+        關鍵字搜尋，優先使用 FTS5 + BM25，降級回 LIKE。
+        FTS5 效能比 LIKE 快 10-100x，且支援詞頻加權。
+        """
+        # 嘗試 FTS5（trigram 最少 3 字元，短查詢降級到 LIKE）
+        cjk_chars = len(re.findall(r'[\u4e00-\u9fff]', query))
+        if cjk_chars >= 3 or (cjk_chars == 0 and len(query) >= 3):
+            fts_results = self._search_fts5(query, limit, min_trust)
+            if fts_results is not None and len(fts_results) > 0:
+                return fts_results
+
+        # 降級：LIKE 匹配
         sql = """
             SELECT *, 0.0 AS _score
             FROM knowledge
@@ -393,6 +466,125 @@ class GuardrailsDB:
             sql, (min_trust, pattern, pattern, pattern, pattern, pattern, limit)
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def _search_fts5(
+        self,
+        query: str,
+        limit: int = 10,
+        min_trust: float = 0.0,
+    ) -> Optional[list[dict]]:
+        """
+        FTS5 + BM25 搜尋。回傳 None 表示 FTS5 不可用（需降級）。
+        自動建立 FTS5 虛擬表（如果不存在），並同步資料。
+        """
+        # 確保 FTS5 表存在
+        if not self._ensure_fts5():
+            return None
+
+        # 搜尋
+        try:
+            # FTS5 MATCH：trigram tokenizer 直接用子串匹配
+            # trigram 支援中文 n-gram 索引，直接查整個詞即可
+            match_expr = f'"{query}"'
+
+            # BM25 評分 + Trust 加權
+            sql = """
+                SELECT k.*, -ft.rank AS _bm25_score
+                FROM knowledge_fts ft
+                JOIN knowledge k ON k.id = ft.rowid
+                WHERE k.trust >= ? AND knowledge_fts MATCH ?
+                ORDER BY -ft.rank * (0.7 + 0.3 * k.trust) DESC
+                LIMIT ?
+            """
+            rows = self.conn.execute(sql, (min_trust, match_expr, limit)).fetchall()
+
+            results = []
+            for row in rows:
+                d = dict(row)
+                # 標準化 BM25 分數到 0~1
+                bm25 = d.pop("_bm25_score", 0)
+                d["_score"] = min(1.0, bm25 / 10.0) if bm25 > 0 else 0.0
+                d["_mode"] = "fts5"
+                results.append(d)
+
+            return results
+
+        except Exception as e:
+            # FTS5 查詢失敗 → 靜默降級
+            print(f"[guardrails-lite] ⚠️ FTS5 搜尋失敗，降級 LIKE: {e}")
+            return None
+
+    def _ensure_fts5(self) -> bool:
+        """確保 FTS5 虛擬表存在且已同步。回傳 False 表示不可用。"""
+        # 檢查是否已初始化過
+        if getattr(self, '_fts5_ready', False):
+            return True
+
+        try:
+            # 檢查表是否已存在
+            exists = self.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='knowledge_fts'"
+            ).fetchone()
+
+            if not exists:
+                # 建立 FTS5 虛擬表（用 trigram tokenizer 支援中文）
+                # trigram 對 CJK 字元做 3-gram 索引，中文搜尋最精準
+                self.conn.execute("""
+                    CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts
+                    USING fts5(
+                        title, content_raw, content_aaak, tags, category,
+                        tokenize="trigram"
+                    )
+                """)
+                self.conn.commit()
+
+            self._fts5_ready = True
+
+            # 同步現有資料（包括 FTS5 建立前已寫入的）
+            self._sync_fts5()
+
+            return True
+
+        except Exception as e:
+            # FTS5 不可用（舊版 SQLite 或編譯時未啟用）
+            return False
+
+    def _sync_fts5(self):
+        """同步 knowledge 表資料到 FTS5。"""
+        try:
+            self.conn.execute("""
+                INSERT INTO knowledge_fts(rowid, title, content_raw, content_aaak, tags, category)
+                SELECT id, title, content_raw, content_aaak, tags, category
+                FROM knowledge
+            """)
+            self.conn.commit()
+        except Exception as e:
+            print(f"[guardrails-lite] ⚠️ FTS5 同步失敗: {e}")
+
+    def _fts5_insert(self, kid: int, title: str, content_raw: str,
+                     content_aaak: str, tags: str, category: str):
+        """新増知識時同步到 FTS5（失敗靜默）。"""
+        try:
+            if getattr(self, '_fts5_ready', False):
+                self.conn.execute(
+                    "INSERT INTO knowledge_fts(rowid, title, content_raw, content_aaak, tags, category) "
+                    "VALUES(?,?,?,?,?,?)",
+                    (kid, title, content_raw, content_aaak, tags, category),
+                )
+                self.conn.commit()
+        except Exception:
+            pass
+
+    def _fts5_delete(self, kid: int):
+        """刪除知識時同步從 FTS5 移除（失敗靜默）。"""
+        try:
+            if getattr(self, '_fts5_ready', False):
+                self.conn.execute(
+                    "DELETE FROM knowledge_fts WHERE rowid=?", (kid,)
+                )
+                self.conn.commit()
+        except Exception:
+            pass
 
     # ── Lint 快取 ───────────────────────────────────────────
 

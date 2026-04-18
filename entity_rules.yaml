@@ -1,0 +1,146 @@
+# entity_rules.yaml
+# Guardrails Lite — 實體推斷規則
+#
+# 格式：
+#   entity_type:
+#     - keyword1
+#     - keyword2
+#
+# 規則：文字（title + tags + content）包含 keyword 時，自動建立對應實體並連結。
+# 建議：每次擴展新 domain 時，在對應分類加入關鍵詞。
+# 大小寫不敏感（系統會統一轉小寫比對）。
+
+# ── AI / 技術工具 ─────────────────────────────────────────
+tool:
+  - ollama
+  - sqlite
+  - sqlite-vec
+  - onnx
+  - onnxruntime
+  - python
+  - conda
+  - docker
+  - ffmpeg
+  - supabase
+  - chromadb
+  - vllm
+  - langchain
+  - llamaindex
+  - git
+  - github
+  - n8n
+  - redis
+  - fastapi
+  - letta
+  - cursor
+  - claude code
+
+# ── AI 模型 ───────────────────────────────────────────────
+model:
+  - qwen
+  - gpt
+  - claude
+  - llama
+  - mistral
+  - glm
+  - gemini
+  - phi
+  - deepseek
+  - mixtral
+  - miniLM
+  - sonnet
+  - opus
+  - haiku
+
+# ── AI / 技術概念 ─────────────────────────────────────────
+concept:
+  - embed
+  - vector
+  - rag
+  - chunk
+  - token
+  - prompt
+  - fine-tuning
+  - 推理
+  - 嵌入
+  - 分塊
+  - 圖譜
+  - 搜尋
+  - 編譯
+  - 知識庫
+  - 語意
+  - 降級
+  - context
+  - mcp
+  - agent
+  - workflow
+  - automation
+
+# ── 平台 / 環境 ───────────────────────────────────────────
+platform:
+  - windows
+  - wsl
+  - wsl2
+  - linux
+  - macos
+  - gpu
+  - cpu
+
+# ── 醫美診所 domain（自訂擴充）────────────────────────────
+medical_aesthetics:
+  # 治療項目
+  - 玻尿酸
+  - 肉毒桿菌
+  - 雷射
+  - 電波拉皮
+  - 音波拉提
+  - 水光針
+  - 微針
+  - 光療
+  - 淨膚雷射
+  - 脈衝光
+  - 皮秒
+  - 飛梭
+  - 海芙
+  - 舒顏萃
+  - 童顏針
+  - 晶亮瓷
+  - 少女針
+  - 恩寶麗
+  # 部位
+  - 眼周
+  - 法令紋
+  - 淚溝
+  - 蘋果肌
+  - 下巴
+  - 額頭
+  - 脖紋
+  # 皮膚狀況
+  - 毛孔粗大
+  - 痘疤
+  - 色斑
+  - 黑眼圈
+  - 膚色暗沉
+  - 細紋
+  - 鬆弛
+  # 診所管理
+  - 預約
+  - 諮詢
+  - 療程
+  - 術後
+  - 回診
+  - 美療師
+  - 護理師
+
+# ── 業務 / 商業 domain（自訂擴充）────────────────────────
+business:
+  - line
+  - line oa
+  - liff
+  - chatbot
+  - 客服
+  - 自動化
+  - 訂閱
+  - 報價
+  - 提案
+  - crm

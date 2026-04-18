@@ -66,6 +66,7 @@ def find_duplicates(db_path=DB_PATH, threshold=0.85):
 
     # 建立嵌入
     embedder = create_embedding_provider()
+    embed_dim = embedder.dim  # 動態取得維度，避免硬編碼
     texts = [r[2] if r[2] else r[1] for r in rows]
 
     print("🔄 計算嵌入向量（批次處理中）...")
@@ -84,7 +85,7 @@ def find_duplicates(db_path=DB_PATH, threshold=0.85):
                     v = embedder.encode(t)
                     vectors.append(flatten(v))
                 except Exception:
-                    vectors.append([0.0] * 768)  # fallback
+                    vectors.append([0.0] * embed_dim)  # fallback：使用實際維度
         done = min(i + batch_size, len(texts))
         if done % 32 == 0 or done == len(texts):
             print(f"  已處理 {done}/{len(texts)}")

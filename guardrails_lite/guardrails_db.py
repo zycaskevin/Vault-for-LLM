@@ -317,7 +317,7 @@ class GuardrailsDB:
             ).hexdigest()[:16]
 
         sets = ", ".join(f"{k}=?" for k in fields)
-        vals = list(fields.values()) + [id]
+        vals = [fields[k] for k in fields] + [id]
         self.conn.execute(f"UPDATE knowledge SET {sets} WHERE id=?", vals)
         self.conn.commit()
 
@@ -575,6 +575,9 @@ class GuardrailsDB:
                      content_aaak: str, tags: str, category: str):
         """新増知識時同步到 FTS5（失敗靜默）。"""
         try:
+            # 確保 FTS5 已初始化
+            if not getattr(self, '_fts5_ready', False):
+                self._ensure_fts5()
             if getattr(self, '_fts5_ready', False):
                 self.conn.execute(
                     "INSERT INTO knowledge_fts(rowid, title, content_raw, content_aaak, tags, category) "

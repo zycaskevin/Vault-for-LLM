@@ -235,8 +235,8 @@ class GuardrailsGraph:
                           "how", "why", "what", "when", "are", "can", "all",
                           "not", "but", "has", "its", "our", "you", "was"}
             for word in en_words:
-                if word not in skip_words and word not in [e for e in entity_ids]:
-                    # 只有在知識條目的 title 或 content 中出現 2+ 次的才有意義
+                if word not in skip_words:
+                    # 已有同名 entity 就不重複建立（add_entity 本身會去重）
                     eid = self.db.add_entity(word, "concept")
                     self.db.link_entity_knowledge(eid, knowledge_id)
                     entity_ids.append(eid)

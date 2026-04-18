@@ -344,10 +344,11 @@ class GuardrailsCompiler:
 
         # 檢查是否已存在（用 source_file 或 title）
         source_file = str(md_file.relative_to(self.raw_dir))
-        # 先用 source_file 找
+        # 先用 source_file 找（escape LIKE 特殊字元 % 和 _）
+        safe_source = source_file.replace("%", "\\%").replace("_", "\\_")
         existing = self.db.conn.execute(
-            "SELECT id, content_hash FROM knowledge WHERE source LIKE ?",
-            (f"%{source_file}%",),
+            "SELECT id, content_hash FROM knowledge WHERE source LIKE ? ESCAPE '\\'",
+            (f"%{safe_source}%",),
         ).fetchone()
         if not existing:
             # 用 title 找同名知識（add 命令可能已經建了）

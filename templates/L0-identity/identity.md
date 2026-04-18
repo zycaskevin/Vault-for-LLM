@@ -9,7 +9,7 @@ source: "manual"
 
 # User Identity
 
-<!-- Fill in your own information below. This is WHO YOU ARE — the knowledge base owner. The agent reads this every conversation to understand your preferences and context. -->
+<!-- This is about WHO YOU ARE — the knowledge base owner. Not the AI. -->
 
 ## Name
 [Your Name]

@@ -28,7 +28,7 @@ except ImportError:
 class GuardrailsDB:
     """Vault for LLM 資料庫層。"""
 
-    SCHEMA_VERSION = 3  # 每次結構有破壞性變更時 +1
+    SCHEMA_VERSION = 4  # 每次結構有破壞性變更時 +1
 
     # 從舊版本到新版本的 migration SQL
     # 格式：{from_version: [(sql, description), ...]}
@@ -44,37 +44,131 @@ class GuardrailsDB:
                 "新增 last_accessed_at 欄位",
             ),
         ],
+        3: [
+            # v3 → v4：重建 edges 和 entity_knowledge 表，加上 ON DELETE CASCADE
+            # SQLite 不支援 ALTER TABLE 加 CASCADE，必須重建表
+            (
+                "CREATE TABLE edges_v4 AS SELECT * FROM edges",
+                "備份 edges 表",
+            ),
+            (
+                "DROP TABLE edges",
+                "刪除舊 edges 表",
+            ),
+            (
+                """CREATE TABLE edges (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_id   INTEGER NOT NULL,
+                    target_id   INTEGER NOT NULL,
+                    relation    TEXT NOT NULL DEFAULT 'related_to',
+                    weight      REAL  NOT NULL DEFAULT 1.0,
+                    auto_inferred INTEGER NOT NULL DEFAULT 0,
+                    created_at  TEXT  NOT NULL DEFAULT '',
+                    FOREIGN KEY (source_id) REFERENCES knowledge(id) ON DELETE CASCADE,
+                    FOREIGN KEY (target_id) REFERENCES knowledge(id) ON DELETE CASCADE
+                )""",
+                "重建 edges 表（加 ON DELETE CASCADE）",
+            ),
+            (
+                "INSERT INTO edges SELECT * FROM edges_v4",
+                "還原 edges 資料",
+            ),
+            (
+                "DROP TABLE edges_v4",
+                "刪除 edges 備份表",
+            ),
+            (
+                "CREATE TABLE entity_knowledge_v4 AS SELECT * FROM entity_knowledge",
+                "備份 entity_knowledge 表",
+            ),
+            (
+                "DROP TABLE entity_knowledge",
+                "刪除舊 entity_knowledge 表",
+            ),
+            (
+                """CREATE TABLE entity_knowledge (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    entity_id   INTEGER NOT NULL,
+                    knowledge_id INTEGER NOT NULL,
+                    FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE,
+                    FOREIGN KEY (knowledge_id) REFERENCES knowledge(id) ON DELETE CASCADE
+                )""",
+                "重建 entity_knowledge 表（加 ON DELETE CASCADE）",
+            ),
+            (
+                "INSERT INTO entity_knowledge SELECT * FROM entity_knowledge_v4",
+                "還原 entity_knowledge 資料",
+            ),
+            (
+                "DROP TABLE entity_knowledge_v4",
+                "刪除 entity_knowledge 備份表",
+            ),
+            (
+                "CREATE TABLE lint_cache_v4 AS SELECT * FROM lint_cache",
+                "備份 lint_cache 表",
+            ),
+            (
+                "DROP TABLE lint_cache",
+                "刪除舊 lint_cache 表",
+            ),
+            (
+                """CREATE TABLE lint_cache (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    knowledge_id INTEGER NOT NULL,
+                    check_type  TEXT NOT NULL,
+                    result      TEXT NOT NULL DEFAULT '',
+                    checked_at  TEXT NOT NULL DEFAULT '',
+                    FOREIGN KEY (knowledge_id) REFERENCES knowledge(id) ON DELETE CASCADE
+                )""",
+                "重建 lint_cache 表（加 ON DELETE CASCADE）",
+            ),
+            (
+                "INSERT INTO lint_cache SELECT * FROM lint_cache_v4",
+                "還原 lint_cache 資料",
+            ),
+            (
+                "DROP TABLE lint_cache_v4",
+                "刪除 lint_cache 備份表",
+            ),
+        ],
     }
 
     def __init__(self, db_path: str | Path = "guardrails.db"):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn: Optional[sqlite3.Connection] = None
+        self._conn: Optional[sqlite3.Connection] = None
         self._vec_available = _VEC_AVAILABLE
+
+    @property
+    def conn(self) -> sqlite3.Connection:
+        """自動連線：如果還沒連線就自動 connect()。"""
+        if self._conn is None:
+            self.connect()
+        return self._conn
 
     # ── 連線 ──────────────────────────────────────────────
 
     def connect(self) -> "GuardrailsDB":
         """開啟資料庫連線，註冊 sqlite-vec 擴展。"""
-        self.conn = sqlite3.connect(str(self.db_path))
-        self.conn.row_factory = sqlite3.Row
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA foreign_keys=ON")
+        self._conn = sqlite3.connect(str(self.db_path))
+        self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA foreign_keys=ON")
 
         # 註冊 sqlite-vec 擴展
         if self._vec_available:
-            self.conn.enable_load_extension(True)
-            sqlite_vec.load(self.conn)
-            self.conn.enable_load_extension(False)
+            self._conn.enable_load_extension(True)
+            sqlite_vec.load(self._conn)
+            self._conn.enable_load_extension(False)
 
         self._init_tables()
         self._run_migrations()
         return self
 
     def close(self):
-        if self.conn:
-            self.conn.close()
-            self.conn = None
+        if self._conn:
+            self._conn.close()
+            self._conn = None
 
     def __enter__(self):
         return self.connect()
@@ -141,7 +235,7 @@ class GuardrailsDB:
                 check_type  TEXT NOT NULL,
                 result      TEXT NOT NULL DEFAULT '',
                 checked_at  TEXT NOT NULL DEFAULT '',
-                FOREIGN KEY (knowledge_id) REFERENCES knowledge(id)
+                FOREIGN KEY (knowledge_id) REFERENCES knowledge(id) ON DELETE CASCADE
             )
         """)
 
@@ -156,8 +250,8 @@ class GuardrailsDB:
                 weight      REAL  NOT NULL DEFAULT 1.0,
                 auto_inferred INTEGER NOT NULL DEFAULT 0,
                 created_at  TEXT  NOT NULL DEFAULT '',
-                FOREIGN KEY (source_id) REFERENCES knowledge(id),
-                FOREIGN KEY (target_id) REFERENCES knowledge(id)
+                FOREIGN KEY (source_id) REFERENCES knowledge(id) ON DELETE CASCADE,
+                FOREIGN KEY (target_id) REFERENCES knowledge(id) ON DELETE CASCADE
             )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id)")
@@ -181,8 +275,8 @@ class GuardrailsDB:
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 entity_id   INTEGER NOT NULL,
                 knowledge_id INTEGER NOT NULL,
-                FOREIGN KEY (entity_id) REFERENCES entities(id),
-                FOREIGN KEY (knowledge_id) REFERENCES knowledge(id)
+                FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE,
+                FOREIGN KEY (knowledge_id) REFERENCES knowledge(id) ON DELETE CASCADE
             )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_ek_entity ON entity_knowledge(entity_id)")

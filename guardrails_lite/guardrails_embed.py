@@ -194,6 +194,32 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
         if isinstance(texts, str):
             texts = [texts]
 
+        # 優先嘗試 batch API (/api/embed)，失敗降級到單條 (/api/embeddings)
+        if len(texts) > 1:
+            try:
+                payload = _json.dumps({
+                    "model": self.model,
+                    "input": texts,
+                }).encode()
+
+                req = urllib.request.Request(
+                    f"{self.base_url}/api/embed",
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                )
+
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    data = _json.loads(resp.read())
+                    # /api/embed 回傳 {"model":..., "embeddings": [[...], ...]}
+                    if "embeddings" in data:
+                        results = data["embeddings"]
+                        if results:
+                            self._dim = len(results[0])
+                        return results
+            except (urllib.error.HTTPError, urllib.error.URLError, KeyError):
+                pass  # 降級到單條
+
+        # 單條或 batch 降級
         results = []
         for text in texts:
             payload = _json.dumps({

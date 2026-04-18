@@ -560,8 +560,10 @@ class GuardrailsDB:
             return False
 
     def _sync_fts5(self):
-        """同步 knowledge 表資料到 FTS5。"""
+        """同步 knowledge 表資料到 FTS5。先清空再重建，避免 constraint 衝突。"""
         try:
+            # 先清空 FTS5，避免重複 rowid 導致 constraint failed
+            self.conn.execute("DELETE FROM knowledge_fts")
             self.conn.execute("""
                 INSERT INTO knowledge_fts(rowid, title, content_raw, content_aaak, tags, category)
                 SELECT id, title, content_raw, content_aaak, tags, category

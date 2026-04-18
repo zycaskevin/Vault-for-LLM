@@ -320,6 +320,15 @@ class GuardrailsDB:
         vals = list(fields.values()) + [id]
         self.conn.execute(f"UPDATE knowledge SET {sets} WHERE id=?", vals)
         self.conn.commit()
+
+        # 同步 FTS5：先刪再重建該筆的索引
+        if getattr(self, '_fts5_ready', False):
+            k = self.get_knowledge(id)
+            if k:
+                self._fts5_delete(id)
+                self._fts5_insert(id, k['title'], k['content_raw'],
+                                  k['content_aaak'], k['tags'], k['category'])
+
         return True
 
     def get_knowledge(self, id: int) -> Optional[dict]:
@@ -338,8 +347,9 @@ class GuardrailsDB:
         self.conn.commit()
 
     def delete_knowledge(self, id: int) -> bool:
-        self.conn.execute("DELETE FROM knowledge WHERE id=?", (id,))
+        # 先刪 FTS5（再刪主表，避免孤立 FTS 記錄）
         self._fts5_delete(id)
+        self.conn.execute("DELETE FROM knowledge WHERE id=?", (id,))
         if self._vec_available:
             self.conn.execute(
                 "DELETE FROM knowledge_vec WHERE knowledge_id=?", (id,)

@@ -117,6 +117,9 @@ class GuardrailsSearch:
         if not terms:
             return []
 
+        # 限制 term 數量避免 SQL 膨脹
+        terms = terms[:8]
+
         # 建構 WHERE 條件
         conditions = []
         params: list = [min_trust]

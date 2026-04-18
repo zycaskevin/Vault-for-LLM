@@ -8,16 +8,16 @@ Vault for LLM — MCP Server
   pip install "vault-for-llm[mcp]"
 
 啟動方式（在有 guardrails.db 的專案目錄）：
-  guardrails-mcp
+  vault-mcp
 
 或指定路徑：
-  guardrails-mcp --project-dir /path/to/project
+  vault-mcp --project-dir /path/to/project
 
 Claude Code 設定（~/.claude/claude_desktop_config.json）：
   {
     "mcpServers": {
       "vault": {
-        "command": "guardrails-mcp",
+        "command": "vault-mcp",
         "args": ["--project-dir", "/path/to/your/project"]
       }
     }

@@ -47,8 +47,8 @@ mcp = [
 ]
 
 [project.scripts]
-guardrails = "vault.guardrails_cli:main"
-guardrails-mcp = "vault.guardrails_mcp:main"
+vault = "vault.guardrails_cli:main"
+vault-mcp = "vault.guardrails_mcp:main"
 
 [tool.setuptools.packages.find]
 include = ["vault*"]

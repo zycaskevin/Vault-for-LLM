@@ -3,17 +3,17 @@ name: Guardrails Auto Review
 on:
   push:
     paths:
-      - 'raw/**'
       - 'knowledge-base/**'
       - 'error-base/**'
       - 'experience-base/**'
       - 'scripts/**'
+      - 'tests/**'
   pull_request:
     paths:
-      - 'raw/**'
       - 'knowledge-base/**'
       - 'error-base/**'
       - 'experience-base/**'
+      - 'scripts/**'
 
 jobs:
   lint-and-review:

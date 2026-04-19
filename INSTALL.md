@@ -24,7 +24,7 @@ vault doctor
 
 ```bash
 # Install ONNX embedding support (~150MB, no PyTorch needed)
-pip install guardrails-knowledge[semantic]
+pip install vault-for-llm[semantic]
 
 # Download embedding model (interactive)
 vault install-embedding
@@ -39,14 +39,14 @@ vault doctor
 
 ### Mode 1: Minimal (Keyword search only)
 ```bash
-pip install guardrails-knowledge
+pip install vault-for-llm
 vault init
 # Search works with keyword matching only
 ```
 
 ### Mode 2: Semantic (Local ONNX embeddings)
 ```bash
-pip install guardrails-knowledge[semantic]
+pip install vault-for-llm[semantic]
 vault init
 vault install-embedding
 # Search works with vector similarity (recommended)
@@ -54,7 +54,7 @@ vault install-embedding
 
 ### Mode 3: Ollama (Zero extra install if you have Ollama)
 ```bash
-pip install guardrails-knowledge
+pip install vault-for-llm
 vault init
 vault config set embedding.provider ollama
 vault config set embedding.model nomic-embed-text

@@ -64,8 +64,9 @@ def load_dotenv_cascade(*paths: str) -> None:
     # 自動加入專案根目錄 .env
     project_env = find_project_dir() / ".env"
     search_paths.append(str(project_env))
-    # 家目錄 .env 作為 fallback
-    search_paths.append(str(Path.home() / ".env"))
+    # 家目錄 .env 作為 fallback（跨平台相容）
+    home_dir = os.environ.get("HOME") or os.environ.get("USERPROFILE") or os.path.expanduser("~")
+    search_paths.append(os.path.join(home_dir, ".env"))
 
     for p in search_paths:
         if Path(p).exists():

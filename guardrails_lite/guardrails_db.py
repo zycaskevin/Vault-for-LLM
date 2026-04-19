@@ -10,6 +10,7 @@ Guardrails Lite — SQLite + sqlite-vec 資料庫抽象層。
 
 import json
 import hashlib
+import os
 import re
 import sqlite3
 from pathlib import Path
@@ -135,7 +136,9 @@ class GuardrailsDB:
         ],
     }
 
-    def __init__(self, db_path: str | Path = "guardrails.db"):
+    def __init__(self, db_path: str | Path | None = None):
+        if db_path is None:
+            db_path = os.environ.get("VAULT_PATH", "guardrails.db")
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn: Optional[sqlite3.Connection] = None

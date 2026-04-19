@@ -415,7 +415,7 @@ def cmd_doctor(args):
     checks.append(("專案", f"{'✅' if db_exists else '❌'} DB | {'✅' if raw_exists else '❌'} raw/", db_exists and raw_exists))
 
     # 嵌入模型快取
-    cache_dir = Path.home() / ".cache" / "guardrails-lite" / "models"
+    cache_dir = Path(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))) / "guardrails-lite" / "models"
     if cache_dir.exists():
         models = [d.name for d in cache_dir.iterdir() if d.is_dir()]
         checks.append(("嵌入模型快取", f"✅ {len(models)} 模型", True))

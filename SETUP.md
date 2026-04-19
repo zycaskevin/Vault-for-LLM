@@ -99,7 +99,7 @@ This will:
 ## Upgrade: Semantic Search (Optional)
 
 ```bash
-pip install guardrails-knowledge[semantic]
+pip install vault-for-llm[semantic]
 vault install-embedding
 # Choose: zh (Chinese), en (English), mix (Mixed, recommended)
 ```

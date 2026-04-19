@@ -50,19 +50,19 @@ L3 深度知识    → 架构、技术、经验（按需搜索）
 pip install -e .
 
 # 初始化项目
-guardrails init
+vault init
 
 # 新增知识
-guardrails add "我的第一条知识" --content "今天学到的东西"
+vault add "我的第一条知识" --content "今天学到的东西"
 
 # 编译（raw/ → 数据库 + compiled/）
-guardrails compile
+vault compile
 
 # 搜索
-guardrails search "我要找的关键字"
+vault search "我要找的关键字"
 
 # 健康检查
-guardrails doctor
+vault doctor
 ```
 
 详细安装选项请参阅 [INSTALL.md](INSTALL.md)。
@@ -73,7 +73,7 @@ guardrails doctor
 
 ```
 你的项目/
-├── guardrails.yaml          ← 项目配置（guardrails init 自动生成）
+├── guardrails.yaml          ← 项目配置（vault init 自动生成）
 ├── L0-identity/             ← 使用者身份（每次对话注入）
 │   └── identity.md
 ├── L1-core-facts/           ← 核心事实（每次对话注入）
@@ -95,13 +95,13 @@ guardrails doctor
 
 1. 阅读 `L0-identity/identity.md` 了解使用者
 2. 阅读 `L1-core-facts/current-projects.md` 了解现状
-3. 使用 `guardrails search "查询"` 进行语义搜索
+3. 使用 `vault search "查询"` 进行语义搜索
 
 ### Claude Code / Cursor / 任何 AI IDE
 
 1. 将 `CLAUDE.md` 复制到项目根目录
 2. 深度知识搜索：使用 `rg "关键字" raw/ compiled/`
-3. 或使用 `guardrails search "查询"`
+3. 或使用 `vault search "查询"`
 
 ---
 
@@ -109,17 +109,57 @@ guardrails doctor
 
 | 命令 | 说明 |
 |------|------|
-| `guardrails init` | 初始化新项目 |
-| `guardrails doctor` | 健康检查 |
-| `guardrails add "标题" --content "内容"` | 新增知识条目 |
-| `guardrails add "标题" --file 文件.md` | 从文件导入 |
-| `guardrails compile` | 编译 raw/ → 数据库 + compiled/ |
-| `guardrails search "查询"` | 搜索（自动：关键词 + 语义） |
-| `guardrails list` | 列出所有条目 |
-| `guardrails stats` | 显示数据库统计 |
-| `guardrails lint` | 执行质量检查 |
-| `guardrails graph build` | 构建知识图谱 |
-| `guardrails graph show` | 显示图谱摘要 |
+| `vault init` | 初始化新项目 |
+| `vault doctor` | 环境健康诊断 |
+| `vault add "标题" --content "内容"` | 新增知识条目 |
+| `vault add "标题" --file 文件.md` | 从文件导入 |
+| `vault import 长文.md` | 导入长文档（自动分块） |
+| `vault compile` | 编译 raw/ → 数据库 + compiled/ |
+| `vault search "查询"` | 搜索（自动：关键词 + 语义） |
+| `vault search "查询" --graph-expand 1` | 搜索 + 知识图谱扩展 |
+| `vault list` | 列出所有条目 |
+| `vault stats` | 显示数据库统计 |
+| `vault lint` | 执行质量检查 |
+| `vault dedup` | 检测语义重复知识 |
+| `vault dedup --dry-run` | 预览合并计划（不修改数据） |
+| `vault dedup --merge` | 自动合并重复（保留高信任度） |
+| `vault graph build` | 构建知识图谱 |
+| `vault graph show` | 显示图谱摘要 |
+| `vault graph export --format mermaid` | 导出 Mermaid 图谱 |
+| `vault graph expand <id>` | 从指定节点展开图谱 |
+| `vault config set <key> <value>` | 设置配置（如嵌入后端） |
+
+---
+
+## MCP Server（Claude Code / Cursor / OpenClaw）
+
+让 AI Agent 直接通过 MCP 协议操作知识库：
+
+```bash
+# 安装 MCP 依赖
+pip install "guardrails-knowledge[mcp]"
+
+# 启动（在含有 guardrails.db 的项目目录运行）
+vault-mcp
+
+# 或指定路径
+vault-mcp --project-dir /path/to/your/project
+```
+
+加入 Claude Code 配置（`~/.claude/claude_desktop_config.json`）：
+
+```json
+{
+  "mcpServers": {
+    "vault": {
+      "command": "vault-mcp",
+      "args": ["--project-dir", "/path/to/your/project"]
+    }
+  }
+}
+```
+
+可用工具：`vault_search`、`vault_add`、`vault_get`、`vault_list`、`vault_stats`
 
 ---
 
@@ -153,7 +193,7 @@ created: "YYYY-MM-DD"
 ## 编译器
 
 ```bash
-guardrails compile
+vault compile
 ```
 
 执行流程：

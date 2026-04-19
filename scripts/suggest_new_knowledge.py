@@ -22,7 +22,8 @@ from collections import Counter
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from guardrails_lite.guardrails_db import GuardrailsDB
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "guardrails.db")
+from scripts._utils import find_db_path
+DB_PATH = str(find_db_path())
 
 # 已知技術主題（應該要有對應知識的）
 EXPECTED_TOPICS = {

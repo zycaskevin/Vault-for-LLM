@@ -104,15 +104,17 @@ def cmd_add(args):
 
     # 也寫到 raw/
     raw_file = project_dir / "raw" / f"{args.title.replace(' ', '_').replace('/', '-')}.md"
+    import yaml as _yaml
     fm = {
         "title": args.title,
         "layer": args.layer or "L3",
         "category": args.category or "general",
         "tags": args.tags or "",
         "trust": args.trust or 0.5,
+        "source": "cli",
     }
     raw_file.write_text(
-        f"---\n{json.dumps(fm, ensure_ascii=False, indent=2)}\n---\n\n{content}\n",
+        f"---\n{_yaml.dump(fm, allow_unicode=True, default_flow_style=False)}---\n\n{content}\n",
         encoding="utf-8",
     )
     print(f"✅ 同步寫入 raw/{raw_file.name}")
@@ -345,14 +347,18 @@ def cmd_lint(args):
 
     # 6. 統計
     stats = db.stats()
-    issues.append(f"📊 知識 {stats['knowledge_count']} 筆, 嵌入 {stats['embedding_count']} 筆")
 
-    if all("📊" in i for i in issues):
+    warning_issues = [i for i in issues if "⚠️" in i]
+    info_issues    = [i for i in issues if "ℹ️" in i]
+
+    if not warning_issues:
         print("✅ Lint 通過，沒有問題！")
     else:
-        print(f"🔍 Lint 結果 ({len([i for i in issues if '⚠️' in i])} 個問題):\n")
+        print(f"🔍 Lint 結果 ({len(warning_issues)} 個警告):\n")
         for issue in issues:
             print(f"  {issue}")
+
+    print(f"\n  📊 知識 {stats['knowledge_count']} 筆, 嵌入 {stats['embedding_count']} 筆")
 
     db.close()
 
@@ -846,6 +852,69 @@ def cmd_import(args):
         db.close()
 
 
+def cmd_dedup(args):
+    """語意去重：掃描重複知識，可選擇自動合併。"""
+    from guardrails_lite.guardrails_db import GuardrailsDB
+
+    project_dir = find_project_dir()
+    db_path = str(project_dir / "guardrails.db")
+
+    if not (project_dir / "guardrails.db").exists():
+        print("❌ 尚未初始化，先執行 vault init")
+        return
+
+    # 動態 import（避免在 semantic 套件未安裝時整個 CLI 失敗）
+    try:
+        import sys as _sys
+        import os as _os
+        scripts_dir = str(project_dir)
+        _sys.path.insert(0, scripts_dir)
+
+        from scripts.deduplicate_semantic import find_duplicates, merge_duplicates
+    except ImportError:
+        # 嘗試直接 import（已安裝的情況）
+        try:
+            import importlib.util, pathlib
+            script_path = pathlib.Path(__file__).parent.parent / "scripts" / "deduplicate_semantic.py"
+            spec = importlib.util.spec_from_file_location("deduplicate_semantic", script_path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            find_duplicates = mod.find_duplicates
+            merge_duplicates = mod.merge_duplicates
+        except Exception as e:
+            print(f"❌ 無法載入去重模組: {e}")
+            print("   請確認 scripts/deduplicate_semantic.py 存在")
+            return
+
+    threshold = args.threshold
+    print(f"🔍 語意去重掃描（閾值: {threshold}）...\n")
+
+    duplicates = find_duplicates(db_path=db_path, threshold=threshold)
+
+    if not duplicates:
+        print("✅ 沒有發現重複知識！")
+        return
+
+    print(f"\n發現 {len(duplicates)} 組重複。")
+
+    if args.merge:
+        report_path = str(project_dir / "duplicate_report.json")
+        print(f"\n⚠️  即將合併（刪除低信任度的一方）...")
+        merge_duplicates(db_path=db_path, report_path=report_path, dry_run=False)
+        # 合併後 report 可以刪掉（已在 .gitignore）
+        import os
+        if os.path.exists(report_path):
+            os.remove(report_path)
+        print("🧹 已清除臨時 duplicate_report.json")
+    elif args.dry_run:
+        report_path = str(project_dir / "duplicate_report.json")
+        merge_duplicates(db_path=db_path, report_path=report_path, dry_run=True)
+    else:
+        print("💡 選項：")
+        print("   vault dedup --dry-run    預覽合併計畫（不修改資料）")
+        print("   vault dedup --merge      自動合併（保留高信任度的一方）")
+
+
 def cmd_config(args):
     """配置管理。"""
     from guardrails_lite.guardrails_db import GuardrailsDB
@@ -949,6 +1018,15 @@ def main():
     p.add_argument("--contextualize", action="store_true", help="Contextual Retrieval：用 Ollama 生成上下文摘要（Anthropic 2024）")
     p.add_argument("--ollama-model", default="qwen3:8b", help="Ollama 模型（用於 contextualize）")
 
+    # dedup
+    p = sub.add_parser("dedup", help="語意去重（掃描 / 預覽 / 合併）")
+    p.add_argument("--threshold", type=float, default=0.85,
+                   help="相似度閾值，超過此值視為重複（預設: 0.85）")
+    p.add_argument("--dry-run", action="store_true",
+                   help="預覽合併計畫，不實際修改資料")
+    p.add_argument("--merge", action="store_true",
+                   help="自動合併重複知識（保留信任度較高的一方）")
+
     # config
     p = sub.add_parser("config", help="配置管理")
     p.add_argument("config_action", choices=["set", "get", "list"])
@@ -998,6 +1076,7 @@ def main():
         "install-embedding": cmd_install_embedding,
         "import": cmd_import,
         "config": cmd_config,
+        "dedup": cmd_dedup,
         "graph": cmd_graph,
     }
 

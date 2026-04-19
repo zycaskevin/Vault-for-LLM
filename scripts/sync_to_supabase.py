@@ -15,16 +15,18 @@ import sys
 import json
 import hashlib
 from datetime import datetime
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from dotenv import load_dotenv
+from scripts._utils import find_db_path, load_dotenv_cascade
 
-load_dotenv(os.path.expanduser('~/.hermes/.env'))
+# 載入 .env：優先用專案目錄的 .env，其次 ~/.env，不再依賴 ~/.hermes/.env
+load_dotenv_cascade()
 
 from supabase import create_client
 from guardrails_lite.guardrails_db import GuardrailsDB
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "guardrails.db")
+DB_PATH = str(find_db_path())
 
 
 def sync(db_path=DB_PATH):

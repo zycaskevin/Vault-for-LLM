@@ -4,9 +4,11 @@ import sys
 import os
 import tempfile
 import subprocess
+from pathlib import Path
 
-sys.path.insert(0, '/home/zycas/Guardrails-knowledge')
-os.chdir('/home/zycas/Guardrails-knowledge')
+# 動態定位專案根目錄（tests/ 的上一層）
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 passed = 0
@@ -234,7 +236,7 @@ print("=" * 60)
 
 from guardrails_lite.guardrails_compile import GuardrailsCompiler
 
-compiler = GuardrailsCompiler(project_dir="/home/zycas/Guardrails-knowledge", db=db, embed_provider=embed_prov)
+compiler = GuardrailsCompiler(project_dir=PROJECT_ROOT, db=db, embed_provider=embed_prov)
 try:
     compile_result = compiler.compile(dry_run=True)
     check("Compile (dry run)", True)
@@ -245,46 +247,51 @@ except Exception as e:
 print()
 
 # ============================================
-# 7. Supabase Integration Test
+# 7. Supabase Integration Test（需要環境變數）
 # ============================================
 print("=" * 60)
 print("7. SUPABASE INTEGRATION TEST")
 print("=" * 60)
 
-try:
-    from supabase import create_client
-    SUPABASE_URL = "https://zmttlqmallluooqxswqy.supabase.co"
-    SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InptdHRscW1hbGxsdW9vcXhzd3F5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTM0Mzk0MywiZXhwIjoyMDc0OTE5OTQzfQ.9x5bQG-zMBwaFaCvlIxmcoIt2Cq0u9CHYHDsGdjyfPA"
-    sp = create_client(SUPABASE_URL, SUPABASE_KEY)
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_ANON_KEY", "")
 
-    for t in ["guardrails_knowledge", "gr_entities", "gr_edges", "gr_entity_knowledge"]:
-        r = sp.table(t).select("id", count="exact").range(0, 0).execute()
-        print(f"  {t}: {r.count} rows")
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("  ⏭️  跳過（未設定 SUPABASE_URL / SUPABASE_SERVICE_KEY 環境變數）\n")
+else:
+    try:
+        from supabase import create_client
+        sp = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    r = sp.table("guardrails_knowledge").select("id,title,category").ilike("title", "%sqlite%").execute()
-    check("Supabase 'sqlite'", len(r.data) >= 1, f"got {len(r.data)}")
+        for t in ["guardrails_knowledge", "gr_entities", "gr_edges", "gr_entity_knowledge"]:
+            r = sp.table(t).select("id", count="exact").range(0, 0).execute()
+            print(f"  {t}: {r.count} rows")
 
-    r = sp.table("gr_entities").select("id,name,entity_type").eq("name", "sqlite-vec").execute()
-    check("Entity 'sqlite-vec'", len(r.data) >= 1)
+        r = sp.table("guardrails_knowledge").select("id,title,category").ilike("title", "%sqlite%").execute()
+        check("Supabase 'sqlite'", len(r.data) >= 1, f"got {len(r.data)}")
 
-    if r.data:
-        ent_id = r.data[0]['id']
-        ek = sp.table("gr_entity_knowledge").select("knowledge_id").eq("entity_id", ent_id).execute()
-        print(f"  Entity 'sqlite-vec' linked to {len(ek.data)} knowledge entries")
+        r = sp.table("gr_entities").select("id,name,entity_type").eq("name", "sqlite-vec").execute()
+        check("Entity 'sqlite-vec'", len(r.data) >= 1)
 
-    print("  ✅ Supabase integration PASSED\n")
-except Exception as e:
-    failed += 1
-    print(f"  ❌ Supabase test FAILED: {e}\n")
+        if r.data:
+            ent_id = r.data[0]['id']
+            ek = sp.table("gr_entity_knowledge").select("knowledge_id").eq("entity_id", ent_id).execute()
+            print(f"  Entity 'sqlite-vec' linked to {len(ek.data)} knowledge entries")
+
+        print("  ✅ Supabase integration PASSED\n")
+    except Exception as e:
+        failed += 1
+        print(f"  ❌ Supabase test FAILED: {e}\n")
 
 # ============================================
-# 8. CLI Smoke Test (production DB)
+# 8. CLI Smoke Test
 # ============================================
 print("=" * 60)
-print("8. CLI SMOKE TEST (production db)")
+print("8. CLI SMOKE TEST")
 print("=" * 60)
 
-CLI = "/home/zycas/miniconda3/envs/guardrails-lite/bin/guardrails"
+import shutil
+CLI = shutil.which("vault") or "vault"
 
 commands = [
     ("--help", "Show help"),
@@ -301,7 +308,7 @@ for cmd, desc in commands:
         r = subprocess.run(
             f"{CLI} {cmd}",
             shell=True, capture_output=True, text=True,
-            timeout=30, cwd="/home/zycas/Guardrails-knowledge"
+            timeout=30, cwd=str(PROJECT_ROOT)
         )
         ok = r.returncode == 0
         check(f"CLI: {desc}", ok, f"rc={r.returncode}")

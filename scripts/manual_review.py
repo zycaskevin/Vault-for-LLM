@@ -20,7 +20,8 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from guardrails_lite.guardrails_db import GuardrailsDB
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "guardrails.db")
+from scripts._utils import find_db_path
+DB_PATH = str(find_db_path())
 
 # 審核閾值
 LOW_TRUST = 0.4

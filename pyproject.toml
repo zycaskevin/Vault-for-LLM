@@ -48,6 +48,7 @@ mcp = [
 
 [project.scripts]
 vault = "guardrails_lite.guardrails_cli:main"
+vault-mcp = "guardrails_lite.guardrails_mcp:main"
 
 [tool.setuptools.packages.find]
 include = ["guardrails_lite*"]

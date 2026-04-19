@@ -1,40 +1,49 @@
 #!/usr/bin/env python3
 """
-Guardrails 每日知識同步 — 整合所有同步步驟的入口腳本。
+Vault-for-LLM 每日知識同步 — 整合所有同步步驟的入口腳本。
 
 流程：
 1. 從 GitHub 拉取最新 raw/ 知識
-2. Compiler 編譯 raw/ → Supabase
+2. vault compile（raw/ → DB + compiled/）
 3. 本地 DB 去重
 4. Trust 動態調整
-5. Supabase 清理重複
-6. 統計報告
+5. 統計報告
+
+環境變數設定：
+  VAULT_DIR    — 專案根目錄（含 guardrails.db）。不設定則自動從 cwd 往上搜尋。
+
+用法：
+  python3 scripts/daily_knowledge_sync.py
+  VAULT_DIR=/path/to/project python3 scripts/daily_knowledge_sync.py
 """
 
 import os
 import sys
 import subprocess
-import json
 from pathlib import Path
 from datetime import datetime
 
-GUARDRAILS_DIR = Path.home() / '.hermes' / 'Guardrails'
-KNOWLEDGE_DIR = Path.home() / 'Guardrails-knowledge'
-SCRIPTS = KNOWLEDGE_DIR / 'scripts'
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts._utils import find_project_dir
+
+# 專案目錄：優先用 VAULT_DIR 環境變數，否則自動搜尋
+PROJECT_DIR = Path(os.environ.get("VAULT_DIR", "")) if os.environ.get("VAULT_DIR") else find_project_dir()
+SCRIPTS_DIR = Path(__file__).resolve().parent
 
 
-def run(cmd, desc, timeout=60):
+def run(cmd, desc, cwd=None, timeout=60):
     """執行指令並回報"""
     print(f"\n{'='*50}")
     print(f"📋 {desc}")
     print(f"{'='*50}")
     try:
         result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, timeout=timeout
+            cmd, shell=True, capture_output=True, text=True,
+            timeout=timeout, cwd=str(cwd or PROJECT_DIR)
         )
         output = result.stdout.strip()
         if output:
-            print(output[-500:])  # 只顯示最後 500 字元
+            print(output[-500:])
         if result.returncode != 0:
             print(f"⚠️ Exit code: {result.returncode}")
             if result.stderr:
@@ -46,49 +55,46 @@ def run(cmd, desc, timeout=60):
 
 
 def main():
-    print(f"🔄 Guardrails 每日同步 — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+    print(f"🔄 Vault 每日同步 — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"   專案目錄: {PROJECT_DIR}\n")
 
     results = {}
 
-    # 1. Git pull
+    # 1. Git pull（取最新知識）
     results['git_pull'] = run(
-        f'cd {GUARDRAILS_DIR} && git pull --ff-only 2>&1',
-        "Git pull (.hermes/Guardrails)"
-    )
-    results['git_pull_kb'] = run(
-        f'cd {KNOWLEDGE_DIR} && git pull --ff-only 2>&1',
-        "Git pull (Guardrails-knowledge)"
+        'git pull --ff-only 2>&1',
+        "Git pull（同步最新知識）"
     )
 
-    # 2. Compiler (raw/ → Supabase)
-    results['compiler'] = run(
-        f'python3 {Path.home()}/.hermes/scripts/guardrails_compiler_update.py 2>&1',
-        "Compiler: raw/ → Supabase",
+    # 2. vault compile
+    results['compile'] = run(
+        'vault compile 2>&1',
+        "vault compile（raw/ → DB + compiled/）",
         timeout=120
     )
 
-    # 3. Trust adjustment
+    # 3. 語意去重（只掃描，不自動合併）
+    results['dedup'] = run(
+        f'vault dedup 2>&1',
+        "語意重複偵測"
+    )
+
+    # 4. Trust 動態調整
     results['trust'] = run(
-        f'cd {GUARDRAILS_DIR} && python3 scripts/trust_adjustment.py --apply 2>&1',
+        f'python3 {SCRIPTS_DIR}/trust_adjustment.py --apply 2>&1',
         "Trust 動態調整"
     )
 
-    # 4. 統計
-    results['stats'] = run(
-        f'python3 {GUARDRAILS_DIR}/scripts/guardrails_wakeup.py --stats 2>&1',
-        "知識庫統計"
-    )
-
-    # 5. 建議
+    # 5. 知識缺口建議
     results['suggest'] = run(
-        f'cd {GUARDRAILS_DIR} && python3 scripts/suggest_new_knowledge.py 2>&1',
+        f'python3 {SCRIPTS_DIR}/suggest_new_knowledge.py 2>&1',
         "知識缺口偵測"
     )
 
     # 6. 審核佇列摘要
     results['review'] = run(
-        f'cd {GUARDRAILS_DIR} && python3 scripts/manual_review.py --queue 2>&1',
-        "審核佇列"
+        f'python3 {SCRIPTS_DIR}/manual_review.py --queue 2>&1',
+        "待審核佇列"
     )
 
     # 結果摘要

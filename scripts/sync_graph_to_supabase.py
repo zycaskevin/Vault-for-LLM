@@ -2,19 +2,27 @@
 """Sync graph data (entities, edges, entity_knowledge) from Lite → Supabase."""
 
 import json
+import os
 import sys
 from pathlib import Path
 
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from scripts._utils import find_db_path, load_dotenv_cascade
+load_dotenv_cascade()
+
 from supabase import create_client
 
-# --- Config ---
-SUPABASE_URL = "https://zmttlqmallluooqxswqy.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InptdHRscW1hbGxsdW9vcXhzd3F5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTM0Mzk0MywiZXhwIjoyMDc0OTE5OTQzfQ.9x5bQG-zMBwaFaCvlIxmcoIt2Cq0u9CHYHDsGdjyfPA"
+# --- Config（從環境變數讀取，勿硬編碼 key）---
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_ANON_KEY", "")
 
-DB_PATH = Path(__file__).resolve().parent.parent / "guardrails.db"
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("❌ 請設定環境變數 SUPABASE_URL 和 SUPABASE_SERVICE_KEY（或 SUPABASE_ANON_KEY）")
+    sys.exit(1)
+
+DB_PATH = find_db_path()
 
 def get_supabase_id_map(sp_client):
     """Build mapping: Lite title → Supabase UUID."""

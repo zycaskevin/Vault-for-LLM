@@ -17,12 +17,23 @@ import json
 import math
 import argparse
 from datetime import datetime
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from vault.guardrails_db import GuardrailsDB
 from vault.guardrails_embed import create_embedding_provider
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "guardrails.db")
+
+def _find_db_path() -> str:
+    """從 cwd 往上搜尋 guardrails.db，找不到就用 cwd/guardrails.db。"""
+    cwd = Path.cwd()
+    for d in [cwd] + list(cwd.parents):
+        candidate = d / "guardrails.db"
+        if candidate.exists():
+            return str(candidate)
+    return str(cwd / "guardrails.db")
+
+DB_PATH = _find_db_path()
 
 
 def cosine_similarity(a, b):
@@ -118,9 +129,8 @@ def find_duplicates(db_path=DB_PATH, threshold=0.85):
 
     duplicates.sort(key=lambda x: x["similarity"], reverse=True)
 
-    # 存報告
-    report_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                "duplicate_report.json")
+    # 存報告（放在 DB 同目錄）
+    report_path = str(Path(db_path).parent / "duplicate_report.json")
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump({
             "scan_time": datetime.now().isoformat(),
@@ -151,8 +161,8 @@ def find_duplicates(db_path=DB_PATH, threshold=0.85):
 def merge_duplicates(db_path=DB_PATH, report_path=None, dry_run=True):
     """根據報告合併重複知識"""
     if report_path is None:
-        report_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                    "duplicate_report.json")
+        # 放在 DB 同目錄，不再寫回 scripts/ 旁邊
+        report_path = str(Path(db_path).parent / "duplicate_report.json")
 
     if not os.path.exists(report_path):
         print(f"❌ 找不到報告：{report_path}")

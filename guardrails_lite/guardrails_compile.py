@@ -477,14 +477,29 @@ class GuardrailsCompiler:
             out_file.write_text(content, encoding="utf-8")
 
     def _git_commit(self, stats: dict):
-        """自動 git commit。"""
+        """自動 git commit（只加 raw/ 和 compiled/，避免意外提交敏感檔）。"""
         try:
-            # 加 guardrails.db 到 git（如果 .gitignore 沒排除）
-            subprocess.run(["git", "add", "-A"], cwd=str(self.project_dir),
-                           capture_output=True, timeout=10)
+            # 只 add 知識相關目錄，不用 -A 以免帶入 .env 等敏感檔
+            for target in ["raw", "compiled"]:
+                target_path = self.project_dir / target
+                if target_path.exists():
+                    subprocess.run(
+                        ["git", "add", str(target_path)],
+                        cwd=str(self.project_dir),
+                        capture_output=True,
+                        timeout=10,
+                    )
             msg = f"guardrails: compile {stats['new']} new, {stats['updated']} updated"
-            subprocess.run(["git", "commit", "-m", msg, "--allow-empty"],
-                           cwd=str(self.project_dir), capture_output=True, timeout=10)
-            log.info(f"✅ Git commit: {msg}")
+            result = subprocess.run(
+                ["git", "commit", "-m", msg],
+                cwd=str(self.project_dir),
+                capture_output=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                log.info(f"✅ Git commit: {msg}")
+            else:
+                # nothing to commit — 正常情況，不要報錯
+                pass
         except Exception as e:
             log.warning(f"⚠️ Git commit 失敗（不影響編譯）: {e}")

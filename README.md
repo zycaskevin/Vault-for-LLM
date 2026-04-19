@@ -105,13 +105,53 @@ your-project/
 | `vault doctor` | Health check |
 | `vault add "Title" --content "..."` | Add knowledge entry |
 | `vault add "Title" --file notes.md` | Add from file |
+| `vault import doc.md` | Import long document (auto-chunked) |
 | `vault compile` | Compile raw/ → database + compiled/ |
 | `vault search "query"` | Search (auto: keyword + semantic) |
+| `vault search "query" --graph-expand 1` | Search + expand via knowledge graph |
 | `vault list` | List all entries |
 | `vault stats` | Show database statistics |
 | `vault lint` | Run quality checks |
+| `vault dedup` | Detect semantic duplicates |
+| `vault dedup --dry-run` | Preview merge plan (no changes) |
+| `vault dedup --merge` | Auto-merge duplicates (keeps higher trust) |
 | `vault graph build` | Build knowledge graph |
 | `vault graph show` | Show graph summary |
+| `vault graph export --format mermaid` | Export graph as Mermaid diagram |
+| `vault graph expand <id>` | Expand from a specific node |
+| `vault config set <key> <value>` | Set config (e.g. embedding provider) |
+
+---
+
+## MCP Server (Claude Code / Cursor / OpenClaw)
+
+Expose your vault directly to any MCP-compatible AI agent:
+
+```bash
+# Install MCP dependencies
+pip install "guardrails-knowledge[mcp]"
+
+# Start the server (run from your project directory)
+vault-mcp
+
+# Or specify path explicitly
+vault-mcp --project-dir /path/to/your/project
+```
+
+Add to your Claude Code config (`~/.claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "vault": {
+      "command": "vault-mcp",
+      "args": ["--project-dir", "/path/to/your/project"]
+    }
+  }
+}
+```
+
+Available MCP tools: `vault_search`, `vault_add`, `vault_get`, `vault_list`, `vault_stats`
 
 ---
 

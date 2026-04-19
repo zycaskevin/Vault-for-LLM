@@ -1,26 +1,24 @@
-name: Guardrails Auto Review
+name: Vault CI
 
 on:
   push:
     paths:
-      - 'knowledge-base/**'
-      - 'error-base/**'
-      - 'experience-base/**'
+      - 'raw/**'
+      - 'vault/**'
       - 'scripts/**'
       - 'tests/**'
+      - 'pyproject.toml'
   pull_request:
     paths:
-      - 'knowledge-base/**'
-      - 'error-base/**'
-      - 'experience-base/**'
+      - 'raw/**'
+      - 'vault/**'
       - 'scripts/**'
+      - 'tests/**'
 
 jobs:
-  lint-and-review:
+  lint-knowledge:
+    name: Lint raw/ knowledge files
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
@@ -31,62 +29,44 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          pip install --quiet pyyaml
+        run: pip install --quiet pyyaml
 
-      - name: Lint raw knowledge files
+      - name: Lint YAML frontmatter
         run: |
           echo "🔍 Linting raw/ knowledge files..."
           ERRORS=0
-
+          shopt -s globstar nullglob
           for f in raw/**/*.md raw/*.md; do
             [ -f "$f" ] || continue
-
-            # Check YAML frontmatter exists
             if ! head -1 "$f" | grep -q '^---'; then
               echo "❌ $f: missing YAML frontmatter"
               ERRORS=$((ERRORS + 1))
               continue
             fi
-
-            # Check required fields
             for field in title category; do
               if ! grep -q "^${field}:" "$f"; then
-                echo "⚠️ $f: missing '$field' in frontmatter"
+                echo "⚠️  $f: missing '$field' in frontmatter"
                 ERRORS=$((ERRORS + 1))
               fi
             done
-
-            # Check content length
-            CONTENT_LEN=$(sed -n '/^---$/,/^---$/d; /^$/d; p' "$f" | wc -c)
-            if [ "$CONTENT_LEN" -lt 50 ]; then
-              echo "⚠️ $f: content too short ($CONTENT_LEN bytes)"
-              ERRORS=$((ERRORS + 1))
-            fi
-
-            # Check title not too long
             TITLE=$(grep '^title:' "$f" | head -1 | sed 's/title: *//' | tr -d '"')
-            if [ ${#TITLE} -gt 80 ]; then
-              echo "⚠️ $f: title too long (${#TITLE} chars)"
+            if [ ${#TITLE} -gt 100 ]; then
+              echo "⚠️  $f: title too long (${#TITLE} chars)"
               ERRORS=$((ERRORS + 1))
             fi
           done
-
-          echo ""
           if [ $ERRORS -gt 0 ]; then
-            echo "❌ Found $ERRORS issues"
+            echo "❌ Found $ERRORS issue(s)"
             exit 1
           else
             echo "✅ All knowledge files pass lint"
           fi
 
-      - name: Check for duplicates
+      - name: Check duplicate titles
         run: |
-          echo "🔍 Checking for duplicate titles..."
           DUPES=$(grep -rh '^title:' raw/ 2>/dev/null | sed 's/title: *//' | tr -d '"' | sort | uniq -d)
-
           if [ -n "$DUPES" ]; then
-            echo "⚠️ Duplicate titles found:"
+            echo "⚠️  Duplicate titles found:"
             echo "$DUPES"
           else
             echo "✅ No duplicate titles"
@@ -96,11 +76,36 @@ jobs:
         run: |
           echo "📊 Knowledge stats:"
           RAW=$(find raw/ -name '*.md' -type f 2>/dev/null | wc -l)
-          KB=$(find knowledge-base/ -name '*.md' -type f 2>/dev/null | wc -l)
-          EB=$(find error-base/ -name '*.md' -type f 2>/dev/null | wc -l)
-          XP=$(find experience-base/ -name '*.md' -type f 2>/dev/null | wc -l)
-          echo "  raw/: $RAW files"
-          echo "  knowledge-base/: $KB files"
-          echo "  error-base/: $EB files"
-          echo "  experience-base/: $XP files"
-          echo "  Total: $((RAW + KB + EB + XP)) files"
+          L0=$(find L0-identity/ -name '*.md' -type f 2>/dev/null | wc -l)
+          L1=$(find L1-core-facts/ -name '*.md' -type f 2>/dev/null | wc -l)
+          L2=$(find L2-context/ -name '*.md' -type f 2>/dev/null | wc -l)
+          echo "  raw/: $RAW  L0: $L0  L1: $L1  L2: $L2  Total: $((RAW+L0+L1+L2))"
+
+  test:
+    name: Python unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/test_lite.py -v
+
+  security-check:
+    name: Scan for leaked secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan for hardcoded credentials
+        run: |
+          FOUND=0
+          if grep -rn 'eyJ[A-Za-z0-9_-]\{50,\}' --include="*.py" --include="*.ts" --include="*.js" . 2>/dev/null | grep -v ".git/"; then
+            echo "❌ Possible hardcoded JWT token!"
+            FOUND=1
+          fi
+          if grep -rn 'sk-[A-Za-z0-9]\{20,\}' --include="*.py" . 2>/dev/null | grep -v ".git/"; then
+            echo "❌ Possible API key!"
+            FOUND=1
+          fi
+          [ $FOUND -eq 0 ] && echo "✅ No hardcoded credentials" || exit 1

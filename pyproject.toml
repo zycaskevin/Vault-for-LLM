@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "guardrails-knowledge"
+name = "vault-for-llm"
 version = "0.3.2"
 description = "Local-first knowledge system with sqlite-vec + ONNX embeddings. No cloud, no Docker, no PyTorch required."
 readme = "README.md"

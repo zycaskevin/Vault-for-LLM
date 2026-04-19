@@ -73,7 +73,7 @@ vault doctor
 
 ```
 你的專案/
-├── guardrails.yaml          ← 專案設定（vault init 自動產生）
+├── vault.yaml          ← 專案設定（vault init 自動產生）
 ├── L0-identity/             ← 使用者身份（每次對話注入）
 │   └── identity.md
 ├── L1-core-facts/           ← 核心事實（每次對話注入）
@@ -137,7 +137,7 @@ vault doctor
 
 ```bash
 # 安裝 MCP 依賴
-pip install "guardrails-knowledge[mcp]"
+pip install "vault-for-llm[mcp]"
 
 # 啟動（在含有 guardrails.db 的專案目錄執行）
 vault-mcp

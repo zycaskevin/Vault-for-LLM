@@ -69,7 +69,7 @@ class ONNXEmbeddingProvider(EmbeddingProvider):
         self.model_key = model_key
         self.model_info = MODELS[model_key]
         self._dim = self.model_info["dim"]
-        self.cache_dir = Path(cache_dir or os.path.expanduser("~/.cache/guardrails-lite/models"))
+        self.cache_dir = Path(cache_dir or os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))) / "guardrails-lite" / "models"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._session = None
         self._tokenizer = None

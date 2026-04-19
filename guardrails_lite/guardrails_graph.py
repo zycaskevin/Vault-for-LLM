@@ -63,51 +63,6 @@ def _load_entity_rules(project_dir: Optional[Path] = None) -> dict:
 
     return _DEFAULT_ENTITY_RULES
 
-# ── 預設規則（YAML 不存在時的 fallback）────────────────────
-_DEFAULT_ENTITY_RULES = {
-    "tool": ["ollama", "sqlite", "sqlite-vec", "onnx", "onnxruntime", "python",
-             "conda", "docker", "ffmpeg", "supabase", "chromadb", "vllm",
-             "langchain", "llamaindex", "git", "github", "n8n", "redis"],
-    "model": ["qwen", "gpt", "claude", "llama", "mistral", "glm", "gemini",
-              "phi", "deepseek", "mixtral", "miniLM"],
-    "concept": ["embed", "vector", "rag", "chunk", "token", "prompt",
-                "fine-tuning", "推理", "嵌入", "分塊", "圖譜", "搜尋",
-                "編譯", "知識庫", "語意", "降級", "context"],
-    "platform": ["windows", "wsl", "wsl2", "linux", "macos", "gpu", "cpu"],
-}
-
-
-def _load_entity_rules(project_dir: Optional[Path] = None) -> dict:
-    """
-    從 entity_rules.yaml 載入規則。
-    搜尋順序：
-      1. project_dir/entity_rules.yaml
-      2. 此檔案同目錄的 ../entity_rules.yaml（repo root）
-      3. fallback 使用內建預設規則
-    """
-    candidates = []
-    if project_dir:
-        candidates.append(Path(project_dir) / "entity_rules.yaml")
-    # repo root（vault/ 的上一層）
-    candidates.append(Path(__file__).parent.parent / "entity_rules.yaml")
-
-    for path in candidates:
-        if path.exists():
-            try:
-                import yaml
-                raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-                # 確保每個 value 都是 list[str]，並統一轉小寫
-                rules = {}
-                for etype, keywords in raw.items():
-                    if isinstance(keywords, list):
-                        rules[etype] = [str(k).lower() for k in keywords if k]
-                if rules:
-                    return rules
-            except Exception as e:
-                print(f"[guardrails-lite] ⚠️ 無法載入 entity_rules.yaml: {e}，使用預設規則")
-
-    return _DEFAULT_ENTITY_RULES
-
 
 class GuardrailsGraph:
     """Vault for LLM 圖譜引擎。"""

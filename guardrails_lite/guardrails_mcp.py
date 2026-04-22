@@ -1,334 +1,376 @@
+#!/usr/bin/env python3
 """
-Guardrails Lite — MCP Server
+Guardrails MCP Server — 讓任何 AI agent 透過 MCP 協議直接讀寫 Guardrails 百科。
 
-讓 Claude Code、Cursor、OpenClaw 等 AI agent 可以透過 MCP 協議
-直接操作知識庫，不需要手動跑 CLI。
+暴露的 Tools：
+  - guardrails_search(query, mode, limit) — 搜尋知識
+  - guardrails_add(title, content, category, tags) — 新增知識
+  - guardrails_stats() — 百科統計
+  - guardrails_converge(limit) — 收斂檢查
+  - guardrails_freshness(apply) — 新鮮度檢查
 
-安裝方式：
-  pip install "vault-for-llm[mcp]"
+使用方式：
+  1. 作為 stdio MCP server（給 Hermes config.yaml 用）：
+     python3 guardrails_lite/guardrails_mcp.py
 
-啟動方式（在有 guardrails.db 的專案目錄）：
-  vault-mcp
-
-或指定路徑：
-  vault-mcp --project-dir /path/to/project
-
-Claude Code 設定（~/.claude/claude_desktop_config.json）：
-  {
-    "mcpServers": {
-      "vault": {
-        "command": "vault-mcp",
-        "args": ["--project-dir", "/path/to/your/project"]
-      }
-    }
-  }
-
-可用工具：
-  vault_search         — 搜尋知識庫（關鍵字 / 語意 / 混合）
-  vault_add            — 新增一筆知識
-  vault_get            — 取得單筆知識詳情
-  vault_list           — 列出知識（可按層級/分類篩選）
-  vault_stats          — 統計資訊
-  vault_record_access  — 記錄存取（更新 access_count）
+  2. 在 Hermes config.yaml 加入：
+     mcp_servers:
+       guardrails:
+         command: "conda"
+         args: ["run", "-n", "guardrails-lite", "python3", "/path/to/guardrails_lite/guardrails_mcp.py"]
 """
 
-import argparse
 import json
 import sys
+import os
 from pathlib import Path
-from typing import Any
 
-# ── 檢查 mcp 是否安裝 ────────────────────────────────────
-try:
-    from mcp.server import Server
-    from mcp.server.stdio import stdio_server
-    from mcp import types
-except ImportError:
-    print(
-        "❌ 缺少 mcp 套件。請執行：pip install 'vault-for-llm[mcp]'",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+# 確保模組路徑
+GUARDRAILS_DIR = str(Path(__file__).parent.parent)
+if GUARDRAILS_DIR not in sys.path:
+    sys.path.insert(0, GUARDRAILS_DIR)
 
-from .guardrails_db import GuardrailsDB
-from .guardrails_search import GuardrailsSearch
-from .guardrails_log import log
+DB_PATH = os.path.join(GUARDRAILS_DIR, "guardrails.db")
 
 
-# ── 全域 DB 實例（Server 啟動後初始化）────────────────────
-_db: GuardrailsDB | None = None
-_project_dir: Path = Path(".")
+def _get_db():
+    """取得資料庫連線。"""
+    from guardrails_lite.guardrails_db import GuardrailsDB
+    db = GuardrailsDB(DB_PATH)
+    db.connect()
+    return db
 
 
-def _get_db() -> GuardrailsDB:
-    global _db
-    if _db is None:
-        db_path = _project_dir / "guardrails.db"
-        _db = GuardrailsDB(str(db_path))
-        _db.connect()
-    return _db
+def _get_search():
+    """取得搜尋引擎。"""
+    from guardrails_lite.guardrails_db import GuardrailsDB
+    from guardrails_lite.guardrails_search import GuardrailsSearch
+    from guardrails_lite.guardrails_embed import create_embedding_provider
 
+    db = GuardrailsDB(DB_PATH)
+    db.connect()
 
-def _get_embed():
-    """延遲載入嵌入 provider（可選）。"""
+    embed = None
     try:
-        db = _get_db()
         provider_name = db.get_config("embedding_provider", "auto")
         model_key = db.get_config("embedding_model", "mix")
-        if provider_name == "none":
-            return None
-        from .guardrails_embed import create_embedding_provider
-        return create_embedding_provider(provider=provider_name, model_key=model_key)
+        if provider_name != "none":
+            embed = create_embedding_provider(provider=provider_name, model_key=model_key)
     except Exception:
-        return None
+        pass
+
+    return db, GuardrailsSearch(db, embed_provider=embed)
 
 
-# ── MCP Server 建立 ─────────────────────────────────────
-server = Server("vault-for-llm")
+# ── MCP Server Implementation ──────────────────────────
 
-
-@server.list_tools()
-async def list_tools() -> list[types.Tool]:
-    return [
-        types.Tool(
-            name="vault_search",
-            description=(
-                "搜尋 Guardrails 知識庫。支援關鍵字、語意向量、混合模式。"
-                "回傳相關知識條目列表（含 trust 分數）。"
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "搜尋查詢字串"},
-                    "mode": {
-                        "type": "string",
-                        "enum": ["auto", "keyword", "vector", "hybrid"],
-                        "default": "auto",
-                        "description": "搜尋模式：auto 自動選擇，keyword 純關鍵字，vector 語意，hybrid 混合",
-                    },
-                    "limit": {"type": "integer", "default": 10, "description": "回傳筆數上限"},
-                    "min_trust": {"type": "number", "default": 0.0, "description": "最低信任分數篩選"},
-                    "layer": {
-                        "type": "string",
-                        "enum": ["L0", "L1", "L2", "L3"],
-                        "description": "只搜尋特定層級（可選）",
-                    },
-                    "record_access": {
-                        "type": "boolean",
-                        "default": True,
-                        "description": "是否記錄存取（影響 trust decay 計算）",
-                    },
+TOOLS = [
+    {
+        "name": "guardrails_search",
+        "description": "搜尋 Guardrails 百科知識庫。支援關鍵字、向量、混合搜尋。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "搜尋查詢（中英文皆可）"
                 },
-                "required": ["query"],
-            },
-        ),
-        types.Tool(
-            name="vault_add",
-            description="新增一筆知識到 Guardrails 知識庫。",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "title": {"type": "string", "description": "知識標題"},
-                    "content": {"type": "string", "description": "知識內容（Markdown 格式）"},
-                    "layer": {
-                        "type": "string",
-                        "enum": ["L0", "L1", "L2", "L3"],
-                        "default": "L3",
-                    },
-                    "category": {
-                        "type": "string",
-                        "enum": ["concept", "technique", "workflow", "lesson", "error", "comparison", "general"],
-                        "default": "general",
-                    },
-                    "tags": {"type": "string", "description": "逗號分隔的標籤"},
-                    "trust": {"type": "number", "default": 0.5, "description": "信任分數 0.0~1.0"},
-                    "source": {"type": "string", "default": "mcp", "description": "知識來源"},
+                "mode": {
+                    "type": "string",
+                    "enum": ["auto", "keyword", "vector", "hybrid"],
+                    "description": "搜尋模式（預設 auto）",
+                    "default": "auto"
                 },
-                "required": ["title", "content"],
-            },
-        ),
-        types.Tool(
-            name="vault_get",
-            description="取得單筆知識的完整內容（by ID）。",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "id": {"type": "integer", "description": "知識 ID"},
-                    "record_access": {"type": "boolean", "default": True},
-                },
-                "required": ["id"],
-            },
-        ),
-        types.Tool(
-            name="vault_list",
-            description="列出知識條目，支援層級/分類/信任度篩選。",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "layer": {"type": "string", "enum": ["L0", "L1", "L2", "L3"]},
-                    "category": {"type": "string"},
-                    "min_trust": {"type": "number", "default": 0.0},
-                    "limit": {"type": "integer", "default": 50},
+                "limit": {
+                    "type": "integer",
+                    "description": "最多回傳幾筆（預設 10）",
+                    "default": 10
                 },
             },
-        ),
-        types.Tool(
-            name="vault_stats",
-            description="取得知識庫統計資訊（知識數、向量數、圖譜節點/邊數等）。",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        types.Tool(
-            name="vault_record_access",
-            description="記錄一次存取（更新 access_count + last_accessed_at）。用於 trust decay 計算。",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "id": {"type": "integer", "description": "知識 ID"},
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "guardrails_add",
+        "description": "新增一筆知識到 Guardrails 百科。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "知識標題"
                 },
-                "required": ["id"],
+                "content": {
+                    "type": "string",
+                    "description": "知識內容（Markdown 格式）"
+                },
+                "category": {
+                    "type": "string",
+                    "description": "分類（error/technique/architecture/concept/decision/general）",
+                    "default": "general"
+                },
+                "tags": {
+                    "type": "string",
+                    "description": "標籤（逗號分隔，如 'sqlite,踩坑,擴展'）",
+                    "default": ""
+                },
+                "trust": {
+                    "type": "number",
+                    "description": "信任分數（0.0-1.0，session 提取建議 0.4，手動驗證 0.8+）",
+                    "default": 0.5
+                },
+                "layer": {
+                    "type": "string",
+                    "description": "知識層級（L0-L3）",
+                    "default": "L3"
+                },
             },
-        ),
-    ]
+            "required": ["title", "content"]
+        }
+    },
+    {
+        "name": "guardrails_stats",
+        "description": "取得 Guardrails 百科統計資訊。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    {
+        "name": "guardrails_converge",
+        "description": "執行收斂檢查 — 判斷哪些知識條目內容不夠完整。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "最多檢查幾條（0=全部）",
+                    "default": 5
+                },
+                "min_trust": {
+                    "type": "number",
+                    "description": "只檢查 trust 低於此值（預設 1.0 = 檢查所有未收斂的）",
+                    "default": 1.0
+                },
+            }
+        }
+    },
+    {
+        "name": "guardrails_freshness",
+        "description": "檢查知識條目的新鮮度 — 哪些條目過期了。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "stale_only": {
+                    "type": "boolean",
+                    "description": "只顯示過期條目",
+                    "default": True
+                },
+            }
+        }
+    },
+]
 
 
-@server.call_tool()
-async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
-    """處理所有工具呼叫。"""
+def handle_tool_call(name: str, arguments: dict) -> dict:
+    """處理 MCP tool call，回傳結果。"""
     try:
-        result = await _dispatch(name, arguments)
-        return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
-    except Exception as e:
-        error = {"error": str(e), "tool": name}
-        return [types.TextContent(type="text", text=json.dumps(error, ensure_ascii=False))]
-
-
-async def _dispatch(name: str, args: dict) -> Any:
-    db = _get_db()
-
-    if name == "vault_search":
-        embed = _get_embed() if args.get("mode", "auto") != "keyword" else None
-        search = GuardrailsSearch(db, embed_provider=embed)
-        results = search.search(
-            query=args["query"],
-            mode=args.get("mode", "auto"),
-            limit=args.get("limit", 10),
-            min_trust=args.get("min_trust", 0.0),
-            layer=args.get("layer"),
-        )
-        # 記錄存取
-        if args.get("record_access", True):
+        if name == "guardrails_search":
+            db, search = _get_search()
+            results = search.search(
+                query=arguments.get("query", ""),
+                mode=arguments.get("mode", "auto"),
+                limit=arguments.get("limit", 10),
+                min_trust=0.0,
+            )
+            # 簡化輸出
+            output = []
             for r in results:
-                db.record_access(r["id"])
-        # 精簡輸出（不回傳完整 content_raw 避免 token 爆炸）
-        return [
-            {
+                item = {
+                    "id": r.get("id"),
+                    "title": r.get("title"),
+                    "category": r.get("category"),
+                    "layer": r.get("layer"),
+                    "trust": r.get("trust"),
+                    "tags": r.get("tags"),
+                    "best_claim": r.get("best_claim", ""),
+                    "rerank_score": r.get("_rerank_score"),
+                }
+                # 截斷 content_raw
+                raw = r.get("content_raw", "")
+                if raw and len(raw) > 200:
+                    item["content_preview"] = raw[:200] + "..."
+                else:
+                    item["content_preview"] = raw
+                output.append(item)
+            db.close()
+            return {"result": json.dumps(output, ensure_ascii=False, indent=2)}
+
+        elif name == "guardrails_add":
+            db = _get_db()
+            kid = db.add_knowledge(
+                title=arguments.get("title", ""),
+                content_raw=arguments.get("content", ""),
+                category=arguments.get("category", "general"),
+                tags=arguments.get("tags", ""),
+                trust=arguments.get("trust", 0.5),
+                layer=arguments.get("layer", "L3"),
+                source="mcp",
+            )
+            db.close()
+            return {"result": json.dumps({
+                "success": True,
+                "id": kid,
+                "message": f"已新增知識 #{kid}: {arguments.get('title', '')}",
+            }, ensure_ascii=False)}
+
+        elif name == "guardrails_stats":
+            db = _get_db()
+            stats = db.stats()
+            db.close()
+            return {"result": json.dumps(stats, ensure_ascii=False, indent=2)}
+
+        elif name == "guardrails_converge":
+            # 使用關鍵詞 fallback，不依賴 LLM
+            from scripts.convergence_check import check_convergence
+            results = check_convergence(
+                db_path=DB_PATH,
+                apply=False,  # MCP 只讀取，不自動更新
+                limit=arguments.get("limit", 5),
+                min_trust=arguments.get("min_trust", 1.0),
+            )
+            if results is None:
+                return {"result": json.dumps({"message": "沒有待檢查的條目"}, ensure_ascii=False)}
+            output = [{
                 "id": r["id"],
                 "title": r["title"],
-                "layer": r["layer"],
-                "category": r["category"],
-                "tags": r["tags"],
-                "trust": r["trust"],
-                "preview": (r.get("content_aaak") or r.get("content_raw", ""))[:200],
-                "_score": r.get("_score"),
-                "_mode": r.get("_mode"),
-            }
-            for r in results
-        ]
+                "avg_score": r["avg_score"],
+                "status": r["status"],
+            } for r in results]
+            return {"result": json.dumps(output, ensure_ascii=False, indent=2)}
 
-    elif name == "vault_add":
-        kid = db.add_knowledge(
-            title=args["title"],
-            content_raw=args["content"],
-            layer=args.get("layer", "L3"),
-            category=args.get("category", "general"),
-            tags=args.get("tags", ""),
-            trust=args.get("trust", 0.5),
-            source=args.get("source", "mcp"),
-        )
-        return {"success": True, "id": kid, "title": args["title"]}
-
-    elif name == "vault_get":
-        k = db.get_knowledge(args["id"])
-        if not k:
-            return {"error": f"找不到 ID={args['id']}"}
-        if args.get("record_access", True):
-            db.record_access(args["id"])
-        return k
-
-    elif name == "vault_list":
-        rows = db.list_knowledge(
-            layer=args.get("layer"),
-            category=args.get("category"),
-            min_trust=args.get("min_trust", 0.0),
-            limit=args.get("limit", 50),
-        )
-        return [
-            {
+        elif name == "guardrails_freshness":
+            from scripts.freshness_check import check_freshness
+            results = check_freshness(
+                db_path=DB_PATH,
+                apply=False,  # MCP 只讀取
+                stale_only=arguments.get("stale_only", True),
+            )
+            if results is None:
+                return {"result": json.dumps({"message": "百科是空的"}, ensure_ascii=False)}
+            output = [{
                 "id": r["id"],
                 "title": r["title"],
-                "layer": r["layer"],
+                "freshness": r["new_freshness"],
                 "category": r["category"],
-                "tags": r["tags"],
-                "trust": r["trust"],
-                "access_count": r.get("access_count", 0),
+            } for r in results[:20]]  # 最多回傳 20 條
+            return {"result": json.dumps(output, ensure_ascii=False, indent=2)}
+
+        else:
+            return {"error": f"Unknown tool: {name}"}
+
+    except Exception as e:
+        return {"error": f"Error: {str(e)}"}
+
+
+# ── stdio MCP Server ──────────────────────────────────
+
+def run_stdio():
+    """作為 stdio MCP server 運行。"""
+    # 讀取 MCP 協議訊息
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        method = message.get("method", "")
+        msg_id = message.get("id")
+        params = message.get("params", {})
+
+        # Initialize
+        if method == "initialize":
+            response = {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {
+                        "tools": {"listChanged": False},
+                    },
+                    "serverInfo": {
+                        "name": "guardrails-mcp",
+                        "version": "0.1.0",
+                    },
+                },
             }
-            for r in rows
-        ]
+            print(json.dumps(response), flush=True)
 
-    elif name == "vault_stats":
-        return db.stats()
+        # List tools
+        elif method == "tools/list":
+            response = {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {"tools": TOOLS},
+            }
+            print(json.dumps(response), flush=True)
 
-    elif name == "vault_record_access":
-        db.record_access(args["id"])
-        return {"success": True, "id": args["id"]}
+        # Call tool
+        elif method == "tools/call":
+            tool_name = params.get("name", "")
+            arguments = params.get("arguments", {})
+            result = handle_tool_call(tool_name, arguments)
 
-    else:
-        return {"error": f"未知工具: {name}"}
+            response = {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {
+                    "content": [
+                        {"type": "text", "text": result.get("result", result.get("error", ""))}
+                    ]
+                },
+            }
+            print(json.dumps(response), flush=True)
+
+        # Notifications (no response needed)
+        elif method == "notifications/initialized":
+            pass
+
+        else:
+            if msg_id is not None:
+                response = {
+                    "jsonrpc": "2.0",
+                    "id": msg_id,
+                    "error": {"code": -32601, "message": f"Method not found: {method}"},
+                }
+                print(json.dumps(response), flush=True)
 
 
-# ── 啟動入口 ─────────────────────────────────────────────
-
-async def _run_server():
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            server.create_initialization_options(),
-        )
-
-
-def main():
-    global _project_dir
-
-    parser = argparse.ArgumentParser(
-        description="Vault-for-LLM MCP Server — 讓 AI agent 直接操作知識庫"
-    )
-    parser.add_argument(
-        "--project-dir",
-        type=str,
-        default=None,
-        help="專案目錄（含 guardrails.db）。預設自動搜尋",
-    )
-    args = parser.parse_args()
-
-    if args.project_dir:
-        _project_dir = Path(args.project_dir)
-    else:
-        # 自動向上搜尋
-        cwd = Path.cwd()
-        for d in [cwd] + list(cwd.parents):
-            if (d / "guardrails.db").exists():
-                _project_dir = d
-                break
-
-    db_file = _project_dir / "guardrails.db"
-    log.info(f"使用資料庫：{db_file}")
-    if not db_file.exists():
-        log.warning("⚠️ 資料庫不存在，將在首次工具呼叫時自動建立")
-
-    import asyncio
-    asyncio.run(_run_server())
-
+# ── Direct CLI (for testing) ──────────────────────────
 
 if __name__ == "__main__":
-    main()
+    # 如果有 --cli 參數，直接執行工具（不啟動 MCP server）
+    if len(sys.argv) > 1 and sys.argv[1] == "--cli":
+        tool_name = sys.argv[2] if len(sys.argv) > 2 else "stats"
+        args = {}
+
+        if tool_name == "search" and len(sys.argv) > 3:
+            args = {"query": sys.argv[3], "mode": "auto", "limit": 5}
+        elif tool_name == "add" and len(sys.argv) > 4:
+            args = {"title": sys.argv[3], "content": sys.argv[4]}
+        elif tool_name == "stats":
+            args = {}
+        elif tool_name == "converge":
+            args = {"limit": 5}
+        elif tool_name == "freshness":
+            args = {"stale_only": True}
+
+        result = handle_tool_call(f"guardrails_{tool_name}", args)
+        print(result.get("result", result.get("error", "")))
+    else:
+        # 啟動 MCP stdio server
+        run_stdio()

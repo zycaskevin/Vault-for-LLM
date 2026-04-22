@@ -39,3 +39,4 @@ env/
 .vscode/
 *.swp
 *.swo
+# Guardrails Lite

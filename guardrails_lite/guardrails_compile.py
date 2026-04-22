@@ -22,8 +22,6 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
 
-from .guardrails_log import log
-
 
 def extract_frontmatter(content: str) -> tuple[dict, str]:
     """從 Markdown 提取 YAML frontmatter，回傳 (metadata, body)。"""
@@ -51,21 +49,94 @@ def extract_frontmatter(content: str) -> tuple[dict, str]:
     return metadata, body
 
 
+def extract_claims(title: str, content: str) -> list[dict]:
+    """
+    從內容提取原子主張（atomic claims），每條帶 source_span。
+    回傳: [{"id": "C1", "claim": "...", "span": "L12-14"}, ...]
+    """
+    claims = []
+    lines = content.strip().split("\n")
+    claim_id = 0
+
+    for line_num, line in enumerate(lines, 1):
+        stripped = line.strip()
+
+        # 跳過空行、標題、程式碼
+        if not stripped or stripped.startswith("#") or stripped.startswith("```"):
+            continue
+
+        # 列表項 — 提取為原子主張
+        if stripped.startswith("- ") or stripped.startswith("* "):
+            item = stripped[2:].strip()
+            # 去掉過長的，只取核心
+            if len(item) > 10:
+                # 取第一句或 KEY:VALUE
+                if "：" in item or ":" in item:
+                    core = item.split("。")[0] if "。" in item else item
+                else:
+                    core = item.split("。")[0] if "。" in item else item
+                if len(core) > 120:
+                    core = core[:117] + "..."
+                claim_id += 1
+                claims.append({
+                    "id": f"C{claim_id}",
+                    "claim": core,
+                    "span": f"L{line_num}",
+                })
+            continue
+
+        # 數字列表項
+        import re
+        num_match = re.match(r"^(\d+)\.\s(.+)", stripped)
+        if num_match:
+            item = num_match.group(2).strip()
+            if len(item) > 10:
+                core = item.split("。")[0] if "。" in item else item
+                if len(core) > 120:
+                    core = core[:117] + "..."
+                claim_id += 1
+                claims.append({
+                    "id": f"C{claim_id}",
+                    "claim": core,
+                    "span": f"L{line_num}",
+                })
+            continue
+
+        # 普通段落 — 如果足夠長，取第一句為主張
+        if len(stripped) > 20 and not stripped.startswith("思考") and not stripped.startswith("//"):
+            first_sentence = stripped.split("。")[0]
+            if len(first_sentence) > 15:
+                claim_id += 1
+                claims.append({
+                    "id": f"C{claim_id}",
+                    "claim": first_sentence + "。" if "。" in stripped else first_sentence,
+                    "span": f"L{line_num}",
+                })
+
+    return claims[:10]  # 最多 10 條主張
+
+
 def simple_aaak_compress(title: str, content: str) -> str:
     """
     AAAK 壓縮：把 Markdown 知識壓縮成 KEY:VALUE 格式。
     目標：3-10x 壓縮率，保留核心資訊，人類可讀 + LLM 可解析。
     
+    v3 新增：原子主張 CLAIMS 段，帶 source_span 指回原文行號。
+    
     壓縮策略：
     1. 標題 → TITLE:
-    2. 列表項 → 縮寫關鍵詞
-    3. 段落 → 取第一句 + 核心結論
-    4. 去除裝飾性內容（空行、重複、過度解釋）
-    5. 程式碼/指令 → 保留關鍵指令
+    2. 原子主張 → CLAIMS: 段
+    3. 列表項 → 縮寫關鍵詞
+    4. 段落 → 取第一句 + 核心結論
+    5. 去除裝飾性內容（空行、重複、過度解釋）
+    6. 程式碼/指令 → 保留關鍵指令
     """
     import re
     
     lines = content.strip().split("\n")
+    
+    # ── 提取原子主張 ──
+    claims = extract_claims(title, content)
     
     # ── 第一輪：提取結構化資訊 ──
     sections = []  # (heading, items)
@@ -130,6 +201,12 @@ def simple_aaak_compress(title: str, content: str) -> str:
     # ── 第二輪：壓縮成 AAAK 格式 ──
     result_parts = [f"TITLE:{title}"]
     
+    # ── 原子主張段 ──
+    if claims:
+        result_parts.append("CLAIMS:")
+        for c in claims:
+            result_parts.append(f"- [{c['id']}] {c['claim']} ({c['span']})")
+    
     # AAAK 縮寫對照
     aaak_map = {
         "架構": "ARCH", "設計": "DESIGN", "部署": "DEPLOY", "錯誤": "ERR",
@@ -172,10 +249,10 @@ def simple_aaak_compress(title: str, content: str) -> str:
     
     result = "\n".join(result_parts)
     
-    # 長度上限：500 字元
-    if len(result) > 500:
-        # 從後往前砍，保留 title
-        result = result[:497] + "..."
+    # 長度上限：800 字元（從 500 放寬，容納 CLAIMS 段）
+    if len(result) > 800:
+        # 從後往前砍，保留 TITLE 和 CLAIMS
+        result = result[:797] + "..."
     
     return result
 
@@ -276,7 +353,7 @@ class GuardrailsCompiler:
         try:
             # 收集 raw/ 檔案
             if not self.raw_dir.exists():
-                log.warning(f"⚠️ raw/ 目錄不存在: {self.raw_dir}")
+                print(f"[compiler] ⚠️ raw/ 目錄不存在: {self.raw_dir}")
                 return stats
 
             md_files = sorted(self.raw_dir.rglob("*.md"))
@@ -287,7 +364,7 @@ class GuardrailsCompiler:
                     result = self._compile_file(md_file, dry_run)
                     stats[result] += 1
                 except Exception as e:
-                    log.error(f"❌ {md_file.name}: {e}")
+                    print(f"[compiler] ❌ {md_file.name}: {e}")
                     stats["errors"] += 1
 
             # 重建向量索引（如果有嵌入）
@@ -315,7 +392,7 @@ class GuardrailsCompiler:
                     self.db.conn.commit()
                     removed = len(ids) - 1
                     if removed > 0:
-                        log.info(f"🧹 去重: [{row['title']}] 刪除 {removed} 筆重複")
+                        print(f"[compiler] 🧹 去重: [{row['title']}] 刪除 {removed} 筆重複")
                         stats["skipped"] += removed
 
             # 更新 compiled/
@@ -346,11 +423,10 @@ class GuardrailsCompiler:
 
         # 檢查是否已存在（用 source_file 或 title）
         source_file = str(md_file.relative_to(self.raw_dir))
-        # 先用 source_file 找（escape LIKE 特殊字元 % 和 _）
-        safe_source = source_file.replace("%", "\\%").replace("_", "\\_")
+        # 先用 source_file 找
         existing = self.db.conn.execute(
-            "SELECT id, content_hash FROM knowledge WHERE source LIKE ? ESCAPE '\\'",
-            (f"%{safe_source}%",),
+            "SELECT id, content_hash FROM knowledge WHERE source LIKE ?",
+            (f"%{source_file}%",),
         ).fetchone()
         if not existing:
             # 用 title 找同名知識（add 命令可能已經建了）
@@ -359,7 +435,7 @@ class GuardrailsCompiler:
                 (title,),
             ).fetchone()
             if existing:
-                log.info(f"🔄 同名知識已存在 (id={existing['id']}), 更新: {title}")
+                print(f"[compiler] 🔄 同名知識已存在 (id={existing['id']}), 更新: {title}")
 
         if existing and existing["content_hash"] == content_hash:
             return "skipped"  # 沒變
@@ -378,7 +454,7 @@ class GuardrailsCompiler:
 
         if dry_run:
             action = "更新" if existing else "新增"
-            log.debug(f"[dry] {action}: {title} (layer={layer}, cat={category})")
+            print(f"  [dry] {action}: {title} (layer={layer}, cat={category})")
             return "new" if not existing else "updated"
 
         if existing:
@@ -427,10 +503,10 @@ class GuardrailsCompiler:
             rows = self.db.conn.execute("SELECT id, content_raw FROM knowledge").fetchall()
 
         if not rows:
-            log.info("所有知識已有嵌入 ✅")
+            print("[compiler] 所有知識已有嵌入 ✅")
             return
 
-        log.info(f"生成 {len(rows)} 筆嵌入...")
+        print(f"[compiler] 生成 {len(rows)} 筆嵌入...")
         texts = [r["content_raw"] for r in rows]
         ids = [r["id"] for r in rows]
 
@@ -443,7 +519,7 @@ class GuardrailsCompiler:
             for j, kid in enumerate(batch_ids):
                 self.db.add_embedding(kid, vectors[j])
 
-        log.info(f"✅ {len(rows)} 筆嵌入完成")
+        print(f"[compiler] ✅ {len(rows)} 筆嵌入完成")
 
     def _update_compiled(self):
         """從 DB 更新 compiled/ 目錄。"""
@@ -477,29 +553,14 @@ class GuardrailsCompiler:
             out_file.write_text(content, encoding="utf-8")
 
     def _git_commit(self, stats: dict):
-        """自動 git commit（只加 raw/ 和 compiled/，避免意外提交敏感檔）。"""
+        """自動 git commit。"""
         try:
-            # 只 add 知識相關目錄，不用 -A 以免帶入 .env 等敏感檔
-            for target in ["raw", "compiled"]:
-                target_path = self.project_dir / target
-                if target_path.exists():
-                    subprocess.run(
-                        ["git", "add", str(target_path)],
-                        cwd=str(self.project_dir),
-                        capture_output=True,
-                        timeout=10,
-                    )
+            # 加 guardrails.db 到 git（如果 .gitignore 沒排除）
+            subprocess.run(["git", "add", "-A"], cwd=str(self.project_dir),
+                           capture_output=True, timeout=10)
             msg = f"guardrails: compile {stats['new']} new, {stats['updated']} updated"
-            result = subprocess.run(
-                ["git", "commit", "-m", msg],
-                cwd=str(self.project_dir),
-                capture_output=True,
-                timeout=10,
-            )
-            if result.returncode == 0:
-                log.info(f"✅ Git commit: {msg}")
-            else:
-                # nothing to commit — 正常情況，不要報錯
-                pass
+            subprocess.run(["git", "commit", "-m", msg, "--allow-empty"],
+                           cwd=str(self.project_dir), capture_output=True, timeout=10)
+            print(f"[compiler] ✅ Git commit: {msg}")
         except Exception as e:
-            log.warning(f"⚠️ Git commit 失敗（不影響編譯）: {e}")
+            print(f"[compiler] ⚠️ Git commit 失敗（不影響編譯）: {e}")

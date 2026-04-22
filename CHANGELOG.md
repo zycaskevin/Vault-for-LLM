@@ -1,0 +1,22 @@
+# Changelog
+
+## [0.4.0] — 2026-04-22
+
+### Added
+- **Convergence Check** (`scripts/convergence_check.py`): KAL-style self-questioning loop — system judges if it "knows enough" to explain a topic, inspired by MindForge's Knowledge Acquisition Loop
+- **Cross Validation** (`scripts/cross_validate.py`): Asymmetric LLM verification — extract with one model, verify with another (Gemma→Claude pattern) to catch hallucinations the extractor misses
+- **Freshness Check** (`scripts/freshness_check.py`): Automated staleness detection + FSRS-style spaced repetition scheduling for knowledge entries
+- **MCP Server** (`guardrails_mcp.py`): Model Context Protocol server — let any chat AI query and inject into the knowledge base mid-conversation
+- **Atomic Claims**: Extract claims at sub-chunk granularity with `source_span` binding for citation-level precision
+- **test_new_features.py**: Full test suite for all new features (26 tests)
+
+### Changed
+- `guardrails_db.py`: Added `convergence_score`, `cross_validated`, `freshness`, and `next_review` columns
+- `guardrails_compile.py`: Now produces atomic claims with source_span citations
+- `guardrails_search.py`: Added graph expansion (2-hop recursive CTE walk) for related knowledge retrieval
+- `guardrails_cli.py`: New commands: `converge`, `cross-validate`, `freshness`
+
+### Inspired By
+- MindForge's KAL (Knowledge Acquisition Loop) — convergence check
+- MindForge's cross-family LLM validation — cross_validate.py
+- Karpathy's LLM Wiki three-layer architecture — already in our DNA, reinforced

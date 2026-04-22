@@ -17,7 +17,6 @@ from .guardrails_embed import (
     MODELS,
     DEFAULT_MODEL_KEY,
 )
-from .guardrails_log import log
 
 
 class GuardrailsSearch:
@@ -66,6 +65,7 @@ class GuardrailsSearch:
         layer: Optional[str] = None,
         category: Optional[str] = None,
         graph_expand: int = 0,
+        use_rerank: bool = True,
     ) -> list[dict]:
         """
         搜尋知識庫。
@@ -80,6 +80,8 @@ class GuardrailsSearch:
         - 0: 不使用圖譜擴展（預設）
         - 1: 擴展 1 跳（直接鄰居）
         - 2: 擴展 2 跳
+
+        use_rerank: 是否使用 reranker 重排序（預設 True）
         """
         if mode == "keyword":
             results = self.search_keyword(query, limit, min_trust, layer, category)
@@ -100,7 +102,109 @@ class GuardrailsSearch:
         if graph_expand > 0 and self._graph is not None:
             results = self._apply_graph_expand(results, graph_expand, limit)
 
+        # Reranker
+        if use_rerank and results:
+            results = self._rerank(results)
+
+        # 提取 best_claim
+        for r in results:
+            r["best_claim"] = self._extract_best_claim(r.get("content_aaak", ""))
+
         return results
+
+    # ── Reranker ──────────────────────────────────────────
+
+    @staticmethod
+    def _rerank(results: list[dict]) -> list[dict]:
+        """
+        搜尋結果重排序。
+        score = cosine_sim × 0.5 + graph_depth_bonus + trust × 0.15 + freshness × 0.15
+
+        graph_depth_bonus: 0.1 per hop, max 0.2
+        freshness: 1.0 - min(days_since_update / 365, 0.5)
+        """
+        from datetime import datetime, timezone
+
+        def calc_freshness(updated_at: str) -> float:
+            if not updated_at:
+                return 0.5
+            try:
+                dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                days = (datetime.now(timezone.utc) - dt).days
+                return 1.0 - min(days / 365, 0.5)
+            except Exception:
+                return 0.5
+
+        def calc_graph_depth(result: dict) -> float:
+            dist = result.get("_graph_distance", 0)
+            if dist == 0:
+                return 0.2  # 直接匹配，最高加分
+            return max(0, 0.2 - (dist - 1) * 0.1)
+
+        for r in results:
+            # 基礎語意分數（歸一到 0-1）
+            base_sim = r.get("_score", 0.5)
+            if isinstance(base_sim, float) and base_sim > 1.0:
+                # RRF 分數可能 > 1，歸一化
+                base_sim = min(base_sim / 0.05, 1.0)  # RRF 典型最大 ~0.05
+
+            trust = r.get("trust", 0.5)
+            freshness = r.get("freshness", None)
+            if freshness is None:
+                freshness = calc_freshness(r.get("updated_at", ""))
+            freshness = max(0.0, min(1.0, freshness))
+
+            graph_bonus = calc_graph_depth(r)
+
+            rerank_score = (
+                base_sim * 0.5
+                + graph_bonus
+                + trust * 0.15
+                + freshness * 0.15
+            )
+
+            r["_rerank_score"] = round(rerank_score, 4)
+
+        results.sort(key=lambda x: x.get("_rerank_score", 0), reverse=True)
+        return results
+
+    # ── 原子主張提取 ──────────────────────────────────────
+
+    @staticmethod
+    def _extract_best_claim(content_aaak: str) -> str:
+        """
+        從 AAAK 壓縮內容提取最相關的原子主張。
+        如果有 CLAIMS 段，取第一條；否則取 content_raw 前 100 字。
+        """
+        if not content_aaak:
+            return ""
+
+        # 嘗試提取 CLAIMS 段
+        if "CLAIMS:" in content_aaak:
+            lines = content_aaak.split("\n")
+            claims = []
+            in_claims = False
+            for line in lines:
+                if line.strip() == "CLAIMS:":
+                    in_claims = True
+                    continue
+                if in_claims and line.strip().startswith("- ["):
+                    claims.append(line.strip())
+                elif in_claims and not line.strip().startswith("-"):
+                    break
+
+            if claims:
+                # 取第一條作為 best_claim
+                first = claims[0]
+                # 格式: "- [C1] 描述 (L12)"
+                import re
+                match = re.match(r"- \[\w+\]\s*(.+?)(?:\s*\(L\d+\))?$", first)
+                if match:
+                    return match.group(1).strip()
+                return first.lstrip("- []C0123456789 ").strip()
+
+        # 沒有 CLAIMS 段， fallback
+        return ""
 
     # ── 關鍵字搜尋 ──────────────────────────────────────────
 
@@ -117,9 +221,6 @@ class GuardrailsSearch:
         terms = self._tokenize(query)
         if not terms:
             return []
-
-        # 限制 term 數量避免 SQL 膨脹
-        terms = terms[:8]
 
         # 建構 WHERE 條件
         conditions = []
@@ -179,7 +280,7 @@ class GuardrailsSearch:
         try:
             query_vec = embed.encode(query)[0]
         except Exception as e:
-            log.warning(f"⚠️ 嵌入失敗，降級到關鍵字: {e}")
+            print(f"[guardrails-lite] ⚠️ 嵌入失敗，降級到關鍵字: {e}")
             return self.search_keyword(query, limit, min_trust, layer, category)
 
         results = self.db.search_vector(query_vec, limit=limit * 2, min_trust=min_trust)
@@ -221,34 +322,23 @@ class GuardrailsSearch:
         vec_results = self.search_vector(query, limit=limit * 2, min_trust=min_trust,
                                           layer=layer, category=category)
 
-        # RRF 融合（以 kid 去重，同一筆知識只出現一次）
+        # RRF 融合
         scores: dict[int, float] = {}
         all_items: dict[int, dict] = {}
-        hit_sources: dict[int, set] = {}  # 追蹤每筆知識來自哪些搜尋模式
 
         for rank, item in enumerate(kw_results):
             kid = item["id"]
             scores[kid] = scores.get(kid, 0) + 1.0 / (k + rank + 1)
             all_items[kid] = item
-            hit_sources.setdefault(kid, set()).add("keyword")
 
         for rank, item in enumerate(vec_results):
             kid = item["id"]
             scores[kid] = scores.get(kid, 0) + 1.0 / (k + rank + 1)
             if kid not in all_items:
                 all_items[kid] = item
-                hit_sources.setdefault(kid, set()).add("vector")
             else:
-                # 同時命中 keyword 和 vector → 標記為 hybrid
-                hit_sources[kid].add("vector")
-
-        # 根據命中來源更新 _mode
-        for kid in all_items:
-            sources = hit_sources.get(kid, set())
-            if len(sources) > 1:
+                # 合併：向量的 metadata 優先
                 all_items[kid]["_mode"] = "hybrid"
-            elif sources:
-                all_items[kid]["_mode"] = sources.pop()
 
         # 排序
         sorted_ids = sorted(scores.items(), key=lambda x: x[1], reverse=True)
@@ -313,8 +403,8 @@ class GuardrailsSearch:
         """
         # 英文單詞
         english = re.findall(r"[a-zA-Z]{2,}", query)
-        # 中文詞（2-6字元的連續中文字，支援醫美 domain 5-6 字詞）
-        chinese = re.findall(r"[\u4e00-\u9fff]{2,6}", query)
+        # 中文詞（2-4字元的連續中文字）
+        chinese = re.findall(r"[\u4e00-\u9fff]{2,4}", query)
         # 如果中文只有單字，也拆開
         if not chinese:
             chars = re.findall(r"[\u4e00-\u9fff]", query)

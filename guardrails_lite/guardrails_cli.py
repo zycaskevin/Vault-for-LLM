@@ -2,17 +2,17 @@
 Guardrails Lite — CLI 入口。
 
 用法：
-  vault init              # 初始化專案
-  vault add "標題"         # 加入知識
-  vault import novel.md   # 匯入長文件（自動分塊）
-  vault compile           # 編譯 raw/ → db + compiled/
-  vault search "查詢"     # 搜尋知識
-  vault list              # 列出知識
-  vault lint              # 健康檢查
-  vault doctor            # 環境診斷
-  vault stats             # 統計
-  vault install-embedding # 安裝嵌入模型
-  vault config set/get    # 配置管理
+  guardrails init              # 初始化專案
+  guardrails add "標題"         # 加入知識
+  guardrails import novel.md   # 匯入長文件（自動分塊）
+  guardrails compile           # 編譯 raw/ → db + compiled/
+  guardrails search "查詢"     # 搜尋知識
+  guardrails list              # 列出知識
+  guardrails lint              # 健康檢查
+  guardrails doctor            # 環境診斷
+  guardrails stats             # 統計
+  guardrails install-embedding # 安裝嵌入模型
+  guardrails config set/get    # 配置管理
 """
 
 import argparse
@@ -69,8 +69,8 @@ def cmd_init(args):
     print(f"\n✅ 專案初始化完成: {project_dir.resolve()}")
     print("下一步：")
     print("  1. 在 raw/ 放入 .md 知識檔案")
-    print("  2. vault compile")
-    print("  3. vault search \"查詢\"")
+    print("  2. guardrails compile")
+    print("  3. guardrails search \"查詢\"")
 
 
 def cmd_add(args):
@@ -104,17 +104,15 @@ def cmd_add(args):
 
     # 也寫到 raw/
     raw_file = project_dir / "raw" / f"{args.title.replace(' ', '_').replace('/', '-')}.md"
-    import yaml as _yaml
     fm = {
         "title": args.title,
         "layer": args.layer or "L3",
         "category": args.category or "general",
         "tags": args.tags or "",
         "trust": args.trust or 0.5,
-        "source": "cli",
     }
     raw_file.write_text(
-        f"---\n{_yaml.dump(fm, allow_unicode=True, default_flow_style=False)}---\n\n{content}\n",
+        f"---\n{json.dumps(fm, ensure_ascii=False, indent=2)}\n---\n\n{content}\n",
         encoding="utf-8",
     )
     print(f"✅ 同步寫入 raw/{raw_file.name}")
@@ -201,6 +199,7 @@ def cmd_search(args):
         layer=args.layer,
         category=args.category,
         graph_expand=args.graph_expand,
+        use_rerank=not args.no_rerank,
     )
 
     if not results:
@@ -209,17 +208,26 @@ def cmd_search(args):
         print(f"🔍 找到 {len(results)} 筆 ({results[0].get('_mode', 'unknown')} 模式):\n")
         for r in results:
             score = r.get("_score", 0)
+            rerank = r.get("_rerank_score", None)
             mode = r.get("_mode", "?")
             trust = r.get("trust", 0)
             layer = r.get("layer", "?")
+            freshness = r.get("freshness", None)
+            conv_status = r.get("convergence_status", "")
             graph_dist = r.get("_graph_distance")
             graph_info = f", graph={graph_dist}" if graph_dist is not None else ""
-            print(f"  [{layer}] {r['title']} (trust={trust}, score={score:.3f}, {mode}{graph_info})")
-            # 顯示 AAAK 摘要
-            aaak = r.get("content_aaak", "") or r.get("content_raw", "")
-            if aaak:
-                preview = aaak[:120].replace("\n", " ")
-                print(f"       {preview}...")
+            rerank_info = f", rerank={rerank:.3f}" if rerank is not None else ""
+            conv_info = f", conv={conv_status}" if conv_status and conv_status != "unknown" else ""
+            print(f"  [{layer}] {r['title']} (trust={trust}, score={score:.3f}{rerank_info}, {mode}{graph_info}{conv_info})")
+            # 顯示 best_claim 和 AAAK 摘要
+            best_claim = r.get("best_claim", "")
+            if best_claim:
+                print(f"       💬 {best_claim}")
+            else:
+                aaak = r.get("content_aaak", "") or r.get("content_raw", "")
+                if aaak:
+                    preview = aaak[:120].replace("\n", " ")
+                    print(f"       {preview}...")
             print()
 
     db.close()
@@ -347,18 +355,14 @@ def cmd_lint(args):
 
     # 6. 統計
     stats = db.stats()
+    issues.append(f"📊 知識 {stats['knowledge_count']} 筆, 嵌入 {stats['embedding_count']} 筆")
 
-    warning_issues = [i for i in issues if "⚠️" in i]
-    info_issues    = [i for i in issues if "ℹ️" in i]
-
-    if not warning_issues:
+    if all("📊" in i for i in issues):
         print("✅ Lint 通過，沒有問題！")
     else:
-        print(f"🔍 Lint 結果 ({len(warning_issues)} 個警告):\n")
+        print(f"🔍 Lint 結果 ({len([i for i in issues if '⚠️' in i])} 個問題):\n")
         for issue in issues:
             print(f"  {issue}")
-
-    print(f"\n  📊 知識 {stats['knowledge_count']} 筆, 嵌入 {stats['embedding_count']} 筆")
 
     db.close()
 
@@ -415,12 +419,12 @@ def cmd_doctor(args):
     checks.append(("專案", f"{'✅' if db_exists else '❌'} DB | {'✅' if raw_exists else '❌'} raw/", db_exists and raw_exists))
 
     # 嵌入模型快取
-    cache_dir = Path(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))) / "guardrails-lite" / "models"
+    cache_dir = Path.home() / ".cache" / "guardrails-lite" / "models"
     if cache_dir.exists():
         models = [d.name for d in cache_dir.iterdir() if d.is_dir()]
         checks.append(("嵌入模型快取", f"✅ {len(models)} 模型", True))
     else:
-        checks.append(("嵌入模型快取", "❌ 無 (vault install-embedding)", False))
+        checks.append(("嵌入模型快取", "❌ 無 (guardrails install-embedding)", False))
 
     # 輸出
     all_ok = True
@@ -482,95 +486,7 @@ def cmd_install_embedding(args):
     db2.close()
 
     print(f"\n✅ 完成！語意搜尋已啟用")
-    print(f"   試試: vault search \"查詢\"")
-
-
-def cmd_export(args):
-    """匯出知識為 AI 可讀格式。"""
-    import yaml
-    from guardrails_lite.guardrails_db import GuardrailsDB
-    from guardrails_lite.guardrails_search import GuardrailsSearch
-
-    project_dir = find_project_dir()
-    db_path = project_dir / "guardrails.db"
-
-    if not db_path.exists():
-        print("❌ 尚未初始化，先執行 vault init")
-        return
-
-    db = GuardrailsDB(str(db_path))
-    db.connect()
-
-    # 匯出模式
-    mode = getattr(args, "export_mode", "context")
-    output = getattr(args, "output", None)
-    query = getattr(args, "query", None)
-    min_trust = getattr(args, "min_trust", 0.0)
-
-    if mode == "context":
-        # Context 匯出：L0 + L1 + 搜尋結果 → 單一 markdown
-        sections = []
-
-        # L0 Identity
-        l0_rows = db.conn.execute(
-            "SELECT title, content_raw FROM knowledge WHERE layer='L0' ORDER BY trust DESC"
-        ).fetchall()
-        if l0_rows:
-            sections.append("## L0 身份認同\n")
-            for row in l0_rows:
-                sections.append(f"### {row['title']}\n{row['content_raw']}\n")
-
-        # L1 Core Facts
-        l1_rows = db.conn.execute(
-            "SELECT title, content_raw FROM knowledge WHERE layer='L1' ORDER BY trust DESC"
-        ).fetchall()
-        if l1_rows:
-            sections.append("## L1 核心事實\n")
-            for row in l1_rows:
-                sections.append(f"### {row['title']}\n{row['content_raw']}\n")
-
-        # 搜尋結果（如果有 query）
-        if query:
-            search = GuardrailsSearch(db)
-            results = search.search(query, mode="hybrid", limit=20, min_trust=min_trust)
-            if results:
-                sections.append(f"## L3 搜尋結果「{query}」\n")
-                for r in results:
-                    trust_badge = f"(trust={r.get('trust', 0):.1f})"
-                    sections.append(f"### {r['title']} {trust_badge}\n{r.get('content_raw', '')[:500]}\n")
-        else:
-            # 沒有 query 就匯出高 trust 的 L3
-            l3_rows = db.conn.execute(
-                "SELECT title, content_raw, trust FROM knowledge WHERE layer='L3' AND trust >= ? ORDER BY trust DESC LIMIT 30",
-                (min_trust or 0.7,),
-            ).fetchall()
-            if l3_rows:
-                sections.append("## L3 深度知識（高信任度）\n")
-                for row in l3_rows:
-                    sections.append(f"### {row['title']} (trust={row['trust']:.1f})\n{row['content_raw'][:500]}\n")
-
-        content = "# Knowledge Context\n\n" + "\n---\n".join(sections)
-
-        if output:
-            Path(output).write_text(content, encoding="utf-8")
-            log.info(f"✅ 已匯出到 {output}")
-        else:
-            print(content)
-
-    elif mode == "json":
-        # JSON 全量匯出
-        rows = db.conn.execute("SELECT * FROM knowledge ORDER BY layer, trust DESC").fetchall()
-        import json
-        data = [dict(r) for r in rows]
-        json_str = json.dumps(data, ensure_ascii=False, indent=2, default=str)
-
-        if output:
-            Path(output).write_text(json_str, encoding="utf-8")
-            log.info(f"✅ 已匯出 {len(data)} 筆知識到 {output}")
-        else:
-            print(json_str)
-
-    db.close()
+    print(f"   試試: guardrails search \"查詢\"")
 
 
 def cmd_stats(args):
@@ -581,7 +497,7 @@ def cmd_stats(args):
     db_path = project_dir / "guardrails.db"
 
     if not db_path.exists():
-        print("❌ 尚未初始化，先執行 vault init")
+        print("❌ 尚未初始化，先執行 guardrails init")
         return
 
     db = GuardrailsDB(str(db_path))
@@ -636,7 +552,7 @@ def cmd_graph(args):
     db_path = project_dir / "guardrails.db"
 
     if not db_path.exists():
-        print("❌ 尚未初始化，先執行 vault init")
+        print("❌ 尚未初始化，先執行 guardrails init")
         return
 
     db = GuardrailsDB(str(db_path))
@@ -653,9 +569,9 @@ def cmd_graph(args):
         print(f"   掃描條目: {result['total_knowledge']}")
         print(f"   新增實體: {result['entities_created']}")
         print(f"   新增關聯: {result['edges_created']}")
-        print(f"\n   試試: vault graph show")
-        print(f"         vault graph export --format mermaid")
-        print(f"         vault search '查詢' --graph-expand 1")
+        print(f"\n   試試: guardrails graph show")
+        print(f"         guardrails graph export --format mermaid")
+        print(f"         guardrails search '查詢' --graph-expand 1")
 
     elif action == "show":
         """顯示圖譜摘要。"""
@@ -852,69 +768,6 @@ def cmd_import(args):
         db.close()
 
 
-def cmd_dedup(args):
-    """語意去重：掃描重複知識，可選擇自動合併。"""
-    from guardrails_lite.guardrails_db import GuardrailsDB
-
-    project_dir = find_project_dir()
-    db_path = str(project_dir / "guardrails.db")
-
-    if not (project_dir / "guardrails.db").exists():
-        print("❌ 尚未初始化，先執行 vault init")
-        return
-
-    # 動態 import（避免在 semantic 套件未安裝時整個 CLI 失敗）
-    try:
-        import sys as _sys
-        import os as _os
-        scripts_dir = str(project_dir)
-        _sys.path.insert(0, scripts_dir)
-
-        from scripts.deduplicate_semantic import find_duplicates, merge_duplicates
-    except ImportError:
-        # 嘗試直接 import（已安裝的情況）
-        try:
-            import importlib.util, pathlib
-            script_path = pathlib.Path(__file__).parent.parent / "scripts" / "deduplicate_semantic.py"
-            spec = importlib.util.spec_from_file_location("deduplicate_semantic", script_path)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            find_duplicates = mod.find_duplicates
-            merge_duplicates = mod.merge_duplicates
-        except Exception as e:
-            print(f"❌ 無法載入去重模組: {e}")
-            print("   請確認 scripts/deduplicate_semantic.py 存在")
-            return
-
-    threshold = args.threshold
-    print(f"🔍 語意去重掃描（閾值: {threshold}）...\n")
-
-    duplicates = find_duplicates(db_path=db_path, threshold=threshold)
-
-    if not duplicates:
-        print("✅ 沒有發現重複知識！")
-        return
-
-    print(f"\n發現 {len(duplicates)} 組重複。")
-
-    if args.merge:
-        report_path = str(project_dir / "duplicate_report.json")
-        print(f"\n⚠️  即將合併（刪除低信任度的一方）...")
-        merge_duplicates(db_path=db_path, report_path=report_path, dry_run=False)
-        # 合併後 report 可以刪掉（已在 .gitignore）
-        import os
-        if os.path.exists(report_path):
-            os.remove(report_path)
-        print("🧹 已清除臨時 duplicate_report.json")
-    elif args.dry_run:
-        report_path = str(project_dir / "duplicate_report.json")
-        merge_duplicates(db_path=db_path, report_path=report_path, dry_run=True)
-    else:
-        print("💡 選項：")
-        print("   vault dedup --dry-run    預覽合併計畫（不修改資料）")
-        print("   vault dedup --merge      自動合併（保留高信任度的一方）")
-
-
 def cmd_config(args):
     """配置管理。"""
     from guardrails_lite.guardrails_db import GuardrailsDB
@@ -936,9 +789,9 @@ def cmd_config(args):
         for row in rows:
             print(f"  {row['key']} = {row['value']}")
     else:
-        print("用法: vault config set <key> <value>")
-        print("      vault config get <key>")
-        print("      vault config list")
+        print("用法: guardrails config set <key> <value>")
+        print("      guardrails config get <key>")
+        print("      guardrails config list")
 
     db.close()
 
@@ -947,8 +800,8 @@ def cmd_config(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="vault",
-        description="Vault for LLM — 純本地下知識系統",
+        prog="guardrails",
+        description="Guardrails Lite — 純本地下知識系統",
     )
     sub = parser.add_subparsers(dest="command", help="子命令")
 
@@ -982,6 +835,8 @@ def main():
     p.add_argument("--category")
     p.add_argument("--graph-expand", type=int, default=0,
                    help="圖譜擴展跳數（0=不擴展，1=1跳，2=2跳）")
+    p.add_argument("--no-rerank", action="store_true",
+                   help="停用 reranker 重排序")
 
     # list
     p = sub.add_parser("list", help="列出知識")
@@ -1017,15 +872,6 @@ def main():
     p.add_argument("--no-embed", action="store_true", help="跳過嵌入生成")
     p.add_argument("--contextualize", action="store_true", help="Contextual Retrieval：用 Ollama 生成上下文摘要（Anthropic 2024）")
     p.add_argument("--ollama-model", default="qwen3:8b", help="Ollama 模型（用於 contextualize）")
-
-    # dedup
-    p = sub.add_parser("dedup", help="語意去重（掃描 / 預覽 / 合併）")
-    p.add_argument("--threshold", type=float, default=0.85,
-                   help="相似度閾值，超過此值視為重複（預設: 0.85）")
-    p.add_argument("--dry-run", action="store_true",
-                   help="預覽合併計畫，不實際修改資料")
-    p.add_argument("--merge", action="store_true",
-                   help="自動合併重複知識（保留信任度較高的一方）")
 
     # config
     p = sub.add_parser("config", help="配置管理")
@@ -1076,7 +922,6 @@ def main():
         "install-embedding": cmd_install_embedding,
         "import": cmd_import,
         "config": cmd_config,
-        "dedup": cmd_dedup,
         "graph": cmd_graph,
     }
 

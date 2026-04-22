@@ -27,7 +27,7 @@ except ImportError:
 class GuardrailsDB:
     """Vault for LLM 資料庫層。"""
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
 
     def __init__(self, db_path: str | Path = "guardrails.db"):
         self.db_path = Path(db_path)
@@ -92,12 +92,31 @@ class GuardrailsDB:
                 content_hash TEXT NOT NULL DEFAULT '',
                 source       TEXT NOT NULL DEFAULT '',
                 created_at   TEXT  NOT NULL DEFAULT '',
-                updated_at   TEXT  NOT NULL DEFAULT ''
+                updated_at   TEXT  NOT NULL DEFAULT '',
+                convergence_status TEXT NOT NULL DEFAULT 'unknown',
+                convergence_score  REAL  DEFAULT NULL,
+                convergence_checked_at TEXT NOT NULL DEFAULT '',
+                last_verified       TEXT NOT NULL DEFAULT '',
+                freshness          REAL  NOT NULL DEFAULT 1.0
             )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_layer ON knowledge(layer)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_category ON knowledge(category)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_trust ON knowledge(trust)")
+
+        # ── Schema v3 migration：為現有資料庫加新欄位 ──
+        existing_cols = {r[1] for r in c.execute("PRAGMA table_info(knowledge)").fetchall()}
+        new_cols_v3 = {
+            "convergence_status": "TEXT NOT NULL DEFAULT 'unknown'",
+            "convergence_score": "REAL DEFAULT NULL",
+            "convergence_checked_at": "TEXT NOT NULL DEFAULT ''",
+            "last_verified": "TEXT NOT NULL DEFAULT ''",
+            "freshness": "REAL NOT NULL DEFAULT 1.0",
+        }
+        for col_name, col_def in new_cols_v3.items():
+            if col_name not in existing_cols:
+                c.execute(f"ALTER TABLE knowledge ADD COLUMN {col_name} {col_def}")
+        c.commit()
 
         # 文章追蹤表
         c.execute("""
@@ -567,6 +586,28 @@ class GuardrailsDB:
         ).fetchall()
         return [r[0] for r in rows]
 
+    # ── 收斂驗證 ──────────────────────────────────────────
+
+    def update_convergence(self, kid: int, status: str, score: float):
+        """更新條目的收斂狀態。status: unknown/partial/complete, score: 0.0~1.0"""
+        now = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            "UPDATE knowledge SET convergence_status=?, convergence_score=?, "
+            "convergence_checked_at=? WHERE id=?",
+            (status, score, now, kid),
+        )
+        self.conn.commit()
+
+    def update_freshness(self, kid: int, freshness: float, last_verified: str = ""):
+        """更新條目的新鮮度。freshness: 0.0~1.0"""
+        if not last_verified:
+            last_verified = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            "UPDATE knowledge SET freshness=?, last_verified=? WHERE id=?",
+            (freshness, last_verified, kid),
+        )
+        self.conn.commit()
+
     # ── 統計 ────────────────────────────────────────────────
 
     def stats(self) -> dict:
@@ -581,6 +622,24 @@ class GuardrailsDB:
         edge_count = self.conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
         entity_count = self.conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
 
+        # 收斂統計
+        conv_stats = {}
+        try:
+            for row in self.conn.execute(
+                "SELECT convergence_status, COUNT(*) FROM knowledge GROUP BY convergence_status"
+            ).fetchall():
+                conv_stats[row[0]] = row[1]
+        except Exception:
+            pass
+
+        # 新鮮度統計
+        avg_freshness = 0.0
+        try:
+            row = self.conn.execute("SELECT AVG(freshness) FROM knowledge").fetchone()
+            avg_freshness = round(row[0], 3) if row[0] else 0.0
+        except Exception:
+            pass
+
         return {
             "knowledge_count": k_count,
             "embedding_count": vec_count,
@@ -590,4 +649,6 @@ class GuardrailsDB:
             "db_path": str(self.db_path),
             "db_size_mb": round(self.db_path.stat().st_size / 1024 / 1024, 2)
                 if self.db_path.exists() else 0,
+            "convergence": conv_stats,
+            "avg_freshness": avg_freshness,
         }

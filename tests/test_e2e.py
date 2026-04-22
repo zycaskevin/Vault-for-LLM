@@ -35,7 +35,7 @@ db = GuardrailsDB(test_db)
 db.connect()
 
 ver = db.get_config("schema_version", "0")
-check("Schema version = 2", ver == "2", f"got {ver}")
+check("Schema version = 3", ver == "3", f"got {ver}")
 
 stats = db.stats()
 print(f"  Stats: {stats}")

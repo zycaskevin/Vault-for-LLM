@@ -199,6 +199,7 @@ def cmd_search(args):
         layer=args.layer,
         category=args.category,
         graph_expand=args.graph_expand,
+        use_rerank=not args.no_rerank,
     )
 
     if not results:
@@ -207,17 +208,26 @@ def cmd_search(args):
         print(f"🔍 找到 {len(results)} 筆 ({results[0].get('_mode', 'unknown')} 模式):\n")
         for r in results:
             score = r.get("_score", 0)
+            rerank = r.get("_rerank_score", None)
             mode = r.get("_mode", "?")
             trust = r.get("trust", 0)
             layer = r.get("layer", "?")
+            freshness = r.get("freshness", None)
+            conv_status = r.get("convergence_status", "")
             graph_dist = r.get("_graph_distance")
             graph_info = f", graph={graph_dist}" if graph_dist is not None else ""
-            print(f"  [{layer}] {r['title']} (trust={trust}, score={score:.3f}, {mode}{graph_info})")
-            # 顯示 AAAK 摘要
-            aaak = r.get("content_aaak", "") or r.get("content_raw", "")
-            if aaak:
-                preview = aaak[:120].replace("\n", " ")
-                print(f"       {preview}...")
+            rerank_info = f", rerank={rerank:.3f}" if rerank is not None else ""
+            conv_info = f", conv={conv_status}" if conv_status and conv_status != "unknown" else ""
+            print(f"  [{layer}] {r['title']} (trust={trust}, score={score:.3f}{rerank_info}, {mode}{graph_info}{conv_info})")
+            # 顯示 best_claim 和 AAAK 摘要
+            best_claim = r.get("best_claim", "")
+            if best_claim:
+                print(f"       💬 {best_claim}")
+            else:
+                aaak = r.get("content_aaak", "") or r.get("content_raw", "")
+                if aaak:
+                    preview = aaak[:120].replace("\n", " ")
+                    print(f"       {preview}...")
             print()
 
     db.close()
@@ -825,6 +835,8 @@ def main():
     p.add_argument("--category")
     p.add_argument("--graph-expand", type=int, default=0,
                    help="圖譜擴展跳數（0=不擴展，1=1跳，2=2跳）")
+    p.add_argument("--no-rerank", action="store_true",
+                   help="停用 reranker 重排序")
 
     # list
     p = sub.add_parser("list", help="列出知識")

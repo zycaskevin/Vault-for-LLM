@@ -49,21 +49,94 @@ def extract_frontmatter(content: str) -> tuple[dict, str]:
     return metadata, body
 
 
+def extract_claims(title: str, content: str) -> list[dict]:
+    """
+    從內容提取原子主張（atomic claims），每條帶 source_span。
+    回傳: [{"id": "C1", "claim": "...", "span": "L12-14"}, ...]
+    """
+    claims = []
+    lines = content.strip().split("\n")
+    claim_id = 0
+
+    for line_num, line in enumerate(lines, 1):
+        stripped = line.strip()
+
+        # 跳過空行、標題、程式碼
+        if not stripped or stripped.startswith("#") or stripped.startswith("```"):
+            continue
+
+        # 列表項 — 提取為原子主張
+        if stripped.startswith("- ") or stripped.startswith("* "):
+            item = stripped[2:].strip()
+            # 去掉過長的，只取核心
+            if len(item) > 10:
+                # 取第一句或 KEY:VALUE
+                if "：" in item or ":" in item:
+                    core = item.split("。")[0] if "。" in item else item
+                else:
+                    core = item.split("。")[0] if "。" in item else item
+                if len(core) > 120:
+                    core = core[:117] + "..."
+                claim_id += 1
+                claims.append({
+                    "id": f"C{claim_id}",
+                    "claim": core,
+                    "span": f"L{line_num}",
+                })
+            continue
+
+        # 數字列表項
+        import re
+        num_match = re.match(r"^(\d+)\.\s(.+)", stripped)
+        if num_match:
+            item = num_match.group(2).strip()
+            if len(item) > 10:
+                core = item.split("。")[0] if "。" in item else item
+                if len(core) > 120:
+                    core = core[:117] + "..."
+                claim_id += 1
+                claims.append({
+                    "id": f"C{claim_id}",
+                    "claim": core,
+                    "span": f"L{line_num}",
+                })
+            continue
+
+        # 普通段落 — 如果足夠長，取第一句為主張
+        if len(stripped) > 20 and not stripped.startswith("思考") and not stripped.startswith("//"):
+            first_sentence = stripped.split("。")[0]
+            if len(first_sentence) > 15:
+                claim_id += 1
+                claims.append({
+                    "id": f"C{claim_id}",
+                    "claim": first_sentence + "。" if "。" in stripped else first_sentence,
+                    "span": f"L{line_num}",
+                })
+
+    return claims[:10]  # 最多 10 條主張
+
+
 def simple_aaak_compress(title: str, content: str) -> str:
     """
     AAAK 壓縮：把 Markdown 知識壓縮成 KEY:VALUE 格式。
     目標：3-10x 壓縮率，保留核心資訊，人類可讀 + LLM 可解析。
     
+    v3 新增：原子主張 CLAIMS 段，帶 source_span 指回原文行號。
+    
     壓縮策略：
     1. 標題 → TITLE:
-    2. 列表項 → 縮寫關鍵詞
-    3. 段落 → 取第一句 + 核心結論
-    4. 去除裝飾性內容（空行、重複、過度解釋）
-    5. 程式碼/指令 → 保留關鍵指令
+    2. 原子主張 → CLAIMS: 段
+    3. 列表項 → 縮寫關鍵詞
+    4. 段落 → 取第一句 + 核心結論
+    5. 去除裝飾性內容（空行、重複、過度解釋）
+    6. 程式碼/指令 → 保留關鍵指令
     """
     import re
     
     lines = content.strip().split("\n")
+    
+    # ── 提取原子主張 ──
+    claims = extract_claims(title, content)
     
     # ── 第一輪：提取結構化資訊 ──
     sections = []  # (heading, items)
@@ -128,6 +201,12 @@ def simple_aaak_compress(title: str, content: str) -> str:
     # ── 第二輪：壓縮成 AAAK 格式 ──
     result_parts = [f"TITLE:{title}"]
     
+    # ── 原子主張段 ──
+    if claims:
+        result_parts.append("CLAIMS:")
+        for c in claims:
+            result_parts.append(f"- [{c['id']}] {c['claim']} ({c['span']})")
+    
     # AAAK 縮寫對照
     aaak_map = {
         "架構": "ARCH", "設計": "DESIGN", "部署": "DEPLOY", "錯誤": "ERR",
@@ -170,10 +249,10 @@ def simple_aaak_compress(title: str, content: str) -> str:
     
     result = "\n".join(result_parts)
     
-    # 長度上限：500 字元
-    if len(result) > 500:
-        # 從後往前砍，保留 title
-        result = result[:497] + "..."
+    # 長度上限：800 字元（從 500 放寬，容納 CLAIMS 段）
+    if len(result) > 800:
+        # 從後往前砍，保留 TITLE 和 CLAIMS
+        result = result[:797] + "..."
     
     return result
 

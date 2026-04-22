@@ -3,8 +3,9 @@
 import sys
 import os
 import tempfile
+from pathlib import Path
 
-sys.path.insert(0, '/home/user/Guardrails-knowledge')
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from vault.guardrails_db import GuardrailsDB
 from vault.guardrails_search import GuardrailsSearch
@@ -144,11 +145,12 @@ print("=" * 60)
 
 # Quick dry run test
 import subprocess
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 result = subprocess.run(
     ["conda", "run", "-n", "guardrails-lite", "python",
-     "/home/user/Guardrails-knowledge/scripts/convergence_check.py",
+     str(PROJECT_ROOT / "scripts" / "convergence_check.py"),
      "--limit", "1", "--min-trust", "0.9"],
-    capture_output=True, text=True, timeout=30, cwd="/home/user/Guardrails-knowledge"
+    capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT)
 )
 check("convergence_check.py runs", result.returncode == 0, f"exit code: {result.returncode}")
 check("convergence output has results", "找到" in result.stdout or "沒有" in result.stdout,

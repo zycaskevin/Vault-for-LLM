@@ -15,10 +15,15 @@ Vault-for-LLM 是一個專為 LLM Agent 設計的**四層分層知識庫**。它
 
 - **四層架構**（L0–L3）— 結構化知識注入
 - **混合搜尋**：關鍵字 + 語意向量搜尋（ONNX，無需 GPU）
-- **知識圖譜**：自動推斷實體與關係邊，支援 BFS 擴展
+- **知識圖譜**：自動推斷實體與關係邊，支援 2-hop 圖譜擴展
+- **原子主張 + 來源標註**：次 chunk 級粒度，每條主張可追溯到原文
+- **自問收斂**：系統判斷「我學夠了嗎？」，學不夠就繼續（KAL 啟發）
+- **跨家族 LLM 驗證**：用模型 A 提取 + 模型 B 驗證，交叉抓出幻覺
+- **鮮度追蹤 + FSRS 間隔重複**：自動偵測過時知識，排程複習
 - **AAAK 壓縮**：6 倍壓縮率，大幅減少 token 消耗
 - **信任評分**：每筆知識都有信心分數（0.0–1.0）
 - **品質檢查**：自動 lint 與矛盾偵測
+- **MCP 伺服器**：讓任何 MCP 相容的 AI Agent 在對話中直接存取知識庫
 - **CLI 優先**：20+ 指令，完整管理生命週期
 
 ---
@@ -40,6 +45,22 @@ L3 深度知識    → 架構、技術、經驗（按需搜尋）
 | L1 | 每次對話 | 低（<500） | 作業系統、安裝工具、活躍專案 |
 | L2 | 需要時 | 中（<2000） | 昨天修了什麼 bug、最近的技術決策 |
 | L3 | 按需搜尋 | 按需 | 某框架的踩坑筆記、API 用法 |
+
+---
+
+## v0.4.0 新功能
+
+| 功能 | 說明 |
+|------|------|
+| **收斂檢查** | KAL 啟發的自問收斂 loop — 系統問「我能解釋這個嗎？」，不夠就繼續學 |
+| **交叉驗證** | 不對稱 LLM 驗證 — 用模型 A 提取主張，用模型 B 驗證 |
+| **鮮度追蹤** | 自動偵測過時知識 + FSRS 間隔排程複習 |
+| **原子主張** | 次 chunk 粒度提取，附 `source_span` 來源標註 |
+| **圖譜擴展** | 2-hop 遞迴 CTE 走訪知識圖譜，補充關聯知識 |
+| **MCP 伺服器** | 模型上下文協定 — AI 聊天時直接查詢/注入知識 |
+| **CLI 新指令** | `vault converge`、`vault cross-validate`、`vault freshness` |
+
+完整變更請見 [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 
@@ -103,6 +124,18 @@ vault doctor
 2. 深度知識搜尋：使用 `rg "關鍵字" raw/ compiled/`
 3. 或使用 `vault search "查詢"`
 
+### MCP 整合（跟 AI 聊天時直接查知識庫）
+
+```bash
+# 安裝 MCP 依賴
+pip install "vault-for-llm[mcp]"
+
+# 啟動
+vault-mcp --project-dir /path/to/your/project
+```
+
+現在 AI 可以**在對話中直接搜尋、新增、查詢知識** — 不用手動複製貼上。
+
 ---
 
 ## CLI 指令參考
@@ -116,10 +149,13 @@ vault doctor
 | `vault import 長文.md` | 匯入長文件（自動分塊） |
 | `vault compile` | 編譯 raw/ → 資料庫 + compiled/ |
 | `vault search "查詢"` | 搜尋（自動：關鍵字 + 語意） |
-| `vault search "查詢" --graph-expand 1` | 搜尋 + 知識圖譜擴展 |
+| `vault search "查詢" --graph-expand 2` | 搜尋 + 2-hop 圖譜擴展 |
 | `vault list` | 列出所有條目 |
 | `vault stats` | 顯示資料庫統計 |
 | `vault lint` | 執行品質檢查 |
+| `vault converge` | 自問收斂檢查 |
+| `vault cross-validate` | 跨家族 LLM 驗證 |
+| `vault freshness` | 鮮度偵測 + 複習排程 |
 | `vault dedup` | 偵測語意重複知識 |
 | `vault dedup --dry-run` | 預覽合併計畫（不修改資料） |
 | `vault dedup --merge` | 自動合併重複（保留高信任度） |
@@ -199,6 +235,7 @@ vault compile
 執行流程：
 - `raw/` → 資料庫（以內容雜湊去重）
 - `raw/` → `compiled/`（AAAK 6 倍壓縮）
+- 提取原子主張，附 source_span 來源標註
 - 自動 L2 更新 + lint 健康檢查 + git commit
 
 ---
@@ -209,9 +246,10 @@ vault compile
 |------|------|------|
 | 資料庫 | SQLite + sqlite-vec | 零設定、可攜帶、向量搜尋 |
 | 嵌入模型 | ONNX Runtime（~150MB） | 不需 PyTorch/GPU |
-| 搜尋 | 混合（關鍵字 + 向量） | 兩全其美 |
-| 圖譜 | SQLite（實體 + 邊） | 輕量關係追蹤 |
+| 搜尋 | 混合（關鍵字 + 向量 + 圖譜擴展） | 兩全其美 |
+| 圖譜 | SQLite（實體 + 邊 + 2-hop CTE） | 輕量關係追蹤 |
 | 壓縮 | AAAK 格式 | 6 倍大小縮減 |
+| 驗證 | 跨家族 LLM + 收斂檢查 | 單一模型抓不到的，交叉驗證抓 |
 
 ---
 

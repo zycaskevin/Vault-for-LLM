@@ -15,10 +15,15 @@ Vault-for-LLM is a **four-layer hierarchical knowledge base** designed to give a
 
 - **Four-layer architecture** (L0–L3) for structured knowledge injection
 - **Hybrid search**: keyword + semantic vector search (ONNX, no GPU needed)
-- **Knowledge graph**: auto-inferred entities and edges with BFS expansion
+- **Knowledge graph**: auto-inferred entities and edges with 2-hop BFS expansion
+- **Atomic claims with source citations**: sub-chunk granularity, every claim traceable to original text
+- **Self-questioning convergence**: system judges if it "knows enough" to explain a topic (KAL-inspired)
+- **Cross-family LLM validation**: extract with one model, verify with another to catch hallucinations
+- **Freshness tracking + FSRS spaced repetition**: automated staleness detection and review scheduling
 - **AAAK compression**: 6x compression for compiled knowledge
 - **Trust scoring**: every knowledge entry has a confidence score (0.0–1.0)
 - **Lint & contradiction detection**: automatic quality checks
+- **MCP server**: expose your vault to any MCP-compatible AI agent mid-conversation
 - **CLI-first**: 20+ commands for full lifecycle management
 
 ---
@@ -31,6 +36,22 @@ L1 Core Facts    → Environment & active projects (injected every conversation)
 L2 Context       → Recent decisions & troubleshooting (auto-updated daily)
 L3 Deep Knowledge → Architecture, techniques, lessons (searched on demand)
 ```
+
+---
+
+## What's New in v0.4.0
+
+| Feature | Description |
+|---------|-------------|
+| **Convergence Check** | KAL-inspired self-questioning loop — system asks "Can I explain this?" and keeps learning until it can |
+| **Cross Validation** | Asymmetric LLM verification — extract claims with Model A, verify with Model B |
+| **Freshness Tracking** | Automatic staleness detection + FSRS interval scheduling for knowledge review |
+| **Atomic Claims** | Claims at sub-chunk granularity with `source_span` citations for precision retrieval |
+| **Graph Expansion** | 2-hop recursive CTE walk through knowledge graph for contextual retrieval |
+| **MCP Server** | Model Context Protocol server — let any chat AI query and inject knowledge mid-conversation |
+| **Updated CLI** | New commands: `vault converge`, `vault cross-validate`, `vault freshness` |
+
+See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ---
 
@@ -95,6 +116,20 @@ your-project/
 2. For deep knowledge, search `compiled/` or `raw/`
 3. Use `rg "keyword" raw/ compiled/` for fast lookup
 
+### MCP Integration (Chat with your vault)
+
+Connect your vault to any MCP-compatible AI agent:
+
+```bash
+# Install MCP dependencies
+pip install "vault-for-llm[mcp]"
+
+# Start the server
+vault-mcp --project-dir /path/to/your/project
+```
+
+Now your AI can **search, add, and query knowledge mid-conversation** — no manual copy-paste needed.
+
 ---
 
 ## CLI Reference
@@ -108,10 +143,13 @@ your-project/
 | `vault import doc.md` | Import long document (auto-chunked) |
 | `vault compile` | Compile raw/ → database + compiled/ |
 | `vault search "query"` | Search (auto: keyword + semantic) |
-| `vault search "query" --graph-expand 1` | Search + expand via knowledge graph |
+| `vault search "query" --graph-expand 2` | Search + 2-hop graph expansion |
 | `vault list` | List all entries |
 | `vault stats` | Show database statistics |
 | `vault lint` | Run quality checks |
+| `vault converge` | Self-questioning convergence check |
+| `vault cross-validate` | Cross-family LLM validation |
+| `vault freshness` | Freshness + review scheduling |
 | `vault dedup` | Detect semantic duplicates |
 | `vault dedup --dry-run` | Preview merge plan (no changes) |
 | `vault dedup --merge` | Auto-merge duplicates (keeps higher trust) |
@@ -191,6 +229,7 @@ vault compile
 What it does:
 - `raw/` → database (upsert by content hash)
 - `raw/` → `compiled/` (AAAK 6x compression)
+- Extract atomic claims with source_span citations
 - Auto L2 update + lint health check + git commit
 
 ---
@@ -201,9 +240,10 @@ What it does:
 |-----------|-----------|-----|
 | Database | SQLite + sqlite-vec | Zero-config, portable, vector search |
 | Embeddings | ONNX Runtime (~150MB) | No PyTorch/GPU needed |
-| Search | Hybrid (keyword + vector) | Best of both worlds |
-| Graph | SQLite (entities + edges) | Lightweight relationship tracking |
+| Search | Hybrid (keyword + vector + graph expansion) | Best of both worlds |
+| Graph | SQLite (entities + edges + 2-hop CTE) | Lightweight relationship tracking |
 | Compression | AAAK format | 6x size reduction |
+| Validation | Cross-family LLM + Convergence check | Catch what single models miss |
 
 ---
 

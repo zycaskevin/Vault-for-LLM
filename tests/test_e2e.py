@@ -90,9 +90,16 @@ print("=" * 60)
 print("2. EMBEDDING TEST")
 print("=" * 60)
 
-from guardrails_lite.guardrails_embed import ONNXEmbeddingProvider
+try:
+    from guardrails_lite.guardrails_embed import ONNXEmbeddingProvider
+    HAS_ONNX = True
+except ImportError:
+    HAS_ONNX = False
 
-embed_prov = ONNXEmbeddingProvider(model_key="mix")
+if not HAS_ONNX:
+    print("  ⏭️  Skipped (onnxruntime not installed)")
+else:
+    embed_prov = ONNXEmbeddingProvider(model_key="mix")
 dim = embed_prov.dim
 print(f"  ONNX dim: {dim}")
 

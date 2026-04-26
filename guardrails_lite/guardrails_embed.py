@@ -12,7 +12,6 @@ Guardrails Lite — 嵌入生成模組。
 - 混合：sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 (384d, ~200MB)
 """
 
-import json
 import os
 from pathlib import Path
 from typing import Optional

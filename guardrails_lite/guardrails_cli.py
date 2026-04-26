@@ -17,11 +17,8 @@ Guardrails Lite — CLI 入口。
 
 import argparse
 import json
-import os
-import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 
 # ── 專案偵測 ─────────────────────────────────────────────

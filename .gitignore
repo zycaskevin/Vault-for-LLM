@@ -40,3 +40,7 @@ env/
 *.swp
 *.swo
 # Vault for LLM
+push_fixes.sh
+
+# Graphify output (runtime generated)
+vault/graphify-out/

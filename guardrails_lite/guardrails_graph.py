@@ -43,7 +43,9 @@ def _load_entity_rules(project_dir: Optional[Path] = None) -> dict:
     candidates = []
     if project_dir:
         candidates.append(Path(project_dir) / "entity_rules.yaml")
-    # repo root（vault/ 的上一層）
+    # templates/ directory in repo root
+    candidates.append(Path(__file__).parent.parent / "templates" / "entity_rules.yaml")
+    # repo root（backward compat）
     candidates.append(Path(__file__).parent.parent / "entity_rules.yaml")
 
     for path in candidates:

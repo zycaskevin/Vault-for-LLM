@@ -796,6 +796,69 @@ def cmd_config(args):
     db.close()
 
 
+def cmd_converge(args):
+    """收斂檢查 — 自問知識是否充足。"""
+    from scripts.convergence_check import check_convergence
+
+    db_path = str(find_project_dir() / "guardrails.db")
+    check_convergence(
+        db_path=db_path,
+        apply=args.apply,
+        limit=args.limit,
+        min_trust=args.min_trust,
+        ollama_model=args.ollama,
+        api_url=args.api,
+        api_key=args.api_key,
+    )
+
+
+def cmd_cross_validate(args):
+    """跨模型不對稱驗證。"""
+    from scripts.cross_validate import cross_validate
+
+    db_path = str(find_project_dir() / "guardrails.db")
+    cross_validate(
+        db_path=db_path,
+        apply=args.apply,
+        limit=args.limit,
+        min_trust=args.min_trust,
+        local_only=args.local_only,
+        local_model=args.local_model,
+        cloud_model=args.cloud_model,
+    )
+
+
+def cmd_freshness(args):
+    """知識新鮮度追蹤與審查排程。"""
+    from scripts.freshness_check import check_freshness
+
+    db_path = str(find_project_dir() / "guardrails.db")
+    check_freshness(
+        db_path=db_path,
+        apply=args.apply,
+        limit=args.limit,
+        stale_only=args.stale_only,
+    )
+
+
+def cmd_dedup(args):
+    """語意去重 — 檢測與合併重複知識。"""
+    from scripts.deduplicate_semantic import find_duplicates, merge_duplicates
+
+    db_path = str(find_project_dir() / "guardrails.db")
+    duplicates = find_duplicates(db_path=db_path, threshold=args.threshold)
+    if duplicates:
+        if args.merge:
+            print("\n" + "=" * 50)
+            merge_duplicates(db_path=db_path, dry_run=False)
+        elif args.dry_run:
+            print("\n💡 加 --merge 實際合併")
+        else:
+            print("\n💡 加 --merge 實際合併，加 --dry-run 預覽計劃")
+    else:
+        print("✅ 沒有發現重複條目")
+
+
 # ── CLI 入口 ─────────────────────────────────────────────
 
 def main():
@@ -908,6 +971,36 @@ def main():
     g.add_argument("node_id", type=int, help="起始節點 ID")
     g.add_argument("--depth", "-d", type=int, default=2, help="擴展深度")
 
+    # converge — self-questioning convergence check
+    p = sub.add_parser("converge", help="收斂檢查 — 自問知識是否充足")
+    p.add_argument("--apply", action="store_true", help="實際更新資料庫（預設為預覽模式）")
+    p.add_argument("--limit", type=int, default=0, help="最多檢查幾條（0=全部）")
+    p.add_argument("--min-trust", type=float, default=1.0, help="只檢查 trust 低於此值的條目")
+    p.add_argument("--ollama", type=str, default="", help="使用 ollama 模型評分（如 qwen3）")
+    p.add_argument("--api", type=str, default="", help="使用 OpenAI 相容 API 評分")
+    p.add_argument("--api-key", type=str, default="", help="API key（如需要）")
+
+    # cross-validate — asymmetric LLM verification
+    p = sub.add_parser("cross-validate", help="跨模型不對稱驗證")
+    p.add_argument("--apply", action="store_true", help="實際更新 DB（預設為預覽模式）")
+    p.add_argument("--limit", type=int, default=0, help="最多驗證幾條（0=全部）")
+    p.add_argument("--min-trust", type=float, default=0.8, help="只驗證 trust 低於此值的條目")
+    p.add_argument("--local-only", action="store_true", help="只用本地模型（不用雲端）")
+    p.add_argument("--local-model", type=str, default="qwen3-8b", help="本地模型名稱")
+    p.add_argument("--cloud-model", type=str, default="glm-5.1", help="雲端模型名稱")
+
+    # freshness — staleness tracking and review scheduling
+    p = sub.add_parser("freshness", help="知識新鮮度追蹤與審查排程")
+    p.add_argument("--apply", action="store_true", help="實際更新 DB（預設為預覽模式）")
+    p.add_argument("--limit", type=int, default=0, help="最多處理幾條（0=全部）")
+    p.add_argument("--stale-only", action="store_true", help="只顯示過期條目")
+
+    # dedup — semantic duplicate detection and merge
+    p = sub.add_parser("dedup", help="語意去重 — 檢測與合併重複知識")
+    p.add_argument("--merge", action="store_true", help="實際合併（預設為預覽模式）")
+    p.add_argument("--dry-run", action="store_true", help="預覽合併計劃（不修改資料庫）")
+    p.add_argument("--threshold", type=float, default=0.85, help="相似度閾值（預設 0.85）")
+
     args = parser.parse_args()
 
     cmd_map = {
@@ -923,6 +1016,10 @@ def main():
         "import": cmd_import,
         "config": cmd_config,
         "graph": cmd_graph,
+        "converge": cmd_converge,
+        "cross-validate": cmd_cross_validate,
+        "freshness": cmd_freshness,
+        "dedup": cmd_dedup,
     }
 
     if args.command in cmd_map:

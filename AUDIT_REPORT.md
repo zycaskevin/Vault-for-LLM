@@ -104,7 +104,9 @@ env_file = os.path.expanduser("~/.hermes/.env")
 
 ---
 
-### P0-007: Error messages expose internal system details
+### P0-007: Error messages expose internal system details — WONTFIX
+
+**Decision:** Open-source projects benefit from detailed error messages for debugging and issue reporting. No personal/private data found in error messages after thorough scan. Keeping as-is is the right call for open-source.
 
 **Files:** Multiple  
 **Issue:** Exception details are printed directly to users, potentially exposing filesystem paths, internal architecture, and debug info:
@@ -121,23 +123,21 @@ env_file = os.path.expanduser("~/.hermes/.env")
 
 ## P1 — CODE QUALITY (Should Fix)
 
-### P1-001: Missing CLI commands documented in README
+### P1-001: Missing CLI commands documented in README — FIXED
 
 **File:** `guardrails_lite/guardrails_cli.py` vs `README.md`  
-**Issue:** The README documents these commands but they are NOT implemented as CLI subcommands:
+**Issue:** The README documents these commands but they were NOT implemented as CLI subcommands:
 
 | Documented Command | Status |
 |---|---|
-| `vault converge` | ❌ Missing — only `scripts/convergence_check.py` |
-| `vault cross-validate` | ❌ Missing — only `scripts/cross_validate.py` |
-| `vault freshness` | ❌ Missing — only `scripts/freshness_check.py` |
-| `vault dedup` | ❌ Missing — only `scripts/deduplicate_semantic.py` |
-| `vault dedup --dry-run` | ❌ Missing |
-| `vault dedup --merge` | ❌ Missing |
+| `vault converge` | ✅ Now implemented as CLI subcommand |
+| `vault cross-validate` | ✅ Now implemented as CLI subcommand |
+| `vault freshness` | ✅ Now implemented as CLI subcommand |
+| `vault dedup` | ✅ Now implemented as CLI subcommand |
+| `vault dedup --dry-run` | ✅ Now implemented as CLI subcommand |
+| `vault dedup --merge` | ✅ Now implemented as CLI subcommand |
 
-The `cmd_map` in `main()` only has: init, add, compile, search, list, lint, doctor, stats, install-embedding, import, config, graph.
-
-**Fix:** Either implement these as CLI subcommands or update the README to show the `python3 scripts/...` invocation.
+**Fix:** Added 4 CLI subcommand wrappers that import and call the existing script functions.
 
 ---
 

@@ -15,14 +15,15 @@ freshness_report.json
 # 編譯輸出（可重新產生）
 compiled/
 
-# ── Python ───────────────────────────────────────────────
+# Python
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
 *.egg-info/
 dist/
 build/
 .eggs/
+.pytest_cache/
 *.egg
 
 # ── 虛擬環境 ─────────────────────────────────────────────

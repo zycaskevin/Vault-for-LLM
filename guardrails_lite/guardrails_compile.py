@@ -14,13 +14,10 @@ Vault for LLM — 本地編譯器。
 """
 
 import hashlib
-import json
 import re
 import subprocess
 import yaml
 from pathlib import Path
-from datetime import datetime, timezone
-from typing import Optional
 
 
 def extract_frontmatter(content: str) -> tuple[dict, str]:

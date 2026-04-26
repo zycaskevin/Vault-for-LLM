@@ -25,6 +25,8 @@ import sys
 import os
 from pathlib import Path
 
+from . import __version__
+
 # 確保模組路徑
 GUARDRAILS_DIR = str(Path(__file__).parent.parent)
 if GUARDRAILS_DIR not in sys.path:
@@ -304,7 +306,7 @@ def run_stdio():
                     },
                     "serverInfo": {
                         "name": "guardrails-mcp",
-                        "version": "0.1.0",
+                        "version": __version__,
                     },
                 },
             }
@@ -352,8 +354,8 @@ def run_stdio():
 
 # ── Direct CLI (for testing) ──────────────────────────
 
-if __name__ == "__main__":
-    # 如果有 --cli 參數，直接執行工具（不啟動 MCP server）
+def main():
+    """Entry point for vault-mcp command."""
     if len(sys.argv) > 1 and sys.argv[1] == "--cli":
         tool_name = sys.argv[2] if len(sys.argv) > 2 else "stats"
         args = {}
@@ -372,5 +374,8 @@ if __name__ == "__main__":
         result = handle_tool_call(f"guardrails_{tool_name}", args)
         print(result.get("result", result.get("error", "")))
     else:
-        # 啟動 MCP stdio server
         run_stdio()
+
+
+if __name__ == "__main__":
+    main()

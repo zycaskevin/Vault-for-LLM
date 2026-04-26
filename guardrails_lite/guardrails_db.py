@@ -8,7 +8,6 @@ Vault for LLM — SQLite + sqlite-vec 資料庫抽象層。
 - 支援降級：沒裝 sqlite-vec 時退回純關鍵字
 """
 
-import json
 import hashlib
 import sqlite3
 from pathlib import Path

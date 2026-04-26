@@ -25,15 +25,12 @@ Contextual Retrieval：
 from __future__ import annotations
 
 import re
-import hashlib
-import json
-import urllib.request
 from pathlib import Path
 from typing import Optional
 
 from .guardrails_db import GuardrailsDB
-from .guardrails_embed import create_embedding_provider, EmbeddingProvider
-from .guardrails_llm import LLMProvider, OllamaLLMProvider, create_llm_provider
+from .guardrails_embed import EmbeddingProvider
+from .guardrails_llm import LLMProvider, OllamaLLMProvider
 from .guardrails_log import log
 
 

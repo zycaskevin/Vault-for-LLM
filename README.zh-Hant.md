@@ -185,8 +185,7 @@ vault compile
 
 ```
 你的專案/
-├── vault.yaml          ← 專案設定（vault init 自動產生）
-├── L0-identity/             ← 使用者身份（每次對話注入）
+├── L0-identity/             ← 使用者是誰（每次對話注入）
 │   └── identity.md
 ├── L1-core-facts/           ← 核心事實（每次對話注入）
 │   └── current-projects.md
@@ -196,6 +195,7 @@ vault compile
 ├── L3-knowledge/            ← 深度知識（按需搜尋）
 ├── raw/                     ← 原始知識輸入（你的 .md 檔案放這裡）
 ├── compiled/                ← AAAK 壓縮備份（自動產生）
+├── guardrails.db            ← SQLite 資料庫（vault compile 自動產生）
 └── templates/               ← L0/L1/L2 乾淨模板
 ```
 

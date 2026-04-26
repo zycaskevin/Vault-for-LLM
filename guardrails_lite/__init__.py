@@ -1,6 +1,6 @@
-"""Vault for LLM — 純本地知識管理系統。"""
+"""Vault-for-LLM — Local-first knowledge system for LLM agents."""
 
-__version__ = "0.3.2"
+__version__ = "0.4.0"
 
 from .guardrails_db import GuardrailsDB
 from .guardrails_search import GuardrailsSearch

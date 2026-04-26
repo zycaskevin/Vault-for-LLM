@@ -7,6 +7,9 @@
 duplicate_report.json
 trust_report.json
 lint_report.json
+convergence_report.json
+cross_validation_report.json
+freshness_report.json
 *_report.json
 
 # 編譯輸出（可重新產生）

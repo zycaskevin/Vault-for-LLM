@@ -277,6 +277,14 @@ class GuardrailsDB:
 
     def update_knowledge(self, id: int, **fields) -> bool:
         """更新知識欄位。"""
+        # Whitelist allowed columns to prevent SQL injection
+        ALLOWED_COLUMNS = {
+            "title", "layer", "category", "tags", "trust", "content_raw",
+            "content_aaak", "content_hash", "source", "convergence_status",
+            "convergence_score", "convergence_checked_at", "last_verified",
+            "freshness", "updated_at",
+        }
+        fields = {k: v for k, v in fields.items() if k in ALLOWED_COLUMNS}
         if not fields:
             return False
         fields["updated_at"] = datetime.now(timezone.utc).isoformat()

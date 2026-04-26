@@ -14,8 +14,6 @@ from .guardrails_db import GuardrailsDB
 from .guardrails_embed import (
     create_embedding_provider,
     EmbeddingProvider,
-    MODELS,
-    DEFAULT_MODEL_KEY,
 )
 
 

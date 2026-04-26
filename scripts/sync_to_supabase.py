@@ -20,7 +20,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scripts._utils import find_db_path, load_dotenv_cascade
 
-# 載入 .env：優先用專案目錄的 .env，其次 ~/.env，不再依賴 ~/.agent-runtime/.env
+# 載入 .env：優先用專案目錄的 .env，其次 ~/.env
 load_dotenv_cascade()
 
 from supabase import create_client

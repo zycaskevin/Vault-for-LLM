@@ -252,7 +252,8 @@ def check_convergence(
     query = f"SELECT id, title, content_raw, trust, convergence_status FROM knowledge WHERE {where_clause} ORDER BY trust ASC"
 
     if limit > 0:
-        query += f" LIMIT {limit}"
+        query += " LIMIT ?"
+        params.append(limit)
 
     rows = db.conn.execute(query, params).fetchall()
 

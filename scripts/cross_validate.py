@@ -68,15 +68,13 @@ def call_ollama_cloud(prompt: str, model: str = "glm-5.1", max_tokens: int = 300
     # 從環境變數或 .env 取 API key
     api_key = os.environ.get("OLLAMA_API_KEY", "")
     if not api_key:
-        # 嘗試讀取 .env
-        env_file = os.path.expanduser("~/.agent-runtime/.env")
-        if os.path.exists(env_file):
-            with open(env_file) as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("OLLAMA_API_KEY="):
-                        api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
-                        break
+        # 嘗試從專案目錄或家目錄的 .env 載入
+        try:
+            from _utils import load_dotenv_cascade
+            load_dotenv_cascade()
+            api_key = os.environ.get("OLLAMA_API_KEY", "")
+        except Exception:
+            pass
 
     if not api_key:
         print("  ⚠️ OLLAMA_API_KEY 未設定")
@@ -291,7 +289,8 @@ def cross_validate(
     query = f"SELECT id, title, content_raw, content_aaak, trust, convergence_status FROM knowledge WHERE {where_clause} ORDER BY trust ASC"
 
     if limit > 0:
-        query += f" LIMIT {limit}"
+        query += " LIMIT ?"
+        params.append(limit)
 
     rows = db.conn.execute(query, params).fetchall()
 

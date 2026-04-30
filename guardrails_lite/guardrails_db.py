@@ -27,7 +27,7 @@ except ImportError:
 class GuardrailsDB:
     """Vault for LLM 資料庫層。"""
 
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 4
 
     def __init__(self, db_path: str | Path = "guardrails.db"):
         self.db_path = Path(db_path)
@@ -114,6 +114,15 @@ class GuardrailsDB:
             "freshness": "REAL NOT NULL DEFAULT 1.0",
         }
         for col_name, col_def in new_cols_v3.items():
+            if col_name not in existing_cols:
+                c.execute(f"ALTER TABLE knowledge ADD COLUMN {col_name} {col_def}")
+
+        # ── Schema v4 migration：summary 欄位 ──
+        new_cols_v4 = {
+            "summary": "TEXT NOT NULL DEFAULT ''",
+            "summary_generated_at": "TEXT NOT NULL DEFAULT ''",
+        }
+        for col_name, col_def in new_cols_v4.items():
             if col_name not in existing_cols:
                 c.execute(f"ALTER TABLE knowledge ADD COLUMN {col_name} {col_def}")
         c.commit()
@@ -257,6 +266,7 @@ class GuardrailsDB:
         trust: float = 0.5,
         source: str = "",
         content_aaak: str = "",
+        summary: str = "",
     ) -> int:
         """新增一筆知識，回傳 id。"""
         now = datetime.now(timezone.utc).isoformat()
@@ -266,10 +276,12 @@ class GuardrailsDB:
             """INSERT INTO knowledge
                (title, layer, category, tags, trust,
                 content_raw, content_aaak, content_hash, source,
+                summary, summary_generated_at,
                 created_at, updated_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (title, layer, category, tags, trust,
              content_raw, content_aaak, content_hash, source,
+             summary, now if summary else '',
              now, now),
         )
         self.conn.commit()

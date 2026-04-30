@@ -33,5 +33,11 @@ L2-context/
 raw/
 compiled/
 
+# Runtime outputs
+L3-knowledge/
+*_report.json
+graphify-out/
+.opencode/
+
 # Logs
 *.log

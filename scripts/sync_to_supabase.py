@@ -27,6 +27,34 @@ from vault.guardrails_db import GuardrailsDB
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "guardrails.db")
 
 
+def _parse_layer(layer_str) -> int:
+    """Convert 'L3'/'L2'/'L1'/'L0' → 3/2/1/0 for Supabase smallint column."""
+    if not layer_str:
+        return 3
+    stripped = str(layer_str).strip().upper()
+    if stripped.startswith("L"):
+        try:
+            return int(stripped[1:])
+        except (ValueError, IndexError):
+            pass
+    return 3
+
+
+def _parse_tags(tags_str) -> list:
+    """Convert comma-separated tags → PG array, always return list."""
+    if not tags_str:
+        return []
+    if isinstance(tags_str, list):
+        return tags_str
+    s = str(tags_str).strip()
+    if s.startswith('[') and s.endswith(']'):
+        try:
+            return json.loads(s)
+        except (json.JSONDecodeError):
+            pass
+    return [t.strip() for t in s.split(',') if t.strip()]
+
+
 def sync(db_path=DB_PATH):
     url = os.getenv('SUPABASE_URL')
     key = os.getenv('SUPABASE_ANON_KEY') or os.getenv('SUPABASE_KEY')
@@ -41,7 +69,7 @@ def sync(db_path=DB_PATH):
     # 讀取本地知識
     rows = db.conn.execute(
         "SELECT id, title, layer, category, tags, trust, content_raw, content_aaak, "
-        "content_hash, source, created_at, updated_at FROM knowledge ORDER BY id"
+        "content_hash, source, summary, created_at, updated_at FROM knowledge ORDER BY id"
     ).fetchall()
     print(f"📚 本地知識: {len(rows)} 筆")
 
@@ -56,13 +84,13 @@ def sync(db_path=DB_PATH):
 
     for row in rows:
         kid, title, layer, category, tags, trust, content_raw, content_aaak, \
-            content_hash, source, created_at, updated_at = row
+            content_hash, source, summary, created_at, updated_at = row
 
         data = {
             'title': title,
-            'layer': layer or 'L3',
+            'layer': _parse_layer(layer),
             'category': category or 'general',
-            'tags': tags or '[]',
+            'tags': _parse_tags(tags),
             'trust': trust or 0.5,
             'content_raw': content_raw or '',
             'content_aaak': content_aaak or '',

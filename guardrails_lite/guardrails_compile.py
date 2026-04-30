@@ -257,6 +257,75 @@ def simple_aaak_compress(title: str, content: str) -> str:
     return result
 
 
+def generate_summary(content: str, title: str = "", max_chars: int = 80) -> str:
+    """
+    從內容生成 30-80 字摘要。
+    策略：取第一段的前 2-3 句，去空行、去標題、去列表符號。
+    
+    Args:
+        content: 原始 Markdown 內容
+        title: 知識標題（用於 fallback）
+        max_chars: 最大字數（預設 80，符合 SCHEMA.md 的 30-80 字範圍）
+    
+    Returns:
+        摘要字串，不含換行
+    """
+    lines = content.strip().split("\n")
+    sentences = []
+    
+    for line in lines:
+        stripped = line.strip()
+        
+        # 跳過空行、標題、frontmatter 殘留、程式碼
+        if not stripped or stripped.startswith("#") or stripped.startswith("```"):
+            continue
+        if stripped.startswith("---") or stripped.startswith("TITLE:") or stripped.startswith("CLAIMS:"):
+            continue
+        
+        # 列表項：去掉前綴
+        if stripped.startswith("- ") or stripped.startswith("* "):
+            stripped = stripped[2:].strip()
+        # 數字列表
+        import re as _re
+        m = _re.match(r"^\d+\.\s", stripped)
+        if m:
+            stripped = stripped[m.end():]
+        
+        # 拆句
+        parts = _re.split(r"[。！？\n](?=\S)", stripped)
+        for p in parts:
+            p = p.strip()
+            if len(p) >= 8:  # 至少 8 字才算一句
+                sentences.append(p)
+    
+    # 組合：盡量湊到 30-80 字
+    summary = ""
+    for s in sentences:
+        candidate = (summary + "。" + s).strip("。") if summary else s
+        if len(candidate) > max_chars:
+            break
+        summary = candidate
+    
+    # 太短？加更多句
+    if len(summary) < 30 and len(sentences) > len(summary.split("。")):
+        # 嘗試加到至少 30 字
+        for s in sentences[len(summary.split("。")):]:
+            candidate = summary + "。" + s
+            if len(candidate) > max_chars:
+                break
+            summary = candidate
+    
+    # 還是太短？用 title fallback
+    if len(summary) < 15 and title:
+        summary = title
+    
+    # 確保結尾有句號
+    summary = summary.rstrip("。，, \n")
+    if summary and not summary.endswith("。") and not summary.endswith("！") and not summary.endswith("？"):
+        summary += "。"
+    
+    return summary[:max_chars]  # 最後保險
+
 def classify_content(content: str, metadata: dict) -> str:
     """簡易分類器：關鍵字匹配。"""
     text = content[:500].lower()
@@ -383,12 +452,18 @@ class GuardrailsCompiler:
                         (row["title"],),
                     ).fetchall()
                     for d in ids[1:]:  # 跳過第一筆（保留）
-                        self.db.conn.execute("DELETE FROM knowledge WHERE id = ?", (d["id"],))
-                        # 也刪向量
+                        kid = d["id"]
+                        # 先刪子表（避免 FOREIGN KEY 報錯）
+                        self.db.conn.execute("DELETE FROM lint_cache WHERE knowledge_id = ?", (kid,))
+                        self.db.conn.execute("DELETE FROM entity_knowledge WHERE knowledge_id = ?", (kid,))
+                        self.db.conn.execute("DELETE FROM edges WHERE source_id = ? OR target_id = ?", (kid, kid))
+                        # 再刪向量
                         try:
-                            self.db.conn.execute("DELETE FROM knowledge_vec WHERE knowledge_id = ?", (d["id"],))
+                            self.db.conn.execute("DELETE FROM knowledge_vec WHERE knowledge_id = ?", (kid,))
                         except Exception:
                             pass
+                        # 最後刪主表
+                        self.db.conn.execute("DELETE FROM knowledge WHERE id = ?", (kid,))
                     self.db.conn.commit()
                     removed = len(ids) - 1
                     if removed > 0:
@@ -397,6 +472,7 @@ class GuardrailsCompiler:
 
             # 更新 compiled/
             if not dry_run:
+                self._backfill_summaries(stats)
                 self._update_compiled()
 
             # Git commit
@@ -416,6 +492,19 @@ class GuardrailsCompiler:
 
         if not body.strip():
             return "skipped"
+
+        # 沒有 frontmatter？自動生成基本 metadata
+        if not metadata:
+            title = md_file.stem.replace("-", " ").replace("_", " ").strip()
+            metadata = {
+                "title": title,
+                "category": classify_content(body, {}),
+                "layer": "L3",
+                "tags": "",
+                "trust": 0.5,
+                "source": str(md_file.relative_to(self.raw_dir)),
+            }
+            print(f"[compiler] ⚠️ {md_file.name} 缺 frontmatter，自動生成: {title}")
 
         # 計算 hash 做 change detection
         content_hash = hashlib.sha256(body.encode()).hexdigest()[:16]
@@ -451,6 +540,9 @@ class GuardrailsCompiler:
 
         # AAAK 壓縮
         aaak = simple_aaak_compress(title, body)
+        
+        # Summary 生成
+        summary = generate_summary(body, title=title)
 
         if dry_run:
             action = "更新" if existing else "新增"
@@ -464,6 +556,8 @@ class GuardrailsCompiler:
                 title=title,
                 content_raw=body,
                 content_aaak=aaak,
+                summary=summary,
+                summary_generated_at=datetime.now(timezone.utc).isoformat(),
                 content_hash=content_hash,
                 layer=layer,
                 category=category,
@@ -478,6 +572,7 @@ class GuardrailsCompiler:
                 title=title,
                 content_raw=body,
                 content_aaak=aaak,
+                summary=summary,
                 layer=layer,
                 category=category,
                 tags=tags,
@@ -521,6 +616,34 @@ class GuardrailsCompiler:
 
         print(f"[compiler] ✅ {len(rows)} 筆嵌入完成")
 
+    def _backfill_summaries(self, stats: dict):
+        """為既有 DB 條目補 summary（一次性修復）。"""
+        rows = self.db.conn.execute(
+            "SELECT id, title, content_raw FROM knowledge WHERE summary = '' OR summary IS NULL"
+        ).fetchall()
+        
+        if not rows:
+            print("[compiler] 所有條目已有 summary ✅")
+            return
+        
+        print(f"[compiler] 補 summary: {len(rows)} 筆...")
+        now = datetime.now(timezone.utc).isoformat()
+        count = 0
+        for row in rows:
+            try:
+                summary = generate_summary(row["content_raw"], title=row["title"])
+                if summary:
+                    self.db.conn.execute(
+                        "UPDATE knowledge SET summary=?, summary_generated_at=? WHERE id=?",
+                        (summary, now, row["id"]),
+                    )
+                    count += 1
+            except Exception as e:
+                print(f"  ⚠️ id={row['id']}: {e}")
+        
+        self.db.conn.commit()
+        print(f"[compiler] ✅ 補 {count}/{len(rows)} 筆 summary")
+
     def _update_compiled(self):
         """從 DB 更新 compiled/ 目錄。"""
         self.compiled_dir.mkdir(parents=True, exist_ok=True)
@@ -546,20 +669,49 @@ class GuardrailsCompiler:
                 "category": cat,
                 "tags": d.get("tags", ""),
                 "trust": d.get("trust", 0.5),
+                "summary": d.get("summary", ""),
                 "hash": d.get("content_hash", ""),
                 "updated_at": d.get("updated_at", ""),
             }
-            content = f"---\n{yaml.dump(fm, allow_unicode=True, default_flow_style=False)}---\n\n{aaak}\n"
+            # 內容：summary 置頂，然後 AAAK
+            parts = []
+            summary_text = d.get("summary", "")
+            if summary_text and d.get("title") != summary_text:  # 避免跟 title fallback 重複
+                parts.append(f"## Summary\n\n{summary_text}\n")
+            parts.append(aaak)
+            body = "\n".join(parts)
+            content = f"---\n{yaml.dump(fm, allow_unicode=True, default_flow_style=False)}---\n\n{body}\n"
             out_file.write_text(content, encoding="utf-8")
+        
+        # ── 同時寫入 L3-knowledge/aaak/（純 AAAK，不帶 frontmatter）──
+        aaak_dir = self.project_dir / "L3-knowledge" / "aaak"
+        aaak_dir.mkdir(parents=True, exist_ok=True)
+        for row in rows:
+            d = dict(row)
+            title = d.get("title", "untitled").replace("/", "-").replace(" ", "_")
+            aaak = d.get("content_aaak", "") or d.get("content_raw", "")
+            if aaak.strip():
+                (aaak_dir / f"{title}.aaak.md").write_text(aaak + "\n", encoding="utf-8")
 
     def _git_commit(self, stats: dict):
-        """自動 git commit。"""
+        """自動 git commit（只加已 tracked 檔案，避免誤傷 runtime 檔案）。"""
         try:
-            # 加 guardrails.db 到 git（如果 .gitignore 沒排除）
-            subprocess.run(["git", "add", "-A"], cwd=str(self.project_dir),
-                           capture_output=True, timeout=10)
+            # 只用 -u（更新已 tracking 的檔案），不用 -A（避免加 untracked runtime 檔案）
+            result = subprocess.run(
+                ["git", "add", "-u"], cwd=str(self.project_dir),
+                capture_output=True, timeout=10
+            )
+            # 檢查是否有東西 staged
+            diff_check = subprocess.run(
+                ["git", "diff", "--cached", "--quiet"], cwd=str(self.project_dir),
+                timeout=5
+            )
+            if diff_check.returncode == 0:
+                # 沒變更，跳過 commit
+                return
+            
             msg = f"guardrails: compile {stats['new']} new, {stats['updated']} updated"
-            subprocess.run(["git", "commit", "-m", msg, "--allow-empty"],
+            subprocess.run(["git", "commit", "-m", msg],
                            cwd=str(self.project_dir), capture_output=True, timeout=10)
             print(f"[compiler] ✅ Git commit: {msg}")
         except Exception as e:

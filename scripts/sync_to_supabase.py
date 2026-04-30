@@ -95,6 +95,7 @@ def sync(db_path=DB_PATH):
             'content_raw': content_raw or '',
             'content_aaak': content_aaak or '',
             'content_hash': content_hash or '',
+            'summary': summary or '',
             'source': source or 'local',
             'updated_at': datetime.now().isoformat(),
         }

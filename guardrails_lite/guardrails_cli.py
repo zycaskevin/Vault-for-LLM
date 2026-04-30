@@ -768,6 +768,160 @@ def cmd_import(args):
         db.close()
 
 
+def cmd_skill(args):
+    """技能子命令分派。"""
+    if args.skill_action == "push":
+        cmd_skill_push(args)
+    elif args.skill_action == "search":
+        cmd_skill_search(args)
+    elif args.skill_action == "pull":
+        cmd_skill_pull(args)
+    elif args.skill_action == "list":
+        cmd_skill_list(args)
+    else:
+        print("用法: guardrails skill {push|search|pull|list}")
+
+
+def cmd_skill_push(args):
+    """向技能市場註冊一個技能。"""
+    from guardrails_lite.guardrails_db import GuardrailsDB
+
+    project_dir = find_project_dir()
+    db = GuardrailsDB(str(project_dir / "guardrails.db"))
+    db.connect()
+
+    # 讀取 SKILL.md
+    skill_path = Path(args.file) if args.file else None
+    if skill_path and not skill_path.exists():
+        print(f"❌ 檔案不存在: {skill_path}")
+        db.close()
+        return
+
+    content = skill_path.read_text(encoding="utf-8") if skill_path else sys.stdin.read()
+
+    # 解析 frontmatter 提取 name
+    name = args.name
+    if not name and content.startswith("---"):
+        parts = content.split("---", 2)
+        if len(parts) >= 3:
+            try:
+                import yaml
+                fm = yaml.safe_load(parts[1])
+                name = fm.get("name", "") if isinstance(fm, dict) else ""
+            except Exception:
+                pass
+    if not name:
+        name = skill_path.stem if skill_path else "unnamed-skill"
+
+    kid = db.add_skill(
+        name=name,
+        content_raw=content,
+        version=args.version or "1.0.0",
+        agent_source=args.agent or "hermes-main",
+        category=args.category or "general",
+        capabilities=args.capabilities or "",
+        dependencies=args.dependencies or "",
+        trust=args.trust or 0.5,
+        description=args.description or "",
+    )
+
+    if kid == -1:
+        print(f"⚠️ 技能 '{name}' 已存在。用 --version 升級或先刪除。")
+    else:
+        print(f"✅ 技能 '{name}' 已註冊 (ID={kid})")
+
+    db.close()
+
+
+def cmd_skill_search(args):
+    """搜尋技能市場。"""
+    from guardrails_lite.guardrails_db import GuardrailsDB
+
+    project_dir = find_project_dir()
+    db = GuardrailsDB(str(project_dir / "guardrails.db"))
+    db.connect()
+
+    results = db.search_skills(
+        query=args.query or "",
+        capabilities=args.capabilities,
+        category=args.category,
+        min_trust=args.min_trust or 0.0,
+        agent_source=args.agent,
+        limit=args.limit or 20,
+    )
+
+    if not results:
+        print("🔍 沒有找到匹配的技能")
+    else:
+        print(f"🔍 找到 {len(results)} 個技能:\n")
+        for r in results:
+            print(f"  🛠️  {r['name']} v{r['version']}")
+            print(f"      來源: {r['agent_source']} | 分類: {r['category']} | 信任: {r['trust']}")
+            if r.get("capabilities"):
+                print(f"      能力: {r['capabilities']}")
+            if r.get("dependencies"):
+                print(f"      依賴: {r['dependencies']}")
+            if r.get("description"):
+                print(f"      {r['description']}")
+            print()
+
+    db.close()
+
+
+def cmd_skill_pull(args):
+    """從技能市場下載技能到本機 skills/。"""
+    from guardrails_lite.guardrails_db import GuardrailsDB
+
+    project_dir = find_project_dir()
+    db = GuardrailsDB(str(project_dir / "guardrails.db"))
+    db.connect()
+
+    skill = db.get_skill(args.name)
+    if not skill:
+        print(f"❌ 技能 '{args.name}' 不存在於技能市場")
+        db.close()
+        return
+
+    # 寫入 ~/.hermes/skills/<name>/
+    skills_dir = Path.home() / ".hermes" / "skills" / args.name
+    skills_dir.mkdir(parents=True, exist_ok=True)
+
+    skill_file = skills_dir / "SKILL.md"
+    skill_file.write_text(skill["content_raw"], encoding="utf-8")
+    print(f"✅ 技能 '{args.name}' v{skill['version']} → {skill_file}")
+
+    db.close()
+
+
+def cmd_skill_list(args):
+    """列出技能市場所有技能。"""
+    from guardrails_lite.guardrails_db import GuardrailsDB
+
+    project_dir = find_project_dir()
+    db = GuardrailsDB(str(project_dir / "guardrails.db"))
+    db.connect()
+
+    results = db.list_skills(
+        agent_source=args.agent,
+        category=args.category,
+        min_trust=args.min_trust or 0.0,
+        limit=args.limit or 100,
+    )
+
+    if not results:
+        print("📭 技能市場是空的")
+    else:
+        print(f"🛠️  技能市場: {len(results)} 個技能\n")
+        for r in results:
+            print(f"  [{r['agent_source']}] {r['name']} v{r['version']} "
+                  f"(trust={r['trust']}, {r['category']})")
+            if r.get("description"):
+                print(f"      {r['description']}")
+            print()
+
+    db.close()
+
+
 def cmd_config(args):
     """配置管理。"""
     from guardrails_lite.guardrails_db import GuardrailsDB
@@ -878,6 +1032,38 @@ def main():
     p.add_argument("config_action", choices=["set", "get", "list"])
     p.add_argument("config_args", nargs="*")
 
+    # skill — 跨 Agent 技能共享
+    p = sub.add_parser("skill", help="技能市場（跨 Agent 共享）")
+    skill_sub = p.add_subparsers(dest="skill_action", help="技能子命令")
+
+    sp = skill_sub.add_parser("push", help="註冊技能到市場")
+    sp.add_argument("--file", "-f", help="SKILL.md 路徑（預設讀 stdin）")
+    sp.add_argument("--name", help="技能名稱（預設從 frontmatter 讀取）")
+    sp.add_argument("--version", default="1.0.0", help="版本號")
+    sp.add_argument("--agent", default="hermes-main", help="來源 Agent")
+    sp.add_argument("--category", default="general", help="分類")
+    sp.add_argument("--capabilities", default="", help="能力標籤（逗號分隔）")
+    sp.add_argument("--dependencies", default="", help="依賴（逗號分隔）")
+    sp.add_argument("--trust", type=float, default=0.5, help="信任分數")
+    sp.add_argument("--description", default="", help="簡短描述")
+
+    sp = skill_sub.add_parser("search", help="搜尋技能")
+    sp.add_argument("query", nargs="?", default="", help="搜尋關鍵字")
+    sp.add_argument("--capabilities", help="依能力過濾")
+    sp.add_argument("--category", help="依分類過濾")
+    sp.add_argument("--agent", help="依來源 Agent 過濾")
+    sp.add_argument("--min-trust", type=float, default=0.0)
+    sp.add_argument("--limit", "-n", type=int, default=20)
+
+    sp = skill_sub.add_parser("pull", help="下載技能到本機")
+    sp.add_argument("name", help="技能名稱")
+
+    sp = skill_sub.add_parser("list", help="列出所有技能")
+    sp.add_argument("--agent", help="依來源過濾")
+    sp.add_argument("--category", help="依分類過濾")
+    sp.add_argument("--min-trust", type=float, default=0.0)
+    sp.add_argument("--limit", "-n", type=int, default=100)
+
     # graph
     p = sub.add_parser("graph", help="圖譜操作")
     graph_sub = p.add_subparsers(dest="graph_action", help="圖譜子命令")
@@ -923,6 +1109,7 @@ def main():
         "import": cmd_import,
         "config": cmd_config,
         "graph": cmd_graph,
+        "skill": cmd_skill,
     }
 
     if args.command in cmd_map:

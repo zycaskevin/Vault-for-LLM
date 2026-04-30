@@ -27,7 +27,7 @@ except ImportError:
 class GuardrailsDB:
     """Guardrails Lite 資料庫層。"""
 
-    SCHEMA_VERSION = 4
+    SCHEMA_VERSION = 5
 
     def __init__(self, db_path: str | Path = "guardrails.db"):
         self.db_path = Path(db_path)
@@ -140,6 +140,30 @@ class GuardrailsDB:
                 created_at  TEXT NOT NULL DEFAULT ''
             )
         """)
+
+        # 技能共享表 — 跨 Agent 技能註冊與同步
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS skills (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                name          TEXT NOT NULL UNIQUE,
+                version       TEXT NOT NULL DEFAULT '1.0.0',
+                agent_source  TEXT NOT NULL DEFAULT '',
+                category      TEXT NOT NULL DEFAULT 'general',
+                capabilities  TEXT NOT NULL DEFAULT '',
+                dependencies  TEXT NOT NULL DEFAULT '',
+                trust         REAL  NOT NULL DEFAULT 0.5,
+                content_raw   TEXT NOT NULL DEFAULT '',
+                content_hash  TEXT NOT NULL DEFAULT '',
+                description   TEXT NOT NULL DEFAULT '',
+                created_at    TEXT NOT NULL DEFAULT '',
+                updated_at    TEXT NOT NULL DEFAULT '',
+                last_synced   TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_skills_agent ON skills(agent_source)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_skills_trust ON skills(trust)")
 
         # Lint 快取表
         c.execute("""
@@ -620,6 +644,150 @@ class GuardrailsDB:
         )
         self.conn.commit()
 
+    # ── 技能 CRUD ──────────────────────────────────────────
+
+    def add_skill(
+        self,
+        name: str,
+        content_raw: str,
+        version: str = "1.0.0",
+        agent_source: str = "",
+        category: str = "general",
+        capabilities: str = "",
+        dependencies: str = "",
+        trust: float = 0.5,
+        description: str = "",
+    ) -> int:
+        """註冊一個技能，回傳 id。已有同名技能則回傳 -1。"""
+        now = datetime.now(timezone.utc).isoformat()
+        content_hash = hashlib.sha256(content_raw.encode()).hexdigest()[:16]
+
+        # 檢查是否已存在
+        existing = self.conn.execute(
+            "SELECT id FROM skills WHERE name=?", (name,)
+        ).fetchone()
+        if existing:
+            return -1
+
+        cursor = self.conn.execute(
+            """INSERT INTO skills
+               (name, version, agent_source, category, capabilities, dependencies,
+                trust, content_raw, content_hash, description,
+                created_at, updated_at, last_synced)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (name, version, agent_source, category, capabilities, dependencies,
+             trust, content_raw, content_hash, description,
+             now, now, ""),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def update_skill(self, name: str, **fields) -> bool:
+        """更新技能欄位（以 name 為 key）。"""
+        if not fields:
+            return False
+        fields["updated_at"] = datetime.now(timezone.utc).isoformat()
+        if "content_raw" in fields:
+            fields["content_hash"] = hashlib.sha256(
+                fields["content_raw"].encode()
+            ).hexdigest()[:16]
+
+        sets = ", ".join(f"{k}=?" for k in fields)
+        vals = list(fields.values()) + [name]
+        self.conn.execute(f"UPDATE skills SET {sets} WHERE name=?", vals)
+        self.conn.commit()
+        return self.conn.total_changes > 0
+
+    def get_skill(self, name: str) -> Optional[dict]:
+        """取得單一技能。"""
+        row = self.conn.execute(
+            "SELECT * FROM skills WHERE name=?", (name,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def delete_skill(self, name: str) -> bool:
+        """刪除技能。"""
+        self.conn.execute("DELETE FROM skills WHERE name=?", (name,))
+        self.conn.commit()
+        return self.conn.total_changes > 0
+
+    def search_skills(
+        self,
+        query: str,
+        capabilities: Optional[str] = None,
+        category: Optional[str] = None,
+        min_trust: float = 0.0,
+        agent_source: Optional[str] = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        """搜尋技能：關鍵字 + 可選過濾。"""
+        conditions = ["trust >= ?"]
+        params: list = [min_trust]
+
+        if query:
+            conditions.append(
+                "(name LIKE ? OR description LIKE ? OR capabilities LIKE ? "
+                "OR content_raw LIKE ?)"
+            )
+            pattern = f"%{query}%"
+            params.extend([pattern, pattern, pattern, pattern])
+
+        if capabilities:
+            conditions.append("capabilities LIKE ?")
+            params.append(f"%{capabilities}%")
+
+        if category:
+            conditions.append("category=?")
+            params.append(category)
+
+        if agent_source:
+            conditions.append("agent_source=?")
+            params.append(agent_source)
+
+        where = " AND ".join(conditions)
+        rows = self.conn.execute(
+            f"SELECT * FROM skills WHERE {where} "
+            "ORDER BY trust DESC, updated_at DESC LIMIT ?",
+            params + [limit],
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_skills(
+        self,
+        agent_source: Optional[str] = None,
+        category: Optional[str] = None,
+        min_trust: float = 0.0,
+        limit: int = 100,
+    ) -> list[dict]:
+        """列出全部技能（不含 content_raw，輕量）。"""
+        conditions = ["trust >= ?"]
+        params: list = [min_trust]
+
+        if agent_source:
+            conditions.append("agent_source=?")
+            params.append(agent_source)
+        if category:
+            conditions.append("category=?")
+            params.append(category)
+
+        where = " AND ".join(conditions)
+        rows = self.conn.execute(
+            f"SELECT id, name, version, agent_source, category, capabilities, "
+            f"dependencies, trust, description, updated_at FROM skills "
+            f"WHERE {where} ORDER BY trust DESC, updated_at DESC LIMIT ?",
+            params + [limit],
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def mark_skill_synced(self, name: str):
+        """標記技能已同步到 Supabase。"""
+        now = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            "UPDATE skills SET last_synced=? WHERE name=?",
+            (now, name),
+        )
+        self.conn.commit()
+
     # ── 統計 ────────────────────────────────────────────────
 
     def stats(self) -> dict:
@@ -652,11 +820,19 @@ class GuardrailsDB:
         except Exception:
             pass
 
+        # 技能統計
+        skill_count = 0
+        try:
+            skill_count = self.conn.execute("SELECT COUNT(*) FROM skills").fetchone()[0]
+        except Exception:
+            pass
+
         return {
             "knowledge_count": k_count,
             "embedding_count": vec_count,
             "edge_count": edge_count,
             "entity_count": entity_count,
+            "skill_count": skill_count,
             "vec_available": self._vec_available,
             "db_path": str(self.db_path),
             "db_size_mb": round(self.db_path.stat().st_size / 1024 / 1024, 2)

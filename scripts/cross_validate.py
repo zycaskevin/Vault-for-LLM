@@ -51,7 +51,7 @@ def call_vllm_local(prompt: str, model: str = "qwen3-8b", max_tokens: int = 300)
                 "temperature": 0.1,
                 "max_tokens": max_tokens,
             },
-            timeout=30,
+            timeout=60,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -61,8 +61,8 @@ def call_vllm_local(prompt: str, model: str = "qwen3-8b", max_tokens: int = 300)
         return ""
 
 
-def call_ollama_cloud(prompt: str, model: str = "glm-5.1", max_tokens: int = 300) -> str:
-    """呼叫 Ollama Cloud API。"""
+def call_ollama_cloud(prompt: str, model: str = "glm-5.1", max_tokens: int = 2000) -> str:
+    """呼叫 Ollama Cloud API。GLM-5.1 是推理模型，需要較高 max_tokens。"""
     import requests
 
     # 從環境變數或 .env 取 API key
@@ -74,7 +74,7 @@ def call_ollama_cloud(prompt: str, model: str = "glm-5.1", max_tokens: int = 300
             with open(env_file) as f:
                 for line in f:
                     line = line.strip()
-                    if line.startswith("OLLAMA_API_KEY="):
+                    if line.startswith("OLLAMA_API_KEY=") and not line.startswith("OLLAMA_API_KEY=***"):
                         api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
                         break
 
@@ -83,23 +83,33 @@ def call_ollama_cloud(prompt: str, model: str = "glm-5.1", max_tokens: int = 300
         return ""
 
     try:
-        resp = requests.post(
-            "https://ollama.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.1,
-                "max_tokens": max_tokens,
-            },
-            timeout=60,
-        )
-        resp.raise_for_status()
+        import time as _time
+        for attempt in range(2):  # retry once on 5xx
+            resp = requests.post(
+                "https://ollama.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0.1, "max_tokens": max_tokens},
+                timeout=180,
+            )
+            if resp.status_code >= 500 and attempt == 0:
+                print(f"  ⚠️ Cloud 5xx error (attempt {attempt+1}), retrying in 10s...")
+                _time.sleep(10)
+                continue
+            resp.raise_for_status()
+            break
         data = resp.json()
-        return data["choices"][0]["message"]["content"].strip()
+        msg = data["choices"][0]["message"]
+        content = msg.get("content", "").strip()
+        # 推理模型（如 GLM-5.1）可能將思考放在 reasoning，回答放在 content
+        # 如果 content 為空但 reasoning 有值，嘗試從 reasoning 提取
+        if not content:
+            reasoning = msg.get("reasoning", "") or msg.get("reasoning_content", "")
+            if reasoning:
+                # 嘗試從 reasoning 末尾提取 JSON 或答案
+                content = reasoning.strip()
+        if not content:
+            print(f"  ⚠️ Ollama Cloud 回應為空（模型：{model}）")
+        return content
     except Exception as e:
         print(f"  ⚠️ Ollama Cloud 呼叫失敗：{e}")
         return ""
@@ -216,7 +226,14 @@ def parse_validation_response(response: str) -> dict:
 
     # Fallback：從文字中提取信心分數
     confidence_match = re.search(r'(?:confidence|信心)[：:]\s*([\d.]+)', response, re.IGNORECASE)
-    confidence = float(confidence_match.group(1)) if confidence_match else 0.5
+    if confidence_match:
+        raw_val = confidence_match.group(1).rstrip('.')  # 移除尾部句號（如 "0.6."）
+        try:
+            confidence = float(raw_val)
+        except ValueError:
+            confidence = 0.5
+    else:
+        confidence = 0.5
 
     return {
         "overall_confidence": confidence,
@@ -238,8 +255,9 @@ def synthesize_results(local: dict = None, cloud: dict = None) -> dict:
         confidence = cloud.get("overall_confidence", 0.5)
         needs_expansion = cloud.get("needs_expansion", False)
     else:
-        confidence = 0.3  # 兩邊都失敗，低信心
-        needs_expansion = True
+        # 兩邊都失敗 — 不懲罰（可能是 API 暫時錯誤），標記 skip
+        confidence = 0.0  # 信號：無法驗證
+        needs_expansion = False
 
     # 判定 verdict
     if confidence >= 0.8:
@@ -258,6 +276,8 @@ def synthesize_results(local: dict = None, cloud: dict = None) -> dict:
 
 def calculate_trust_delta(verdict: dict) -> float:
     """根據驗證結果計算 trust 調整量。"""
+    if verdict.get("confidence", -1) == 0.0:
+        return 0.0  # 兩邊模型都失敗（API 錯誤），不懲罰
     verdict_str = verdict.get("verdict", "partial")
     if verdict_str == "complete":
         return 0.1

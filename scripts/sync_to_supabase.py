@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
 Sync Guardrails-knowledge local DB → Supabase
-策略：每筆逐個處理，用 title 查 Supabase → 存在就更新，不存在就插入。
+策略：每筆逐個處理，用 title/name 查 Supabase → 存在就更新，不存在就插入。
 失敗時用 ilike 模糊匹配做 fallback。
+
+用法：
+  sync_to_supabase.py              # 同步知識表（預設）
+  sync_to_supabase.py --skills     # 同步技能表
 """
 
 import os
@@ -47,14 +51,29 @@ def _parse_tags(tags_str) -> list:
     return [t.strip() for t in s.split(',') if t.strip()]
 
 
-def sync(db_path=DB_PATH):
+def _parse_capabilities(caps_str) -> list:
+    """跟 _parse_tags 一樣的邏輯，用在技能能力欄位。"""
+    if not caps_str:
+        return []
+    if isinstance(caps_str, list):
+        return caps_str
+    return [t.strip() for t in str(caps_str).split(',') if t.strip()]
+
+
+def _get_sb_client():
     url = os.getenv('SUPABASE_URL')
     key = os.getenv('SUPABASE_ANON_KEY') or os.getenv('SUPABASE_KEY')
     if not url or not key:
         print("❌ SUPABASE_URL 或 SUPABASE_ANON_KEY 未設定")
+        return None
+    return create_client(url, key)
+
+
+def sync(db_path=DB_PATH):
+    sb = _get_sb_client()
+    if not sb:
         return
 
-    sb = create_client(url, key)
     db = GuardrailsDB(db_path)
     db.connect()
 
@@ -87,7 +106,6 @@ def sync(db_path=DB_PATH):
         }
 
         try:
-            # 直接用 title 查 Supabase
             existing = sb.table('guardrails_knowledge').select('id').eq('title', title).execute()
             if existing.data:
                 for e in existing.data:
@@ -100,7 +118,6 @@ def sync(db_path=DB_PATH):
         except Exception as e:
             err = str(e)
             if 'duplicate' in err.lower():
-                # 可能 title 不完全一致的 dupe，用 ilike 模糊查
                 try:
                     fuzzy = sb.table('guardrails_knowledge').select('id').ilike('title', f'%{title[:30]}%').execute()
                     if fuzzy.data:
@@ -123,7 +140,107 @@ def sync(db_path=DB_PATH):
     db.close()
 
     final = sb.table('guardrails_knowledge').select('id').execute().data
-    print(f"\n✅ Sync complete:")
+    print(f"\n✅ Knowledge sync complete:")
+    print(f"   Inserted: {inserted}")
+    print(f"   Updated: {updated}")
+    print(f"   Failed: {failed}")
+    print(f"   Supabase total: {len(final)}")
+
+
+def sync_skills(db_path=DB_PATH):
+    """
+    同步技能表到 Supabase。
+    Supabase 端需要先建立 guardrails_skills 表：
+      CREATE TABLE guardrails_skills (
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        version TEXT DEFAULT '1.0.0',
+        agent_source TEXT DEFAULT '',
+        category TEXT DEFAULT 'general',
+        capabilities JSONB DEFAULT '[]',
+        dependencies JSONB DEFAULT '[]',
+        trust REAL DEFAULT 0.5,
+        content_raw TEXT DEFAULT '',
+        content_hash TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        last_synced TIMESTAMPTZ
+      );
+    """
+    sb = _get_sb_client()
+    if not sb:
+        return
+
+    db = GuardrailsDB(db_path)
+    db.connect()
+
+    rows = db.conn.execute(
+        "SELECT id, name, version, agent_source, category, capabilities, dependencies, "
+        "trust, content_raw, content_hash, description, created_at, updated_at "
+        "FROM skills ORDER BY id"
+    ).fetchall()
+    print(f"🛠️  本地技能: {len(rows)} 筆")
+
+    # 測試 Supabase 表是否存在
+    try:
+        sb.table('guardrails_skills').select('id', count='exact').limit(1).execute()
+    except Exception as e:
+        print(f"⚠️ Supabase guardrails_skills 表不存在或無權限。跳過技能同步。")
+        print(f"   請手動執行上方註解中的 CREATE TABLE。")
+        db.close()
+        return
+
+    inserted = 0
+    updated = 0
+    failed = 0
+
+    for row in rows:
+        sid, name, version, agent_source, category, capabilities, dependencies, \
+            trust, content_raw, content_hash, description, created_at, updated_at = row
+
+        data = {
+            'name': name,
+            'version': version or '1.0.0',
+            'agent_source': agent_source or '',
+            'category': category or 'general',
+            'capabilities': _parse_capabilities(capabilities),
+            'dependencies': _parse_capabilities(dependencies),
+            'trust': trust or 0.5,
+            'content_raw': content_raw or '',
+            'content_hash': content_hash or '',
+            'description': description or '',
+            'updated_at': datetime.now().isoformat(),
+        }
+
+        try:
+            existing = sb.table('guardrails_skills').select('id').eq('name', name).execute()
+            if existing.data:
+                for e in existing.data:
+                    sb.table('guardrails_skills').update(data).eq('id', e['id']).execute()
+                updated += len(existing.data)
+            else:
+                data['created_at'] = created_at or datetime.now().isoformat()
+                sb.table('guardrails_skills').insert(data).execute()
+                inserted += 1
+        except Exception as e:
+            failed += 1
+            print(f"  ❌ {name[:40]}: {str(e)[:80]}")
+
+    # 標記已同步
+    for row in rows:
+        try:
+            db.mark_skill_synced(row[1])  # name
+        except Exception:
+            pass
+
+    db.close()
+
+    try:
+        final = sb.table('guardrails_skills').select('id').execute().data
+    except Exception:
+        final = []
+    print(f"\n✅ Skill sync complete:")
     print(f"   Inserted: {inserted}")
     print(f"   Updated: {updated}")
     print(f"   Failed: {failed}")
@@ -131,4 +248,12 @@ def sync(db_path=DB_PATH):
 
 
 if __name__ == "__main__":
-    sync()
+    import argparse
+    parser = argparse.ArgumentParser(description="Sync local DB → Supabase")
+    parser.add_argument("--skills", action="store_true", help="同步技能表（而非知識表）")
+    args = parser.parse_args()
+
+    if args.skills:
+        sync_skills()
+    else:
+        sync()

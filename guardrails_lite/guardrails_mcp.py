@@ -17,7 +17,7 @@ Guardrails MCP Server — 讓任何 AI agent 透過 MCP 協議直接讀寫 Guard
      mcp_servers:
        guardrails:
          command: "conda"
-         args: ["run", "-n", "guardrails-lite", "python3", "/home/user/Guardrails-knowledge/vault/guardrails_mcp.py"]
+         args: ["run", "-n", "guardrails-lite", "python3", "<project_dir>/vault/guardrails_mcp.py"]
 """
 
 import json

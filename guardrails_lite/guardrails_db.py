@@ -11,6 +11,7 @@ Vault for LLM — SQLite + sqlite-vec 資料庫抽象層。
 import json
 import hashlib
 import sqlite3
+import sys
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
@@ -248,7 +249,7 @@ class GuardrailsDB:
         except Exception as e:
             # 維度變了需要重建
             if "already exists" in str(e).lower() or "different" in str(e).lower():
-                print(f"[guardrails-lite] ⚠️ 向量表維度不匹配，重建中（舊向量會遺失）: {e}")
+                print(f"[guardrails-lite] ⚠️ 向量表維度不匹配，重建中（舊向量會遺失）: {e}", file=sys.stderr)
                 self.conn.execute("DROP TABLE IF EXISTS knowledge_vec")
                 self.conn.execute(
                     f"CREATE VIRTUAL TABLE knowledge_vec USING vec0("

@@ -778,8 +778,10 @@ def cmd_skill(args):
         cmd_skill_pull(args)
     elif args.skill_action == "list":
         cmd_skill_list(args)
+    elif args.skill_action == "stats":
+        cmd_skill_stats(args)
     else:
-        print("用法: guardrails skill {push|search|pull|list}")
+        print("用法: guardrails skill {push|search|pull|list|stats}")
 
 
 def cmd_skill_push(args):
@@ -826,7 +828,21 @@ def cmd_skill_push(args):
     )
 
     if kid == -1:
-        print(f"⚠️ 技能 '{name}' 已存在。用 --version 升級或先刪除。")
+        if getattr(args, 'force', False):
+            db.update_skill(
+                name,
+                version=args.version or "1.0.0",
+                content_raw=content,
+                agent_source=args.agent or "agent-runtime-main",
+                category=args.category or "general",
+                capabilities=args.capabilities or "",
+                dependencies=args.dependencies or "",
+                trust=args.trust or 0.5,
+                description=args.description or "",
+            )
+            print(f"✅ 技能 '{name}' 已強制覆蓋")
+        else:
+            print(f"⚠️ 技能 '{name}' 已存在。用 --force 覆蓋或先刪除。")
     else:
         print(f"✅ 技能 '{name}' 已註冊 (ID={kid})")
 
@@ -918,6 +934,26 @@ def cmd_skill_list(args):
             if r.get("description"):
                 print(f"      {r['description']}")
             print()
+
+    db.close()
+
+
+def cmd_skill_stats(args):
+    """技能市場統計。"""
+    from vault.guardrails_db import GuardrailsDB
+
+    project_dir = find_project_dir()
+    db = GuardrailsDB(str(project_dir / "guardrails.db"))
+    db.connect()
+
+    stats = db.stats()
+    print(f"🛠️  技能市場統計")
+    print(f"   技能總數: {stats.get('skill_count', 0)}")
+    print(f"   知識總數: {stats.get('knowledge_count', 0)}")
+    print(f"   向量嵌入: {stats.get('embedding_count', 0)}")
+    print(f"   知識圖譜: {stats.get('entity_count', 0)} 實體, {stats.get('edge_count', 0)} 邊")
+    print(f"   平均新鮮度: {stats.get('avg_freshness', 0)}")
+    print(f"   DB 大小: {stats.get('db_size_mb', 0)} MB")
 
     db.close()
 
@@ -1046,6 +1082,7 @@ def main():
     sp.add_argument("--dependencies", default="", help="依賴（逗號分隔）")
     sp.add_argument("--trust", type=float, default=0.5, help="信任分數")
     sp.add_argument("--description", default="", help="簡短描述")
+    sp.add_argument("--force", action="store_true", help="同名技能時強制覆蓋")
 
     sp = skill_sub.add_parser("search", help="搜尋技能")
     sp.add_argument("query", nargs="?", default="", help="搜尋關鍵字")
@@ -1063,6 +1100,8 @@ def main():
     sp.add_argument("--category", help="依分類過濾")
     sp.add_argument("--min-trust", type=float, default=0.0)
     sp.add_argument("--limit", "-n", type=int, default=100)
+
+    sp = skill_sub.add_parser("stats", help="技能市場統計")
 
     # graph
     p = sub.add_parser("graph", help="圖譜操作")

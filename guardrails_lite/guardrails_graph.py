@@ -9,6 +9,7 @@ Vault for LLM — 輕量知識圖譜模組。
 """
 
 import re
+import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Optional
@@ -144,7 +145,7 @@ class GuardrailsGraph:
                 self.db.conn.commit()
                 edges_created = len(edges_to_add)
             except Exception as e:
-                print(f"⚠️ 批次建邊失敗，回退逐條: {e}")
+                print(f"⚠️ 批次建邊失敗，回退逐條: {e}", file=sys.stderr)
                 for edge in edges_to_add:
                     try:
                         self.db.add_edge(edge[0], edge[1], edge[2], edge[3], auto_inferred=True)

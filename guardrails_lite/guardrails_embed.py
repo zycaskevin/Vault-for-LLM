@@ -81,20 +81,21 @@ class ONNXEmbeddingProvider(EmbeddingProvider):
             return onnx_path
 
         # 下載 + 轉換 ONNX
-        print(f"[guardrails-lite] 下載 {model_name} → ONNX...")
+        import sys as _sys
+        print(f"[guardrails-lite] 下載 {model_name} → ONNX...", file=_sys.stderr)
         model_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             from optimum.onnxruntime import ORTModelForFeatureExtraction
             from transformers import AutoTokenizer
 
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            tokenizer = AutoTokenizer.from_pretrained(model_name, fix_mistral_regex=True)
             model = ORTModelForFeatureExtraction.from_pretrained(
                 model_name, export=True
             )
             model.save_pretrained(model_dir)
             tokenizer.save_pretrained(model_dir)
-            print(f"[guardrails-lite] ✅ 模型已下載到 {model_dir}")
+            print(f"[guardrails-lite] ✅ 模型已下載到 {model_dir}", file=_sys.stderr)
             return model_dir / self.model_info["onnx_file"]
         except Exception as e:
             raise RuntimeError(
@@ -118,13 +119,14 @@ class ONNXEmbeddingProvider(EmbeddingProvider):
             self._ensure_model()
 
         # 載入 tokenizer
-        self._tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
+        self._tokenizer = AutoTokenizer.from_pretrained(str(model_dir), fix_mistral_regex=True)
 
         # 載入 ONNX session
         sess_options = ort.SessionOptions()
         sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         self._session = ort.InferenceSession(str(onnx_path), sess_options)
-        print(f"[guardrails-lite] ✅ ONNX 模型已載入 ({self.model_info['language']})")
+        import sys as _sys2
+        print(f"[guardrails-lite] ✅ ONNX 模型已載入 ({self.model_info['language']})", file=_sys2.stderr)
 
     def encode(self, texts: str | list[str]) -> list[list[float]]:
         """生成嵌入向量。"""

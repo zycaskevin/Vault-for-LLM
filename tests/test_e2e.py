@@ -4,10 +4,18 @@ import sys
 import os
 import tempfile
 import subprocess
+from pathlib import Path
 
-sys.path.insert(0, '/home/user/Guardrails-knowledge')
-os.chdir('/home/user/Guardrails-knowledge')
+sys.path.insert(0, str(Path(__file__).parent.parent))
+os.chdir(str(Path(__file__).parent.parent))
 os.environ['PYTHONIOENCODING'] = 'utf-8'
+
+# 載入 .env 讓 Supabase 測試能拿到真實 key
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.expanduser('~/.agent-runtime/.env'))
+except Exception:
+    pass
 
 passed = 0
 failed = 0
@@ -35,7 +43,7 @@ db = GuardrailsDB(test_db)
 db.connect()
 
 ver = db.get_config("schema_version", "0")
-check("Schema version = 3", ver == "3", f"got {ver}")
+check("Schema version = 5", ver == "5", f"got {ver}")
 
 stats = db.stats()
 print(f"  Stats: {stats}")
@@ -254,25 +262,28 @@ print("=" * 60)
 try:
     from supabase import create_client
     SUPABASE_URL = "https://example.supabase.co"
-    SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InptdHRscW1hbGxsdW9vcXhzd3F5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTM0Mzk0MywiZXhwIjoyMDc0OTE5OTQzfQ.9x5bQG-zMBwaFaCvlIxmcoIt2Cq0u9CHYHDsGdjyfPA"
-    sp = create_client(SUPABASE_URL, SUPABASE_KEY)
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+    if not SUPABASE_KEY:
+        print("  ⚠️  SUPABASE_KEY 未設定，跳過 Supabase 整合測試\n")
+    else:
+        sp = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    for t in ["guardrails_knowledge", "gr_entities", "gr_edges", "gr_entity_knowledge"]:
-        r = sp.table(t).select("id", count="exact").range(0, 0).execute()
-        print(f"  {t}: {r.count} rows")
+        for t in ["guardrails_knowledge", "gr_entities", "gr_edges", "gr_entity_knowledge"]:
+            r = sp.table(t).select("id", count="exact").range(0, 0).execute()
+            print(f"  {t}: {r.count} rows")
 
-    r = sp.table("guardrails_knowledge").select("id,title,category").ilike("title", "%sqlite%").execute()
-    check("Supabase 'sqlite'", len(r.data) >= 1, f"got {len(r.data)}")
+        r = sp.table("guardrails_knowledge").select("id,title,category").ilike("title", "%sqlite%").execute()
+        check("Supabase 'sqlite'", len(r.data) >= 1, f"got {len(r.data)}")
 
-    r = sp.table("gr_entities").select("id,name,entity_type").eq("name", "sqlite-vec").execute()
-    check("Entity 'sqlite-vec'", len(r.data) >= 1)
+        r = sp.table("gr_entities").select("id,name,entity_type").eq("name", "sqlite-vec").execute()
+        check("Entity 'sqlite-vec'", len(r.data) >= 1)
 
-    if r.data:
-        ent_id = r.data[0]['id']
-        ek = sp.table("gr_entity_knowledge").select("knowledge_id").eq("entity_id", ent_id).execute()
-        print(f"  Entity 'sqlite-vec' linked to {len(ek.data)} knowledge entries")
+        if r.data:
+            ent_id = r.data[0]['id']
+            ek = sp.table("gr_entity_knowledge").select("knowledge_id").eq("entity_id", ent_id).execute()
+            print(f"  Entity 'sqlite-vec' linked to {len(ek.data)} knowledge entries")
 
-    print("  ✅ Supabase integration PASSED\n")
+        print("  ✅ Supabase integration PASSED\n")
 except Exception as e:
     failed += 1
     print(f"  ❌ Supabase test FAILED: {e}\n")

@@ -67,27 +67,27 @@ def main():
         timeout=120
     )
 
-    # 3. Trust adjustment
+    # 3. Trust adjustment (scripts live in Guardrails-knowledge, not .agent-runtime/Guardrails)
     results['trust'] = run(
-        f'cd {GUARDRAILS_DIR} && python3 scripts/trust_adjustment.py --apply 2>&1',
+        f'cd {KNOWLEDGE_DIR} && python3 scripts/trust_adjustment.py --apply 2>&1',
         "Trust 動態調整"
     )
 
-    # 4. 統計
+    # 4. 統計 (guardrails_wakeup.py 已不存在，改用 MCP guardrails_stats)
     results['stats'] = run(
-        f'python3 {GUARDRAILS_DIR}/scripts/guardrails_wakeup.py --stats 2>&1',
+        f'echo "改用 MCP guardrails_stats 取得統計（guardrails_wakeup.py 已移除）" 2>&1',
         "知識庫統計"
     )
 
     # 5. 建議
     results['suggest'] = run(
-        f'cd {GUARDRAILS_DIR} && python3 scripts/suggest_new_knowledge.py 2>&1',
+        f'cd {KNOWLEDGE_DIR} && python3 scripts/suggest_new_knowledge.py 2>&1',
         "知識缺口偵測"
     )
 
     # 6. 審核佇列摘要
     results['review'] = run(
-        f'cd {GUARDRAILS_DIR} && python3 scripts/manual_review.py --queue 2>&1',
+        f'cd {KNOWLEDGE_DIR} && python3 scripts/manual_review.py --queue 2>&1',
         "審核佇列"
     )
 

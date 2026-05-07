@@ -3,8 +3,9 @@
 import sys
 import os
 import tempfile
+from pathlib import Path
 
-sys.path.insert(0, '/home/user/Guardrails-knowledge')
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from vault.guardrails_db import GuardrailsDB
 from vault.guardrails_search import GuardrailsSearch

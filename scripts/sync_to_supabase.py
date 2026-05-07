@@ -106,11 +106,22 @@ def sync(db_path=DB_PATH):
         }
 
         try:
-            existing = sb.table('guardrails_knowledge').select('id').eq('title', title).execute()
+            existing = sb.table('guardrails_knowledge').select('id').ilike('title', title).execute()
             if existing.data:
                 for e in existing.data:
                     sb.table('guardrails_knowledge').update(data).eq('id', e['id']).execute()
                 updated += len(existing.data)
+            elif content_hash:
+                # Fallback: match by content_hash (title may differ)
+                hash_match = sb.table('guardrails_knowledge').select('id').eq('content_hash', content_hash).execute()
+                if hash_match.data:
+                    for h in hash_match.data:
+                        sb.table('guardrails_knowledge').update(data).eq('id', h['id']).execute()
+                    updated += len(hash_match.data)
+                else:
+                    data['created_at'] = created_at or datetime.now().isoformat()
+                    sb.table('guardrails_knowledge').insert(data).execute()
+                    inserted += 1
             else:
                 data['created_at'] = created_at or datetime.now().isoformat()
                 sb.table('guardrails_knowledge').insert(data).execute()
@@ -119,20 +130,31 @@ def sync(db_path=DB_PATH):
             err = str(e)
             if 'duplicate' in err.lower():
                 try:
+                    # 1st: fuzzy title match
                     fuzzy = sb.table('guardrails_knowledge').select('id').ilike('title', f'%{title[:30]}%').execute()
                     if fuzzy.data:
                         for f in fuzzy.data:
                             sb.table('guardrails_knowledge').update(data).eq('id', f['id']).execute()
                         updated += len(fuzzy.data)
+                    elif content_hash:
+                        # 2nd: content_hash match
+                        hash_match = sb.table('guardrails_knowledge').select('id').eq('content_hash', content_hash).execute()
+                        if hash_match.data:
+                            for h in hash_match.data:
+                                sb.table('guardrails_knowledge').update(data).eq('id', h['id']).execute()
+                            updated += len(hash_match.data)
+                        else:
+                            failed += 1
+                            print(f"  ❌ {title[:40]}: no match & insert blocked")
                     else:
                         failed += 1
                         print(f"  ❌ {title[:40]}: no match & insert blocked")
                 except Exception as e2:
                     failed += 1
-                    print(f"  ❌ {title[:40]}: {str(e2)[:80]}")
+                    print(f"  ❌ {title[:40]}: {str(e2)[:120]}")
             else:
                 failed += 1
-                print(f"  ❌ {title[:40]}: {err[:80]}")
+                print(f"  ❌ {title[:40]}: {err[:120]}")
 
         if (inserted + updated + failed) % 50 == 0:
             print(f"  {inserted + updated + failed}/{len(rows)}...")

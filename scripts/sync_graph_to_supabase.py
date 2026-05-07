@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Sync graph data (entities, edges, entity_knowledge) from Lite → Supabase."""
 
+import os
 import json
 import sys
 from pathlib import Path
@@ -8,11 +9,14 @@ from pathlib import Path
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from dotenv import load_dotenv
+load_dotenv(os.path.expanduser('~/.agent-runtime/.env'))
+
 from supabase import create_client
 
 # --- Config ---
-SUPABASE_URL = "https://example.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InptdHRscW1hbGxsdW9vcXhzd3F5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTM0Mzk0MywiZXhwIjoyMDc0OTE5OTQzfQ.9x5bQG-zMBwaFaCvlIxmcoIt2Cq0u9CHYHDsGdjyfPA"
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://example.supabase.co")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 
 DB_PATH = Path(__file__).resolve().parent.parent / "guardrails.db"
 

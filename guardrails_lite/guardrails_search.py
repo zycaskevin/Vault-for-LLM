@@ -19,6 +19,11 @@ from .guardrails_embed import (
 )
 
 
+def _normalize_text(value: str) -> str:
+    """Normalize text for best-effort claim matching."""
+    return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+
 class GuardrailsSearch:
     """Vault for LLM 搜尋引擎。"""
 
@@ -110,7 +115,131 @@ class GuardrailsSearch:
         for r in results:
             r["best_claim"] = self._extract_best_claim(r.get("content_aaak", ""))
 
+        # Document Map enrichment（best span / node / citation）
+        if results:
+            self._enrich_with_document_map(results, query)
+
         return results
+
+    # ── Document Map enrichment ─────────────────────────────
+
+    def _enrich_with_document_map(self, results: list[dict], query: str = "") -> None:
+        """Attach best Document Map span metadata to search results when available.
+
+        This is intentionally best-effort: older/local databases without populated
+        map rows keep the previous result shape unchanged.
+        """
+        if self.db.conn is None:
+            return
+
+        query_terms = [term.lower() for term in self._tokenize(query or "")]
+        for result in results:
+            knowledge_id = result.get("id")
+            if not knowledge_id:
+                continue
+            try:
+                span = self._find_document_map_span(
+                    int(knowledge_id),
+                    result.get("best_claim", ""),
+                    query_terms,
+                )
+            except Exception:
+                # Search must not fail because optional map metadata is missing.
+                continue
+            if not span:
+                continue
+
+            line_start = span.get("line_start") or span.get("node_line_start")
+            line_end = span.get("line_end") or span.get("node_line_end") or line_start
+            if not line_start or not line_end:
+                continue
+
+            title = result.get("title", "")
+            node = {
+                "node_uid": span.get("node_uid", ""),
+                "heading": span.get("heading", ""),
+                "path": span.get("path", ""),
+                "line_start": span.get("node_line_start") or line_start,
+                "line_end": span.get("node_line_end") or line_end,
+            }
+
+            # Backward-compatible top-level fields plus structured fields.
+            result["node_uid"] = node["node_uid"]
+            result["path"] = node["path"]
+            result["heading"] = node["heading"]
+            result["line_start"] = int(line_start)
+            result["line_end"] = int(line_end)
+            result["best_span"] = f"L{line_start}-L{line_end}"
+            result["best_node"] = node
+            result["citation"] = f"#{knowledge_id} {title} L{line_start}-L{line_end}"
+            result["recommended_next_tool"] = "guardrails_read_range"
+
+    def _find_document_map_span(
+        self,
+        knowledge_id: int,
+        best_claim: str = "",
+        query_terms: list[str] | None = None,
+    ) -> dict | None:
+        """Return the best claim/node span for one knowledge entry, if populated."""
+        query_terms = query_terms or []
+        best_claim_norm = _normalize_text(best_claim)
+
+        claim_rows = [
+            dict(row)
+            for row in self.db.conn.execute(
+                """SELECT c.node_uid, c.claim, c.line_start, c.line_end,
+                          n.heading, n.path,
+                          n.line_start AS node_line_start,
+                          n.line_end AS node_line_end
+                   FROM knowledge_claims c
+                   LEFT JOIN knowledge_nodes n
+                     ON n.knowledge_id = c.knowledge_id
+                    AND n.node_uid = c.node_uid
+                   WHERE c.knowledge_id=?
+                   ORDER BY c.line_start, c.id""",
+                (knowledge_id,),
+            ).fetchall()
+        ]
+
+        if claim_rows:
+            scored_rows: list[tuple[int, dict]] = []
+            for row in claim_rows:
+                claim_norm = _normalize_text(row.get("claim", ""))
+                haystack = " ".join(
+                    str(row.get(key) or "").lower()
+                    for key in ("claim", "path", "heading")
+                )
+                score = 0
+                if best_claim_norm and claim_norm == best_claim_norm:
+                    score += 100
+                elif best_claim_norm and (
+                    best_claim_norm in claim_norm or claim_norm in best_claim_norm
+                ):
+                    score += 75
+                score += sum(10 for term in query_terms if term and term in haystack)
+                scored_rows.append((score, row))
+
+            scored_rows.sort(
+                key=lambda item: (
+                    item[0],
+                    -(item[1].get("line_start") or 0),
+                ),
+                reverse=True,
+            )
+            return scored_rows[0][1]
+
+        node = self.db.conn.execute(
+            """SELECT node_uid, heading, path,
+                      line_start, line_end,
+                      line_start AS node_line_start,
+                      line_end AS node_line_end
+               FROM knowledge_nodes
+               WHERE knowledge_id=?
+               ORDER BY line_start, level DESC, id
+               LIMIT 1""",
+            (knowledge_id,),
+        ).fetchone()
+        return dict(node) if node else None
 
     # ── Reranker ──────────────────────────────────────────
 

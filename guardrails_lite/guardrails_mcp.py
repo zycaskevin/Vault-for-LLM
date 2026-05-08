@@ -20,7 +20,9 @@ Guardrails MCP Server — 讓任何 AI agent 透過 MCP 協議直接讀寫 Guard
          args: ["run", "-n", "guardrails-lite", "python3", "<project_dir>/vault/guardrails_mcp.py"]
 """
 
+import hashlib
 import json
+import sqlite3
 import sys
 import os
 from pathlib import Path
@@ -60,6 +62,244 @@ def _get_search():
         pass
 
     return db, GuardrailsSearch(db, embed_provider=embed)
+
+
+# ── Document Map helpers ───────────────────────────────
+
+def _open_readonly_db(db_path: str | None = None) -> sqlite3.Connection | None:
+    """Open the local Guardrails DB read-only without creating missing files."""
+    path = Path(db_path or DB_PATH)
+    if not path.exists():
+        return None
+    conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _line_hash(lines: list[str], line_start: int, line_end: int) -> str:
+    text = "\n".join(lines[line_start - 1 : line_end])
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _format_citation(knowledge_id: int, title: str, line_start: int, line_end: int) -> str:
+    return f"#{knowledge_id} {title} L{line_start}-L{line_end}"
+
+
+def _error(code: str, message: str, **extra) -> dict:
+    payload = {"error": code, "message": message}
+    payload.update(extra)
+    return payload
+
+
+def guardrails_map_show(knowledge_id: int) -> dict:
+    """Return a knowledge entry's Document Map structure."""
+    return _guardrails_map_show_payload(knowledge_id)
+
+
+def _guardrails_map_show_payload(knowledge_id: int, db_path: str | None = None) -> dict:
+    try:
+        knowledge_id = int(knowledge_id)
+    except (TypeError, ValueError):
+        return _error("invalid_knowledge_id", "knowledge_id must be a positive integer")
+    if knowledge_id <= 0:
+        return _error("invalid_knowledge_id", "knowledge_id must be a positive integer")
+
+    try:
+        conn = _open_readonly_db(db_path)
+    except sqlite3.Error as exc:
+        return _error("db_open_failed", f"Unable to open guardrails.db read-only: {exc}")
+    if conn is None:
+        return _error("db_not_found", f"guardrails.db not found at {db_path or DB_PATH}")
+
+    try:
+        entry = conn.execute(
+            "SELECT id, title FROM knowledge WHERE id=?",
+            (knowledge_id,),
+        ).fetchone()
+        if entry is None:
+            return _error("not_found", f"Knowledge id not found: {knowledge_id}")
+
+        rows = conn.execute(
+            """SELECT node_uid, path, heading, level, line_start, line_end,
+                      summary, token_estimate
+               FROM knowledge_nodes
+               WHERE knowledge_id=?
+               ORDER BY line_start, level, id""",
+            (knowledge_id,),
+        ).fetchall()
+        nodes = [dict(row) for row in rows]
+        payload = {
+            "entry_id": knowledge_id,
+            "title": entry["title"],
+            "nodes": nodes,
+        }
+        if not nodes:
+            payload.update(
+                _error(
+                    "no_document_map_nodes",
+                    "No document map nodes found. Run: "
+                    f"guardrails map build {knowledge_id}",
+                )
+            )
+        return payload
+    finally:
+        conn.close()
+
+
+def guardrails_read_range(
+    knowledge_id: int,
+    node_uid: str = "",
+    line_start: int = 0,
+    line_end: int = 0,
+) -> dict:
+    """Return a bounded, line-numbered source range with a fixed citation."""
+    return _guardrails_read_range_payload(
+        knowledge_id,
+        node_uid=node_uid,
+        line_start=line_start,
+        line_end=line_end,
+    )
+
+
+def _guardrails_read_range_payload(
+    knowledge_id: int,
+    node_uid: str = "",
+    line_start: int = 0,
+    line_end: int = 0,
+    *,
+    max_lines: int = 80,
+    db_path: str | None = None,
+) -> dict:
+    try:
+        knowledge_id = int(knowledge_id)
+    except (TypeError, ValueError):
+        return _error("invalid_knowledge_id", "knowledge_id must be a positive integer")
+    if knowledge_id <= 0:
+        return _error("invalid_knowledge_id", "knowledge_id must be a positive integer")
+
+    try:
+        max_lines = int(max_lines)
+    except (TypeError, ValueError):
+        max_lines = 80
+    if max_lines <= 0:
+        max_lines = 80
+
+    try:
+        conn = _open_readonly_db(db_path)
+    except sqlite3.Error as exc:
+        return _error("db_open_failed", f"Unable to open guardrails.db read-only: {exc}")
+    if conn is None:
+        return _error("db_not_found", f"guardrails.db not found at {db_path or DB_PATH}")
+
+    try:
+        entry = conn.execute(
+            "SELECT id, title, content_raw FROM knowledge WHERE id=?",
+            (knowledge_id,),
+        ).fetchone()
+        if entry is None:
+            return _error("not_found", f"Knowledge id not found: {knowledge_id}")
+
+        node = None
+        node_uid = (node_uid or "").strip()
+        if node_uid:
+            node = conn.execute(
+                """SELECT node_uid, path, heading, line_start, line_end, content_hash
+                   FROM knowledge_nodes
+                   WHERE knowledge_id=? AND node_uid=?""",
+                (knowledge_id, node_uid),
+            ).fetchone()
+            if node is None:
+                return _error("node_not_found", f"Node not found: {node_uid}")
+
+        try:
+            line_start = int(line_start or 0)
+            line_end = int(line_end or 0)
+        except (TypeError, ValueError):
+            return _error("invalid_range", "line_start and line_end must be integers")
+
+        if node is not None and line_start == 0 and line_end == 0:
+            line_start = int(node["line_start"])
+            line_end = int(node["line_end"])
+        elif line_start <= 0 or line_end <= 0:
+            return _error(
+                "invalid_range",
+                "Provide a positive line_start and line_end, or provide node_uid alone.",
+            )
+
+        if line_start <= 0 or line_end <= 0 or line_end < line_start:
+            return _error("invalid_range", "Range must be a positive START-END span")
+
+        if node is not None and not (
+            int(node["line_start"]) <= line_start <= line_end <= int(node["line_end"])
+        ):
+            return _error(
+                "range_outside_node",
+                f"Requested L{line_start}-L{line_end} is outside node "
+                f"{node_uid} L{node['line_start']}-L{node['line_end']}.",
+                node_uid=node_uid,
+                node_range=f"L{node['line_start']}-L{node['line_end']}",
+            )
+
+        line_count = line_end - line_start + 1
+        if line_count > max_lines:
+            return _error(
+                "range_too_large",
+                f"Requested {line_count} lines exceeds max {max_lines}. "
+                "Please split into smaller ranges.",
+                max_lines=max_lines,
+                requested_lines=line_count,
+            )
+
+        lines = (entry["content_raw"] or "").splitlines()
+        total_lines = len(lines)
+        if total_lines == 0:
+            return _error("empty_content", "Knowledge entry has no content_raw lines")
+        if line_start > total_lines or line_end > total_lines:
+            return _error(
+                "range_outside_content",
+                f"Requested L{line_start}-L{line_end} exceeds content length L1-L{total_lines}",
+                total_lines=total_lines,
+            )
+
+        if node is None:
+            node = conn.execute(
+                """SELECT node_uid, path, heading, line_start, line_end, content_hash
+                   FROM knowledge_nodes
+                   WHERE knowledge_id=? AND line_start <= ? AND line_end >= ?
+                   ORDER BY level DESC, (line_end - line_start) ASC, id
+                   LIMIT 1""",
+                (knowledge_id, line_start, line_end),
+            ).fetchone()
+
+        content = "\n".join(
+            f"{line_number}|{lines[line_number - 1]}"
+            for line_number in range(line_start, line_end + 1)
+        )
+        exact_node_range = (
+            node is not None
+            and line_start == int(node["line_start"])
+            and line_end == int(node["line_end"])
+        )
+        content_hash = (
+            node["content_hash"]
+            if exact_node_range and node["content_hash"]
+            else _line_hash(lines, line_start, line_end)
+        )
+
+        return {
+            "entry_id": knowledge_id,
+            "title": entry["title"],
+            "range": f"L{line_start}-L{line_end}",
+            "line_start": line_start,
+            "line_end": line_end,
+            "citation": _format_citation(knowledge_id, entry["title"], line_start, line_end),
+            "content": content,
+            "content_hash": content_hash,
+            "node_uid": node["node_uid"] if node is not None else "",
+            "path": node["path"] if node is not None else "",
+        }
+    finally:
+        conn.close()
 
 
 # ── MCP Server Implementation ──────────────────────────
@@ -169,6 +409,49 @@ TOOLS = [
             }
         }
     },
+    {
+        "name": "guardrails_map_show",
+        "description": "讀取指定知識的 Document Map 結構（章節、路徑、行號）。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "knowledge_id": {
+                    "type": "integer",
+                    "description": "知識條目 ID"
+                },
+            },
+            "required": ["knowledge_id"]
+        }
+    },
+    {
+        "name": "guardrails_read_range",
+        "description": "讀取指定知識的受限行號範圍；成功回傳固定 citation，預設最多 80 行。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "knowledge_id": {
+                    "type": "integer",
+                    "description": "知識條目 ID"
+                },
+                "node_uid": {
+                    "type": "string",
+                    "description": "Document Map node_uid；若省略行號，使用此 node 的行號範圍",
+                    "default": ""
+                },
+                "line_start": {
+                    "type": "integer",
+                    "description": "起始行號（含）",
+                    "default": 0
+                },
+                "line_end": {
+                    "type": "integer",
+                    "description": "結束行號（含）",
+                    "default": 0
+                },
+            },
+            "required": ["knowledge_id"]
+        }
+    },
 ]
 
 
@@ -194,6 +477,15 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     "trust": r.get("trust"),
                     "tags": r.get("tags"),
                     "best_claim": r.get("best_claim", ""),
+                    "best_span": r.get("best_span"),
+                    "best_node": r.get("best_node"),
+                    "node_uid": r.get("node_uid"),
+                    "path": r.get("path"),
+                    "heading": r.get("heading"),
+                    "line_start": r.get("line_start"),
+                    "line_end": r.get("line_end"),
+                    "citation": r.get("citation"),
+                    "recommended_next_tool": r.get("recommended_next_tool"),
                     "rerank_score": r.get("_rerank_score"),
                 }
                 # 截斷 content_raw
@@ -265,6 +557,19 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 "category": r["category"],
             } for r in results[:20]]  # 最多回傳 20 條
             return {"result": json.dumps(output, ensure_ascii=False, indent=2)}
+
+        elif name == "guardrails_map_show":
+            payload = _guardrails_map_show_payload(arguments.get("knowledge_id", 0))
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
+
+        elif name == "guardrails_read_range":
+            payload = _guardrails_read_range_payload(
+                knowledge_id=arguments.get("knowledge_id", 0),
+                node_uid=arguments.get("node_uid", ""),
+                line_start=arguments.get("line_start", 0),
+                line_end=arguments.get("line_end", 0),
+            )
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 
         else:
             return {"error": f"Unknown tool: {name}"}

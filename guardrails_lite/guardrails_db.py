@@ -126,6 +126,75 @@ class GuardrailsDB:
         for col_name, col_def in new_cols_v4.items():
             if col_name not in existing_cols:
                 c.execute(f"ALTER TABLE knowledge ADD COLUMN {col_name} {col_def}")
+        # ── Document Map tables ─────────────────────────────
+        # Markdown section nodes for future A2 parser.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS knowledge_nodes (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                knowledge_id   INTEGER NOT NULL,
+                node_uid       TEXT NOT NULL,
+                parent_uid     TEXT NOT NULL DEFAULT '',
+                level          INTEGER NOT NULL DEFAULT 0,
+                heading        TEXT NOT NULL DEFAULT '',
+                path           TEXT NOT NULL DEFAULT '',
+                summary        TEXT NOT NULL DEFAULT '',
+                line_start     INTEGER NOT NULL,
+                line_end       INTEGER NOT NULL,
+                token_estimate INTEGER NOT NULL DEFAULT 0,
+                content_hash   TEXT NOT NULL DEFAULT '',
+                created_at     TEXT NOT NULL DEFAULT '',
+                updated_at     TEXT NOT NULL DEFAULT '',
+                FOREIGN KEY (knowledge_id) REFERENCES knowledge(id),
+                UNIQUE(knowledge_id, node_uid)
+            )
+        """)
+        self._ensure_table_columns(
+            "knowledge_nodes",
+            {
+                "summary": "TEXT NOT NULL DEFAULT ''",
+                "token_estimate": "INTEGER NOT NULL DEFAULT 0",
+            },
+        )
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_nodes_uid ON knowledge_nodes(knowledge_id, node_uid)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_nodes_knowledge_id ON knowledge_nodes(knowledge_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_nodes_node_uid ON knowledge_nodes(node_uid)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_nodes_path ON knowledge_nodes(path)")
+
+        # Atomic claims extracted from nodes for future A3 backfill.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS knowledge_claims (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                knowledge_id INTEGER NOT NULL,
+                node_uid     TEXT NOT NULL DEFAULT '',
+                claim_uid    TEXT NOT NULL,
+                claim        TEXT NOT NULL,
+                claim_type   TEXT NOT NULL DEFAULT 'claim',
+                line_start   INTEGER NOT NULL DEFAULT 0,
+                line_end     INTEGER NOT NULL DEFAULT 0,
+                confidence   REAL NOT NULL DEFAULT 0.7,
+                source       TEXT NOT NULL DEFAULT 'aaak',
+                content_hash TEXT NOT NULL DEFAULT '',
+                created_at   TEXT NOT NULL DEFAULT '',
+                updated_at   TEXT NOT NULL DEFAULT '',
+                FOREIGN KEY (knowledge_id) REFERENCES knowledge(id),
+                UNIQUE(knowledge_id, node_uid, claim)
+            )
+        """)
+        claim_cols_before = self._table_columns("knowledge_claims")
+        self._ensure_table_columns(
+            "knowledge_claims",
+            {
+                "claim_uid": "TEXT NOT NULL DEFAULT ''",
+                "confidence": "REAL NOT NULL DEFAULT 0.7",
+            },
+        )
+        if "claim_uid" not in claim_cols_before:
+            self._backfill_claim_uids()
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_claims_uid ON knowledge_claims(knowledge_id, claim_uid)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_claims_knowledge_id ON knowledge_claims(knowledge_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_claims_node_uid ON knowledge_claims(node_uid)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_claims_claim_type ON knowledge_claims(claim_type)")
+
         c.commit()
 
         # 文章追蹤表
@@ -231,6 +300,35 @@ class GuardrailsDB:
             ("schema_version", str(self.SCHEMA_VERSION)),
         )
         c.commit()
+
+    def _table_columns(self, table: str) -> set[str]:
+        """Return existing column names for a SQLite table."""
+        return {row["name"] for row in self.conn.execute(f"PRAGMA table_info({table})")}
+
+    def _ensure_table_columns(self, table: str, columns: dict[str, str]) -> None:
+        """Add missing columns to an existing table without bumping schema_version."""
+        existing_cols = self._table_columns(table)
+        for column_name, column_def in columns.items():
+            if column_name not in existing_cols:
+                self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column_name} {column_def}")
+
+    def _backfill_claim_uids(self) -> None:
+        """Populate canonical claim_uid for rows migrated from the pre-canonical table."""
+        rows = self.conn.execute(
+            """SELECT id, claim, line_start, line_end
+               FROM knowledge_claims
+               WHERE claim_uid IS NULL OR claim_uid=''"""
+        ).fetchall()
+        for row in rows:
+            line_start = int(row["line_start"] or 0)
+            line_end = int(row["line_end"] or line_start)
+            claim = row["claim"] or ""
+            digest = hashlib.sha256(f"{line_start}:{line_end}:{claim}".encode()).hexdigest()[:16]
+            claim_uid = f"c-{line_start}-{digest}"
+            self.conn.execute(
+                "UPDATE knowledge_claims SET claim_uid=? WHERE id=?",
+                (claim_uid, row["id"]),
+            )
 
     def _init_vec_table(self):
         """建立 sqlite-vec 向量虛擬表。"""

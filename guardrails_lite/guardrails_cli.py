@@ -18,6 +18,7 @@ Guardrails Lite — CLI 入口。
 import argparse
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -958,6 +959,187 @@ def cmd_skill_stats(args):
     db.close()
 
 
+def cmd_map(args):
+    """Document Map 操作：build / show / read / query。"""
+    from guardrails_lite.guardrails_db import GuardrailsDB
+    from guardrails_lite.guardrails_map import build_document_map_for_entry
+
+    project_dir = find_project_dir()
+    db_path = project_dir / "guardrails.db"
+    action = args.map_action
+
+    if action == "build":
+        db = GuardrailsDB(str(db_path))
+        db.connect()
+        try:
+            if args.knowledge_id is not None:
+                knowledge_ids = [args.knowledge_id]
+            else:
+                knowledge_ids = [
+                    row["id"]
+                    for row in db.conn.execute("SELECT id FROM knowledge ORDER BY id").fetchall()
+                ]
+
+            total_nodes = 0
+            total_claims = 0
+            for knowledge_id in knowledge_ids:
+                try:
+                    result = build_document_map_for_entry(db.conn, knowledge_id)
+                except ValueError as exc:
+                    print(str(exc))
+                    return
+                total_nodes += result["nodes"]
+                total_claims += result["claims"]
+
+            print(
+                f"built {len(knowledge_ids)} entries: "
+                f"nodes={total_nodes} claims={total_claims}"
+            )
+        finally:
+            db.close()
+        return
+
+    if action in {"show", "read", "query"}:
+        conn = _connect_map_readonly(db_path)
+        if conn is None:
+            return
+        try:
+            if action == "show":
+                entry = _get_map_entry(conn, args.knowledge_id)
+                if not entry:
+                    print(f"Knowledge id not found: {args.knowledge_id}")
+                    return
+
+                rows = conn.execute(
+                    """SELECT node_uid, level, path, line_start, line_end
+                       FROM knowledge_nodes
+                       WHERE knowledge_id=?
+                       ORDER BY line_start, level, id""",
+                    (args.knowledge_id,),
+                ).fetchall()
+
+                print(f"#{args.knowledge_id} {entry['title']}")
+                if not rows:
+                    print(
+                        "No document map nodes found. "
+                        f"Run: guardrails map build {args.knowledge_id}"
+                    )
+                    return
+
+                for row in rows:
+                    level = max(0, int(row["level"] or 0) - 1)
+                    indent = "  " * level
+                    print(
+                        f"{indent}- {row['path']} [{row['node_uid']}] "
+                        f"L{row['line_start']}-L{row['line_end']}"
+                    )
+
+            elif action == "read":
+                try:
+                    start_line, end_line = _parse_map_line_range(args.lines)
+                except ValueError as exc:
+                    print(f"error: {exc}", file=sys.stderr)
+                    raise SystemExit(2)
+
+                entry = _get_map_entry(conn, args.knowledge_id)
+                if not entry:
+                    print(f"Knowledge id not found: {args.knowledge_id}")
+                    return
+
+                lines = (entry["content_raw"] or "").splitlines()
+                total_lines = len(lines)
+                if total_lines == 0:
+                    print(f"#{args.knowledge_id} {entry['title']} L0-L0")
+                    return
+
+                clamped_start = min(max(1, start_line), total_lines)
+                clamped_end = min(max(clamped_start, end_line), total_lines)
+
+                print(f"#{args.knowledge_id} {entry['title']} L{clamped_start}-L{clamped_end}")
+                for line_number in range(clamped_start, clamped_end + 1):
+                    print(f"{line_number}|{lines[line_number - 1]}")
+
+            elif action == "query":
+                pattern = f"%{args.query}%"
+                rows = conn.execute(
+                    """SELECT c.knowledge_id, k.title, c.claim, c.node_uid,
+                              c.line_start, c.line_end, COALESCE(n.path, '') AS path
+                       FROM knowledge_claims c
+                       JOIN knowledge k ON k.id = c.knowledge_id
+                       LEFT JOIN knowledge_nodes n
+                         ON n.knowledge_id = c.knowledge_id
+                        AND n.node_uid = c.node_uid
+                       WHERE c.claim LIKE ? OR k.title LIKE ? OR COALESCE(n.path, '') LIKE ?
+                       ORDER BY c.knowledge_id, c.line_start, c.id
+                       LIMIT ?""",
+                    (pattern, pattern, pattern, args.limit),
+                ).fetchall()
+
+                if not rows:
+                    print("No matching document map claims")
+                    return
+
+                for row in rows:
+                    path = f" {row['path']}" if row["path"] else ""
+                    node_uid = f" [{row['node_uid']}]" if row["node_uid"] else ""
+                    print(
+                        f"#{row['knowledge_id']} {row['title']} "
+                        f"L{row['line_start']}-L{row['line_end']}{path}{node_uid}"
+                    )
+                    print(f"  {row['claim']}")
+        finally:
+            conn.close()
+        return
+
+    print("用法: guardrails map {build|show|read|query}")
+
+
+def _connect_map_readonly(db_path: Path) -> sqlite3.Connection | None:
+    """Open guardrails.db in SQLite read-only mode for map navigation commands."""
+    if not db_path.exists():
+        print(f"guardrails.db not found at {db_path}. Run guardrails init/compile first.")
+        return None
+
+    try:
+        conn = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
+    except sqlite3.OperationalError as exc:
+        print(f"Unable to open guardrails.db read-only at {db_path}: {exc}")
+        return None
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _get_map_entry(conn: sqlite3.Connection, knowledge_id: int) -> sqlite3.Row | None:
+    """Fetch a knowledge row through a raw SQLite connection."""
+    return conn.execute("SELECT * FROM knowledge WHERE id=?", (knowledge_id,)).fetchone()
+
+
+def _positive_int(value: str) -> int:
+    """Argparse type requiring a positive integer."""
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a positive integer") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
+def _parse_map_line_range(value: str) -> tuple[int, int]:
+    """Parse an inclusive START-END line range for `guardrails map read`."""
+    if not value or "-" not in value:
+        raise ValueError("--lines must be START-END")
+    start_raw, end_raw = value.split("-", 1)
+    try:
+        start_line = int(start_raw)
+        end_line = int(end_raw)
+    except ValueError as exc:
+        raise ValueError("--lines must be START-END") from exc
+    if start_line < 1 or end_line < 1 or end_line < start_line:
+        raise ValueError("--lines must be a positive START-END range")
+    return start_line, end_line
+
+
 def cmd_config(args):
     """配置管理。"""
     from guardrails_lite.guardrails_db import GuardrailsDB
@@ -1068,6 +1250,24 @@ def main():
     p.add_argument("config_action", choices=["set", "get", "list"])
     p.add_argument("config_args", nargs="*")
 
+    # map — Document Map read-only navigation + backfill
+    p = sub.add_parser("map", help="Document Map 操作")
+    map_sub = p.add_subparsers(dest="map_action", help="Document Map 子命令")
+
+    mp = map_sub.add_parser("build", help="建立/回填 Document Map")
+    mp.add_argument("knowledge_id", nargs="?", type=int, help="知識 ID；省略時回填全部")
+
+    mp = map_sub.add_parser("show", help="顯示知識條目的章節地圖")
+    mp.add_argument("knowledge_id", type=int, help="知識 ID")
+
+    mp = map_sub.add_parser("read", help="讀取知識條目的指定行號範圍")
+    mp.add_argument("knowledge_id", type=int, help="知識 ID")
+    mp.add_argument("--lines", required=True, help="行號範圍，例如 1-40")
+
+    mp = map_sub.add_parser("query", help="搜尋 Document Map claims")
+    mp.add_argument("query", help="查詢文字")
+    mp.add_argument("--limit", "-n", type=_positive_int, default=10)
+
     # skill — 跨 Agent 技能共享
     p = sub.add_parser("skill", help="技能市場（跨 Agent 共享）")
     skill_sub = p.add_subparsers(dest="skill_action", help="技能子命令")
@@ -1135,7 +1335,7 @@ def main():
 
     args = parser.parse_args()
 
-    cmd_map = {
+    commands = {
         "init": cmd_init,
         "add": cmd_add,
         "compile": cmd_compile,
@@ -1147,12 +1347,13 @@ def main():
         "install-embedding": cmd_install_embedding,
         "import": cmd_import,
         "config": cmd_config,
+        "map": cmd_map,
         "graph": cmd_graph,
         "skill": cmd_skill,
     }
 
-    if args.command in cmd_map:
-        cmd_map[args.command](args)
+    if args.command in commands:
+        commands[args.command](args)
     else:
         parser.print_help()
 

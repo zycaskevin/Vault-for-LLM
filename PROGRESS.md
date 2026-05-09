@@ -1,8 +1,196 @@
 # Guardrails Document Map Upgrade — Progress
 
-Last updated: 2026-05-09 15:21 CST
+Last updated: 2026-05-09 16:57 CST
 
-## Current Sprint: Sprint 4C — Dashboard Health Integration — COMPLETED
+## Current Sprint: Sprint 4E — Search QA Set + Before/After Metrics — COMPLETED
+
+### Goal
+Create a deterministic Search QA Set and before/after metric runner so Guardrails search quality can be measured before changing ranking logic. This sprint is about observability and regression safety, not about making search ranking smarter yet.
+
+### Baseline Findings
+- Repository baseline: `/home/zycas/Guardrails-knowledge`, branch `main`, HEAD `72da9d9f0fabf514d30f66b2c05f500e57286be4`.
+- Working tree before Sprint 4E implementation: `PROGRESS.md` modified by Sprint 4D documentation only; no search-quality code changes yet.
+- Graphify baseline: 1081 nodes / 2320 edges / 72 communities.
+- Existing search path:
+  - `guardrails_lite/guardrails_search.py` owns keyword/vector/hybrid search, rerank, Document Map enrichment, and navigation hints.
+  - `guardrails_lite/agent_policy.py` owns the behavior policy that keeps search citations as navigation-only and requires read-range citations for final answers.
+  - `tests/test_search_map_integration.py`, `tests/test_agent_behavior_policy.py`, and `tests/test_guardrails_health_metrics.py` already cover the Document Map and citation-policy boundary.
+- Current local DB health sample (`sample_limit=20`): total entries 424, entries with nodes 1, entries with claims 1, map coverage 0.24%, claim coverage 0.24%, citation coverage 0%, read_range over-limit violations 0. This local DB state differs from the latest synced Dashboard snapshot and confirms that QA metrics must read local SQLite as source of truth.
+- Existing test baseline: `tests/test_search_map_integration.py tests/test_agent_behavior_policy.py tests/test_guardrails_health_metrics.py` passed (`16 passed in 3.27s`).
+
+### Scope Delivered
+1. Added `guardrails_lite/search_qa.py` as a pure Python local evaluator around `GuardrailsSearch`.
+2. Added an extendable in-repo QA fixture at `tests/fixtures/search_qa_set.json`.
+3. Added aggregate and per-case metrics:
+   - `total_cases`
+   - `cases_with_results`
+   - `top1_hits`
+   - `topk_hits`
+   - `mean_reciprocal_rank`
+   - `map_guidance_rate`
+   - `read_range_guidance_rate`
+   - `citation_policy_violations`
+4. Added deterministic before/after snapshot comparison with JSON output and human-readable CLI formatting.
+5. Added explicit CLI commands:
+   - `guardrails search-qa run --qa-file --output --mode --limit --db-path`
+   - `guardrails search-qa compare --before --after --output`
+6. Added `tests/test_search_quality_metrics.py` with temporary SQLite fixtures and CLI smoke coverage; tests do not require network, Supabase, Ollama, or embedding providers.
+7. Preserved citation policy boundaries: search result citations remain navigation hints only; the evaluator only measures guidance and flags suspicious final-citation labels.
+
+### Review Findings Resolved
+- Independent review found one blocking metric-correctness issue: `expected_title_substrings` originally used OR semantics, so `["citation", "policy"]` could falsely match `Citation Only` or `Policy Only`.
+- Fixed by requiring all configured substrings to match the result title.
+- Regression proof:
+  - `Citation Policy Boundary` → `True`
+  - `Citation Only` → `False`
+  - `Policy Only` → `False`
+- Re-review passed with no blocking or non-blocking findings.
+
+### Non-Goals Preserved
+- No search ranking tuning.
+- No Supabase schema changes and no changes to `hermes_guardrails_health`.
+- No citation policy weakening.
+- No Dashboard frontend changes.
+- No live DB `guardrails map build` as part of implementation; Document Map building only appears inside temporary test fixtures.
+
+### Final Verification
+```bash
+# Targeted Search QA + policy + health regression
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python -m pytest \
+  tests/test_search_quality_metrics.py \
+  tests/test_search_map_integration.py \
+  tests/test_agent_behavior_policy.py \
+  tests/test_guardrails_health_metrics.py -q
+# PASS: 22 passed in 4.02s
+
+# Full Guardrails regression
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python -m pytest -q
+# PASS: 74 passed, 2 warnings in 48.70s
+
+# CLI smoke on local DB and in-repo QA set
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python -m guardrails_lite.guardrails_cli \
+  search-qa run --qa-file tests/fixtures/search_qa_set.json \
+  --output /tmp/guardrails-search-qa.json --mode keyword --limit 5
+# PASS: total_cases=2, cases_with_results=2, top1_hits=1, topk_hits=2, citation_policy_violations=0
+
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python -m guardrails_lite.guardrails_cli \
+  search-qa compare --before /tmp/guardrails-search-qa.json \
+  --after /tmp/guardrails-search-qa.json \
+  --output /tmp/guardrails-search-qa-compare.json
+# PASS: deterministic zero-delta comparison generated.
+
+# Git hygiene
+git diff --check
+# PASS: no whitespace errors.
+
+# Graphify after code changes
+/usr/bin/python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"
+# PASS: 1126 nodes, 2416 edges, 73 communities.
+```
+
+Independent worktree verification from detached HEAD `72da9d9` also passed after applying the targeted patch:
+
+```bash
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python -m pytest \
+  tests/test_search_quality_metrics.py \
+  tests/test_search_map_integration.py \
+  tests/test_agent_behavior_policy.py \
+  tests/test_guardrails_health_metrics.py -q
+# PASS: 22 passed in 4.16s
+
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python -m pytest -q
+# PASS: 74 passed, 2 warnings in 40.44s
+
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python -m guardrails_lite.guardrails_cli search-qa run ...
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python -m guardrails_lite.guardrails_cli search-qa compare ...
+# PASS: CLI commands executed successfully in isolated worktree.
+
+git diff --check
+# PASS.
+```
+
+### Files Changed
+- `guardrails_lite/search_qa.py`
+- `guardrails_lite/guardrails_cli.py`
+- `tests/test_search_quality_metrics.py`
+- `tests/fixtures/search_qa_set.json`
+- `PROGRESS.md`
+
+## Previous Sprint: Sprint 4D — Dashboard Document Map Metrics Display — COMPLETED
+
+### Goal
+Render Guardrails Document Map health in the Hermes Dashboard frontend by reading Supabase `hermes_guardrails_health` snapshots and making coverage / citation / violation signals visible in the System Health tab.
+
+### Scope Delivered
+1. Kept local SQLite as the source of truth; Dashboard only reads synced Supabase snapshots.
+2. Reused the deployed `hermes_guardrails_health` schema and removed the stale frontend `id` select assumption.
+3. Renamed the Guardrails goal from generic `Guardrails 品質` to `Guardrails Document Map`.
+4. Surfaced Document Map-specific metrics from existing schema slots:
+   - `total_knowledge` → total Guardrails entries.
+   - `convergence_rate` → Document Map coverage.
+   - `avg_freshness` → citation navigation coverage.
+   - `contradiction_count` → `read_range` over-limit violations.
+   - `gap_count` → entries without nodes + entries without claims.
+5. Added Guardrails-specific metric definitions in `GoalDetailSection.tsx`, explicitly stating that Dashboard metrics are observability only and final citations still require `read_range`.
+6. Added a coverage sparkline and defensive percentage normalization so historical fraction rows (`0.94`) and percent rows (`94`) both render correctly.
+7. Preserved citation policy boundaries: no search/final citation policy code was changed.
+
+### Baseline Findings
+- Dashboard stack: Vite + React + TypeScript under `/home/zycas/.hermes/dashboard/oa-cli/dashboard-src`.
+- `useHermesData.ts` already queried `hermes_guardrails_health`, but only showed generic convergence / total / contradiction metrics and no Document Map-specific trend or definitions.
+- `GoalDetailSection.tsx` already supported goal-specific metric definitions and default sparkline charts; Sprint 4D reused that existing UI pattern.
+- Live Supabase rows include older fractional snapshots (`convergence_rate` around `0.94`), so the frontend normalizes both fraction and percent formats.
+
+### Final Verification
+```bash
+# Dashboard TypeScript + production build
+npm run build
+# PASS: tsc + Vite build passed; existing large chunk warning only.
+
+# Supabase read-path smoke
+node --input-type=module <supabase hermes_guardrails_health select smoke>
+# PASS: 3 rows returned; latest 2026-05-08 total_knowledge=368, convergence_rate=0.940217, avg_freshness=0.861, gap_count=22.
+
+# HTTP + browser smoke
+curl -I http://localhost:3460/
+# PASS: HTTP/1.1 200 OK
+# Browser DOM confirmed Guardrails Document Map card and detail render 94% coverage, 86% citation coverage, 368 entries, 0 read_range over-limit, 22 Map/Claim gaps.
+# Browser console: no JavaScript errors.
+
+# Guardrails backend regression
+conda run -n guardrails-lite python3 -m pytest -q
+# PASS: 68 passed, 2 warnings in 48.35s.
+
+# Git hygiene
+git diff --check
+# PASS for Dashboard targeted diff and Guardrails PROGRESS.md.
+
+# Graphify
+/usr/bin/python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"
+# PASS: 1081 nodes, 2320 edges, 72 communities.
+```
+
+Independent worktree verification also passed:
+
+```bash
+# Dashboard source patch applied to detached worktree from HEAD 62ac4aac
+npm ci
+npm run build
+# PASS: tsc + Vite build passed; npm audit reported existing dependency vulnerabilities, not introduced by this source patch.
+
+# Guardrails PROGRESS.md patch applied to detached worktree from HEAD 72da9d9
+conda run -n guardrails-lite python3 -m pytest -q
+# PASS: 68 passed, 2 warnings in 41.95s.
+```
+
+### Files Changed
+- `/home/zycas/.hermes/dashboard/oa-cli/dashboard-src/src/hooks/useHermesData.ts`
+- `/home/zycas/.hermes/dashboard/oa-cli/dashboard-src/src/types.ts`
+- `/home/zycas/.hermes/dashboard/oa-cli/dashboard-src/src/components/GoalDetailSection.tsx`
+- `/home/zycas/.hermes/dashboard/oa-cli/src/oa/dashboard/index.html` and hashed built asset from `npm run build`
+- `/home/zycas/Guardrails-knowledge/PROGRESS.md`
+
+## Previous Sprint: Sprint 4C — Dashboard Health Integration — COMPLETED
 
 ### Goal
 Expose Document Map health to the Hermes Dashboard by collecting local SQLite coverage metrics and upserting a daily snapshot into Supabase `hermes_guardrails_health`, without changing the Dashboard frontend or weakening the Sprint 3 citation policy harness.

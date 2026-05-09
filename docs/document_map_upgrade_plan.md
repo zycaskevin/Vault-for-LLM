@@ -462,10 +462,14 @@ git diff --check
 - upsert natural keys：nodes `(knowledge_id,node_uid)`；claims `(knowledge_id,claim_uid)`
 - 若遠端表不存在或無權限，腳本會輸出 actionable error，不靜默成功。
 
-**Still pending for Sprint 4B:**
-- Supabase migration / DDL 檔案。
-- remote MCP read path。
-- remote-side policy harness trace coverage。
+**Delivered in Sprint 4B:**
+- Added `supabase/migrations/20260509_document_map_sprint4b.sql`.
+- DDL creates `guardrails_knowledge_nodes` / `guardrails_knowledge_claims` with UUID primary keys, synced `knowledge_id`, natural-key uniqueness on `(knowledge_id,node_uid)` / `(knowledge_id,claim_uid)`, line-bound checks, indexes, RLS, and `agents_rw` policy.
+- Added remote MCP read path backed by synced Supabase rows:
+  - `guardrails_remote_map_show` reads remote nodes and returns remote read next-actions.
+  - `guardrails_remote_read_range` reads bounded remote ranges, prefers remote `content_raw` when available, falls back to synced claims, and returns fixed `#<id> <title> Lx-Ly` citations.
+- Extended policy harness trace coverage so remote aliases must still follow `search → map_show → read_range → final answer with read_range citation`.
+- Review fix: fallback claim content hashes now hash the returned claim payload instead of reusing node `content_hash`.
 
 ---
 

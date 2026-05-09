@@ -1,8 +1,51 @@
 # Guardrails Document Map Upgrade — Progress
 
-Last updated: 2026-05-09 14:05 CST
+Last updated: 2026-05-09 14:26 CST
 
-## Current Sprint: Sprint 4A — Supabase Document Map Sync + Compile Hook — COMPLETED
+## Current Sprint: Sprint 4B — Remote Document Map Read Path + Supabase DDL — COMPLETED
+
+### Goal
+Complete the remote Document Map loop by adding Supabase DDL/migration support for synced map tables, exposing a remote MCP read path backed by `guardrails_knowledge_nodes` / `guardrails_knowledge_claims`, and extending the Sprint 3 citation policy harness to cover remote trace events.
+
+### Scope Delivered
+1. Added `supabase/migrations/20260509_document_map_sprint4b.sql` for `guardrails_knowledge_nodes` and `guardrails_knowledge_claims`, including UUID primary keys, natural-key uniqueness, indexes, RLS, `agents_rw` policies, and source-of-truth comments.
+2. Added remote MCP tools:
+   - `guardrails_remote_map_show(knowledge_id, compact=false)` reads synced Supabase nodes and returns remote `read_range` next actions.
+   - `guardrails_remote_read_range(knowledge_id, node_uid, line_start, line_end)` reads bounded remote ranges and returns fixed citations.
+3. Preserved local SQLite as canonical source; Supabase remains a sync/read target only.
+4. Extended deterministic policy tests so remote traces are accepted only when they follow `search → remote_map_show → remote_read_range → final answer with read_range citation`.
+5. Kept Sprint 4A sync behavior backward-compatible: `scripts/sync_to_supabase.py --document-map` remains opt-in.
+6. Added fake Supabase tests; no real network/Supabase access is required for test coverage.
+
+### Guardrails Observed
+- Surgical scope: no Dashboard metrics or repo hygiene in this sprint.
+- Citation policy preserved: search citations remain navigation hints only; final citations must come from local or remote `read_range`.
+- Review agent requested one fix: remote claim fallback must hash the returned claim content, not reuse node `content_hash`. Fixed with regression coverage.
+
+### Final Verification
+```bash
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python -m pytest \
+  tests/test_agent_behavior_policy.py \
+  tests/test_guardrails_mcp_map.py \
+  tests/test_search_map_integration.py \
+  tests/test_sprint4a_document_map_sync.py -q
+# 24 passed in 3.67s
+
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python -m pytest -q
+# 62 passed, 2 warnings in 38.88s
+
+git diff --check
+# passed
+```
+
+Graphify was rebuilt after code changes:
+
+```bash
+/home/zycas/miniconda3/bin/python -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"
+# 1031 nodes, 2170 edges, 73 communities
+```
+
+## Previous Sprint: Sprint 4A — Supabase Document Map Sync + Compile Hook — COMPLETED
 
 ### Goal
 Keep Document Map rows fresh on local compile and add an explicit Supabase sync path for `knowledge_nodes` / `knowledge_claims`, while preserving SQLite as source of truth and the Sprint 3 citation policy harness.

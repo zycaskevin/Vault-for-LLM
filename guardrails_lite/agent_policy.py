@@ -13,6 +13,9 @@ import re
 from typing import Any
 
 CITATION_RE = re.compile(r"#(?P<id>\d+)\s+[^#\n]+?\s+L\d+-L\d+")
+SEARCH_TOOLS = {"guardrails_search"}
+MAP_SHOW_TOOLS = {"guardrails_map_show", "guardrails_remote_map_show"}
+READ_RANGE_TOOLS = {"guardrails_read_range", "guardrails_remote_read_range"}
 
 
 def _load_output(event: dict[str, Any]) -> Any:
@@ -75,7 +78,7 @@ def _extract_citations(text: Any) -> list[str]:
 def _read_range_citations(events: list[dict[str, Any]]) -> list[str]:
     citations: list[str] = []
     for event in events:
-        if _tool_name(event) != "guardrails_read_range":
+        if _tool_name(event) not in READ_RANGE_TOOLS:
             continue
         output = _load_output(event)
         if isinstance(output, dict) and output.get("citation"):
@@ -135,17 +138,17 @@ def validate_agent_behavior(
     search_positions = [
         (idx, _event_knowledge_ids(event))
         for idx, event in enumerate(events)
-        if _tool_name(event) == "guardrails_search"
+        if _tool_name(event) in SEARCH_TOOLS
     ]
     map_positions = [
         (idx, _event_knowledge_ids(event))
         for idx, event in enumerate(events)
-        if _tool_name(event) == "guardrails_map_show"
+        if _tool_name(event) in MAP_SHOW_TOOLS
     ]
     read_positions = [
         (idx, _event_knowledge_ids(event))
         for idx, event in enumerate(events)
-        if _tool_name(event) == "guardrails_read_range"
+        if _tool_name(event) in READ_RANGE_TOOLS
     ]
 
     if not search_positions:

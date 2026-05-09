@@ -38,6 +38,9 @@ if GUARDRAILS_DIR not in sys.path:
     sys.path.insert(0, GUARDRAILS_DIR)
 
 DB_PATH = os.path.join(GUARDRAILS_DIR, "guardrails.db")
+REMOTE_NODE_TABLE = "guardrails_knowledge_nodes"
+REMOTE_CLAIM_TABLE = "guardrails_knowledge_claims"
+REMOTE_KNOWLEDGE_TABLE = "guardrails_knowledge"
 
 
 def _get_db():
@@ -67,6 +70,17 @@ def _get_search():
         pass
 
     return db, GuardrailsSearch(db, embed_provider=embed)
+
+
+def _get_supabase_client():
+    """Create a Supabase client lazily; tests inject fake clients into helpers."""
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY")
+    if not url or not key:
+        return None
+    from supabase import create_client
+
+    return create_client(url, key)
 
 
 # ── Document Map helpers ───────────────────────────────
@@ -113,6 +127,31 @@ def _next_action_for_error(code: str, extra: dict | None = None) -> dict:
     return {"tool": "guardrails_search", "arguments": {}}
 
 
+def _remote_next_action_for_error(code: str, extra: dict | None = None) -> dict:
+    extra = extra or {}
+    knowledge_id = extra.get("knowledge_id") or extra.get("entry_id")
+    if code in {"invalid_knowledge_id", "not_found", "remote_client_missing", "remote_read_failed"}:
+        return {"tool": "guardrails_search", "arguments": {}}
+    if code in {
+        "invalid_range",
+        "node_not_found",
+        "range_outside_node",
+        "range_outside_content",
+        "source_content_unavailable",
+        "no_document_map_nodes",
+    }:
+        return {
+            "tool": "guardrails_remote_map_show",
+            "arguments": {"knowledge_id": knowledge_id} if knowledge_id else {},
+        }
+    if code == "range_too_large":
+        return {
+            "tool": "guardrails_remote_read_range",
+            "arguments": {"knowledge_id": knowledge_id} if knowledge_id else {},
+        }
+    return {"tool": "guardrails_search", "arguments": {}}
+
+
 def _error(code: str, message: str, **extra) -> dict:
     next_action = extra.pop("next_action", None)
     failure_mode = extra.pop("failure_mode", code)
@@ -126,9 +165,27 @@ def _error(code: str, message: str, **extra) -> dict:
     return payload
 
 
+def _remote_error(code: str, message: str, **extra) -> dict:
+    next_action = extra.pop("next_action", None)
+    failure_mode = extra.pop("failure_mode", code)
+    payload = {
+        "error": code,
+        "message": message,
+        "failure_mode": failure_mode,
+        "next_action": next_action or _remote_next_action_for_error(code, extra),
+    }
+    payload.update(extra)
+    return payload
+
+
 def guardrails_map_show(knowledge_id: int, compact: bool = False) -> dict:
     """Return a knowledge entry's Document Map structure."""
     return _guardrails_map_show_payload(knowledge_id, compact=compact)
+
+
+def guardrails_remote_map_show(knowledge_id: int, compact: bool = False) -> dict:
+    """Return a synced Supabase Document Map structure (read-only target)."""
+    return _guardrails_remote_map_show_payload(knowledge_id, compact=compact)
 
 
 def _compact_node(node: dict) -> dict:
@@ -158,6 +215,117 @@ def _read_range_action(knowledge_id: int, node: dict) -> dict:
         args["line_start"] = int(node["line_start"])
         args["line_end"] = int(node["line_end"])
     return {"tool": "guardrails_read_range", "arguments": args}
+
+
+def _remote_read_range_action(knowledge_id: int, node: dict) -> dict:
+    args = {"knowledge_id": knowledge_id}
+    if node.get("node_uid"):
+        args["node_uid"] = node["node_uid"]
+    if node.get("line_start") and node.get("line_end"):
+        args["line_start"] = int(node["line_start"])
+        args["line_end"] = int(node["line_end"])
+    return {"tool": "guardrails_remote_read_range", "arguments": args}
+
+
+def _supabase_rows(sb_client, table_name: str, columns: str = "*", filters: dict | None = None) -> list[dict]:
+    query = sb_client.table(table_name).select(columns)
+    for field, value in (filters or {}).items():
+        query = query.eq(field, value)
+    response = query.execute()
+    return [dict(row) for row in (getattr(response, "data", None) or [])]
+
+
+def _sort_remote_nodes(rows: list[dict]) -> list[dict]:
+    return sorted(
+        rows,
+        key=lambda row: (
+            int(row.get("line_start") or 0),
+            int(row.get("level") or 0),
+            str(row.get("node_uid") or ""),
+        ),
+    )
+
+
+def _sort_remote_claims(rows: list[dict]) -> list[dict]:
+    return sorted(
+        rows,
+        key=lambda row: (
+            int(row.get("line_start") or 0),
+            int(row.get("line_end") or 0),
+            str(row.get("claim_uid") or ""),
+        ),
+    )
+
+
+def _remote_node_payload(row: dict) -> dict:
+    keys = [
+        "node_uid",
+        "path",
+        "heading",
+        "level",
+        "line_start",
+        "line_end",
+        "summary",
+        "token_estimate",
+    ]
+    return {key: row.get(key) for key in keys if key in row}
+
+
+def _guardrails_remote_map_show_payload(
+    knowledge_id: int,
+    *,
+    compact: bool = False,
+    sb_client=None,
+) -> dict:
+    try:
+        knowledge_id = int(knowledge_id)
+    except (TypeError, ValueError):
+        return _remote_error("invalid_knowledge_id", "knowledge_id must be a positive integer")
+    if knowledge_id <= 0:
+        return _remote_error("invalid_knowledge_id", "knowledge_id must be a positive integer")
+
+    sb_client = sb_client or _get_supabase_client()
+    if sb_client is None:
+        return _remote_error(
+            "remote_client_missing",
+            "SUPABASE_URL and SUPABASE_ANON_KEY/SUPABASE_KEY are required for remote map reads.",
+            knowledge_id=knowledge_id,
+        )
+
+    try:
+        rows = _sort_remote_nodes(
+            _supabase_rows(sb_client, REMOTE_NODE_TABLE, "*", {"knowledge_id": knowledge_id})
+        )
+    except Exception as exc:
+        return _remote_error(
+            "remote_read_failed",
+            f"Unable to read remote Document Map nodes: {exc}",
+            knowledge_id=knowledge_id,
+        )
+
+    title = next((str(row.get("knowledge_title") or "") for row in rows if row.get("knowledge_title")), "")
+    output_nodes = [_compact_node(row) for row in rows] if compact else [_remote_node_payload(row) for row in rows]
+    payload = {
+        "entry_id": knowledge_id,
+        "title": title,
+        "source": "supabase",
+        "nodes": output_nodes,
+    }
+    if rows:
+        preferred_node = _preferred_read_node(rows)
+        if preferred_node is not None:
+            payload["next_action"] = _remote_read_range_action(knowledge_id, preferred_node)
+        payload["next_actions"] = [_remote_read_range_action(knowledge_id, node) for node in rows]
+        return payload
+
+    payload.update(
+        _remote_error(
+            "no_document_map_nodes",
+            "No remote Document Map nodes found. Sync local SQLite with scripts/sync_to_supabase.py --document-map after applying the Supabase DDL.",
+            knowledge_id=knowledge_id,
+        )
+    )
+    return payload
 
 
 def _guardrails_map_show_payload(
@@ -236,6 +404,255 @@ def guardrails_read_range(
         line_start=line_start,
         line_end=line_end,
     )
+
+
+def guardrails_remote_read_range(
+    knowledge_id: int,
+    node_uid: str = "",
+    line_start: int = 0,
+    line_end: int = 0,
+) -> dict:
+    """Return a bounded remote source/claim range with a fixed citation."""
+    return _guardrails_remote_read_range_payload(
+        knowledge_id,
+        node_uid=node_uid,
+        line_start=line_start,
+        line_end=line_end,
+    )
+
+
+def _find_remote_content_row(sb_client, title: str, content_hash: str) -> dict | None:
+    lookups = []
+    if content_hash:
+        lookups.append({"content_hash": content_hash})
+    if title:
+        lookups.append({"title": title})
+    for filters in lookups:
+        rows = _supabase_rows(sb_client, REMOTE_KNOWLEDGE_TABLE, "title,content_raw,content_hash", filters)
+        if rows:
+            return rows[0]
+    return None
+
+
+def _remote_claim_content(claims: list[dict]) -> str:
+    lines = []
+    for claim in claims:
+        start = int(claim.get("line_start") or 0)
+        end = int(claim.get("line_end") or start)
+        prefix = f"{start}|" if start == end else f"{start}-{end}|"
+        lines.append(f"{prefix}{claim.get('claim') or ''}")
+    return "\n".join(lines)
+
+
+def _content_hash_for_text(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _guardrails_remote_read_range_payload(
+    knowledge_id: int,
+    node_uid: str = "",
+    line_start: int = 0,
+    line_end: int = 0,
+    *,
+    max_lines: int = 80,
+    sb_client=None,
+) -> dict:
+    try:
+        knowledge_id = int(knowledge_id)
+    except (TypeError, ValueError):
+        return _remote_error("invalid_knowledge_id", "knowledge_id must be a positive integer")
+    if knowledge_id <= 0:
+        return _remote_error("invalid_knowledge_id", "knowledge_id must be a positive integer")
+
+    try:
+        max_lines = int(max_lines)
+    except (TypeError, ValueError):
+        max_lines = 80
+    if max_lines <= 0:
+        max_lines = 80
+
+    sb_client = sb_client or _get_supabase_client()
+    if sb_client is None:
+        return _remote_error(
+            "remote_client_missing",
+            "SUPABASE_URL and SUPABASE_ANON_KEY/SUPABASE_KEY are required for remote range reads.",
+            knowledge_id=knowledge_id,
+        )
+
+    try:
+        nodes = _sort_remote_nodes(
+            _supabase_rows(sb_client, REMOTE_NODE_TABLE, "*", {"knowledge_id": knowledge_id})
+        )
+        claims = _sort_remote_claims(
+            _supabase_rows(sb_client, REMOTE_CLAIM_TABLE, "*", {"knowledge_id": knowledge_id})
+        )
+    except Exception as exc:
+        return _remote_error(
+            "remote_read_failed",
+            f"Unable to read remote Document Map rows: {exc}",
+            knowledge_id=knowledge_id,
+        )
+
+    if not nodes and not claims:
+        return _remote_error(
+            "no_document_map_nodes",
+            "No remote Document Map rows found for this knowledge_id.",
+            knowledge_id=knowledge_id,
+        )
+
+    title = next(
+        (
+            str(row.get("knowledge_title") or "")
+            for row in [*nodes, *claims]
+            if row.get("knowledge_title")
+        ),
+        "",
+    )
+    knowledge_content_hash = next(
+        (
+            str(row.get("knowledge_content_hash") or "")
+            for row in [*nodes, *claims]
+            if row.get("knowledge_content_hash")
+        ),
+        "",
+    )
+
+    node = None
+    node_uid = (node_uid or "").strip()
+    if node_uid:
+        node = next((row for row in nodes if str(row.get("node_uid") or "") == node_uid), None)
+        if node is None:
+            return _remote_error(
+                "node_not_found",
+                f"Remote node not found: {node_uid}",
+                knowledge_id=knowledge_id,
+                node_uid=node_uid,
+            )
+
+    try:
+        line_start = int(line_start or 0)
+        line_end = int(line_end or 0)
+    except (TypeError, ValueError):
+        return _remote_error(
+            "invalid_range",
+            "line_start and line_end must be integers",
+            knowledge_id=knowledge_id,
+        )
+
+    if node is not None and line_start == 0 and line_end == 0:
+        line_start = int(node["line_start"])
+        line_end = int(node["line_end"])
+    elif line_start <= 0 or line_end <= 0:
+        return _remote_error(
+            "invalid_range",
+            "Provide a positive line_start and line_end, or provide node_uid alone.",
+            knowledge_id=knowledge_id,
+        )
+
+    if line_start <= 0 or line_end <= 0 or line_end < line_start:
+        return _remote_error(
+            "invalid_range",
+            "Range must be a positive START-END span",
+            knowledge_id=knowledge_id,
+        )
+
+    if node is not None and not (
+        int(node["line_start"]) <= line_start <= line_end <= int(node["line_end"])
+    ):
+        return _remote_error(
+            "range_outside_node",
+            f"Requested L{line_start}-L{line_end} is outside remote node "
+            f"{node_uid} L{node['line_start']}-L{node['line_end']}.",
+            knowledge_id=knowledge_id,
+            node_uid=node_uid,
+            node_range=f"L{node['line_start']}-L{node['line_end']}",
+        )
+
+    line_count = line_end - line_start + 1
+    if line_count > max_lines:
+        return _remote_error(
+            "range_too_large",
+            f"Requested {line_count} lines exceeds max {max_lines}. Please split into smaller ranges.",
+            knowledge_id=knowledge_id,
+            max_lines=max_lines,
+            requested_lines=line_count,
+        )
+
+    if node is None:
+        node = next(
+            (
+                row for row in reversed(nodes)
+                if int(row.get("line_start") or 0) <= line_start
+                and line_end <= int(row.get("line_end") or 0)
+            ),
+            None,
+        )
+
+    content = ""
+    content_hash = ""
+    source = "remote_claims"
+    try:
+        content_row = _find_remote_content_row(sb_client, title, knowledge_content_hash)
+    except Exception:
+        content_row = None
+    if content_row and content_row.get("content_raw"):
+        lines = str(content_row.get("content_raw") or "").splitlines()
+        total_lines = len(lines)
+        if line_start > total_lines or line_end > total_lines:
+            return _remote_error(
+                "range_outside_content",
+                f"Requested L{line_start}-L{line_end} exceeds remote content length L1-L{total_lines}",
+                knowledge_id=knowledge_id,
+                total_lines=total_lines,
+            )
+        content = "\n".join(
+            f"{line_number}|{lines[line_number - 1]}"
+            for line_number in range(line_start, line_end + 1)
+        )
+        content_hash = _line_hash(lines, line_start, line_end)
+        source = "remote_content_raw"
+    else:
+        range_claims = [
+            claim for claim in claims
+            if int(claim.get("line_start") or 0) >= line_start
+            and int(claim.get("line_end") or claim.get("line_start") or 0) <= line_end
+        ]
+        if not range_claims:
+            return _remote_error(
+                "source_content_unavailable",
+                "Remote content_raw is unavailable and no synced claims cover the requested range.",
+                knowledge_id=knowledge_id,
+            )
+        content = _remote_claim_content(range_claims)
+        content_hash = _content_hash_for_text(content)
+
+    exact_node_range = (
+        node is not None
+        and line_start == int(node.get("line_start") or 0)
+        and line_end == int(node.get("line_end") or 0)
+    )
+    if source == "remote_content_raw" and exact_node_range and node and node.get("content_hash"):
+        content_hash = str(node["content_hash"])
+
+    citation = _format_citation(knowledge_id, title, line_start, line_end)
+    return {
+        "entry_id": knowledge_id,
+        "title": title,
+        "source": source,
+        "range": f"L{line_start}-L{line_end}",
+        "line_start": line_start,
+        "line_end": line_end,
+        "citation": citation,
+        "content": content,
+        "content_hash": content_hash,
+        "node_uid": node.get("node_uid", "") if node is not None else "",
+        "path": node.get("path", "") if node is not None else "",
+        "next_action": {
+            "tool": "final_answer",
+            "citation": citation,
+            "instruction": "Use this exact citation when relying on this remote range.",
+        },
+    }
 
 
 def _guardrails_read_range_payload(
@@ -545,6 +962,54 @@ TOOLS = [
             "required": ["knowledge_id"]
         }
     },
+    {
+        "name": "guardrails_remote_map_show",
+        "description": "從 Supabase 同步目標讀取 Document Map 結構（唯讀；SQLite 仍是 source of truth）。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "knowledge_id": {
+                    "type": "integer",
+                    "description": "本地知識條目 ID（同步到 remote 的 knowledge_id）"
+                },
+                "compact": {
+                    "type": "boolean",
+                    "description": "回傳精簡節點欄位（預設 false）",
+                    "default": False
+                },
+            },
+            "required": ["knowledge_id"]
+        }
+    },
+    {
+        "name": "guardrails_remote_read_range",
+        "description": "從 Supabase 同步目標讀取受限行號範圍；成功回傳固定 citation，預設最多 80 行。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "knowledge_id": {
+                    "type": "integer",
+                    "description": "本地知識條目 ID（同步到 remote 的 knowledge_id）"
+                },
+                "node_uid": {
+                    "type": "string",
+                    "description": "Remote Document Map node_uid；若省略行號，使用此 node 的行號範圍",
+                    "default": ""
+                },
+                "line_start": {
+                    "type": "integer",
+                    "description": "起始行號（含）",
+                    "default": 0
+                },
+                "line_end": {
+                    "type": "integer",
+                    "description": "結束行號（含）",
+                    "default": 0
+                },
+            },
+            "required": ["knowledge_id"]
+        }
+    },
 ]
 
 
@@ -683,6 +1148,22 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
 
         elif name == "guardrails_read_range":
             payload = _guardrails_read_range_payload(
+                knowledge_id=arguments.get("knowledge_id", 0),
+                node_uid=arguments.get("node_uid", ""),
+                line_start=arguments.get("line_start", 0),
+                line_end=arguments.get("line_end", 0),
+            )
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
+
+        elif name == "guardrails_remote_map_show":
+            payload = _guardrails_remote_map_show_payload(
+                arguments.get("knowledge_id", 0),
+                compact=bool(arguments.get("compact", False)),
+            )
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
+
+        elif name == "guardrails_remote_read_range":
+            payload = _guardrails_remote_read_range_payload(
                 knowledge_id=arguments.get("knowledge_id", 0),
                 node_uid=arguments.get("node_uid", ""),
                 line_start=arguments.get("line_start", 0),

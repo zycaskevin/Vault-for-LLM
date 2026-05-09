@@ -11,6 +11,108 @@ from guardrails_lite.guardrails_map import build_document_map_for_entry
 from guardrails_lite import guardrails_mcp
 
 
+class _FakeResponse:
+    def __init__(self, data):
+        self.data = data
+
+
+class _FakeTableQuery:
+    def __init__(self, client, table_name: str):
+        self.client = client
+        self.table_name = table_name
+        self.filters = []
+
+    def select(self, *args, **kwargs):
+        return self
+
+    def eq(self, field, value):
+        self.filters.append((field, value))
+        return self
+
+    def execute(self):
+        rows = self.client.tables.setdefault(self.table_name, [])
+        matches = [
+            row for row in rows
+            if all(row.get(field) == value for field, value in self.filters)
+        ]
+        return _FakeResponse([dict(row) for row in matches])
+
+
+class _FakeSupabaseClient:
+    def __init__(self, tables):
+        self.tables = tables
+
+    def table(self, table_name: str):
+        if table_name not in self.tables:
+            raise RuntimeError(f"missing table: {table_name}")
+        return _FakeTableQuery(self, table_name)
+
+
+def _remote_fake_client():
+    return _FakeSupabaseClient(
+        {
+            guardrails_mcp.REMOTE_NODE_TABLE: [
+                {
+                    "knowledge_id": 42,
+                    "node_uid": "root",
+                    "parent_uid": "",
+                    "level": 1,
+                    "heading": "Title",
+                    "path": "Title",
+                    "summary": "Root summary",
+                    "line_start": 1,
+                    "line_end": 6,
+                    "token_estimate": 20,
+                    "content_hash": "root-hash",
+                    "knowledge_title": "Example",
+                    "knowledge_source": "raw/example.md",
+                    "knowledge_content_hash": "doc-hash",
+                },
+                {
+                    "knowledge_id": 42,
+                    "node_uid": "title-tool",
+                    "parent_uid": "root",
+                    "level": 2,
+                    "heading": "Tool-gated Reading",
+                    "path": "Title/Tool-gated Reading",
+                    "summary": "Tool gate summary",
+                    "line_start": 3,
+                    "line_end": 4,
+                    "token_estimate": 12,
+                    "content_hash": "node-hash",
+                    "knowledge_title": "Example",
+                    "knowledge_source": "raw/example.md",
+                    "knowledge_content_hash": "doc-hash",
+                },
+            ],
+            guardrails_mcp.REMOTE_CLAIM_TABLE: [
+                {
+                    "knowledge_id": 42,
+                    "node_uid": "title-tool",
+                    "claim_uid": "c1",
+                    "claim": "Tool-gated reading keeps agents from reading whole documents.",
+                    "claim_type": "explicit",
+                    "line_start": 4,
+                    "line_end": 4,
+                    "confidence": 0.9,
+                    "source": "aaak",
+                    "content_hash": "claim-hash",
+                    "knowledge_title": "Example",
+                    "knowledge_source": "raw/example.md",
+                    "knowledge_content_hash": "doc-hash",
+                }
+            ],
+            guardrails_mcp.REMOTE_KNOWLEDGE_TABLE: [
+                {
+                    "title": "Example",
+                    "content_hash": "doc-hash",
+                    "content_raw": RAW_CONTENT,
+                }
+            ],
+        }
+    )
+
+
 RAW_CONTENT = "\n".join(
     [
         "# Title",
@@ -233,3 +335,117 @@ def test_handle_tool_call_routes_document_map_tools(tmp_path, monkeypatch):
     read_payload = json.loads(read_response["result"])
     assert read_payload["citation"] == f"#{knowledge_id} Example L3-L4"
     assert "3|## Tool-gated Reading" in read_payload["content"]
+
+
+def test_guardrails_remote_map_show_uses_synced_supabase_nodes():
+    payload = guardrails_mcp._guardrails_remote_map_show_payload(42, sb_client=_remote_fake_client())
+
+    assert payload["entry_id"] == 42
+    assert payload["title"] == "Example"
+    assert payload["source"] == "supabase"
+    assert [node["node_uid"] for node in payload["nodes"]] == ["root", "title-tool"]
+    assert payload["next_action"]["tool"] == "guardrails_remote_read_range"
+    assert payload["next_action"]["arguments"]["node_uid"] == "title-tool"
+
+    compact = guardrails_mcp._guardrails_remote_map_show_payload(
+        42,
+        compact=True,
+        sb_client=_remote_fake_client(),
+    )
+    assert compact["nodes"][1] == {
+        "node_uid": "title-tool",
+        "path": "Title/Tool-gated Reading",
+        "heading": "Tool-gated Reading",
+        "line_start": 3,
+        "line_end": 4,
+    }
+
+
+def test_guardrails_remote_read_range_uses_content_raw_when_available():
+    payload = guardrails_mcp._guardrails_remote_read_range_payload(
+        42,
+        node_uid="title-tool",
+        sb_client=_remote_fake_client(),
+    )
+
+    assert payload["entry_id"] == 42
+    assert payload["title"] == "Example"
+    assert payload["source"] == "remote_content_raw"
+    assert payload["range"] == "L3-L4"
+    assert payload["citation"] == "#42 Example L3-L4"
+    assert payload["content"] == (
+        "3|## Tool-gated Reading\n"
+        "4|Tool-gated reading keeps agents from reading whole documents."
+    )
+    assert payload["node_uid"] == "title-tool"
+    assert payload["path"] == "Title/Tool-gated Reading"
+    assert payload["content_hash"] == "node-hash"
+    assert payload["next_action"]["tool"] == "final_answer"
+
+
+def test_guardrails_remote_read_range_falls_back_to_claim_rows_and_bounds_ranges():
+    fake = _remote_fake_client()
+    fake.tables[guardrails_mcp.REMOTE_KNOWLEDGE_TABLE] = []
+
+    payload = guardrails_mcp._guardrails_remote_read_range_payload(
+        42,
+        line_start=4,
+        line_end=4,
+        sb_client=fake,
+    )
+    assert payload["source"] == "remote_claims"
+    assert payload["citation"] == "#42 Example L4-L4"
+    assert payload["content"] == "4|Tool-gated reading keeps agents from reading whole documents."
+
+    too_large = guardrails_mcp._guardrails_remote_read_range_payload(
+        42,
+        line_start=1,
+        line_end=81,
+        sb_client=fake,
+    )
+    assert too_large["error"] == "range_too_large"
+    assert too_large["next_action"]["tool"] == "guardrails_remote_read_range"
+
+    missing_claim = guardrails_mcp._guardrails_remote_read_range_payload(
+        42,
+        line_start=3,
+        line_end=3,
+        sb_client=fake,
+    )
+    assert missing_claim["error"] == "source_content_unavailable"
+    assert missing_claim["next_action"]["tool"] == "guardrails_remote_map_show"
+
+
+def test_guardrails_remote_read_range_claim_fallback_hashes_returned_content():
+    fake = _remote_fake_client()
+    fake.tables[guardrails_mcp.REMOTE_KNOWLEDGE_TABLE] = []
+
+    payload = guardrails_mcp._guardrails_remote_read_range_payload(
+        42,
+        node_uid="title-tool",
+        sb_client=fake,
+    )
+
+    assert payload["source"] == "remote_claims"
+    assert payload["content_hash"] == guardrails_mcp._content_hash_for_text(payload["content"])
+    assert payload["content_hash"] != "node-hash"
+
+
+def test_handle_tool_call_routes_remote_document_map_tools(monkeypatch):
+    monkeypatch.setattr(guardrails_mcp, "_get_supabase_client", _remote_fake_client)
+
+    show_response = guardrails_mcp.handle_tool_call(
+        "guardrails_remote_map_show",
+        {"knowledge_id": 42, "compact": True},
+    )
+    show_payload = json.loads(show_response["result"])
+    assert show_payload["source"] == "supabase"
+    assert show_payload["next_action"]["tool"] == "guardrails_remote_read_range"
+
+    read_response = guardrails_mcp.handle_tool_call(
+        "guardrails_remote_read_range",
+        {"knowledge_id": 42, "node_uid": "title-tool"},
+    )
+    read_payload = json.loads(read_response["result"])
+    assert read_payload["citation"] == "#42 Example L3-L4"
+    assert "4|Tool-gated reading" in read_payload["content"]

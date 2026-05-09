@@ -55,5 +55,12 @@ graphify-out/
 _knowledge_base/
 scripts/cross_validate_cloud_only.py
 scripts/guardrails_gap_scanner.py
+
+# Local/private knowledge captures (not safe for public repo by default)
+# Keep files usable locally; force-add only curated public-safe entries.
+L0-identity/
+L1-core-facts/
+raw/
+
 # Logs
 *.log

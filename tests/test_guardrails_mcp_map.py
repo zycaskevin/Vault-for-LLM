@@ -70,6 +70,8 @@ def test_guardrails_map_show_returns_nodes_and_build_hint_when_empty(tmp_path):
     assert payload["entry_id"] == knowledge_id
     assert payload["title"] == "Example"
     assert len(payload["nodes"]) == 3
+    assert payload["next_action"]["tool"] == "guardrails_read_range"
+    assert payload["next_actions"][0]["tool"] == "guardrails_read_range"
     child = next(node for node in payload["nodes"] if node["heading"] == "Tool-gated Reading")
     assert child["node_uid"]
     assert child["path"] == "Title/Tool-gated Reading"
@@ -78,6 +80,23 @@ def test_guardrails_map_show_returns_nodes_and_build_hint_when_empty(tmp_path):
     assert child["line_end"] == 4
     assert "summary" in child
     assert "token_estimate" in child
+
+    compact = guardrails_mcp._guardrails_map_show_payload(
+        knowledge_id,
+        db_path=str(db_path),
+        compact=True,
+    )
+    compact_child = next(
+        node for node in compact["nodes"] if node["heading"] == "Tool-gated Reading"
+    )
+    assert compact_child == {
+        "node_uid": child["node_uid"],
+        "path": "Title/Tool-gated Reading",
+        "heading": "Tool-gated Reading",
+        "line_start": 3,
+        "line_end": 4,
+    }
+    assert compact["next_action"]["arguments"]["node_uid"] == child["node_uid"]
 
 
 def test_guardrails_read_range_by_lines_returns_citation_and_numbered_content(tmp_path):
@@ -136,6 +155,8 @@ def test_guardrails_read_range_rejects_invalid_and_over_limit_ranges(tmp_path):
 
     invalid_id = guardrails_mcp._guardrails_read_range_payload(0, db_path=str(db_path))
     assert invalid_id["error"] == "invalid_knowledge_id"
+    assert invalid_id["failure_mode"] == "invalid_knowledge_id"
+    assert invalid_id["next_action"]["tool"] == "guardrails_search"
 
     invalid_range = guardrails_mcp._guardrails_read_range_payload(
         knowledge_id,
@@ -144,6 +165,8 @@ def test_guardrails_read_range_rejects_invalid_and_over_limit_ranges(tmp_path):
         db_path=str(db_path),
     )
     assert invalid_range["error"] == "invalid_range"
+    assert invalid_range["failure_mode"] == "invalid_range"
+    assert invalid_range["next_action"]["tool"] == "guardrails_map_show"
 
     too_large = guardrails_mcp._guardrails_read_range_payload(
         knowledge_id,
@@ -153,8 +176,10 @@ def test_guardrails_read_range_rejects_invalid_and_over_limit_ranges(tmp_path):
         db_path=str(db_path),
     )
     assert too_large["error"] == "range_too_large"
+    assert too_large["failure_mode"] == "range_too_large"
     assert too_large["max_lines"] == 5
     assert "split into smaller ranges" in too_large["message"]
+    assert too_large["next_action"]["tool"] == "guardrails_read_range"
 
     long_db_path = tmp_path / "long.db"
     db = GuardrailsDB(long_db_path).connect()
@@ -184,11 +209,22 @@ def test_handle_tool_call_routes_document_map_tools(tmp_path, monkeypatch):
 
     show_response = guardrails_mcp.handle_tool_call(
         "guardrails_map_show",
-        {"knowledge_id": knowledge_id},
+        {"knowledge_id": knowledge_id, "compact": True},
     )
     show_payload = json.loads(show_response["result"])
     assert show_payload["entry_id"] == knowledge_id
     assert show_payload["nodes"]
+    assert "summary" not in show_payload["nodes"][0]
+
+    search_response = guardrails_mcp.handle_tool_call(
+        "guardrails_search",
+        {"query": "tool-gated reading", "mode": "keyword", "compact": True},
+    )
+    search_payload = json.loads(search_response["result"])
+    assert search_payload[0]["id"] == knowledge_id
+    assert search_payload[0]["next_action"]["tool"] == "guardrails_map_show"
+    assert "content_preview" not in search_payload[0]
+    assert "best_node" not in search_payload[0]
 
     read_response = guardrails_mcp.handle_tool_call(
         "guardrails_read_range",

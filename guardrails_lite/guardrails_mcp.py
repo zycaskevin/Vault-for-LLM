@@ -90,18 +90,81 @@ def _format_citation(knowledge_id: int, title: str, line_start: int, line_end: i
     return f"#{knowledge_id} {title} L{line_start}-L{line_end}"
 
 
+def _next_action_for_error(code: str, extra: dict | None = None) -> dict:
+    extra = extra or {}
+    knowledge_id = extra.get("knowledge_id") or extra.get("entry_id")
+    if code in {"invalid_knowledge_id", "not_found", "db_not_found", "db_open_failed"}:
+        return {"tool": "guardrails_search", "arguments": {}}
+    if code == "no_document_map_nodes":
+        return {
+            "tool": "guardrails_map_build",
+            "arguments": {"knowledge_id": knowledge_id} if knowledge_id else {},
+        }
+    if code in {"invalid_range", "node_not_found", "range_outside_node", "range_outside_content"}:
+        return {
+            "tool": "guardrails_map_show",
+            "arguments": {"knowledge_id": knowledge_id} if knowledge_id else {},
+        }
+    if code == "range_too_large":
+        return {
+            "tool": "guardrails_read_range",
+            "arguments": {"knowledge_id": knowledge_id} if knowledge_id else {},
+        }
+    return {"tool": "guardrails_search", "arguments": {}}
+
+
 def _error(code: str, message: str, **extra) -> dict:
-    payload = {"error": code, "message": message}
+    next_action = extra.pop("next_action", None)
+    failure_mode = extra.pop("failure_mode", code)
+    payload = {
+        "error": code,
+        "message": message,
+        "failure_mode": failure_mode,
+        "next_action": next_action or _next_action_for_error(code, extra),
+    }
     payload.update(extra)
     return payload
 
 
-def guardrails_map_show(knowledge_id: int) -> dict:
+def guardrails_map_show(knowledge_id: int, compact: bool = False) -> dict:
     """Return a knowledge entry's Document Map structure."""
-    return _guardrails_map_show_payload(knowledge_id)
+    return _guardrails_map_show_payload(knowledge_id, compact=compact)
 
 
-def _guardrails_map_show_payload(knowledge_id: int, db_path: str | None = None) -> dict:
+def _compact_node(node: dict) -> dict:
+    return {
+        "node_uid": node.get("node_uid", ""),
+        "path": node.get("path", ""),
+        "heading": node.get("heading", ""),
+        "line_start": node.get("line_start"),
+        "line_end": node.get("line_end"),
+    }
+
+
+def _preferred_read_node(nodes: list[dict]) -> dict | None:
+    if not nodes:
+        return None
+    for node in nodes:
+        if int(node.get("level") or 0) > 1:
+            return node
+    return nodes[0]
+
+
+def _read_range_action(knowledge_id: int, node: dict) -> dict:
+    args = {"knowledge_id": knowledge_id}
+    if node.get("node_uid"):
+        args["node_uid"] = node["node_uid"]
+    if node.get("line_start") and node.get("line_end"):
+        args["line_start"] = int(node["line_start"])
+        args["line_end"] = int(node["line_end"])
+    return {"tool": "guardrails_read_range", "arguments": args}
+
+
+def _guardrails_map_show_payload(
+    knowledge_id: int,
+    db_path: str | None = None,
+    compact: bool = False,
+) -> dict:
     try:
         knowledge_id = int(knowledge_id)
     except (TypeError, ValueError):
@@ -133,17 +196,26 @@ def _guardrails_map_show_payload(knowledge_id: int, db_path: str | None = None) 
             (knowledge_id,),
         ).fetchall()
         nodes = [dict(row) for row in rows]
+        output_nodes = [_compact_node(node) for node in nodes] if compact else nodes
         payload = {
             "entry_id": knowledge_id,
             "title": entry["title"],
-            "nodes": nodes,
+            "nodes": output_nodes,
         }
+        if nodes:
+            preferred_node = _preferred_read_node(nodes)
+            if preferred_node is not None:
+                payload["next_action"] = _read_range_action(knowledge_id, preferred_node)
+            payload["next_actions"] = [
+                _read_range_action(knowledge_id, node) for node in nodes
+            ]
         if not nodes:
             payload.update(
                 _error(
                     "no_document_map_nodes",
                     "No document map nodes found. Run: "
                     f"guardrails map build {knowledge_id}",
+                    knowledge_id=knowledge_id,
                 )
             )
         return payload
@@ -291,17 +363,23 @@ def _guardrails_read_range_payload(
             else _line_hash(lines, line_start, line_end)
         )
 
+        citation = _format_citation(knowledge_id, entry["title"], line_start, line_end)
         return {
             "entry_id": knowledge_id,
             "title": entry["title"],
             "range": f"L{line_start}-L{line_end}",
             "line_start": line_start,
             "line_end": line_end,
-            "citation": _format_citation(knowledge_id, entry["title"], line_start, line_end),
+            "citation": citation,
             "content": content,
             "content_hash": content_hash,
             "node_uid": node["node_uid"] if node is not None else "",
             "path": node["path"] if node is not None else "",
+            "next_action": {
+                "tool": "final_answer",
+                "citation": citation,
+                "instruction": "Use this exact citation when relying on this range.",
+            },
         }
     finally:
         conn.close()
@@ -330,6 +408,11 @@ TOOLS = [
                     "type": "integer",
                     "description": "最多回傳幾筆（預設 10）",
                     "default": 10
+                },
+                "compact": {
+                    "type": "boolean",
+                    "description": "回傳精簡 payload（預設 false）",
+                    "default": False
                 },
             },
             "required": ["query"]
@@ -424,6 +507,11 @@ TOOLS = [
                     "type": "integer",
                     "description": "知識條目 ID"
                 },
+                "compact": {
+                    "type": "boolean",
+                    "description": "回傳精簡節點欄位（預設 false）",
+                    "default": False
+                },
             },
             "required": ["knowledge_id"]
         }
@@ -464,16 +552,37 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
     """處理 MCP tool call，回傳結果。"""
     try:
         if name == "guardrails_search":
+            compact = bool(arguments.get("compact", False))
             db, search = _get_search()
             results = search.search(
                 query=arguments.get("query", ""),
                 mode=arguments.get("mode", "auto"),
                 limit=arguments.get("limit", 10),
                 min_trust=0.0,
+                compact=compact,
             )
             # 簡化輸出
             output = []
             for r in results:
+                if compact:
+                    item = {
+                        "id": r.get("id"),
+                        "title": r.get("title"),
+                        "best_claim": r.get("best_claim", ""),
+                        "best_span": r.get("best_span"),
+                        "node_uid": r.get("node_uid"),
+                        "path": r.get("path"),
+                        "heading": r.get("heading"),
+                        "line_start": r.get("line_start"),
+                        "line_end": r.get("line_end"),
+                        "citation": r.get("citation"),
+                        "recommended_next_tool": r.get("recommended_next_tool"),
+                        "next_action": r.get("next_action"),
+                        "next_actions": r.get("next_actions"),
+                        "rerank_score": r.get("rerank_score", r.get("_rerank_score")),
+                    }
+                    output.append({k: v for k, v in item.items() if v is not None})
+                    continue
                 item = {
                     "id": r.get("id"),
                     "title": r.get("title"),
@@ -491,6 +600,8 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     "line_end": r.get("line_end"),
                     "citation": r.get("citation"),
                     "recommended_next_tool": r.get("recommended_next_tool"),
+                    "next_action": r.get("next_action"),
+                    "next_actions": r.get("next_actions"),
                     "rerank_score": r.get("_rerank_score"),
                 }
                 # 截斷 content_raw
@@ -564,7 +675,10 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
             return {"result": json.dumps(output, ensure_ascii=False, indent=2)}
 
         elif name == "guardrails_map_show":
-            payload = _guardrails_map_show_payload(arguments.get("knowledge_id", 0))
+            payload = _guardrails_map_show_payload(
+                arguments.get("knowledge_id", 0),
+                compact=bool(arguments.get("compact", False)),
+            )
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 
         elif name == "guardrails_read_range":
@@ -577,10 +691,18 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 
         else:
-            return {"error": f"Unknown tool: {name}"}
+            return {
+                "error": f"Unknown tool: {name}",
+                "failure_mode": "unknown_tool",
+                "next_action": {"tool": "tools/list", "arguments": {}},
+            }
 
     except Exception as e:
-        return {"error": f"Error: {str(e)}"}
+        return {
+            "error": f"Error: {str(e)}",
+            "failure_mode": "tool_execution_failed",
+            "next_action": {"tool": name, "arguments": arguments or {}},
+        }
 
 
 # ── stdio MCP Server ──────────────────────────────────

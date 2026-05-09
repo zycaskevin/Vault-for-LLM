@@ -330,6 +330,51 @@ guardrails map query "tool-gated reading"
 
 ---
 
+### Sprint 3 Addendum: Agent behavior loop + citation policy harness
+
+Sprint 3 deliberately closes the **agent behavior gap** before adding heavier compile / Supabase work. Sprint 2 already exposed the primitives; Sprint 3 makes the intended flow testable and machine-guided.
+
+**Required loop:**
+
+```text
+guardrails_search → guardrails_map_show → guardrails_read_range → final answer
+```
+
+**Contracts:**
+
+1. Search-result citations are **navigation hints only**. They may tell an agent where to inspect next, but they are not valid final-answer support by themselves.
+2. Final-answer citations must exactly match a `citation` returned by `guardrails_read_range`.
+3. Deterministic harness tests must reject:
+   - citation-free answers when citation is required;
+   - invented line citations;
+   - search-only citation claims;
+   - `read_range` calls without a prior `map_show` for the same `knowledge_id`;
+   - mismatched `knowledge_id` across search / map / read events.
+4. Tool payloads should include additive guidance fields (`next_action`, `next_actions`) without removing existing fields.
+5. Compact payload mode is opt-in (`compact=true`) and must not change default response shapes.
+6. Failure payloads preserve the legacy `error` value while adding `failure_mode` and actionable `next_action` metadata.
+
+**Files:**
+
+- Create: `vault/agent_policy.py`
+- Create: `tests/test_agent_behavior_policy.py`
+- Modify: `vault/guardrails_mcp.py`
+- Modify: `vault/guardrails_search.py`
+- Extend: `tests/test_guardrails_mcp_map.py`, `tests/test_search_map_integration.py`
+
+**Verification:**
+
+```bash
+/home/user/miniconda3/envs/guardrails-lite/bin/python -m pytest \
+  tests/test_agent_behavior_policy.py \
+  tests/test_guardrails_mcp_map.py \
+  tests/test_search_map_integration.py -q
+/home/user/miniconda3/envs/guardrails-lite/bin/python -m pytest -q
+git diff --check
+```
+
+---
+
 ## Phase C — 編譯器整合，讓每次 compile 自動更新地圖
 
 **目標：** raw 變更 → compile → AAAK / embeddings / Document Map 一起更新。

@@ -7,6 +7,7 @@ Sync Guardrails-knowledge local DB → Supabase
 用法：
   sync_to_supabase.py              # 同步知識表（預設）
   sync_to_supabase.py --skills     # 同步技能表
+  sync_to_supabase.py --document-map  # 同步 Document Map 表
 """
 
 import os
@@ -25,6 +26,46 @@ from supabase import create_client
 from guardrails_lite.guardrails_db import GuardrailsDB
 
 DB_PATH = str(find_db_path())
+
+DOCUMENT_MAP_NODE_TABLE = 'guardrails_knowledge_nodes'
+DOCUMENT_MAP_CLAIM_TABLE = 'guardrails_knowledge_claims'
+
+DOCUMENT_MAP_NODE_COLUMNS = [
+    'knowledge_id',
+    'node_uid',
+    'parent_uid',
+    'level',
+    'heading',
+    'path',
+    'summary',
+    'line_start',
+    'line_end',
+    'token_estimate',
+    'content_hash',
+    'created_at',
+    'updated_at',
+]
+
+DOCUMENT_MAP_CLAIM_COLUMNS = [
+    'knowledge_id',
+    'node_uid',
+    'claim_uid',
+    'claim',
+    'claim_type',
+    'line_start',
+    'line_end',
+    'confidence',
+    'source',
+    'content_hash',
+    'created_at',
+    'updated_at',
+]
+
+DOCUMENT_MAP_CONTEXT_COLUMNS = [
+    'knowledge_title',
+    'knowledge_source',
+    'knowledge_content_hash',
+]
 
 
 def _parse_layer(layer_str) -> int:
@@ -69,6 +110,44 @@ def _get_sb_client():
         print("❌ SUPABASE_URL 或 SUPABASE_ANON_KEY 未設定")
         return None
     return create_client(url, key)
+
+
+def _check_document_map_tables(sb) -> bool:
+    """Return False with an actionable message if remote map tables are unavailable."""
+    missing = []
+    for table_name in (DOCUMENT_MAP_NODE_TABLE, DOCUMENT_MAP_CLAIM_TABLE):
+        try:
+            sb.table(table_name).select('id').limit(1).execute()
+        except Exception as e:
+            missing.append((table_name, str(e)[:160]))
+
+    if not missing:
+        return True
+
+    print("❌ Supabase Document Map tables 不存在或無權限，無法同步。")
+    print(
+        f"   請先建立 tables: {DOCUMENT_MAP_NODE_TABLE}, {DOCUMENT_MAP_CLAIM_TABLE} "
+        "（需支援 nodes UNIQUE(knowledge_id,node_uid)、claims UNIQUE(knowledge_id,claim_uid)）。"
+    )
+    for table_name, reason in missing:
+        print(f"   - {table_name}: {reason}")
+    return False
+
+
+def _upsert_by_key(sb, table_name: str, payload: dict, key_fields: tuple[str, ...]) -> str:
+    """Small select→update/insert upsert to avoid duplicate natural keys."""
+    query = sb.table(table_name).select('id')
+    for field in key_fields:
+        query = query.eq(field, payload[field])
+    existing = query.execute()
+
+    if existing.data:
+        for row in existing.data:
+            sb.table(table_name).update(payload).eq('id', row['id']).execute()
+        return 'updated'
+
+    sb.table(table_name).insert(payload).execute()
+    return 'inserted'
 
 
 def sync(db_path=DB_PATH):
@@ -271,13 +350,90 @@ def sync_skills(db_path=DB_PATH):
     print(f"   Supabase total: {len(final)}")
 
 
+def sync_document_map(db_path=DB_PATH):
+    """同步 SQLite Document Map tables 到 Supabase。"""
+    sb = _get_sb_client()
+    if not sb:
+        return None
+
+    db = GuardrailsDB(db_path)
+    db.connect()
+
+    try:
+        if not _check_document_map_tables(sb):
+            return None
+
+        node_rows = db.conn.execute(
+            "SELECT "
+            + ", ".join(f"n.{col}" for col in DOCUMENT_MAP_NODE_COLUMNS)
+            + ", k.title AS knowledge_title, k.source AS knowledge_source, "
+            + "k.content_hash AS knowledge_content_hash "
+            + "FROM knowledge_nodes n "
+            + "JOIN knowledge k ON k.id = n.knowledge_id "
+            + "ORDER BY n.knowledge_id, n.node_uid"
+        ).fetchall()
+        claim_rows = db.conn.execute(
+            "SELECT "
+            + ", ".join(f"c.{col}" for col in DOCUMENT_MAP_CLAIM_COLUMNS)
+            + ", k.title AS knowledge_title, k.source AS knowledge_source, "
+            + "k.content_hash AS knowledge_content_hash "
+            + "FROM knowledge_claims c "
+            + "JOIN knowledge k ON k.id = c.knowledge_id "
+            + "ORDER BY c.knowledge_id, c.claim_uid"
+        ).fetchall()
+
+        print(f"🗺️  本地 Document Map nodes: {len(node_rows)} 筆")
+        print(f"🧾 本地 Document Map claims: {len(claim_rows)} 筆")
+
+        stats = {
+            'nodes_inserted': 0,
+            'nodes_updated': 0,
+            'nodes_failed': 0,
+            'claims_inserted': 0,
+            'claims_updated': 0,
+            'claims_failed': 0,
+        }
+
+        for row in node_rows:
+            payload = {key: row[key] for key in DOCUMENT_MAP_NODE_COLUMNS + DOCUMENT_MAP_CONTEXT_COLUMNS}
+            try:
+                action = _upsert_by_key(sb, DOCUMENT_MAP_NODE_TABLE, payload, ('knowledge_id', 'node_uid'))
+                stats[f"nodes_{action}"] += 1
+            except Exception as e:
+                stats['nodes_failed'] += 1
+                print(f"  ❌ node {row['knowledge_id']}/{row['node_uid']}: {str(e)[:120]}")
+
+        for row in claim_rows:
+            payload = {key: row[key] for key in DOCUMENT_MAP_CLAIM_COLUMNS + DOCUMENT_MAP_CONTEXT_COLUMNS}
+            try:
+                action = _upsert_by_key(sb, DOCUMENT_MAP_CLAIM_TABLE, payload, ('knowledge_id', 'claim_uid'))
+                stats[f"claims_{action}"] += 1
+            except Exception as e:
+                stats['claims_failed'] += 1
+                print(f"  ❌ claim {row['knowledge_id']}/{row['claim_uid']}: {str(e)[:120]}")
+
+        print("\n✅ Document Map sync complete:")
+        print(f"   Nodes inserted: {stats['nodes_inserted']}")
+        print(f"   Nodes updated: {stats['nodes_updated']}")
+        print(f"   Nodes failed: {stats['nodes_failed']}")
+        print(f"   Claims inserted: {stats['claims_inserted']}")
+        print(f"   Claims updated: {stats['claims_updated']}")
+        print(f"   Claims failed: {stats['claims_failed']}")
+        return stats
+    finally:
+        db.close()
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Sync local DB → Supabase")
     parser.add_argument("--skills", action="store_true", help="同步技能表（而非知識表）")
+    parser.add_argument("--document-map", action="store_true", help="同步 Document Map 表（而非知識表）")
     args = parser.parse_args()
 
     if args.skills:
         sync_skills()
+    elif args.document_map:
+        sync_document_map()
     else:
         sync()

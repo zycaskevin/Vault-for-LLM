@@ -373,21 +373,76 @@ guardrails_search → guardrails_map_show → guardrails_read_range → final an
 git diff --check
 ```
 
+### Sprint 4A Addendum: Supabase Document Map sync + compile hook
+
+Sprint 4A delivered the first remote-sync slice while preserving the Sprint 3 agent behavior contract.
+
+**Delivered contracts:**
+
+1. SQLite remains the source of truth; Supabase is an explicit sync target.
+2. `guardrails compile` refreshes Document Map rows for successful non-dry-run new/update entries.
+3. Dry-run and unchanged/skipped entries do not rebuild Document Map rows.
+4. Duplicate cleanup removes `knowledge_nodes` / `knowledge_claims` rows before deleting duplicate `knowledge` rows, avoiding orphan map data.
+5. `scripts/sync_to_supabase.py --document-map` syncs local `knowledge_nodes` and `knowledge_claims` into Supabase tables:
+   - `guardrails_knowledge_nodes`
+   - `guardrails_knowledge_claims`
+6. Remote sync uses natural keys rather than blind append:
+   - nodes: `(knowledge_id, node_uid)`
+   - claims: `(knowledge_id, claim_uid)`
+7. Targeted tests use a fake Supabase client, so CI/local verification does not need network or credentials.
+
+**Files:**
+
+- Modify: `guardrails_lite/guardrails_compile.py`
+- Modify: `scripts/sync_to_supabase.py`
+- Create: `tests/test_sprint4a_document_map_sync.py`
+- Update: `PROGRESS.md`
+
+**Verification:**
+
+```bash
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python -m pytest \
+  tests/test_agent_behavior_policy.py \
+  tests/test_guardrails_mcp_map.py \
+  tests/test_search_map_integration.py \
+  tests/test_sprint4a_document_map_sync.py -q
+# 16 passed in 3.57s
+
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python -m pytest -q
+# 54 passed, 2 warnings in 38.81s
+
+git diff --check
+# passed
+
+/home/zycas/miniconda3/bin/python -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"
+# 987 nodes, 1945 edges, 71 communities
+```
+
+**Operational note:** The `guardrails-lite` conda env cannot import `graphify`; use `/home/zycas/miniconda3/bin/python` for the AGENTS.md Graphify rebuild command.
+
+**Sprint 4B follow-up:** Add remote Supabase DDL/migration and remote MCP read path for Document Map tables, then extend the policy harness to cover remote trace events.
+
 ---
 
 ## Phase C — 編譯器整合，讓每次 compile 自動更新地圖
 
 **目標：** raw 變更 → compile → AAAK / embeddings / Document Map 一起更新。
 
-### Task C1: Compile hook
+### Task C1: Compile hook — DONE in Sprint 4A
 
 **Objective:** `guardrails compile` 完成每條新增/更新知識後，自動 `build_for_entry()`。
 
 **Files:**
 - Modify: `guardrails_lite/guardrails_compile.py`
-- Test: `tests/test_compile_document_map.py`
+- Test: `tests/test_sprint4a_document_map_sync.py`
 
-**注意：** 若 map build 失敗，不應破壞知識主表寫入；應記錄 warning 並讓 compile 整體完成。
+**Delivered:**
+- 新增/更新知識後呼叫 `build_document_map_for_entry()`。
+- `dry_run` 不寫主表、不刷新 map。
+- content_hash 未變而被 compiler skip 的 entry 不刷新 map。
+- duplicate cleanup 同步清理 `knowledge_nodes` / `knowledge_claims`，避免孤兒 rows。
+
+**Note:** Sprint 4A 目前讓 map build failure 直接浮出以保護資料一致性；若未來要「知識主表寫入成功但 map warning 不阻斷」，需另外加錯誤分類與測試。
 
 ### Task C2: Incremental rebuild
 
@@ -395,14 +450,22 @@ git diff --check
 
 **驗收：** 連跑兩次 compile，第二次 map rebuild count = 0。
 
-### Task C3: Supabase sync schema
+### Task C3: Supabase sync schema — PARTIAL DONE in Sprint 4A
 
 **Objective:** 決定是否同步 `knowledge_nodes` / `knowledge_claims` 到 Supabase。
 
-**建議：**
-- P0 只本地使用。
-- P1 同步 `knowledge_claims`，因 MCP search 可顯示 best_span。
-- P2 再同步完整 `knowledge_nodes`，支援雲端 dashboard / API。
+**Decision:** 同步完整 Document Map，但採 opt-in sync，不改預設知識同步。
+
+**Delivered in Sprint 4A:**
+- `scripts/sync_to_supabase.py --document-map`
+- 目標表名：`guardrails_knowledge_nodes` / `guardrails_knowledge_claims`
+- upsert natural keys：nodes `(knowledge_id,node_uid)`；claims `(knowledge_id,claim_uid)`
+- 若遠端表不存在或無權限，腳本會輸出 actionable error，不靜默成功。
+
+**Still pending for Sprint 4B:**
+- Supabase migration / DDL 檔案。
+- remote MCP read path。
+- remote-side policy harness trace coverage。
 
 ---
 
@@ -487,9 +550,9 @@ citation_coverage = search_results_with_best_span / sampled_search_results
 
 1. **不重寫 Guardrails 成 PageIndex fork**：PageIndex 是啟發，不是依賴。
 2. **不取消向量搜尋**：vector / keyword / graph 都保留；Document Map 是定位與閱讀層。
-3. **不一開始同步所有節點到 Supabase**：先本地穩定，再決定雲端 schema。
-4. **不讓 LLM 自由生成不存在的引用**：citation 必須來自 `read_range()` 回傳。
-5. **不一次塞完整 raw content 給 Agent**：除非用戶明確要求全文導出。
+3. **不讓 LLM 自由生成不存在的引用**：citation 必須來自 `read_range()` 回傳。
+4. **不一次塞完整 raw content 給 Agent**：除非用戶明確要求全文導出。
+5. **不把 Supabase 當 source of truth**：Document Map 可同步到 Supabase，但 canonical data 仍在本地 SQLite；遠端同步必須可重建、可重跑。
 
 ---
 

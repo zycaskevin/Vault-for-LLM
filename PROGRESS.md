@@ -1,8 +1,55 @@
 # Guardrails Document Map Upgrade — Progress
 
-Last updated: 2026-05-09 12:35 CST
+Last updated: 2026-05-09 14:05 CST
 
-## Current Sprint: Sprint 3 — Agent Behavior Loop + Citation Policy Harness — COMPLETED
+## Current Sprint: Sprint 4A — Supabase Document Map Sync + Compile Hook — COMPLETED
+
+### Goal
+Keep Document Map rows fresh on local compile and add an explicit Supabase sync path for `knowledge_nodes` / `knowledge_claims`, while preserving SQLite as source of truth and the Sprint 3 citation policy harness.
+
+### Scope Delivered
+1. Added compile hook in `guardrails_lite/guardrails_compile.py`: successful non-dry-run new/update entries now refresh Document Map rows via `build_document_map_for_entry()`.
+2. Kept `dry_run` and unchanged/skipped entries side-effect free for Document Map rebuilds.
+3. Extended duplicate cleanup to delete `knowledge_claims` and `knowledge_nodes` before removing duplicate `knowledge` rows, preventing orphan map rows.
+4. Added `scripts/sync_to_supabase.py --document-map` to sync SQLite `knowledge_nodes` / `knowledge_claims` into Supabase tables `guardrails_knowledge_nodes` / `guardrails_knowledge_claims`.
+5. Document Map sync uses natural-key select/update/insert upsert: nodes by `(knowledge_id, node_uid)`, claims by `(knowledge_id, claim_uid)`.
+6. Added fake-client tests in `tests/test_sprint4a_document_map_sync.py`; no network is required for sync tests.
+
+### Guardrails Observed
+- Document-first: this progress note was updated before code changes.
+- Minimal scope: only sync, compile hook, and targeted tests were changed.
+- Backward compatibility: default Supabase knowledge sync behavior remains unchanged; `--document-map` is opt-in.
+- Local-first: SQLite remains source of truth; Supabase is a sync target only.
+- Citation policy: Sprint 3 behavior harness remains untouched and passing.
+
+### Final Verification
+```bash
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python -m pytest \
+  tests/test_agent_behavior_policy.py \
+  tests/test_guardrails_mcp_map.py \
+  tests/test_search_map_integration.py \
+  tests/test_sprint4a_document_map_sync.py -q
+# 16 passed in 3.57s
+
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python -m pytest -q
+# 54 passed, 2 warnings in 38.81s
+
+git diff --check
+# passed
+```
+
+Graphify was updated after verification. The `guardrails-lite` conda env cannot import `graphify`; use base conda Python for the AGENTS.md rebuild command:
+
+```bash
+/home/zycas/miniconda3/bin/python -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"
+# 987 nodes, 1945 edges, 71 communities
+```
+
+### Review Notes
+- Review agent verdict: APPROVED.
+- Follow-up for Sprint 4B / operations: create Supabase DDL for `guardrails_knowledge_nodes` and `guardrails_knowledge_claims`, including unique constraints on `(knowledge_id,node_uid)` and `(knowledge_id,claim_uid)`.
+
+## Previous Sprint: Sprint 3 — Agent Behavior Loop + Citation Policy Harness — COMPLETED
 
 ### Goal
 Ensure external agents do not merely have Document Map tools available, but are guided and tested to follow the intended reading loop:

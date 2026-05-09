@@ -17,6 +17,7 @@ import hashlib
 import re
 import subprocess
 import yaml
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -450,7 +451,9 @@ class GuardrailsCompiler:
                     ).fetchall()
                     for d in ids[1:]:  # 跳過第一筆（保留）
                         kid = d["id"]
-                        # 先刪子表（避免 FOREIGN KEY 報錯）
+                        # 先刪子表（避免 FOREIGN KEY 報錯/孤兒 map rows）
+                        self.db.conn.execute("DELETE FROM knowledge_claims WHERE knowledge_id = ?", (kid,))
+                        self.db.conn.execute("DELETE FROM knowledge_nodes WHERE knowledge_id = ?", (kid,))
                         self.db.conn.execute("DELETE FROM lint_cache WHERE knowledge_id = ?", (kid,))
                         self.db.conn.execute("DELETE FROM entity_knowledge WHERE knowledge_id = ?", (kid,))
                         self.db.conn.execute("DELETE FROM edges WHERE source_id = ? OR target_id = ?", (kid, kid))
@@ -548,8 +551,9 @@ class GuardrailsCompiler:
 
         if existing:
             # 更新
+            knowledge_id = existing["id"]
             self.db.update_knowledge(
-                existing["id"],
+                knowledge_id,
                 title=title,
                 content_raw=body,
                 content_aaak=aaak,
@@ -562,10 +566,11 @@ class GuardrailsCompiler:
                 trust=trust,
                 source=str(source_file),
             )
+            self._refresh_document_map(knowledge_id)
             return "updated"
         else:
             # 新增
-            self.db.add_knowledge(
+            knowledge_id = self.db.add_knowledge(
                 title=title,
                 content_raw=body,
                 content_aaak=aaak,
@@ -576,7 +581,14 @@ class GuardrailsCompiler:
                 trust=trust,
                 source=str(source_file),
             )
+            self._refresh_document_map(knowledge_id)
             return "new"
+
+    def _refresh_document_map(self, knowledge_id: int) -> None:
+        """Refresh Document Map rows for a changed knowledge entry."""
+        from .guardrails_map import build_document_map_for_entry
+
+        build_document_map_for_entry(self.db.conn, knowledge_id)
 
     def _rebuild_embeddings(self, dry_run: bool):
         """對所有缺嵌入的知識補向量。"""

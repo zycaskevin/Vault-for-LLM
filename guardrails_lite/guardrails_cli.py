@@ -1230,6 +1230,41 @@ def cmd_dedup(args):
     else:
         print("✅ 沒有發現重複條目")
 
+
+def cmd_search_qa(args):
+    """Search QA snapshot run / before-after compare."""
+    from vault.search_qa import (
+        compare_search_qa_snapshots,
+        evaluate_search_qa,
+        format_search_qa_comparison,
+        format_search_qa_snapshot,
+        write_json,
+    )
+
+    action = args.search_qa_action
+    if action == "run":
+        db_path = Path(args.db_path) if args.db_path else find_project_dir() / "guardrails.db"
+        snapshot = evaluate_search_qa(
+            db_path=db_path,
+            qa_file=args.qa_file,
+            mode=args.mode,
+            limit=args.limit,
+        )
+        if args.output:
+            write_json(args.output, snapshot)
+        print(format_search_qa_snapshot(snapshot))
+        return
+
+    if action == "compare":
+        comparison = compare_search_qa_snapshots(args.before, args.after)
+        if args.output:
+            write_json(args.output, comparison)
+        print(format_search_qa_comparison(comparison))
+        return
+
+    print("error: search-qa requires action: run or compare", file=sys.stderr)
+    raise SystemExit(2)
+
 # ── CLI 入口 ─────────────────────────────────────────────
 
 def main():
@@ -1426,6 +1461,22 @@ def main():
     p.add_argument("--dry-run", action="store_true", help="預覽合併計劃（不修改資料庫）")
     p.add_argument("--threshold", type=float, default=0.85, help="相似度閾值（預設 0.85）")
 
+    # search-qa — deterministic local search quality snapshots
+    p = sub.add_parser("search-qa", help="搜尋品質 QA 評估與 before/after 比較")
+    qa_sub = p.add_subparsers(dest="search_qa_action", help="Search QA 子命令")
+
+    qp = qa_sub.add_parser("run", help="執行 Search QA Set 並輸出 snapshot JSON")
+    qp.add_argument("--qa-file", required=True, help="Search QA Set JSON 路徑")
+    qp.add_argument("--output", "-o", help="snapshot JSON 輸出路徑")
+    qp.add_argument("--mode", choices=["auto", "keyword", "vector", "hybrid"], default="keyword")
+    qp.add_argument("--limit", "-n", type=int, default=10)
+    qp.add_argument("--db-path", help="SQLite DB 路徑（預設 project_dir/guardrails.db）")
+
+    qp = qa_sub.add_parser("compare", help="比較兩個 Search QA snapshot JSON")
+    qp.add_argument("--before", required=True, help="before snapshot JSON")
+    qp.add_argument("--after", required=True, help="after snapshot JSON")
+    qp.add_argument("--output", "-o", help="comparison JSON 輸出路徑")
+
     args = parser.parse_args()
 
     commands = {
@@ -1447,6 +1498,7 @@ def main():
         "cross-validate": cmd_cross_validate,
         "freshness": cmd_freshness,
         "dedup": cmd_dedup,
+        "search-qa": cmd_search_qa,
     }
 
     if args.command in commands:

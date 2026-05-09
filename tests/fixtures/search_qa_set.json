@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "description": "Small deterministic Search QA Set. Extend cases with expected_ids, expected_titles, or expected_title_substrings.",
+  "cases": [
+    {
+      "id": "document_map_navigation",
+      "query": "document map navigation",
+      "expected_title_substrings": ["Document Map"]
+    },
+    {
+      "id": "citation_policy_boundary",
+      "query": "search citations navigation hints final citations read_range",
+      "expected_title_substrings": ["citation", "policy"]
+    }
+  ]
+}

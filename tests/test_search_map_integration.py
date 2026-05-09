@@ -69,6 +69,33 @@ def test_search_results_include_document_map_metadata_when_available(tmp_path):
         assert result["best_node"]["path"] == "Title/Tool-gated Reading"
         assert result["citation"] == f"#{knowledge_id} Example L3-L4"
         assert result["recommended_next_tool"] == "guardrails_read_range"
+        assert result["next_action"] == {
+            "tool": "guardrails_map_show",
+            "arguments": {"knowledge_id": knowledge_id},
+        }
+        assert result["next_actions"][-1] == {
+            "tool": "guardrails_read_range",
+            "arguments": {
+                "knowledge_id": knowledge_id,
+                "node_uid": result["node_uid"],
+                "line_start": 3,
+                "line_end": 4,
+            },
+        }
+
+        compact_results = search.search(
+            "tool-gated reading",
+            mode="keyword",
+            limit=3,
+            use_rerank=False,
+            compact=True,
+        )
+        compact = compact_results[0]
+        assert compact["id"] == knowledge_id
+        assert compact["citation"] == f"#{knowledge_id} Example L3-L4"
+        assert compact["next_action"] == result["next_action"]
+        assert "content_raw" not in compact
+        assert "content_aaak" not in compact
     finally:
         db.close()
 

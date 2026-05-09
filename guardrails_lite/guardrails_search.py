@@ -71,6 +71,7 @@ class GuardrailsSearch:
         category: Optional[str] = None,
         graph_expand: int = 0,
         use_rerank: bool = True,
+        compact: bool = False,
     ) -> list[dict]:
         """
         搜尋知識庫。
@@ -119,6 +120,8 @@ class GuardrailsSearch:
         if results:
             self._enrich_with_document_map(results, query)
 
+        if compact:
+            return [self._compact_result(r) for r in results]
         return results
 
     # ── Document Map enrichment ─────────────────────────────
@@ -173,6 +176,52 @@ class GuardrailsSearch:
             result["best_node"] = node
             result["citation"] = f"#{knowledge_id} {title} L{line_start}-L{line_end}"
             result["recommended_next_tool"] = "guardrails_read_range"
+            result["next_action"] = {
+                "tool": "guardrails_map_show",
+                "arguments": {"knowledge_id": int(knowledge_id)},
+            }
+            result["next_actions"] = [
+                {
+                    "tool": "guardrails_map_show",
+                    "arguments": {"knowledge_id": int(knowledge_id)},
+                },
+                {
+                    "tool": "guardrails_read_range",
+                    "arguments": {
+                        "knowledge_id": int(knowledge_id),
+                        "node_uid": node["node_uid"],
+                        "line_start": int(line_start),
+                        "line_end": int(line_end),
+                    },
+                },
+            ]
+
+    @staticmethod
+    def _compact_result(result: dict) -> dict:
+        """Return an opt-in compact search payload without raw content blobs."""
+        fields = (
+            "id",
+            "title",
+            "category",
+            "layer",
+            "trust",
+            "tags",
+            "best_claim",
+            "best_span",
+            "node_uid",
+            "path",
+            "heading",
+            "line_start",
+            "line_end",
+            "citation",
+            "recommended_next_tool",
+            "next_action",
+            "next_actions",
+        )
+        compact = {key: result[key] for key in fields if key in result}
+        if "_rerank_score" in result:
+            compact["rerank_score"] = result["_rerank_score"]
+        return compact
 
     def _find_document_map_span(
         self,

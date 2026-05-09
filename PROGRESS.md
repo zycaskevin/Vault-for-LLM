@@ -1,6 +1,60 @@
 # Guardrails Document Map Upgrade — Progress
 
-Last updated: 2026-05-08 23:35 CST
+Last updated: 2026-05-09 12:35 CST
+
+## Current Sprint: Sprint 3 — Agent Behavior Loop + Citation Policy Harness — COMPLETED
+
+### Goal
+Ensure external agents do not merely have Document Map tools available, but are guided and tested to follow the intended reading loop:
+
+```text
+guardrails_search → guardrails_map_show → guardrails_read_range → final answer with read_range citation
+```
+
+### Scope Delivered
+1. Added deterministic agent behavior policy harness in `guardrails_lite/agent_policy.py`.
+2. Added `tests/test_agent_behavior_policy.py` to reject unsupported traces:
+   - citation-free answers when citation is required;
+   - invented citations;
+   - search-only citation claims;
+   - `read_range` without prior `map_show`;
+   - mismatched `knowledge_id` loops.
+3. Treated search-result citations as navigation hints only; final answer citations must come from `guardrails_read_range`.
+4. Added additive `next_action` / `next_actions` metadata in search/map/read_range payloads.
+5. Added opt-in `compact=true` support for search and map payloads without changing default output shapes.
+6. Normalized MCP failure responses with `failure_mode` and actionable `next_action` metadata while preserving existing `error` values.
+7. Updated `docs/document_map_upgrade_plan.md` with the Sprint 3 agent behavior contract.
+8. Updated `/home/zycas/.hermes/skills/guardrails/SKILL.md` with Sprint 3 citation policy discipline.
+
+### Guardrails Observed
+- Document-first: this file was updated before feature implementation.
+- TDD: behavior/payload tests were added for the Sprint 3 slice.
+- Surgical changes only: no Supabase sync, compile hook, dashboard metrics, or unrelated refactors were included.
+- Backward compatibility: default payload shapes were preserved; compact mode is opt-in.
+
+### Final Verification
+```bash
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python -m pytest \
+  tests/test_agent_behavior_policy.py \
+  tests/test_guardrails_mcp_map.py \
+  tests/test_search_map_integration.py -q
+# 12 passed in 2.04s
+
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python -m pytest -q
+# 50 passed, 2 warnings in 36.71s
+
+git diff --check
+# passed
+```
+
+Graphify was updated after verification:
+
+```bash
+/home/zycas/miniconda3/bin/graphify update .
+# 947 nodes, 1736 edges, 71 communities
+```
+
+Final commit is performed after this verification block.
 
 ## Current Maintenance Pass: Full Test Environment + Repo Hygiene + Audit — COMPLETED
 

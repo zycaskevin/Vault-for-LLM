@@ -8,12 +8,13 @@ Sync Guardrails-knowledge local DB → Supabase
   sync_to_supabase.py              # 同步知識表（預設）
   sync_to_supabase.py --skills     # 同步技能表
   sync_to_supabase.py --document-map  # 同步 Document Map 表
+  sync_to_supabase.py --health        # 同步 Guardrails Dashboard health snapshot
 """
 
 import os
 import sys
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -24,11 +25,17 @@ load_dotenv_cascade()
 
 from supabase import create_client
 from vault.guardrails_db import GuardrailsDB
+from vault.guardrails_health import (
+    DEFAULT_SAMPLE_LIMIT,
+    GuardrailsHealthMetrics,
+    collect_guardrails_health_metrics,
+)
 
 DB_PATH = str(find_db_path())
 
 DOCUMENT_MAP_NODE_TABLE = 'guardrails_knowledge_nodes'
 DOCUMENT_MAP_CLAIM_TABLE = 'guardrails_knowledge_claims'
+GUARDRAILS_HEALTH_TABLE = 'agent-runtime_guardrails_health'
 
 DOCUMENT_MAP_NODE_COLUMNS = [
     'knowledge_id',
@@ -147,6 +154,24 @@ def _upsert_by_key(sb, table_name: str, payload: dict, key_fields: tuple[str, ..
         return 'updated'
 
     sb.table(table_name).insert(payload).execute()
+    return 'inserted'
+
+
+def _upsert_guardrails_health_by_check_date(sb, payload: dict) -> str:
+    """Upsert Dashboard health snapshots by check_date without requiring an id column."""
+    check_date = payload['check_date']
+    existing = (
+        sb.table(GUARDRAILS_HEALTH_TABLE)
+        .select('check_date')
+        .eq('check_date', check_date)
+        .execute()
+    )
+
+    if existing.data:
+        sb.table(GUARDRAILS_HEALTH_TABLE).update(payload).eq('check_date', check_date).execute()
+        return 'updated'
+
+    sb.table(GUARDRAILS_HEALTH_TABLE).insert(payload).execute()
     return 'inserted'
 
 
@@ -424,16 +449,105 @@ def sync_document_map(db_path=DB_PATH):
         db.close()
 
 
+def _health_check_date() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def _guardrails_health_payload(
+    metrics: GuardrailsHealthMetrics,
+    check_date: str | None = None,
+) -> dict:
+    """Map Document Map health metrics into the existing Dashboard schema.
+
+    The deployed agent-runtime_guardrails_health table has no JSONB/detail columns and
+    no map_coverage/claim_coverage/citation_coverage columns.  To avoid schema
+    drift in Sprint 4C we intentionally use the best existing numeric slots:
+    - total_knowledge = total_entries
+    - convergence_rate = map_coverage * 100 (Dashboard already treats as %)
+    - avg_freshness = citation_coverage * 100 (best available percentage slot)
+    - contradiction_count = read_range_over_limit_violations
+    - gap_count = entries_without_nodes + entries_without_claims
+    """
+    return {
+        'check_date': check_date or _health_check_date(),
+        'total_knowledge': metrics.total_entries,
+        'convergence_rate': metrics.map_coverage * 100,
+        'avg_freshness': metrics.citation_coverage * 100,
+        'contradiction_count': metrics.read_range_over_limit_violations,
+        'gap_count': metrics.entries_without_nodes + metrics.entries_without_claims,
+    }
+
+
+def _print_guardrails_health(metrics: GuardrailsHealthMetrics, payload: dict) -> None:
+    print("📊 Guardrails Document Map health:")
+    print(f"   Total entries: {metrics.total_entries}")
+    print(f"   Entries with nodes: {metrics.entries_with_nodes}")
+    print(f"   Entries without nodes: {metrics.entries_without_nodes}")
+    print(f"   Entries with claims: {metrics.entries_with_claims}")
+    print(f"   Entries without claims: {metrics.entries_without_claims}")
+    print(f"   Sampled search results: {metrics.sampled_search_results}")
+    print(f"   Search results with best span: {metrics.search_results_with_best_span}")
+    print(f"   Map coverage: {metrics.map_coverage:.2%}")
+    print(f"   Claim coverage: {metrics.claim_coverage:.2%}")
+    print(f"   Citation coverage: {metrics.citation_coverage:.2%}")
+    print(f"   Read-range over-limit violations: {metrics.read_range_over_limit_violations}")
+    print("   Dashboard payload mapping:")
+    print(f"     total_knowledge = {payload['total_knowledge']}")
+    print(f"     convergence_rate = {payload['convergence_rate']:.2f}")
+    print(f"     avg_freshness = {payload['avg_freshness']:.2f}")
+    print(f"     contradiction_count = {payload['contradiction_count']}")
+    print(f"     gap_count = {payload['gap_count']}")
+
+
+def sync_guardrails_health(
+    db_path=DB_PATH,
+    sample_limit=DEFAULT_SAMPLE_LIMIT,
+    sb_client=None,
+    check_date: str | None = None,
+):
+    """Collect local Document Map health and upsert one Dashboard snapshot."""
+    sb = sb_client or _get_sb_client()
+    if not sb:
+        return None
+
+    metrics = collect_guardrails_health_metrics(db_path, sample_limit=sample_limit)
+    payload = _guardrails_health_payload(metrics, check_date=check_date)
+    _print_guardrails_health(metrics, payload)
+
+    action = _upsert_guardrails_health_by_check_date(sb, payload)
+    print(f"\n✅ Guardrails health sync complete: {action}")
+    return {
+        'action': action,
+        'payload': payload,
+        'metrics': metrics.to_dict(),
+    }
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Sync local DB → Supabase")
     parser.add_argument("--skills", action="store_true", help="同步技能表（而非知識表）")
     parser.add_argument("--document-map", action="store_true", help="同步 Document Map 表（而非知識表）")
+    parser.add_argument(
+        "--health",
+        "--guardrails-health",
+        dest="health",
+        action="store_true",
+        help="同步 Guardrails / Document Map dashboard health snapshot",
+    )
+    parser.add_argument(
+        "--health-sample-limit",
+        type=int,
+        default=DEFAULT_SAMPLE_LIMIT,
+        help="Document Map citation health sampling size（預設 20）",
+    )
     args = parser.parse_args()
 
     if args.skills:
         sync_skills()
-    elif args.document_map:
+    if args.document_map:
         sync_document_map()
-    else:
+    if args.health:
+        sync_guardrails_health(sample_limit=args.health_sample_limit)
+    if not (args.skills or args.document_map or args.health):
         sync()

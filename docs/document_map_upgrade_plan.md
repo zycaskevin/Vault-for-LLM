@@ -510,13 +510,34 @@ git diff --check
 
 **Objective:** 把 Document Map 覆蓋率寫入 `agent-runtime_guardrails_health`。
 
+**狀態（2026-05-09 Sprint 4C）：已完成。**
+
+**新增實作：**
+
+- `vault/guardrails_health.py`：從本地 SQLite 收集 Document Map health metrics。
+- `scripts/sync_to_supabase.py --health` / `--guardrails-health`：把每日 snapshot upsert 到 `agent-runtime_guardrails_health`。
+- `tests/test_guardrails_health_metrics.py`：SQLite collector + fake Supabase writer 測試，不依賴真實網路。
+
 **新指標：**
 
 ```text
 map_coverage = entries_with_nodes / total_entries
 claim_coverage = entries_with_claims / total_entries
 citation_coverage = search_results_with_best_span / sampled_search_results
+read_range_over_limit_violations = count(nodes exceeding max read_range lines)
 ```
+
+**Dashboard schema 映射（不新增未驗證欄位）：**
+
+| Document Map metric | `agent-runtime_guardrails_health` 欄位 |
+|---|---|
+| `total_entries` | `total_knowledge` |
+| `map_coverage * 100` | `convergence_rate` |
+| `citation_coverage * 100` | `avg_freshness` |
+| `read_range_over_limit_violations` | `contradiction_count` |
+| `entries_without_nodes + entries_without_claims` | `gap_count` |
+
+**踩坑決策：** deployed `agent-runtime_guardrails_health` 沒有 `id` 欄位，不能用 generic `_upsert_by_key(..., key_fields=("id",))`；daily snapshot 必須以 `check_date` 查詢後 update/insert，或用 REST `on_conflict=check_date`。Sprint 4C 採用專用 `_upsert_guardrails_health_by_check_date()`，避免 schema drift。
 
 ---
 

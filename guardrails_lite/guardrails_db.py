@@ -8,8 +8,10 @@ Vault for LLM — SQLite + sqlite-vec 資料庫抽象層。
 - 支援降級：沒裝 sqlite-vec 時退回純關鍵字
 """
 
+import json
 import hashlib
 import sqlite3
+import sys
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
@@ -26,7 +28,7 @@ except ImportError:
 class GuardrailsDB:
     """Vault for LLM 資料庫層。"""
 
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 5
 
     def __init__(self, db_path: str | Path = "guardrails.db"):
         self.db_path = Path(db_path)
@@ -115,6 +117,84 @@ class GuardrailsDB:
         for col_name, col_def in new_cols_v3.items():
             if col_name not in existing_cols:
                 c.execute(f"ALTER TABLE knowledge ADD COLUMN {col_name} {col_def}")
+
+        # ── Schema v4 migration：summary 欄位 ──
+        new_cols_v4 = {
+            "summary": "TEXT NOT NULL DEFAULT ''",
+            "summary_generated_at": "TEXT NOT NULL DEFAULT ''",
+        }
+        for col_name, col_def in new_cols_v4.items():
+            if col_name not in existing_cols:
+                c.execute(f"ALTER TABLE knowledge ADD COLUMN {col_name} {col_def}")
+        # ── Document Map tables ─────────────────────────────
+        # Markdown section nodes for future A2 parser.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS knowledge_nodes (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                knowledge_id   INTEGER NOT NULL,
+                node_uid       TEXT NOT NULL,
+                parent_uid     TEXT NOT NULL DEFAULT '',
+                level          INTEGER NOT NULL DEFAULT 0,
+                heading        TEXT NOT NULL DEFAULT '',
+                path           TEXT NOT NULL DEFAULT '',
+                summary        TEXT NOT NULL DEFAULT '',
+                line_start     INTEGER NOT NULL,
+                line_end       INTEGER NOT NULL,
+                token_estimate INTEGER NOT NULL DEFAULT 0,
+                content_hash   TEXT NOT NULL DEFAULT '',
+                created_at     TEXT NOT NULL DEFAULT '',
+                updated_at     TEXT NOT NULL DEFAULT '',
+                FOREIGN KEY (knowledge_id) REFERENCES knowledge(id),
+                UNIQUE(knowledge_id, node_uid)
+            )
+        """)
+        self._ensure_table_columns(
+            "knowledge_nodes",
+            {
+                "summary": "TEXT NOT NULL DEFAULT ''",
+                "token_estimate": "INTEGER NOT NULL DEFAULT 0",
+            },
+        )
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_nodes_uid ON knowledge_nodes(knowledge_id, node_uid)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_nodes_knowledge_id ON knowledge_nodes(knowledge_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_nodes_node_uid ON knowledge_nodes(node_uid)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_nodes_path ON knowledge_nodes(path)")
+
+        # Atomic claims extracted from nodes for future A3 backfill.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS knowledge_claims (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                knowledge_id INTEGER NOT NULL,
+                node_uid     TEXT NOT NULL DEFAULT '',
+                claim_uid    TEXT NOT NULL,
+                claim        TEXT NOT NULL,
+                claim_type   TEXT NOT NULL DEFAULT 'claim',
+                line_start   INTEGER NOT NULL DEFAULT 0,
+                line_end     INTEGER NOT NULL DEFAULT 0,
+                confidence   REAL NOT NULL DEFAULT 0.7,
+                source       TEXT NOT NULL DEFAULT 'aaak',
+                content_hash TEXT NOT NULL DEFAULT '',
+                created_at   TEXT NOT NULL DEFAULT '',
+                updated_at   TEXT NOT NULL DEFAULT '',
+                FOREIGN KEY (knowledge_id) REFERENCES knowledge(id),
+                UNIQUE(knowledge_id, node_uid, claim)
+            )
+        """)
+        claim_cols_before = self._table_columns("knowledge_claims")
+        self._ensure_table_columns(
+            "knowledge_claims",
+            {
+                "claim_uid": "TEXT NOT NULL DEFAULT ''",
+                "confidence": "REAL NOT NULL DEFAULT 0.7",
+            },
+        )
+        if "claim_uid" not in claim_cols_before:
+            self._backfill_claim_uids()
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_claims_uid ON knowledge_claims(knowledge_id, claim_uid)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_claims_knowledge_id ON knowledge_claims(knowledge_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_claims_node_uid ON knowledge_claims(node_uid)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_claims_claim_type ON knowledge_claims(claim_type)")
+
         c.commit()
 
         # 文章追蹤表
@@ -130,6 +210,30 @@ class GuardrailsDB:
                 created_at  TEXT NOT NULL DEFAULT ''
             )
         """)
+
+        # 技能共享表 — 跨 Agent 技能註冊與同步
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS skills (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                name          TEXT NOT NULL UNIQUE,
+                version       TEXT NOT NULL DEFAULT '1.0.0',
+                agent_source  TEXT NOT NULL DEFAULT '',
+                category      TEXT NOT NULL DEFAULT 'general',
+                capabilities  TEXT NOT NULL DEFAULT '',
+                dependencies  TEXT NOT NULL DEFAULT '',
+                trust         REAL  NOT NULL DEFAULT 0.5,
+                content_raw   TEXT NOT NULL DEFAULT '',
+                content_hash  TEXT NOT NULL DEFAULT '',
+                description   TEXT NOT NULL DEFAULT '',
+                created_at    TEXT NOT NULL DEFAULT '',
+                updated_at    TEXT NOT NULL DEFAULT '',
+                last_synced   TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_skills_agent ON skills(agent_source)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_skills_trust ON skills(trust)")
 
         # Lint 快取表
         c.execute("""
@@ -197,6 +301,35 @@ class GuardrailsDB:
         )
         c.commit()
 
+    def _table_columns(self, table: str) -> set[str]:
+        """Return existing column names for a SQLite table."""
+        return {row["name"] for row in self.conn.execute(f"PRAGMA table_info({table})")}
+
+    def _ensure_table_columns(self, table: str, columns: dict[str, str]) -> None:
+        """Add missing columns to an existing table without bumping schema_version."""
+        existing_cols = self._table_columns(table)
+        for column_name, column_def in columns.items():
+            if column_name not in existing_cols:
+                self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column_name} {column_def}")
+
+    def _backfill_claim_uids(self) -> None:
+        """Populate canonical claim_uid for rows migrated from the pre-canonical table."""
+        rows = self.conn.execute(
+            """SELECT id, claim, line_start, line_end
+               FROM knowledge_claims
+               WHERE claim_uid IS NULL OR claim_uid=''"""
+        ).fetchall()
+        for row in rows:
+            line_start = int(row["line_start"] or 0)
+            line_end = int(row["line_end"] or line_start)
+            claim = row["claim"] or ""
+            digest = hashlib.sha256(f"{line_start}:{line_end}:{claim}".encode()).hexdigest()[:16]
+            claim_uid = f"c-{line_start}-{digest}"
+            self.conn.execute(
+                "UPDATE knowledge_claims SET claim_uid=? WHERE id=?",
+                (claim_uid, row["id"]),
+            )
+
     def _init_vec_table(self):
         """建立 sqlite-vec 向量虛擬表。"""
         # 取得嵌入維度（預設 384）
@@ -214,7 +347,7 @@ class GuardrailsDB:
         except Exception as e:
             # 維度變了需要重建
             if "already exists" in str(e).lower() or "different" in str(e).lower():
-                print(f"[guardrails-lite] ⚠️ 向量表維度不匹配，重建中（舊向量會遺失）: {e}")
+                print(f"[guardrails-lite] ⚠️ 向量表維度不匹配，重建中（舊向量會遺失）: {e}", file=sys.stderr)
                 self.conn.execute("DROP TABLE IF EXISTS knowledge_vec")
                 self.conn.execute(
                     f"CREATE VIRTUAL TABLE knowledge_vec USING vec0("
@@ -256,6 +389,7 @@ class GuardrailsDB:
         trust: float = 0.5,
         source: str = "",
         content_aaak: str = "",
+        summary: str = "",
     ) -> int:
         """新增一筆知識，回傳 id。"""
         now = datetime.now(timezone.utc).isoformat()
@@ -265,10 +399,12 @@ class GuardrailsDB:
             """INSERT INTO knowledge
                (title, layer, category, tags, trust,
                 content_raw, content_aaak, content_hash, source,
+                summary, summary_generated_at,
                 created_at, updated_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (title, layer, category, tags, trust,
              content_raw, content_aaak, content_hash, source,
+             summary, now if summary else '',
              now, now),
         )
         self.conn.commit()
@@ -276,14 +412,6 @@ class GuardrailsDB:
 
     def update_knowledge(self, id: int, **fields) -> bool:
         """更新知識欄位。"""
-        # Whitelist allowed columns to prevent SQL injection
-        ALLOWED_COLUMNS = {
-            "title", "layer", "category", "tags", "trust", "content_raw",
-            "content_aaak", "content_hash", "source", "convergence_status",
-            "convergence_score", "convergence_checked_at", "last_verified",
-            "freshness", "updated_at",
-        }
-        fields = {k: v for k, v in fields.items() if k in ALLOWED_COLUMNS}
         if not fields:
             return False
         fields["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -615,6 +743,150 @@ class GuardrailsDB:
         )
         self.conn.commit()
 
+    # ── 技能 CRUD ──────────────────────────────────────────
+
+    def add_skill(
+        self,
+        name: str,
+        content_raw: str,
+        version: str = "1.0.0",
+        agent_source: str = "",
+        category: str = "general",
+        capabilities: str = "",
+        dependencies: str = "",
+        trust: float = 0.5,
+        description: str = "",
+    ) -> int:
+        """註冊一個技能，回傳 id。已有同名技能則回傳 -1。"""
+        now = datetime.now(timezone.utc).isoformat()
+        content_hash = hashlib.sha256(content_raw.encode()).hexdigest()[:16]
+
+        # 檢查是否已存在
+        existing = self.conn.execute(
+            "SELECT id FROM skills WHERE name=?", (name,)
+        ).fetchone()
+        if existing:
+            return -1
+
+        cursor = self.conn.execute(
+            """INSERT INTO skills
+               (name, version, agent_source, category, capabilities, dependencies,
+                trust, content_raw, content_hash, description,
+                created_at, updated_at, last_synced)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (name, version, agent_source, category, capabilities, dependencies,
+             trust, content_raw, content_hash, description,
+             now, now, ""),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def update_skill(self, name: str, **fields) -> bool:
+        """更新技能欄位（以 name 為 key）。"""
+        if not fields:
+            return False
+        fields["updated_at"] = datetime.now(timezone.utc).isoformat()
+        if "content_raw" in fields:
+            fields["content_hash"] = hashlib.sha256(
+                fields["content_raw"].encode()
+            ).hexdigest()[:16]
+
+        sets = ", ".join(f"{k}=?" for k in fields)
+        vals = list(fields.values()) + [name]
+        self.conn.execute(f"UPDATE skills SET {sets} WHERE name=?", vals)
+        self.conn.commit()
+        return self.conn.total_changes > 0
+
+    def get_skill(self, name: str) -> Optional[dict]:
+        """取得單一技能。"""
+        row = self.conn.execute(
+            "SELECT * FROM skills WHERE name=?", (name,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def delete_skill(self, name: str) -> bool:
+        """刪除技能。"""
+        self.conn.execute("DELETE FROM skills WHERE name=?", (name,))
+        self.conn.commit()
+        return self.conn.total_changes > 0
+
+    def search_skills(
+        self,
+        query: str,
+        capabilities: Optional[str] = None,
+        category: Optional[str] = None,
+        min_trust: float = 0.0,
+        agent_source: Optional[str] = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        """搜尋技能：關鍵字 + 可選過濾。"""
+        conditions = ["trust >= ?"]
+        params: list = [min_trust]
+
+        if query:
+            conditions.append(
+                "(name LIKE ? OR description LIKE ? OR capabilities LIKE ? "
+                "OR content_raw LIKE ?)"
+            )
+            pattern = f"%{query}%"
+            params.extend([pattern, pattern, pattern, pattern])
+
+        if capabilities:
+            conditions.append("capabilities LIKE ?")
+            params.append(f"%{capabilities}%")
+
+        if category:
+            conditions.append("category=?")
+            params.append(category)
+
+        if agent_source:
+            conditions.append("agent_source=?")
+            params.append(agent_source)
+
+        where = " AND ".join(conditions)
+        rows = self.conn.execute(
+            f"SELECT * FROM skills WHERE {where} "
+            "ORDER BY trust DESC, updated_at DESC LIMIT ?",
+            params + [limit],
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_skills(
+        self,
+        agent_source: Optional[str] = None,
+        category: Optional[str] = None,
+        min_trust: float = 0.0,
+        limit: int = 100,
+    ) -> list[dict]:
+        """列出全部技能（不含 content_raw，輕量）。"""
+        conditions = ["trust >= ?"]
+        params: list = [min_trust]
+
+        if agent_source:
+            conditions.append("agent_source=?")
+            params.append(agent_source)
+        if category:
+            conditions.append("category=?")
+            params.append(category)
+
+        where = " AND ".join(conditions)
+        rows = self.conn.execute(
+            f"SELECT id, name, version, agent_source, category, capabilities, "
+            f"dependencies, trust, description, updated_at FROM skills "
+            f"WHERE {where} ORDER BY trust DESC, updated_at DESC LIMIT ?",
+            params + [limit],
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def mark_skill_synced(self, name: str):
+        """標記技能已同步到 Supabase。"""
+        now = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            "UPDATE skills SET last_synced=? WHERE name=?",
+            (now, name),
+        )
+        self.conn.commit()
+
     # ── 統計 ────────────────────────────────────────────────
 
     def stats(self) -> dict:
@@ -647,11 +919,19 @@ class GuardrailsDB:
         except Exception:
             pass
 
+        # 技能統計
+        skill_count = 0
+        try:
+            skill_count = self.conn.execute("SELECT COUNT(*) FROM skills").fetchone()[0]
+        except Exception:
+            pass
+
         return {
             "knowledge_count": k_count,
             "embedding_count": vec_count,
             "edge_count": edge_count,
             "entity_count": entity_count,
+            "skill_count": skill_count,
             "vec_available": self._vec_available,
             "db_path": str(self.db_path),
             "db_size_mb": round(self.db_path.stat().st_size / 1024 / 1024, 2)

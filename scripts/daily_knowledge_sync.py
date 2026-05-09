@@ -5,9 +5,10 @@ Vault-for-LLM 每日知識同步 — 整合所有同步步驟的入口腳本。
 流程：
 1. 從 GitHub 拉取最新 raw/ 知識
 2. vault compile（raw/ → DB + compiled/）
-3. 本地 DB 去重
+3. 本地 DB 去重掃描
 4. Trust 動態調整
-5. 統計報告
+5. 知識缺口偵測
+6. 審核佇列摘要
 
 環境變數設定：
   VAULT_DIR    — 專案根目錄（含 guardrails.db）。不設定則自動從 cwd 往上搜尋。
@@ -75,7 +76,7 @@ def main():
 
     # 3. 語意去重（只掃描，不自動合併）
     results['dedup'] = run(
-        f'vault dedup 2>&1',
+        'vault dedup 2>&1',
         "語意重複偵測"
     )
 
@@ -95,6 +96,12 @@ def main():
     results['review'] = run(
         f'python3 {SCRIPTS_DIR}/manual_review.py --queue 2>&1',
         "待審核佇列"
+    )
+
+    # 7. 統計提示（guardrails_wakeup.py 已移除）
+    results['stats_note'] = run(
+        'echo "改用 MCP guardrails_stats 或 guardrails stats 取得統計" 2>&1',
+        "知識庫統計提示"
     )
 
     # 結果摘要

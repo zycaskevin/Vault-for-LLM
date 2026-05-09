@@ -45,6 +45,15 @@ env/
 *.swo
 # Vault for LLM
 push_fixes.sh
-
 # Graphify output (runtime generated)
 vault/graphify-out/
+# Runtime outputs
+L3-knowledge/
+graphify-out/
+.opencode/
+# Local research / operational drafts (not project source of truth)
+_knowledge_base/
+scripts/cross_validate_cloud_only.py
+scripts/guardrails_gap_scanner.py
+# Logs
+*.log

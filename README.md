@@ -1,397 +1,189 @@
-# Vault-for-LLM
+# Guardrails 百科（內部主庫）
 
-**[繁體中文](README.zh-Hant.md) | [简体中文](README.zh-CN.md) | English**
+> Vault user 的個人知識中樞 — 四層分層記憶系統，336+ 筆知識 + 254 筆技能，Supabase + SQLite 雙引擎。
 
-> 🧠 A local-first, open-source knowledge management system for LLM agents.
-> Zero cloud dependency. Zero Docker. Zero PyTorch. Just `pip install` and go.
-
----
-
-## What is Vault-for-LLM?
-
-Vault-for-LLM is a **four-layer hierarchical knowledge base** designed to give any LLM agent persistent, searchable memory. It runs entirely locally using SQLite + sqlite-vec + ONNX embeddings.
-
-### Key Features
-
-- **Four-layer architecture** (L0–L3) for structured knowledge injection
-- **Hybrid search**: keyword + semantic vector search (ONNX, no GPU needed)
-- **Knowledge graph**: auto-inferred entities and edges with 2-hop BFS expansion
-- **Atomic claims with source citations**: sub-chunk granularity, every claim traceable to original text
-- **Self-questioning convergence**: system judges if it "knows enough" to explain a topic (KAL-inspired)
-- **Cross-family LLM validation**: extract with one model, verify with another to catch hallucinations
-- **Freshness tracking + FSRS spaced repetition**: automated staleness detection and review scheduling
-- **AAAK compression**: 6x compression for compiled knowledge
-- **Trust scoring**: every knowledge entry has a confidence score (0.0–1.0)
-- **Lint & contradiction detection**: automatic quality checks
-- **MCP server**: expose your vault to any MCP-compatible AI agent mid-conversation
-- **CLI-first**: 20+ commands for full lifecycle management
+⚠️ **給 AI agent：這是主庫。** `~/Vault-for-LLM/` 是從這個庫「閹割」出去的開源版（去敏感內容、換品牌名 `vault` CLI）。搜尋知識時優先讀這個庫，別搞錯。
 
 ---
 
-## Architecture
+## 與其他庫的關係
+
+| 目錄 | 是什麼 | 別搞錯 |
+|---|---|---|
+| **`~/Guardrails-knowledge/`** ← 你在這裡 | **主庫**（336+ 知識 + 254 技能，schema v5） | 這是唯一真實來源 |
+| `~/Vault-for-LLM/` | 開源版（從主庫閹割、去敏感內容、品牌改名 `vault`） | 不是主庫，知識不完整 |
+| `~/.agent-runtime/Guardrails/` | Graphify / L2 context 相關目錄 | 不是主知識庫；查知識仍以本 repo 為準 |
+
+---
+
+## 架構
 
 ```
-L0 Identity      → Who the user is (injected every conversation)
-L1 Core Facts    → Environment & active projects (injected every conversation)
-L2 Context       → Recent decisions & troubleshooting (auto-updated daily)
-L3 Deep Knowledge → Architecture, techniques, lessons (searched on demand)
+L0 身份    → identity.md（每次對話注入）
+L1 核心事實 → current-projects.md（每次對話注入）
+L2 脈絡    → recent-sessions/（每天自動更新）
+L3 深度知識 → SQLite guardrails.db（keyword + vector + graph 混合搜尋）+ Supabase 同步
 ```
 
 ---
 
-## What's New in v0.4.0
+## AI Agent 讀取指南
 
-| Feature | Description |
-|---------|-------------|
-| **Convergence Check** | KAL-inspired self-questioning loop — system asks "Can I explain this?" and keeps learning until it can |
-| **Cross Validation** | Asymmetric LLM verification — extract claims with Model A, verify with Model B |
-| **Freshness Tracking** | Automatic staleness detection + FSRS interval scheduling for knowledge review |
-| **Atomic Claims** | Claims at sub-chunk granularity with `source_span` citations for precision retrieval |
-| **Graph Expansion** | 2-hop recursive CTE walk through knowledge graph for contextual retrieval |
-| **MCP Server** | Model Context Protocol server — let any chat AI query and inject knowledge mid-conversation |
-| **Updated CLI** | New commands: `vault converge`, `vault cross-validate`, `vault freshness` |
+**每次對話：**
+1. 讀 `L0-identity/identity.md`（用戶身份）
+2. 讀 `L1-core-facts/current-projects.md`（當前專案）
 
-See [CHANGELOG.md](CHANGELOG.md) for full details.
+**需要查知識時：**
+```bash
+# 優先 CLI
+guardrails search "query"
+
+# 或用 MCP
+mcp_guardrails_guardrails_search query="query"
+
+# 或用 rg 搜 raw/ compiled/
+rg "關鍵字" raw/ compiled/
+```
+
+**做完有價值的工作後：**
+1. 寫入 `raw/` 一條新知識（YAML frontmatter）
+2. 執行 `guardrails compile`
 
 ---
 
-## Installation
+## 近期核心系統入口（給 AI Agent）
 
-### Quick Install
+### agent runtime Dashboard — 多 Agent 可觀測性儀表板
+
+- **外網入口**：https://dashboard.assistantai.dev
+- **本機入口**：http://localhost:3460
+- **服務**：`agent-runtime-dashboard.service`
+- **本地路徑**：`~/.agent-runtime/dashboard/oa-cli/`
+- **用途**：集中查看 assistant / Nana / Harness / 其他 profile 的狀態、cron 執行、Harness Gate、Token 預算、Guardrails 品質。
+- **相關百科條目**：
+  - `#333 agent runtime Dashboard — 多 Agent 共享可觀測性儀表板`
+  - `#335 agent runtime Dashboard 前端繁體中文化與六階段閉環設計`
+  - `#336 agent runtime Dashboard Supabase 寫入範例 — Agent 狀態同步`
+
+常用驗證：
 
 ```bash
-# 1. Clone
-git clone https://github.com/zycaskevin/Vault-for-LLM.git
-cd Vault-for-LLM
-
-# 2. Install (optionally use a venv)
-python3 -m venv ~/.vault-for-llm
-source ~/.vault-for-llm/bin/activate
-pip install -e .
-
-# 3. Initialize a project
-vault init
-
-# 4. Verify
-vault doctor
+systemctl is-active agent-runtime-dashboard
+curl -s -o /dev/null -w "%{http_code}" https://dashboard.assistantai.dev/
+cd ~/.agent-runtime/dashboard/oa-cli/dashboard-src && npx tsc --noEmit
 ```
 
-### Three Install Modes
+### Handoff Protocol — 跨 Profile 任務交接
 
-**Mode 1: Minimal** — keyword search only
-```bash
-pip install vault-for-llm
-vault init
-# Search works with keyword matching only
-```
+- **腳本**：
+  - `~/.agent-runtime/scripts/kanban_handoff.py`
+  - `~/.agent-runtime/scripts/handoff_dispatcher.py`
+- **資料庫**：`~/.agent-runtime/kanban/kanban.db`
+- **用途**：assistant / Harness Verify / Harness Correct / Nana CRM 之間建立交接事件，並推送到 Dashboard Harness Gate。
+- **相關百科條目**：`#334 Handoff Protocol — agent runtime 跨 Profile 任務交接協議`
 
-**Mode 2: Semantic** — local ONNX embeddings (~150MB, no PyTorch/GPU needed)
-```bash
-pip install vault-for-llm[semantic]
-vault init
-vault install-embedding
-# Choose: zh (Chinese), en (English), mix (Mixed, recommended)
-# Search works with vector similarity (recommended)
-```
+最小用法：
 
-**Mode 3: Ollama** — zero extra install if you already have Ollama
-```bash
-pip install vault-for-llm
-vault init
-vault config set embedding.provider ollama
-vault config set embedding.model nomic-embed-text
-# Uses your existing Ollama installation
-```
+```python
+import sys
+sys.path.insert(0, "/home/user/.agent-runtime/scripts")
+import kanban_handoff as k
 
-### Environment Check
-
-```bash
-vault doctor
-```
-
-Expected output:
-```
-Python               3.11.x ✅
-sqlite-vec           ✅ 0.1.9
-onnxruntime          ✅ 1.24.x  (or ❌ if not installed)
-optimum[onnxruntime] ✅         (or ❌ if not installed)
-Ollama               ✅/❌
-Embedding cache       ✅/❌
+k.init()
+k.create_handoff(
+    from_agent="assistant",
+    to_agent="harness-verify",
+    summary="assistant 完成任務，請驗證",
+    verdict="pending"
+)
 ```
 
 ---
 
-## Initial Setup
+## Dashboard / Handoff 相關 Supabase 表
 
-### Step 1: Fill in who YOU are (L0)
+其他 Agent 要同步狀態到 Dashboard，優先寫入以下五表：
 
-Copy the template and edit — this is about you, the user, not the AI:
-```bash
-cp templates/L0-identity/identity.md L0-identity/identity.md
-# Edit L0-identity/identity.md with YOUR information
-```
+| 表 | 用途 |
+|---|---|
+| `agent-runtime_cron_runs` | cron 執行結果、成功/失敗/timeout |
+| `agent-runtime_agent_sessions` | agent session 狀態、tool calls、tokens、harness score |
+| `agent-runtime_harness_events` | Harness Gate、R 規則、handoff、verify/correct/evolve 事件 |
+| `agent-runtime_token_usage` | Token 預算與用量（`date` 唯一，重複會 409） |
+| `agent-runtime_guardrails_health` | Guardrails 收斂率、新鮮度、矛盾數（`check_date` 唯一） |
 
-### Step 2: Fill in core facts (L1)
-
-```bash
-cp templates/L1-core-facts/current-projects.md L1-core-facts/current-projects.md
-# Edit with your current projects and environment
-```
-
-### Step 3: Add your first knowledge entry (L3)
-
-Create a `.md` file in `raw/`:
-
-```markdown
----
-title: "My First Knowledge Entry"
-category: "technique"
-layer: L3
-tags: ["tag1", "tag2"]
-trust: 0.8
-source: "real-experience"
-created: "2026-04-17"
----
-
-# My First Knowledge Entry
-
-What you learned, what broke, what worked.
-```
-
-### Step 4: Compile
-
-```bash
-vault compile
-```
-
-This will:
-- Compile `raw/` entries to `compiled/` (AAAK 6x compression)
-- Build the search index
-- Auto git commit (for easy rollback)
-- Run lint health checks
+欄位與寫入範例見百科 `#336`。
 
 ---
 
-## Directory Structure
+## CLI 參考
+
+| 命令 | 說明 |
+|---|---|
+| `guardrails search "query"` | 混合搜尋（keyword + vector + graph） |
+| `guardrails add "Title" --content "..."` | 新增知識 |
+| `guardrails compile` | 編譯 raw/ → db + compiled/ |
+| `guardrails list` | 列出知識 |
+| `guardrails stats` | 統計（含 skill_count） |
+| `guardrails lint` | 品質檢查 |
+| `guardrails doctor` | 環境診斷 |
+| `guardrails graph build` | 建立知識圖譜 |
+| `guardrails skill push --file SKILL.md` | 註冊技能到市場 |
+| `guardrails skill search "query"` | 搜尋技能 |
+| `guardrails skill pull "name"` | 下載技能 |
+
+---
+
+## 目錄結構
 
 ```
-your-project/
-├── L0-identity/             ← Who the user is (injected every conversation)
-│   └── identity.md
-├── L1-core-facts/           ← Core facts (injected every conversation)
-│   └── current-projects.md
-├── L2-context/              ← Dynamic context (auto-updated daily)
-│   └── recent-sessions/
-│       └── current.md
-├── L3-knowledge/            ← Deep knowledge (searched on demand)
-├── raw/                     ← Raw knowledge input (your .md files go here)
-├── compiled/                ← AAAK compressed backup (auto-generated)
-├── guardrails.db            ← SQLite database (auto-generated by `vault compile`)
-└── templates/               ← Clean templates for L0/L1/L2
+Guardrails-knowledge/
+├── README.md               ← 你在這裡
+├── L0-identity/            ← 身份
+├── L1-core-facts/          ← 核心事實
+├── L2-context/             ← 動態上下文
+├── L3-knowledge/           ← 深度知識
+├── raw/                    ← 原始知識輸入
+├── compiled/               ← AAAK 壓縮備份
+├── guardrails.db           ← SQLite 主資料庫（schema v5）
+├── scripts/                ← 維護腳本
+└── templates/              ← 空白模板
 ```
 
 ---
 
-## AI Integration Guide
-
-### Any LLM Agent (Universal)
-
-1. Read this README to understand the architecture
-2. Read `L0-identity/identity.md` to know the user
-3. Read `L1-core-facts/current-projects.md` for current state
-4. Use `vault search "query"` for semantic search
-
-### Claude Code / Cursor / Any AI IDE
-
-1. Copy `CLAUDE.md` (included) into your project root
-2. For deep knowledge, search `compiled/` or `raw/`
-3. Use `rg "keyword" raw/ compiled/` for fast lookup
-
-### MCP Integration (Chat with your vault)
-
-Connect your vault to any MCP-compatible AI agent:
+## 維護
 
 ```bash
-# Install MCP dependencies
-pip install "vault-for-llm[mcp]"
+# 編譯
+guardrails compile
 
-# Start the server
-vault-mcp --project-dir /path/to/your/project
+# 同步到 Supabase
+python3 scripts/sync_to_supabase.py
+
+# 收斂檢查
+guardrails converge
+
+# 新鮮度檢查
+guardrails freshness
 ```
-
-Now your AI can **search, add, and query knowledge mid-conversation** — no manual copy-paste needed.
 
 ---
 
-## CLI Reference
-
-| Command | Description |
-|---------|-------------|
-| `vault init` | Initialize a new project |
-| `vault doctor` | Health check |
-| `vault add "Title" --content "..."` | Add knowledge entry |
-| `vault add "Title" --file notes.md` | Add from file |
-| `vault import doc.md` | Import long document (auto-chunked) |
-| `vault compile` | Compile raw/ → database + compiled/ |
-| `vault search "query"` | Search (auto: keyword + semantic) |
-| `vault search "query" --graph-expand 2` | Search + 2-hop graph expansion |
-| `vault list` | List all entries |
-| `vault stats` | Show database statistics |
-| `vault lint` | Run quality checks |
-| `vault converge` | Self-questioning convergence check |
-| `vault cross-validate` | Cross-family LLM validation |
-| `vault freshness` | Freshness + review scheduling |
-| `vault dedup` | Detect semantic duplicates |
-| `vault dedup --dry-run` | Preview merge plan (no changes) |
-| `vault dedup --merge` | Auto-merge duplicates (keeps higher trust) |
-| `vault graph build` | Build knowledge graph |
-| `vault graph show` | Show graph summary |
-| `vault graph export --format mermaid` | Export graph as Mermaid diagram |
-| `vault graph expand <id>` | Expand from a specific node |
-| `vault config set <key> <value>` | Set config (e.g. embedding provider) |
-
----
-
-## MCP Server (Claude Code / Cursor / OpenClaw)
-
-Expose your vault directly to any MCP-compatible AI agent:
-
-```bash
-# Install MCP dependencies
-pip install "vault-for-llm[mcp]"
-
-# Start the server (run from your project directory)
-vault-mcp
-
-# Or specify path explicitly
-vault-mcp --project-dir /path/to/your/project
-```
-
-Add to your Claude Code config (`~/.claude/claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "vault": {
-      "command": "vault-mcp",
-      "args": ["--project-dir", "/path/to/your/project"]
-    }
-  }
-}
-```
-
-Available MCP tools: `vault_search`, `vault_add`, `vault_get`, `vault_list`, `vault_stats`
-
----
-
-## Knowledge File Format
-
-All `.md` files use YAML frontmatter:
+## YAML Frontmatter 格式
 
 ```yaml
 ---
-title: "Knowledge Title"
+title: "知識標題"
 category: "concept|technique|workflow|lesson|error|comparison"
-layer: "L0|L1|L2|L3"
+layer: 0-3
 tags: ["tag1", "tag2"]
 trust: 0.0-1.0
-source: "source-description"
+source: "來源"
 created: "YYYY-MM-DD"
 ---
 ```
 
-### Trust Score Guide
-
-| Range | Meaning |
-|-------|---------|
-| 0.9+ | Verified by real experience |
-| 0.7–0.8 | High confidence from documentation |
-| 0.5–0.6 | General knowledge, not yet verified |
-| < 0.3 | Unverified, needs review |
-
 ---
 
-## Compiler
-
-```bash
-vault compile
-```
-
-What it does:
-- `raw/` → database (upsert by content hash)
-- `raw/` → `compiled/` (AAAK 6x compression)
-- Extract atomic claims with source_span citations
-- Auto L2 update + lint health check + git commit
-
----
-
-## Tech Stack
-
-| Component | Technology | Why |
-|-----------|-----------|-----|
-| Database | SQLite + sqlite-vec | Zero-config, portable, vector search |
-| Embeddings | ONNX Runtime (~150MB) | No PyTorch/GPU needed |
-| Search | Hybrid (keyword + vector + graph expansion) | Best of both worlds |
-| Graph | SQLite (entities + edges + 2-hop CTE) | Lightweight relationship tracking |
-| Compression | AAAK format | 6x size reduction |
-| Validation | Cross-family LLM + Convergence check | Catch what single models miss |
-
----
-
-## Requirements
-
-- Python 3.10+
-- ~150MB for ONNX embedding model (optional)
-- No GPU, no Docker, no cloud account needed
-
----
-
-## FAQ
-
-**Q: Do I need to use all four layers?**
-A: L0+L1 are essential (AI needs to know who you are). L2+L3 are optional but strongly recommended.
-
-**Q: Token cost?**
-A: L0+L1 inject ~500-800 tokens per conversation. L3 uses AAAK compression — only 1/6 of original token cost.
-
-**Q: Trust scores?**
-A: User-defined = 1.0, verified = 0.9, documentation = 0.7, unverified = 0.5. When knowledge conflicts, AI trusts higher scores.
-
----
-
-## Troubleshooting
-
-### sqlite-vec not found
-```bash
-pip install sqlite-vec
-# If that fails, you may need to build from source
-pip install sqlite-vec --no-binary :all:
-```
-
-### ONNX model download fails
-```bash
-# Manual download
-python3 -c "
-from vault.guardrails_embed import ONNXEmbeddingProvider
-e = ONNXEmbeddingProvider(model_key='mix')
-e._ensure_model()
-"
-```
-
-### Ollama not connecting
-```bash
-# Check if Ollama is running
-curl http://localhost:11434/api/tags
-# Make sure you have an embedding model installed
-ollama pull nomic-embed-text
-```
-
----
-
-## License
-
-MIT License — see [LICENSE](LICENSE).
-
----
-
-*Built for developers who want their AI agents to actually remember things.*
+*最後更新：2026-04-30 — 修復品牌混淆（不再自稱 Vault-for-LLM）*

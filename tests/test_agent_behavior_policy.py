@@ -23,9 +23,13 @@ def _search_event(knowledge_id: int = 42, citation: str = "#42 Example L3-L4") -
     }
 
 
-def _map_event(knowledge_id: int = 42, node_uid: str = "title-tool") -> dict:
+def _map_event(
+    knowledge_id: int = 42,
+    node_uid: str = "title-tool",
+    tool: str = "guardrails_map_show",
+) -> dict:
     return {
-        "tool": "guardrails_map_show",
+        "tool": tool,
         "arguments": {"knowledge_id": knowledge_id},
         "output": {
             "entry_id": knowledge_id,
@@ -46,9 +50,10 @@ def _read_event(
     knowledge_id: int = 42,
     citation: str = "#42 Example L3-L4",
     node_uid: str = "title-tool",
+    tool: str = "guardrails_read_range",
 ) -> dict:
     return {
-        "tool": "guardrails_read_range",
+        "tool": tool,
         "arguments": {"knowledge_id": knowledge_id, "node_uid": node_uid},
         "output": {
             "entry_id": knowledge_id,
@@ -115,3 +120,44 @@ def test_loop_must_use_same_knowledge_id_across_tools():
     assert result["ok"] is False
     assert result["failure_mode"] == "knowledge_id_mismatch"
     assert result["next_action"]["tool"] == "guardrails_read_range"
+
+
+def test_remote_alias_loop_accepts_remote_map_and_read_range_citation():
+    result = validate_agent_behavior(
+        [
+            _search_event(),
+            _map_event(tool="guardrails_remote_map_show"),
+            _read_event(tool="guardrails_remote_read_range"),
+        ],
+        "Tool-gated reading keeps agents bounded. #42 Example L3-L4",
+    )
+
+    assert result["ok"] is True
+    assert result["knowledge_id"] == 42
+    assert result["read_range_citations"] == ["#42 Example L3-L4"]
+
+
+def test_remote_map_without_remote_read_range_fails_search_citation_only():
+    result = validate_agent_behavior(
+        [_search_event(), _map_event(tool="guardrails_remote_map_show")],
+        "Tool-gated reading keeps agents bounded. #42 Example L3-L4",
+    )
+
+    assert result["ok"] is False
+    assert result["failure_mode"] == "missing_read_range"
+    assert result["citations"] == ["#42 Example L3-L4"]
+
+
+def test_remote_search_citation_alone_still_cannot_support_final_answer():
+    result = validate_agent_behavior(
+        [
+            _search_event(citation="#42 Example L9-L9"),
+            _map_event(tool="guardrails_remote_map_show"),
+            _read_event(tool="guardrails_remote_read_range"),
+        ],
+        "Search hinted this, but final support must not use it. #42 Example L9-L9",
+    )
+
+    assert result["ok"] is False
+    assert result["failure_mode"] == "unsupported_citation"
+    assert result["unsupported_citations"] == ["#42 Example L9-L9"]

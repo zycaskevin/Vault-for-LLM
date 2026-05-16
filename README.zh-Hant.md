@@ -1,279 +1,215 @@
 # Vault-for-LLM 繁體中文說明
 
-**[繁體中文](README.zh-Hant.md) | [简体中文](README.zh-CN.md) | [English](README.md)**
+**[English](README.md) | 繁體中文 | [简体中文](README.zh-CN.md)**
 
-> 🧠 本地優先、開源的四層分層知識管理系統，讓任何 LLM Agent 擁有持久、可搜尋的記憶。
-> 零雲端依賴。零 Docker。零 PyTorch。`pip install` 即可使用。
-
----
-
-## 這是什麼？
-
-Vault-for-LLM 是一個專為 LLM Agent 設計的**四層分層知識庫**。它完全在本機運行，使用 SQLite + sqlite-vec + ONNX 嵌入模型，讓你的 AI Agent 能夠記住東西。
-
-### 核心特色
-
-- **四層架構**（L0–L3）— 結構化知識注入
-- **混合搜尋**：關鍵字 + 語意向量搜尋（ONNX，無需 GPU）
-- **知識圖譜**：自動推斷實體與關係邊，支援 2-hop 圖譜擴展
-- **原子主張 + 來源標註**：次 chunk 級粒度，每條主張可追溯到原文
-- **自問收斂**：系統判斷「我學夠了嗎？」，學不夠就繼續（KAL 啟發）
-- **跨家族 LLM 驗證**：用模型 A 提取 + 模型 B 驗證，交叉抓出幻覺
-- **鮮度追蹤 + FSRS 間隔重複**：自動偵測過時知識，排程複習
-- **AAAK 壓縮**：6 倍壓縮率，大幅減少 token 消耗
-- **信任評分**：每筆知識都有信心分數（0.0–1.0）
-- **品質檢查**：自動 lint 與矛盾偵測
-- **MCP 伺服器**：讓任何 MCP 相容的 AI Agent 在對話中直接存取知識庫
-- **CLI 優先**：20+ 指令，完整管理生命週期
+> 給 LLM Agent 用的本地優先記憶層。
+>
+> Vault-for-LLM 會在你的專案裡建立一個可攜式 SQLite 知識庫。你可以用 Markdown 寫筆記，把它們編譯成可搜尋、可引用的結構化記憶，並透過 `vault` CLI 或 `vault-mcp` 讓 AI Agent 在對話中查詢。
 
 ---
 
-## 架構說明
+## 為什麼需要它？
 
+LLM Agent 很強，但大多數 Agent 每次開新 session 就會忘記上下文：決策、踩坑、使用者偏好、專案設定、除錯過程都要重新教一次。
+
+Vault-for-LLM 解決的是這件事：
+
+1. 你把重要知識寫成 Markdown。
+2. `vault compile` 把它編譯進本地 SQLite。
+3. Agent 需要時再搜尋，不用把所有內容塞進 prompt。
+4. 支援 MCP 的 Agent 可以在對話中直接查知識庫。
+
+它不是要取代你的筆記軟體，而是讓你的筆記**可以被 Agent 使用**。
+
+---
+
+## 核心原則
+
+- **本地優先**：SQLite 是 source of truth；核心功能不需要雲端。
+- **不用 embedding 也能跑**：先有關鍵字搜尋；語意搜尋是可選功能。
+- **為 Agent 記憶設計**：把每次都要載入的事實，和需要時才搜尋的深知識分開。
+- **定界讀取**：Document Map 讓 Agent 讀正確段落，而不是整篇文件塞進上下文。
+- **可選同步**：Supabase 是可選的同步/遠端讀取目標，不是必要基礎設施。
+- **Alpha、CLI 優先**：目前是開發者工具，API 與體驗仍在演進。
+
+---
+
+## 它能做什麼？
+
+| 領域 | 能力 |
+|---|---|
+| 知識存儲 | 將 `raw/` Markdown 編譯進本地 SQLite |
+| 搜尋 | 關鍵字搜尋、可選向量搜尋、混合搜尋 |
+| Embedding | 可選 ONNX Runtime 或 Ollama |
+| 記憶分層 | L0 身份、L1 核心事實、L2 近期上下文、L3 深知識 |
+| 知識圖譜 | 自動推斷實體/關聯，支援圖譜擴展 |
+| Document Map | 章節/主張導航，支援有行號範圍的 citation |
+| MCP | `vault-mcp` 將 search/add/stats/map/read 工具暴露給相容 Agent |
+| 品質工具 | lint、freshness、convergence、cross-validation、dedup、Search QA snapshot |
+| 可選遠端同步 | Supabase sync scripts，適合團隊或遠端讀取 |
+| 技能共享 | 實驗中的 `vault skill` 技能市場命令 |
+
+---
+
+## 架構
+
+```text
+L0 Identity        → 使用者/專案是誰；每次 session 載入
+L1 Core Facts      → 穩定環境與專案事實；每次 session 載入
+L2 Recent Context  → 近期決策、事故、工作上下文
+L3 Deep Knowledge  → 經驗、API、架構、踩坑；需要時搜尋
+
+Markdown raw/  →  vault compile  →  SQLite database  →  vault search / MCP tools
 ```
-L0 身份層      → 使用者是誰（每次對話注入）
-L1 核心事實    → 環境與活躍專案（每次對話注入）
-L2 動態情境    → 近期決策與除錯記錄（每日自動更新）
-L3 深度知識    → 架構、技術、經驗（按需搜尋）
-```
 
-### 為什麼要分層？
-
-| 層級 | 載入時機 | Token 成本 | 範例 |
-|------|----------|-----------|------|
-| L0 | 每次對話 | 極低（<100） | 使用者名稱、角色、偏好 |
-| L1 | 每次對話 | 低（<500） | 作業系統、安裝工具、活躍專案 |
-| L2 | 需要時 | 中（<2000） | 昨天修了什麼 bug、最近的技術決策 |
-| L3 | 按需搜尋 | 按需 | 某框架的踩坑筆記、API 用法 |
-
----
-
-## v0.4.0 新功能
-
-| 功能 | 說明 |
-|------|------|
-| **收斂檢查** | KAL 啟發的自問收斂 loop — 系統問「我能解釋這個嗎？」，不夠就繼續學 |
-| **交叉驗證** | 不對稱 LLM 驗證 — 用模型 A 提取主張，用模型 B 驗證 |
-| **鮮度追蹤** | 自動偵測過時知識 + FSRS 間隔排程複習 |
-| **原子主張** | 次 chunk 粒度提取，附 `source_span` 來源標註 |
-| **圖譜擴展** | 2-hop 遞迴 CTE 走訪知識圖譜，補充關聯知識 |
-| **MCP 伺服器** | 模型上下文協定 — AI 聊天時直接查詢/注入知識 |
-| **CLI 新指令** | `vault converge`、`vault cross-validate`、`vault freshness` |
-
-完整變更請見 [CHANGELOG.md](CHANGELOG.md)。
+這樣可以讓 Agent 的 prompt 保持小，但需要時仍能查到深層記憶。
 
 ---
 
 ## 安裝
 
-### 快速安裝
+### 目前 Alpha：從原始碼安裝
+
+Vault-for-LLM 目前尚未發布到 PyPI。請先從 GitHub repository 安裝：
 
 ```bash
-# 1. Clone
 git clone https://github.com/zycaskevin/Vault-for-LLM.git
 cd Vault-for-LLM
 
-# 2. 安裝（建議使用虛擬環境）
-python3 -m venv ~/.vault-for-llm
-source ~/.vault-for-llm/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e .
 
-# 3. 初始化專案
-vault init
-
-# 4. 驗證
 vault doctor
 ```
 
-### 三種安裝模式
+### 可選：語意搜尋
 
-**模式一：最小安裝** — 僅關鍵字搜尋
+基礎安裝已支援關鍵字搜尋。如果要使用本地 ONNX embedding：
+
 ```bash
-pip install vault-for-llm
-vault init
-# 僅支援關鍵字匹配搜尋
+pip install -e ".[semantic]"
+vault install-embedding --model mix
 ```
 
-**模式二：語意搜尋** — 本地 ONNX 嵌入模型（~150MB，不需 PyTorch/GPU）
-```bash
-pip install vault-for-llm[semantic]
-vault init
-vault install-embedding
-# 選擇：zh（中文）、en（英文）、mix（混合，推薦）
-# 支援向量相似度搜尋（推薦）
-```
+或使用既有 Ollama embedding model：
 
-**模式三：Ollama** — 已有 Ollama 則零額外安裝
 ```bash
-pip install vault-for-llm
-vault init
 vault config set embedding.provider ollama
 vault config set embedding.model nomic-embed-text
-# 使用你現有的 Ollama 安裝
 ```
 
-### 環境檢查
+### 可選：MCP server
 
 ```bash
-vault doctor
-```
-
-預期輸出：
-```
-Python               3.11.x ✅
-sqlite-vec           ✅ 0.1.9
-onnxruntime          ✅ 1.24.x  （未安裝則顯示 ❌）
-optimum[onnxruntime] ✅         （未安裝則顯示 ❌）
-Ollama               ✅/❌
-嵌入模型快取           ✅/❌
+pip install -e ".[mcp]"
+vault-mcp --project-dir /path/to/your/project
 ```
 
 ---
 
-## 初始設定
-
-### 步驟一：填寫你的身份（L0）
-
-複製模板並編輯 — 這是關於你（使用者），不是關於 AI：
-```bash
-cp templates/L0-identity/identity.md L0-identity/identity.md
-# 編輯 L0-identity/identity.md，填入你的個人資訊
-```
-
-### 步驟二：填寫核心事實（L1）
+## 快速開始
 
 ```bash
-cp templates/L1-core-facts/current-projects.md L1-core-facts/current-projects.md
-# 編輯填入你目前的專案和環境
+# 1. 在專案裡建立 vault
+vault init
+
+# 2. 新增第一筆知識
+vault add "First lesson" --content "The bug was caused by X. The fix was Y."
+
+# 3. 編譯 Markdown 進本地 SQLite vault
+vault compile
+
+# 4. 之後搜尋
+vault search "what caused the bug"
 ```
 
-### 步驟三：新增第一筆知識條目（L3）
+你也可以直接把 Markdown 檔放到 `raw/`，再執行 `vault compile`。
 
-在 `raw/` 目錄建立 `.md` 檔案：
+範例：
 
 ```markdown
 ---
-title: "我的第一筆知識"
-category: "technique"
+title: "Postgres migration pitfall"
+category: "error"
 layer: L3
-tags: ["tag1", "tag2"]
+tags: ["postgres", "migration"]
 trust: 0.8
-source: "real-experience"
-created: "2026-04-17"
+source: "project-notes"
+created: "2026-05-16"
 ---
 
-# 我的第一筆知識
+# Postgres migration pitfall
 
-你學到了什麼、踩了什麼坑、什麼方法有效。
+記錄壞在哪裡、為什麼壞、下次怎麼避免。
 ```
-
-### 步驟四：編譯
-
-```bash
-vault compile
-```
-
-這會：
-- 將 `raw/` 條目編譯到 `compiled/`（AAAK 6 倍壓縮）
-- 建立搜尋索引
-- 自動 git commit（方便回滾）
-- 執行 lint 健康檢查
 
 ---
 
 ## 目錄結構
 
-```
-你的專案/
-├── L0-identity/             ← 使用者是誰（每次對話注入）
+```text
+your-project/
+├── L0-identity/              # 使用者或專案身份，每次 session 載入
 │   └── identity.md
-├── L1-core-facts/           ← 核心事實（每次對話注入）
+├── L1-core-facts/            # 穩定事實，每次 session 載入
 │   └── current-projects.md
-├── L2-context/              ← 動態情境（每日自動更新）
+├── L2-context/               # 近期上下文、決策、事故
 │   └── recent-sessions/
-│       └── current.md
-├── L3-knowledge/            ← 深度知識（按需搜尋）
-├── raw/                     ← 原始知識輸入（你的 .md 檔案放這裡）
-├── compiled/                ← AAAK 壓縮備份（自動產生）
-├── guardrails.db            ← SQLite 資料庫（vault compile 自動產生）
-└── templates/               ← L0/L1/L2 乾淨模板
+├── L3-knowledge/             # 可搜尋的深知識
+├── raw/                      # 原始 Markdown 知識條目
+├── compiled/                 # 編譯/壓縮後的知識 artifact
+├── guardrails.db             # vault 產生的本地 SQLite database
+└── templates/                # 起始模板
 ```
 
----
+### 歷史命名說明
 
-## AI 整合指南
-
-### 通用 LLM Agent
-
-1. 閱讀 `L0-identity/identity.md` 了解使用者
-2. 閱讀 `L1-core-facts/current-projects.md` 了解現況
-3. 使用 `vault search "查詢"` 進行語意搜尋
-
-### Claude Code / Cursor / 任何 AI IDE
-
-1. 將 `CLAUDE.md` 複製到專案根目錄
-2. 深度知識搜尋：使用 `rg "關鍵字" raw/ compiled/`
-3. 或使用 `vault search "查詢"`
-
-### MCP 整合（跟 AI 聊天時直接查知識庫）
-
-```bash
-# 安裝 MCP 依賴
-pip install "vault-for-llm[mcp]"
-
-# 啟動
-vault-mcp --project-dir /path/to/your/project
-```
-
-現在 AI 可以**在對話中直接搜尋、新增、查詢知識** — 不用手動複製貼上。
+部分內部模組與檔名仍沿用歷史名稱 `guardrails_lite` / `guardrails.db`。公開產品名稱是 **Vault-for-LLM**，公開命令是 `vault` 與 `vault-mcp`。這些舊命名會在 alpha 階段為了相容性暫時保留。
 
 ---
 
 ## CLI 指令參考
 
-| 指令 | 說明 |
-|------|------|
-| `vault init` | 初始化新專案 |
-| `vault doctor` | 環境健康診斷 |
-| `vault add "標題" --content "內容"` | 新增知識條目 |
-| `vault add "標題" --file 檔案.md` | 從檔案匯入 |
-| `vault import 長文.md` | 匯入長文件（自動分塊） |
-| `vault compile` | 編譯 raw/ → 資料庫 + compiled/ |
-| `vault search "查詢"` | 搜尋（自動：關鍵字 + 語意） |
-| `vault search "查詢" --graph-expand 2` | 搜尋 + 2-hop 圖譜擴展 |
-| `vault list` | 列出所有條目 |
-| `vault stats` | 顯示資料庫統計 |
+| 指令 | 用途 |
+|---|---|
+| `vault init` | 初始化專案 vault |
+| `vault doctor` | 檢查本地環境與可選依賴 |
+| `vault add "Title" --content "..."` | 新增知識條目 |
+| `vault add "Title" --file note.md` | 從 Markdown 檔新增條目 |
+| `vault import long-doc.md` | 匯入並分塊長文件 |
+| `vault compile` | 編譯 `raw/` 到 SQLite + `compiled/` |
+| `vault search "query"` | 搜尋知識庫 |
+| `vault search "query" --graph-expand 2` | 搜尋並加上圖譜擴展 |
+| `vault list` | 列出知識條目 |
+| `vault stats` | 顯示 vault 統計 |
 | `vault lint` | 執行品質檢查 |
-| `vault converge` | 自問收斂檢查 |
-| `vault cross-validate` | 跨家族 LLM 驗證 |
-| `vault freshness` | 鮮度偵測 + 複習排程 |
-| `vault dedup` | 偵測語意重複知識 |
-| `vault dedup --dry-run` | 預覽合併計畫（不修改資料） |
-| `vault dedup --merge` | 自動合併重複（保留高信任度） |
-| `vault graph build` | 建立知識圖譜 |
-| `vault graph show` | 顯示圖譜摘要 |
-| `vault graph export --format mermaid` | 匯出 Mermaid 圖譜 |
-| `vault graph expand <id>` | 從指定節點展開圖譜 |
-| `vault config set <key> <value>` | 設定配置（如嵌入後端） |
+| `vault map build` | 建立/回填 Document Map |
+| `vault map show <id>` | 顯示條目的章節地圖 |
+| `vault map read <id> --lines 10-30` | 讀取定界行號範圍 |
+| `vault graph build` | 建立推斷知識圖譜 |
+| `vault graph show` | 顯示圖譜統計 |
+| `vault converge` | 實驗性自問收斂檢查 |
+| `vault cross-validate` | 實驗性跨模型驗證 |
+| `vault freshness` | 實驗性新鮮度/複習排程 |
+| `vault dedup` | 偵測或合併重複條目 |
+| `vault search-qa run` | 執行 Search QA metrics snapshot |
+| `vault skill search "query"` | 搜尋實驗性技能市場條目 |
+
+執行 `vault <command> --help` 可查看各指令參數。
 
 ---
 
-## MCP Server（Claude Code / Cursor / OpenClaw）
+## MCP 整合
 
-讓 AI Agent 直接透過 MCP 協定操作知識庫：
+安裝 MCP extras 並啟動 server：
 
 ```bash
-# 安裝 MCP 依賴
-pip install "vault-for-llm[mcp]"
-
-# 啟動（在含有 guardrails.db 的專案目錄執行）
-vault-mcp
-
-# 或指定路徑
+pip install -e ".[mcp]"
 vault-mcp --project-dir /path/to/your/project
 ```
 
-加入 Claude Code 設定（`~/.claude/claude_desktop_config.json`）：
+MCP server 設定範例：
 
 ```json
 {
@@ -286,118 +222,66 @@ vault-mcp --project-dir /path/to/your/project
 }
 ```
 
-可用工具：`vault_search`、`vault_add`、`vault_get`、`vault_list`、`vault_stats`
+目前 MCP tools 包含：
+
+- `vault_search`
+- `vault_add`
+- `vault_stats`
+- `vault_map_show`
+- `vault_read_range`
+- 若設定了可選 Supabase sync，還有 `vault_remote_map_show` / `vault_remote_read_range`
 
 ---
 
-## 知識檔案格式
+## 可選 Supabase sync
 
-所有 `.md` 檔案使用 YAML frontmatter：
+Vault-for-LLM 的核心用法是本地-only。Supabase 支援是給需要團隊同步或遠端讀取的人使用。
 
-```yaml
----
-title: "知識標題"
-category: "concept|technique|workflow|lesson|error|comparison"
-layer: "L0|L1|L2|L3"
-tags: ["標籤1", "標籤2"]
-trust: 0.0-1.0
-source: "來源說明"
-created: "YYYY-MM-DD"
----
-```
-
-### 信任評分指南
-
-| 範圍 | 含義 |
-|------|------|
-| 0.9+ | 經實際驗證 |
-| 0.7–0.8 | 來自文件，高信心 |
-| 0.5–0.6 | 一般知識，尚未驗證 |
-| < 0.3 | 未驗證，需要審核 |
-
----
-
-## 編譯器
+本地 SQLite database 仍是 source of truth；Supabase 是同步目標。
 
 ```bash
+# alpha 階段請手動安裝
+pip install supabase
+
+# 設定 Supabase credentials 後，依需求執行 sync script
+python scripts/sync_to_supabase.py --document-map
+```
+
+---
+
+## 目前成熟度
+
+Vault-for-LLM 仍是 alpha：
+
+- 公開 CLI 是 `vault`，但部分內部名稱仍含 `guardrails`。
+- convergence、cross-validation、Search QA、skills、Supabase sync 等進階功能仍在演進。
+- 預設安裝方式是從原始碼本地開發。
+- 穩定版前，API 與 schema 可能變動。
+
+如果你想走最穩路線，先從這四個指令開始：
+
+```bash
+vault init
+vault add
 vault compile
+vault search
 ```
 
-執行流程：
-- `raw/` → 資料庫（以內容雜湊去重）
-- `raw/` → `compiled/`（AAAK 6 倍壓縮）
-- 提取原子主張，附 source_span 來源標註
-- 自動 L2 更新 + lint 健康檢查 + git commit
-
 ---
 
-## 技術棧
+## 開發
 
-| 元件 | 技術 | 原因 |
-|------|------|------|
-| 資料庫 | SQLite + sqlite-vec | 零設定、可攜帶、向量搜尋 |
-| 嵌入模型 | ONNX Runtime（~150MB） | 不需 PyTorch/GPU |
-| 搜尋 | 混合（關鍵字 + 向量 + 圖譜擴展） | 兩全其美 |
-| 圖譜 | SQLite（實體 + 邊 + 2-hop CTE） | 輕量關係追蹤 |
-| 壓縮 | AAAK 格式 | 6 倍大小縮減 |
-| 驗證 | 跨家族 LLM + 收斂檢查 | 單一模型抓不到的，交叉驗證抓 |
-
----
-
-## 系統需求
-
-- Python 3.10+
-- ~150MB（ONNX 嵌入模型，選用）
-- 不需要 GPU、不需要 Docker、不需要雲端帳號
-
----
-
-## 常見問題
-
-**Q：我需要使用全部四層嗎？**
-A：L0+L1 是必要的（AI 需要知道你是誰）。L2+L3 是選用的，但強烈建議使用。
-
-**Q：Token 成本？**
-A：L0+L1 每次對話注入約 500-800 tokens。L3 使用 AAAK 壓縮 — 僅需原始 token 成本的 1/6。
-
-**Q：信任評分？**
-A：使用者自訂 = 1.0、已驗證 = 0.9、文件來源 = 0.7、未驗證 = 0.5。知識衝突時，AI 優先信任較高分數。
-
----
-
-## 疑難排解
-
-### sqlite-vec 找不到
 ```bash
-pip install sqlite-vec
-# 如果失敗，可能需要從原始碼編譯
-pip install sqlite-vec --no-binary :all:
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+python -m pytest -q
 ```
 
-### ONNX 模型下載失敗
-```bash
-# 手動下載
-python3 -c "
-from guardrails_lite.guardrails_embed import ONNXEmbeddingProvider
-e = ONNXEmbeddingProvider(model_key='mix')
-e._ensure_model()
-"
-```
-
-### Ollama 無法連線
-```bash
-# 檢查 Ollama 是否運行中
-curl http://localhost:11434/api/tags
-# 確認已安裝嵌入模型
-ollama pull nomic-embed-text
-```
+部分測試路徑會需要 ONNX、MCP 或 Supabase 等可選依賴。
 
 ---
 
 ## 授權
 
-MIT License — 詳見 [LICENSE](LICENSE)。
-
----
-
-*為開發者打造 — 讓你的 AI Agent 真正記住事情。*
+MIT

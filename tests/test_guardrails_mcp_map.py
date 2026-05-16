@@ -337,6 +337,56 @@ def test_handle_tool_call_routes_document_map_tools(tmp_path, monkeypatch):
     assert "3|## Tool-gated Reading" in read_payload["content"]
 
 
+def test_public_vault_mcp_aliases_are_listed_and_routed(tmp_path, monkeypatch):
+    db_path, knowledge_id = _create_db_with_entry(tmp_path)
+    monkeypatch.setattr(guardrails_mcp, "DB_PATH", str(db_path))
+
+    tool_names = {tool["name"] for tool in guardrails_mcp.TOOLS}
+    assert "vault_search" in tool_names
+    assert "vault_add" in tool_names
+    assert "vault_stats" in tool_names
+    assert "vault_map_show" in tool_names
+    assert "vault_read_range" in tool_names
+    # Legacy names stay available while the project is alpha.
+    assert "guardrails_search" in tool_names
+
+    show_response = guardrails_mcp.handle_tool_call(
+        "vault_map_show",
+        {"knowledge_id": knowledge_id, "compact": True},
+    )
+    show_payload = json.loads(show_response["result"])
+    assert show_payload["entry_id"] == knowledge_id
+
+    read_response = guardrails_mcp.handle_tool_call(
+        "vault_read_range",
+        {"knowledge_id": knowledge_id, "line_start": 3, "line_end": 4},
+    )
+    read_payload = json.loads(read_response["result"])
+    assert read_payload["citation"] == f"#{knowledge_id} Example L3-L4"
+
+
+def test_set_project_dir_points_mcp_at_project_db(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    original = guardrails_mcp.DB_PATH
+    try:
+        guardrails_mcp._set_project_dir(project)
+        assert guardrails_mcp.DB_PATH == str((project / "guardrails.db").resolve())
+    finally:
+        guardrails_mcp.DB_PATH = original
+
+
+def test_mcp_server_info_uses_public_vault_name(capsys, monkeypatch):
+    messages = iter([
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize"}),
+    ])
+    monkeypatch.setattr("sys.stdin", messages)
+    guardrails_mcp.run_stdio()
+    response = json.loads(capsys.readouterr().out.strip())
+    assert response["result"]["serverInfo"]["name"] == "vault-mcp"
+
+
+
 def test_guardrails_remote_map_show_uses_synced_supabase_nodes():
     payload = guardrails_mcp._guardrails_remote_map_show_payload(42, sb_client=_remote_fake_client())
 

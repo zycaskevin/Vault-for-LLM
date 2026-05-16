@@ -23,6 +23,20 @@ Vault-for-LLM 解決的是這件事：
 
 ---
 
+## 它和一般知識庫有什麼不同？
+
+Vault-for-LLM 不只是另一個向量資料庫。它正在往 **Agent 記憶品質控制層** 演進：
+
+- Agent 需要時，能不能找到正確記憶？
+- 能不能只讀相關段落，而不是把整篇文件塞進上下文？
+- 能不能判斷一條知識是否完整、過期、重複，或缺少操作細節？
+- 團隊能不能在修改 retrieval 邏輯前後，量化搜尋品質有沒有退步？
+- 可重複使用的 Agent workflow，能不能變成技能共享，而不是每個專案重新摸索？
+
+換句話說：一般 RAG 重點是「把資料找出來」；Vault-for-LLM 更關心的是「這些記憶能不能被 Agent 正確使用」。
+
+---
+
 ## 核心原則
 
 - **本地優先**：SQLite 是 source of truth；核心功能不需要雲端。
@@ -48,6 +62,23 @@ Vault-for-LLM 解決的是這件事：
 | 品質工具 | lint、freshness、convergence、cross-validation、dedup、Search QA snapshot |
 | 可選遠端同步 | Supabase sync scripts，適合團隊或遠端讀取 |
 | 技能共享 | 實驗中的 `vault skill` 技能市場命令 |
+
+---
+
+## 品質工具發展方向
+
+這些功能目前已經存在，但仍屬 alpha，應該把它們視為品質保證工具，而不是完整託管平台：
+
+| 工具 | 用途 | 成熟度 |
+|---|---|---|
+| Document Map | 導航章節/主張，並用 citation 讀取定界原文範圍 | 可用，仍在演進 |
+| Search QA | 跑固定查詢集，比較 retrieval 修改前後的指標 | 可用於 deterministic regression checks |
+| 收斂檢查 | 判斷知識是否具備定義、操作流程、邊界案例 | 實驗性 |
+| 交叉驗證 | 用不同模型家族驗證抽取出的 claims | 實驗性 / 依賴可選模型 |
+| Freshness + dedup | 標記過期知識、偵測重複條目 | 實驗性 |
+| Skill registry | push/search/pull 可重複使用的 Agent workflows | 實驗性 |
+
+目前最穩定的路徑仍是核心流程：`vault init` → `vault add` → `vault compile` → `vault search` → `vault-mcp`。
 
 ---
 

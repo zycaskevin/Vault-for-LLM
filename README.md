@@ -23,6 +23,20 @@ The goal is not to replace your notes app. The goal is to make your notes **usab
 
 ---
 
+## What makes it different
+
+Vault-for-LLM is not just another vector store. It is evolving into an **agent memory QA layer**:
+
+- Can the agent find the right memory when it needs it?
+- Can it read only the relevant section instead of dumping whole documents into context?
+- Can it tell whether a knowledge entry is complete, stale, duplicated, or under-specified?
+- Can teams measure search quality before and after changing retrieval logic?
+- Can reusable agent workflows be shared as skills instead of rediscovered in every project?
+
+In other words: regular RAG focuses on retrieval; Vault-for-LLM focuses on whether memory can be **used correctly by agents**.
+
+---
+
 ## Core principles
 
 - **Local by default** — SQLite is the source of truth. No cloud is required for core usage.
@@ -48,6 +62,23 @@ The goal is not to replace your notes app. The goal is to make your notes **usab
 | Quality tools | lint, freshness, convergence, cross-validation, dedup, Search QA snapshots |
 | Optional remote sync | Supabase sync scripts for teams or remote read paths |
 | Skill sharing | experimental skill marketplace commands under `vault skill` |
+
+---
+
+## Quality tools roadmap
+
+These features exist today, but they are still alpha and should be treated as quality-assurance tools rather than a fully managed platform:
+
+| Tool | Purpose | Maturity |
+|---|---|---|
+| Document Map | Navigate sections/claims and read bounded source ranges with citations | usable, still evolving |
+| Search QA | Run fixed query sets and compare before/after retrieval metrics | usable for deterministic regression checks |
+| Convergence checks | Detect whether a knowledge entry has enough definition, procedure, and edge-case detail | experimental |
+| Cross-validation | Verify extracted claims across different model families | experimental / optional-model dependent |
+| Freshness + dedup | Mark stale entries and detect repeated knowledge | experimental |
+| Skill registry | Push/search/pull reusable agent workflows | experimental |
+
+The stable path is still the core loop: `vault init` → `vault add` → `vault compile` → `vault search` → `vault-mcp`.
 
 ---
 

@@ -68,17 +68,12 @@ This keeps the agent prompt small while still making deeper memory available whe
 
 ## Installation
 
-### Current alpha install: from source
-
-Vault-for-LLM is not published on PyPI yet. Install from the repository:
+### Install from PyPI
 
 ```bash
-git clone https://github.com/zycaskevin/Vault-for-LLM.git
-cd Vault-for-LLM
-
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install vault-for-llm
 
 vault doctor
 ```
@@ -88,7 +83,7 @@ vault doctor
 Keyword search works with the base install. For local ONNX embeddings:
 
 ```bash
-pip install -e ".[semantic]"
+pip install "vault-for-llm[semantic]"
 vault install-embedding --model mix
 ```
 
@@ -102,8 +97,18 @@ vault config set embedding.model nomic-embed-text
 ### Optional MCP server
 
 ```bash
-pip install -e ".[mcp]"
+pip install "vault-for-llm[mcp]"
 vault-mcp --project-dir /path/to/your/project
+```
+
+### Development install from source
+
+```bash
+git clone https://github.com/zycaskevin/Vault-for-LLM.git
+cd Vault-for-LLM
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
 ```
 
 ---
@@ -199,7 +204,7 @@ Run `vault <command> --help` for command-specific options.
 Install MCP extras and start the server:
 
 ```bash
-pip install -e ".[mcp]"
+pip install "vault-for-llm[mcp]"
 vault-mcp --project-dir /path/to/your/project
 ```
 
@@ -249,7 +254,7 @@ Vault-for-LLM is alpha software:
 
 - Internal package, module, database, and MCP tool names are Vault-branded.
 - Advanced features such as convergence, cross-validation, Search QA, skills, and Supabase sync are evolving.
-- The default install is intended for local development from source.
+- The default install is available from PyPI; source installs are for development.
 - APIs and schemas may change before a stable release.
 
 If you want the most stable path, start with:

@@ -68,17 +68,12 @@ Markdown raw/  →  vault compile  →  SQLite database  →  vault search / MCP
 
 ## 安裝
 
-### 目前 Alpha：從原始碼安裝
-
-Vault-for-LLM 目前尚未發布到 PyPI。請先從 GitHub repository 安裝：
+### 從 PyPI 安裝
 
 ```bash
-git clone https://github.com/zycaskevin/Vault-for-LLM.git
-cd Vault-for-LLM
-
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install vault-for-llm
 
 vault doctor
 ```
@@ -88,7 +83,7 @@ vault doctor
 基礎安裝已支援關鍵字搜尋。如果要使用本地 ONNX embedding：
 
 ```bash
-pip install -e ".[semantic]"
+pip install "vault-for-llm[semantic]"
 vault install-embedding --model mix
 ```
 
@@ -102,8 +97,18 @@ vault config set embedding.model nomic-embed-text
 ### 可選：MCP server
 
 ```bash
-pip install -e ".[mcp]"
+pip install "vault-for-llm[mcp]"
 vault-mcp --project-dir /path/to/your/project
+```
+
+### 開發者：從原始碼安裝
+
+```bash
+git clone https://github.com/zycaskevin/Vault-for-LLM.git
+cd Vault-for-LLM
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
 ```
 
 ---
@@ -199,7 +204,7 @@ your-project/
 安裝 MCP extras 並啟動 server：
 
 ```bash
-pip install -e ".[mcp]"
+pip install "vault-for-llm[mcp]"
 vault-mcp --project-dir /path/to/your/project
 ```
 
@@ -249,7 +254,7 @@ Vault-for-LLM 仍是 alpha：
 
 - 內部 package、module、database 與 MCP tool 名稱已統一為 Vault 品牌。
 - convergence、cross-validation、Search QA、skills、Supabase sync 等進階功能仍在演進。
-- 預設安裝方式是從原始碼本地開發。
+- 預設安裝方式已可使用 PyPI；從原始碼安裝主要給開發者使用。
 - 穩定版前，API 與 schema 可能變動。
 
 如果你想走最穩路線，先從這四個指令開始：

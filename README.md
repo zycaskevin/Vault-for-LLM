@@ -1,189 +1,287 @@
-# Guardrails 百科（內部主庫）
+# Vault-for-LLM
 
-> Vault user 的個人知識中樞 — 四層分層記憶系統，336+ 筆知識 + 254 筆技能，Supabase + SQLite 雙引擎。
+**English | [繁體中文](README.zh-Hant.md) | [简体中文](README.zh-CN.md)**
 
-⚠️ **給 AI agent：這是主庫。** `~/Vault-for-LLM/` 是從這個庫「閹割」出去的開源版（去敏感內容、換品牌名 `vault` CLI）。搜尋知識時優先讀這個庫，別搞錯。
-
----
-
-## 與其他庫的關係
-
-| 目錄 | 是什麼 | 別搞錯 |
-|---|---|---|
-| **`~/Guardrails-knowledge/`** ← 你在這裡 | **主庫**（336+ 知識 + 254 技能，schema v5） | 這是唯一真實來源 |
-| `~/Vault-for-LLM/` | 開源版（從主庫閹割、去敏感內容、品牌改名 `vault`） | 不是主庫，知識不完整 |
-| `~/.agent-runtime/Guardrails/` | Graphify / L2 context 相關目錄 | 不是主知識庫；查知識仍以本 repo 為準 |
+> Local-first memory for LLM agents.
+>
+> Vault-for-LLM creates a portable SQLite knowledge vault for your projects and AI agents. Add Markdown notes, compile them into searchable structured memory, and let agents query the vault through the `vault` CLI or the `vault-mcp` server.
 
 ---
 
-## 架構
+## Why this exists
 
-```
-L0 身份    → identity.md（每次對話注入）
-L1 核心事實 → current-projects.md（每次對話注入）
-L2 脈絡    → recent-sessions/（每天自動更新）
-L3 深度知識 → SQLite guardrails.db（keyword + vector + graph 混合搜尋）+ Supabase 同步
-```
+LLM agents are powerful, but most of them forget project context between sessions. They lose decisions, repeated mistakes, user preferences, debugging history, and hard-won operational knowledge.
 
----
+Vault-for-LLM gives an agent a simple local memory layer:
 
-## AI Agent 讀取指南
+1. You write knowledge as Markdown.
+2. `vault compile` stores it in a local SQLite database.
+3. Agents search it only when needed, instead of stuffing everything into every prompt.
+4. MCP-compatible agents can query the vault during a conversation.
 
-**每次對話：**
-1. 讀 `L0-identity/identity.md`（用戶身份）
-2. 讀 `L1-core-facts/current-projects.md`（當前專案）
-
-**需要查知識時：**
-```bash
-# 優先 CLI
-guardrails search "query"
-
-# 或用 MCP
-mcp_guardrails_guardrails_search query="query"
-
-# 或用 rg 搜 raw/ compiled/
-rg "關鍵字" raw/ compiled/
-```
-
-**做完有價值的工作後：**
-1. 寫入 `raw/` 一條新知識（YAML frontmatter）
-2. 執行 `guardrails compile`
+The goal is not to replace your notes app. The goal is to make your notes **usable by agents**.
 
 ---
 
-## 近期核心系統入口（給 AI Agent）
+## Core principles
 
-### agent runtime Dashboard — 多 Agent 可觀測性儀表板
-
-- **外網入口**：https://dashboard.assistantai.dev
-- **本機入口**：http://localhost:3460
-- **服務**：`agent-runtime-dashboard.service`
-- **本地路徑**：`~/.agent-runtime/dashboard/oa-cli/`
-- **用途**：集中查看 assistant / Nana / Harness / 其他 profile 的狀態、cron 執行、Harness Gate、Token 預算、Guardrails 品質。
-- **相關百科條目**：
-  - `#333 agent runtime Dashboard — 多 Agent 共享可觀測性儀表板`
-  - `#335 agent runtime Dashboard 前端繁體中文化與六階段閉環設計`
-  - `#336 agent runtime Dashboard Supabase 寫入範例 — Agent 狀態同步`
-
-常用驗證：
-
-```bash
-systemctl is-active agent-runtime-dashboard
-curl -s -o /dev/null -w "%{http_code}" https://dashboard.assistantai.dev/
-cd ~/.agent-runtime/dashboard/oa-cli/dashboard-src && npx tsc --noEmit
-```
-
-### Handoff Protocol — 跨 Profile 任務交接
-
-- **腳本**：
-  - `~/.agent-runtime/scripts/kanban_handoff.py`
-  - `~/.agent-runtime/scripts/handoff_dispatcher.py`
-- **資料庫**：`~/.agent-runtime/kanban/kanban.db`
-- **用途**：assistant / Harness Verify / Harness Correct / Nana CRM 之間建立交接事件，並推送到 Dashboard Harness Gate。
-- **相關百科條目**：`#334 Handoff Protocol — agent runtime 跨 Profile 任務交接協議`
-
-最小用法：
-
-```python
-import sys
-sys.path.insert(0, "/home/user/.agent-runtime/scripts")
-import kanban_handoff as k
-
-k.init()
-k.create_handoff(
-    from_agent="assistant",
-    to_agent="harness-verify",
-    summary="assistant 完成任務，請驗證",
-    verdict="pending"
-)
-```
+- **Local by default** — SQLite is the source of truth. No cloud is required for core usage.
+- **Works without embeddings** — keyword search works first; semantic search is optional.
+- **Agent-oriented memory** — split always-needed facts from searchable deep knowledge.
+- **Bounded retrieval** — Document Map tools help agents read the right section instead of dumping entire files into context.
+- **Optional sync** — Supabase support is an optional sync/read target, not required infrastructure.
+- **Alpha, CLI-first** — this is a developer-facing tool. Expect rough edges and evolving APIs.
 
 ---
 
-## Dashboard / Handoff 相關 Supabase 表
+## What it can do
 
-其他 Agent 要同步狀態到 Dashboard，優先寫入以下五表：
-
-| 表 | 用途 |
+| Area | Capability |
 |---|---|
-| `agent-runtime_cron_runs` | cron 執行結果、成功/失敗/timeout |
-| `agent-runtime_agent_sessions` | agent session 狀態、tool calls、tokens、harness score |
-| `agent-runtime_harness_events` | Harness Gate、R 規則、handoff、verify/correct/evolve 事件 |
-| `agent-runtime_token_usage` | Token 預算與用量（`date` 唯一，重複會 409） |
-| `agent-runtime_guardrails_health` | Guardrails 收斂率、新鮮度、矛盾數（`check_date` 唯一） |
-
-欄位與寫入範例見百科 `#336`。
-
----
-
-## CLI 參考
-
-| 命令 | 說明 |
-|---|---|
-| `guardrails search "query"` | 混合搜尋（keyword + vector + graph） |
-| `guardrails add "Title" --content "..."` | 新增知識 |
-| `guardrails compile` | 編譯 raw/ → db + compiled/ |
-| `guardrails list` | 列出知識 |
-| `guardrails stats` | 統計（含 skill_count） |
-| `guardrails lint` | 品質檢查 |
-| `guardrails doctor` | 環境診斷 |
-| `guardrails graph build` | 建立知識圖譜 |
-| `guardrails skill push --file SKILL.md` | 註冊技能到市場 |
-| `guardrails skill search "query"` | 搜尋技能 |
-| `guardrails skill pull "name"` | 下載技能 |
+| Knowledge storage | Markdown `raw/` files compiled into local SQLite |
+| Search | keyword search, optional vector search, hybrid search |
+| Embeddings | optional ONNX Runtime or Ollama embeddings |
+| Memory layers | L0 identity, L1 core facts, L2 recent context, L3 deep knowledge |
+| Knowledge graph | inferred entities/edges and graph expansion |
+| Document Map | section/claim navigation and bounded `read_range` citations |
+| MCP | `vault-mcp` exposes search/add/stats/map/read tools to compatible agents |
+| Quality tools | lint, freshness, convergence, cross-validation, dedup, Search QA snapshots |
+| Optional remote sync | Supabase sync scripts for teams or remote read paths |
+| Skill sharing | experimental skill marketplace commands under `vault skill` |
 
 ---
 
-## 目錄結構
+## Architecture
 
-```
-Guardrails-knowledge/
-├── README.md               ← 你在這裡
-├── L0-identity/            ← 身份
-├── L1-core-facts/          ← 核心事實
-├── L2-context/             ← 動態上下文
-├── L3-knowledge/           ← 深度知識
-├── raw/                    ← 原始知識輸入
-├── compiled/               ← AAAK 壓縮備份
-├── guardrails.db           ← SQLite 主資料庫（schema v5）
-├── scripts/                ← 維護腳本
-└── templates/              ← 空白模板
+```text
+L0 Identity        → who the user/project is; loaded every session
+L1 Core Facts      → stable environment and project facts; loaded every session
+L2 Recent Context  → recent decisions, incidents, and working context
+L3 Deep Knowledge  → lessons, APIs, architecture, troubleshooting; searched on demand
+
+Markdown raw/  →  vault compile  →  SQLite database  →  vault search / MCP tools
 ```
 
+This keeps the agent prompt small while still making deeper memory available when relevant.
+
 ---
 
-## 維護
+## Installation
+
+### Current alpha install: from source
+
+Vault-for-LLM is not published on PyPI yet. Install from the repository:
 
 ```bash
-# 編譯
-guardrails compile
+git clone https://github.com/zycaskevin/Vault-for-LLM.git
+cd Vault-for-LLM
 
-# 同步到 Supabase
-python3 scripts/sync_to_supabase.py
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
 
-# 收斂檢查
-guardrails converge
+vault doctor
+```
 
-# 新鮮度檢查
-guardrails freshness
+### Optional semantic search
+
+Keyword search works with the base install. For local ONNX embeddings:
+
+```bash
+pip install -e ".[semantic]"
+vault install-embedding --model mix
+```
+
+Or use an existing Ollama embedding model:
+
+```bash
+vault config set embedding.provider ollama
+vault config set embedding.model nomic-embed-text
+```
+
+### Optional MCP server
+
+```bash
+pip install -e ".[mcp]"
+vault-mcp --project-dir /path/to/your/project
 ```
 
 ---
 
-## YAML Frontmatter 格式
+## Quickstart
 
-```yaml
+```bash
+# 1. Create a vault in your project
+vault init
+
+# 2. Add a first knowledge entry
+vault add "First lesson" --content "The bug was caused by X. The fix was Y."
+
+# 3. Compile Markdown into the local SQLite vault
+vault compile
+
+# 4. Search it later
+vault search "what caused the bug"
+```
+
+You can also add Markdown files directly under `raw/` and run `vault compile`.
+
+Example entry:
+
+```markdown
 ---
-title: "知識標題"
-category: "concept|technique|workflow|lesson|error|comparison"
-layer: 0-3
-tags: ["tag1", "tag2"]
-trust: 0.0-1.0
-source: "來源"
-created: "YYYY-MM-DD"
+title: "Postgres migration pitfall"
+category: "error"
+layer: L3
+tags: ["postgres", "migration"]
+trust: 0.8
+source: "project-notes"
+created: "2026-05-16"
 ---
+
+# Postgres migration pitfall
+
+What broke, why it broke, and how to avoid it next time.
 ```
 
 ---
 
-*最後更新：2026-04-30 — 修復品牌混淆（不再自稱 Vault-for-LLM）*
+## Directory structure
+
+```text
+your-project/
+├── L0-identity/              # user or project identity loaded every session
+│   └── identity.md
+├── L1-core-facts/            # stable facts loaded every session
+│   └── current-projects.md
+├── L2-context/               # recent context, decisions, incidents
+│   └── recent-sessions/
+├── L3-knowledge/             # deep knowledge organized for retrieval
+├── raw/                      # source Markdown knowledge entries
+├── compiled/                 # compiled / compressed knowledge artifacts
+├── guardrails.db             # local SQLite database generated by vault
+└── templates/                # starter templates
+```
+
+### Historical naming note
+
+Some internal module and file names still use the historical `vault` / `guardrails.db` names. The public product name is **Vault-for-LLM**, and the public commands are `vault` and `vault-mcp`. The legacy names are kept for compatibility while the project is still alpha.
+
+---
+
+## CLI reference
+
+| Command | Purpose |
+|---|---|
+| `vault init` | Initialize a project vault |
+| `vault doctor` | Check local environment and optional dependencies |
+| `vault add "Title" --content "..."` | Add one knowledge entry |
+| `vault add "Title" --file note.md` | Add an entry from a Markdown file |
+| `vault import long-doc.md` | Import and chunk a long document |
+| `vault compile` | Compile `raw/` into SQLite + `compiled/` artifacts |
+| `vault search "query"` | Search the vault |
+| `vault search "query" --graph-expand 2` | Search with graph expansion |
+| `vault list` | List knowledge entries |
+| `vault stats` | Show vault statistics |
+| `vault lint` | Run quality checks |
+| `vault map build` | Build/backfill Document Map rows |
+| `vault map show <id>` | Show a knowledge entry's section map |
+| `vault map read <id> --lines 10-30` | Read a bounded source range |
+| `vault graph build` | Build the inferred knowledge graph |
+| `vault graph show` | Show graph statistics |
+| `vault converge` | Experimental convergence/self-questioning check |
+| `vault cross-validate` | Experimental cross-model validation |
+| `vault freshness` | Experimental freshness/review scheduling |
+| `vault dedup` | Detect or merge duplicate entries |
+| `vault search-qa run` | Run Search QA metrics snapshot |
+| `vault skill search "query"` | Search experimental skill marketplace entries |
+
+Run `vault <command> --help` for command-specific options.
+
+---
+
+## MCP integration
+
+Install MCP extras and start the server:
+
+```bash
+pip install -e ".[mcp]"
+vault-mcp --project-dir /path/to/your/project
+```
+
+Example MCP server config:
+
+```json
+{
+  "mcpServers": {
+    "vault": {
+      "command": "vault-mcp",
+      "args": ["--project-dir", "/path/to/your/project"]
+    }
+  }
+}
+```
+
+Current MCP tools include:
+
+- `vault_search`
+- `vault_add`
+- `vault_stats`
+- `vault_map_show`
+- `vault_read_range`
+- `vault_remote_map_show` / `vault_remote_read_range` when optional Supabase sync is configured
+
+---
+
+## Optional Supabase sync
+
+Core Vault-for-LLM usage is local-only. Supabase support is for teams or remote read paths that want a synced copy of local SQLite data.
+
+The local SQLite database remains the source of truth. Supabase is a sync target.
+
+```bash
+# install manually while this is alpha
+pip install supabase
+
+# configure Supabase credentials in your environment, then run sync scripts as needed
+python scripts/sync_to_supabase.py --document-map
+```
+
+---
+
+## Current maturity
+
+Vault-for-LLM is alpha software:
+
+- The public CLI is `vault`, but some internal names still contain `guardrails`.
+- Advanced features such as convergence, cross-validation, Search QA, skills, and Supabase sync are evolving.
+- The default install is intended for local development from source.
+- APIs and schemas may change before a stable release.
+
+If you want the most stable path, start with:
+
+```bash
+vault init
+vault add
+vault compile
+vault search
+```
+
+---
+
+## Development
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+python -m pytest -q
+```
+
+Some optional test paths require optional dependencies such as ONNX, MCP, or Supabase.
+
+---
+
+## License
+
+MIT

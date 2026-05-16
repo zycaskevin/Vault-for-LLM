@@ -1,684 +1,124 @@
-# Guardrails 百科 Document Map 升級計畫
+# Document Map Guide
 
-> **For agent runtime:** 如果要開始實作，先用 `subagent-driven-development` 拆任務；每個 Task 由 fresh subagent 執行，主 agent 只做規格審查與驗收。
+Document Map is Vault-for-LLM's bounded-reading layer for long knowledge entries.
 
-**Goal:** 把 Guardrails 從「整篇知識條目搜尋」升級成「先看知識地圖、再工具化讀局部原文」的 Agent-native 百科。
-
-**Architecture:** 借鑑 PageIndex 的核心洞察：Document Map + tool-gated reading。保留現有 SQLite + embedding + graph + Supabase 架構，不重寫系統；新增一層 `knowledge_nodes` 結構索引，讓 Agent 先讀 metadata/structure，再按行號讀取局部內容並帶引用回答。
-
-**Tech Stack:** Python、SQLite、sqlite-vec、Vault for LLM CLI、MCP server、Supabase sync、現有 Graph / Reranker / AAAK claims。
-
-**狀態日期:** 2026-05-08
+Instead of asking an agent to read an entire long note, Vault can parse the note into sections and claims. Agents can first inspect the map, then read a specific line range with a stable citation.
 
 ---
 
-## 0. 現況盤點
+## Problem
 
-### 已有能力
+Search results are good for discovery, but they are not enough for citation-safe answers:
 
-| 模組 | 現況 | 來源 |
-|---|---|---|
-| SQLite 主庫 | `guardrails.db` schema v5，363 條本地知識 | `mcp_guardrails_guardrails_stats` / SQLite |
-| Supabase 同步 | local → Supabase 單向同步已可用 | `scripts/sync_to_supabase.py` |
-| Search | keyword / vector / hybrid / graph_expand / rerank 已存在 | `vault/guardrails_search.py` |
-| AAAK claims | `simple_aaak_compress()` 已提取最多 10 條 claims + 行號 | `vault/guardrails_compile.py` |
-| Convergence / freshness | DB 欄位與腳本已存在；目前 346 complete / 6 partial / 10 unknown，avg freshness 0.858 | stats |
-| Graph | 21,926 edges，479 entities；God nodes 是 `GuardrailsDB`、`EmbeddingProvider`、`GuardrailsGraph`、`GuardrailsSearch` | `graphify-out/GRAPH_REPORT.md` |
+1. A search result may only show a short preview.
+2. A long note may contain many unrelated sections.
+3. Agents can accidentally treat search snippets as verified citations.
+4. Dumping full files into context is expensive and noisy.
 
-### 目前真正的缺口
-
-1. **知識粒度仍偏「整篇」**：AAAK claims 有行號，但沒有可查詢的章節樹 / 節點索引。
-2. **Agent 讀取不受控**：搜尋結果仍容易把整篇 content_preview 塞回上下文，沒有強制工具化局部讀取。
-3. **引用能力不穩定**：best_claim 有行號來源，但回答流程沒有硬性要求 `line_start-line_end` citation。
-4. **搜尋結果可解釋性不足**：知道哪篇相關，但不知道「哪一節、哪幾行」最相關。
-5. **多來源同步風險**：MCP add 若不回寫本地 raw/db，會被 local sync 覆蓋；此點已有百科踩坑條目，但流程仍需產品化成守門機制。
+Document Map creates an intermediate navigation layer.
 
 ---
 
-## 1. 核心設計：Guardrails Document Map
+## Data model
 
-### 1.1 什麼是 Document Map
+Document Map uses two local SQLite table families:
 
-每條百科知識不再只是一個 blob，而是拆成可導航地圖：
-
-```text
-Knowledge Entry
-├── metadata
-│   ├── title / layer / category / tags / trust / freshness
-│   ├── summary / source / created_at / updated_at
-│   └── content_hash
-├── structure
-│   ├── H1 / H2 / H3 節點
-│   ├── 每個節點的 summary
-│   ├── 每個節點的 line_start / line_end
-│   └── parent-child path
-├── claims
-│   ├── atomic claim
-│   ├── source_span: L12-L14
-│   └── node_id
-└── readable ranges
-    ├── get_range_content(entry_id, L12-L30)
-    └── cite: entry_id + title + line range
-```
-
-### 1.2 Agent 讀取協議
-
-將 PageIndex 的三個工具抽象映射到 Guardrails：
-
-| PageIndex 模式 | Guardrails 工具 | 用途 |
-|---|---|---|
-| `get_document_metadata` | `guardrails_get_metadata(entry_id)` | 看這條知識是否值得打開 |
-| `get_document_structure` | `guardrails_get_structure(entry_id)` | 看章節樹、節點摘要、行號範圍 |
-| `get_page_content` | `guardrails_read_range(entry_id, start_line, end_line)` | 只讀需要的局部原文 |
-
-### 1.3 設計原則
-
-- **Map first, read second**：Agent 不能第一步讀全文。
-- **Range-limited context**：每次讀取預設最多 80 行；超過必須分段。
-- **Citation required**：輸出涉及百科事實時，應附 `#id title Lx-Ly`。
-- **Vector as recall, map as reasoning**：向量負責找候選，Document Map 負責判斷和定位。
-- **Backward compatible**：不破壞現有 `knowledge` 表、AAAK、search CLI。
-- **Local-first source of truth**：所有長期知識以 `~/Guardrails-knowledge/` 本地主庫為準，再同步 Supabase。
-
----
-
-## 2. DB Schema 設計
-
-### 2.1 新增 `knowledge_nodes`
-
-```sql
-CREATE TABLE IF NOT EXISTS knowledge_nodes (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    knowledge_id    INTEGER NOT NULL,
-    node_uid        TEXT NOT NULL,
-    parent_uid      TEXT NOT NULL DEFAULT '',
-    level           INTEGER NOT NULL DEFAULT 0,
-    heading         TEXT NOT NULL DEFAULT '',
-    path            TEXT NOT NULL DEFAULT '',
-    summary         TEXT NOT NULL DEFAULT '',
-    line_start      INTEGER NOT NULL,
-    line_end        INTEGER NOT NULL,
-    token_estimate  INTEGER NOT NULL DEFAULT 0,
-    content_hash    TEXT NOT NULL DEFAULT '',
-    created_at      TEXT NOT NULL DEFAULT '',
-    updated_at      TEXT NOT NULL DEFAULT '',
-    FOREIGN KEY (knowledge_id) REFERENCES knowledge(id)
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_nodes_uid
-ON knowledge_nodes(knowledge_id, node_uid);
-
-CREATE INDEX IF NOT EXISTS idx_knowledge_nodes_knowledge
-ON knowledge_nodes(knowledge_id);
-
-CREATE INDEX IF NOT EXISTS idx_knowledge_nodes_path
-ON knowledge_nodes(path);
-```
-
-### 2.2 新增 `knowledge_claims`
-
-> 目前 claims 被塞在 `content_aaak` 裡。升級後保留 AAAK 格式，但同步寫入結構表，方便搜尋、引用、驗證。
-
-```sql
-CREATE TABLE IF NOT EXISTS knowledge_claims (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    knowledge_id    INTEGER NOT NULL,
-    node_uid        TEXT NOT NULL DEFAULT '',
-    claim_uid       TEXT NOT NULL,
-    claim           TEXT NOT NULL,
-    line_start      INTEGER NOT NULL,
-    line_end        INTEGER NOT NULL,
-    confidence      REAL NOT NULL DEFAULT 0.7,
-    source          TEXT NOT NULL DEFAULT '',
-    created_at      TEXT NOT NULL DEFAULT '',
-    FOREIGN KEY (knowledge_id) REFERENCES knowledge(id)
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_claims_uid
-ON knowledge_claims(knowledge_id, claim_uid);
-
-CREATE INDEX IF NOT EXISTS idx_knowledge_claims_knowledge
-ON knowledge_claims(knowledge_id);
-```
-
-### 2.3 可選：節點向量表
-
-第一階段先不建節點向量，避免過度工程。若搜尋品質不足，再新增：
-
-```sql
--- Phase 2 optional
--- knowledge_node_embeddings(node_id, embedding)
-```
-
----
-
-## 3. 新工具 / CLI / MCP 介面
-
-### 3.1 Python API
-
-新增檔案：`vault/guardrails_map.py`
-
-核心類：`GuardrailsMap`
-
-方法：
-
-```python
-class GuardrailsMap:
-    def build_for_entry(self, knowledge_id: int) -> dict: ...
-    def build_all(self, limit: int | None = None) -> dict: ...
-    def get_metadata(self, knowledge_id: int) -> dict: ...
-    def get_structure(self, knowledge_id: int, max_depth: int = 3) -> list[dict]: ...
-    def read_range(self, knowledge_id: int, start_line: int, end_line: int) -> dict: ...
-    def find_relevant_nodes(self, query: str, limit: int = 10) -> list[dict]: ...
-```
-
-### 3.2 CLI
-
-在 `vault/guardrails_cli.py` 新增命令：
-
-```bash
-guardrails map build --id 405
-guardrails map build --all
-guardrails map show 405
-guardrails map read 405 --lines 12-40
-guardrails map query "PageIndex Document Map"
-```
-
-### 3.3 MCP tools
-
-在 `vault/guardrails_mcp.py` 新增 tools：
-
-```text
-guardrails_get_metadata(entry_id)
-guardrails_get_structure(entry_id, max_depth=3)
-guardrails_read_range(entry_id, start_line, end_line)
-guardrails_map_query(query, limit=10)
-```
-
-### 3.4 Search 結果升級
-
-`guardrails_search.py` 搜尋結果新增欄位：
-
-```json
-{
-  "id": 405,
-  "title": "...",
-  "best_claim": "...",
-  "best_span": "L12-L14",
-  "best_node": {
-    "node_uid": "h2-core-design",
-    "heading": "核心設計",
-    "path": "摘要 > 核心設計",
-    "line_start": 12,
-    "line_end": 40
-  },
-  "recommended_next_tool": "guardrails_read_range"
-}
-```
-
----
-
-## 4. 實作路線圖
-
-## Phase A — 穩定地圖層，不動搜尋主路徑
-
-**目標：** 新增 Document Map 資料結構與 builder，但不改現有 search 行為。
-
-### Task A1: DB schema migration
-
-**Objective:** 在 `GuardrailsDB._init_tables()` 建立 `knowledge_nodes` 和 `knowledge_claims`。
-
-**Files:**
-- Modify: `vault/guardrails_db.py`
-- Test: `tests/test_document_map.py`
-
-**驗收：**
-
-```bash
-cd /home/user/Guardrails-knowledge
-conda run -n guardrails-lite python -m pytest tests/test_document_map.py -v
-sqlite3 guardrails.db ".schema knowledge_nodes"
-sqlite3 guardrails.db ".schema knowledge_claims"
-```
-
-### Task A2: Markdown section parser
-
-**Objective:** 從 `content_raw` 解析 H1/H2/H3 章節、行號範圍、parent path。
-
-**Files:**
-- Create: `vault/guardrails_map.py`
-- Test: `tests/test_document_map.py`
-
-**規則：**
-- 沒有標題的內容建立 root node。
-- H2 的 parent 是最近 H1；H3 的 parent 是最近 H2。
-- line_end 是下一個同級/上級 heading 前一行。
-- node_uid 用 slug + 行號，避免同名標題衝突。
-
-### Task A3: Claims table backfill
-
-**Objective:** 把現有 `content_aaak` 裡的 CLAIMS 解析到 `knowledge_claims`。
-
-**Files:**
-- Modify: `vault/guardrails_map.py`
-- Test: `tests/test_document_map.py`
-
-**驗收：**
-
-```bash
-conda run -n guardrails-lite guardrails map build --id 405
-sqlite3 guardrails.db "select claim,line_start,line_end from knowledge_claims where knowledge_id=405 limit 5;"
-```
-
-### Task A4: CLI read-only commands
-
-**Objective:** 增加 `guardrails map show/read/query`。
-
-**Files:**
-- Modify: `vault/guardrails_cli.py`
-- Test: `tests/test_document_map_cli.py`
-
-**驗收：**
-
-```bash
-guardrails map show 405
-guardrails map read 405 --lines 1-40
-guardrails map query "tool-gated reading"
-```
-
----
-
-## Phase B — Tool-gated Reading，讓 Agent 先看地圖再讀局部
-
-**目標：** 搜尋結果不再只是整篇 preview，而是回傳最相關節點與下一步工具建議。
-
-### Task B1: Map-aware search result enrichment
-
-**Objective:** `GuardrailsSearch.search()` 結果新增 `best_span`、`best_node`、`recommended_next_tool`。
-
-**Files:**
-- Modify: `vault/guardrails_search.py`
-- Test: `tests/test_search_map_integration.py`
-
-**驗收：** 搜 `PageIndex` 時，結果 #405 必須附帶命中節點與行號。
-
-### Task B2: MCP tools
-
-**Objective:** 暴露 metadata / structure / read_range / map_query 四個 MCP 工具。
-
-**Files:**
-- Modify: `vault/guardrails_mcp.py`
-- Test: `tests/test_guardrails_mcp_map.py`
-
-**驗收：** agent runtime MCP tool 能讀 #405 的 structure，再讀指定 line range。
-
-### Task B3: Range limit and citation guard
-
-**Objective:** `read_range` 預設最多 80 行；超過回錯誤並提示分段。回傳固定 citation。
-
-**Example return:**
-
-```json
-{
-  "entry_id": 405,
-  "title": "PageIndex 的可借鑑價值：Document Map + Tool-gated Reading",
-  "range": "L1-L40",
-  "citation": "#405 PageIndex 的可借鑑價值 L1-L40",
-  "content": "..."
-}
-```
-
----
-
-### Sprint 3 Addendum: Agent behavior loop + citation policy harness
-
-Sprint 3 deliberately closes the **agent behavior gap** before adding heavier compile / Supabase work. Sprint 2 already exposed the primitives; Sprint 3 makes the intended flow testable and machine-guided.
-
-**Required loop:**
-
-```text
-guardrails_search → guardrails_map_show → guardrails_read_range → final answer
-```
-
-**Contracts:**
-
-1. Search-result citations are **navigation hints only**. They may tell an agent where to inspect next, but they are not valid final-answer support by themselves.
-2. Final-answer citations must exactly match a `citation` returned by `guardrails_read_range`.
-3. Deterministic harness tests must reject:
-   - citation-free answers when citation is required;
-   - invented line citations;
-   - search-only citation claims;
-   - `read_range` calls without a prior `map_show` for the same `knowledge_id`;
-   - mismatched `knowledge_id` across search / map / read events.
-4. Tool payloads should include additive guidance fields (`next_action`, `next_actions`) without removing existing fields.
-5. Compact payload mode is opt-in (`compact=true`) and must not change default response shapes.
-6. Failure payloads preserve the legacy `error` value while adding `failure_mode` and actionable `next_action` metadata.
-
-**Files:**
-
-- Create: `vault/agent_policy.py`
-- Create: `tests/test_agent_behavior_policy.py`
-- Modify: `vault/guardrails_mcp.py`
-- Modify: `vault/guardrails_search.py`
-- Extend: `tests/test_guardrails_mcp_map.py`, `tests/test_search_map_integration.py`
-
-**Verification:**
-
-```bash
-/home/user/miniconda3/envs/guardrails-lite/bin/python -m pytest \
-  tests/test_agent_behavior_policy.py \
-  tests/test_guardrails_mcp_map.py \
-  tests/test_search_map_integration.py -q
-/home/user/miniconda3/envs/guardrails-lite/bin/python -m pytest -q
-git diff --check
-```
-
-### Sprint 4A Addendum: Supabase Document Map sync + compile hook
-
-Sprint 4A delivered the first remote-sync slice while preserving the Sprint 3 agent behavior contract.
-
-**Delivered contracts:**
-
-1. SQLite remains the source of truth; Supabase is an explicit sync target.
-2. `guardrails compile` refreshes Document Map rows for successful non-dry-run new/update entries.
-3. Dry-run and unchanged/skipped entries do not rebuild Document Map rows.
-4. Duplicate cleanup removes `knowledge_nodes` / `knowledge_claims` rows before deleting duplicate `knowledge` rows, avoiding orphan map data.
-5. `scripts/sync_to_supabase.py --document-map` syncs local `knowledge_nodes` and `knowledge_claims` into Supabase tables:
-   - `guardrails_knowledge_nodes`
-   - `guardrails_knowledge_claims`
-6. Remote sync uses natural keys rather than blind append:
-   - nodes: `(knowledge_id, node_uid)`
-   - claims: `(knowledge_id, claim_uid)`
-7. Targeted tests use a fake Supabase client, so CI/local verification does not need network or credentials.
-
-**Files:**
-
-- Modify: `vault/guardrails_compile.py`
-- Modify: `scripts/sync_to_supabase.py`
-- Create: `tests/test_sprint4a_document_map_sync.py`
-- Update: `PROGRESS.md`
-
-**Verification:**
-
-```bash
-/home/user/miniconda3/envs/guardrails-lite/bin/python -m pytest \
-  tests/test_agent_behavior_policy.py \
-  tests/test_guardrails_mcp_map.py \
-  tests/test_search_map_integration.py \
-  tests/test_sprint4a_document_map_sync.py -q
-# 16 passed in 3.57s
-
-/home/user/miniconda3/envs/guardrails-lite/bin/python -m pytest -q
-# 54 passed, 2 warnings in 38.81s
-
-git diff --check
-# passed
-
-/home/user/miniconda3/bin/python -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"
-# 987 nodes, 1945 edges, 71 communities
-```
-
-**Operational note:** The `guardrails-lite` conda env cannot import `graphify`; use `/home/user/miniconda3/bin/python` for the AGENTS.md Graphify rebuild command.
-
-**Sprint 4B follow-up:** Add remote Supabase DDL/migration and remote MCP read path for Document Map tables, then extend the policy harness to cover remote trace events.
-
----
-
-## Phase C — 編譯器整合，讓每次 compile 自動更新地圖
-
-**目標：** raw 變更 → compile → AAAK / embeddings / Document Map 一起更新。
-
-### Task C1: Compile hook — DONE in Sprint 4A
-
-**Objective:** `guardrails compile` 完成每條新增/更新知識後，自動 `build_for_entry()`。
-
-**Files:**
-- Modify: `vault/guardrails_compile.py`
-- Test: `tests/test_sprint4a_document_map_sync.py`
-
-**Delivered:**
-- 新增/更新知識後呼叫 `build_document_map_for_entry()`。
-- `dry_run` 不寫主表、不刷新 map。
-- content_hash 未變而被 compiler skip 的 entry 不刷新 map。
-- duplicate cleanup 同步清理 `knowledge_nodes` / `knowledge_claims`，避免孤兒 rows。
-
-**Note:** Sprint 4A 目前讓 map build failure 直接浮出以保護資料一致性；若未來要「知識主表寫入成功但 map warning 不阻斷」，需另外加錯誤分類與測試。
-
-### Task C2: Incremental rebuild
-
-**Objective:** content_hash 未變的 entry 跳過 map rebuild。
-
-**驗收：** 連跑兩次 compile，第二次 map rebuild count = 0。
-
-### Task C3: Supabase sync schema — PARTIAL DONE in Sprint 4A
-
-**Objective:** 決定是否同步 `knowledge_nodes` / `knowledge_claims` 到 Supabase。
-
-**Decision:** 同步完整 Document Map，但採 opt-in sync，不改預設知識同步。
-
-**Delivered in Sprint 4A:**
-- `scripts/sync_to_supabase.py --document-map`
-- 目標表名：`guardrails_knowledge_nodes` / `guardrails_knowledge_claims`
-- upsert natural keys：nodes `(knowledge_id,node_uid)`；claims `(knowledge_id,claim_uid)`
-- 若遠端表不存在或無權限，腳本會輸出 actionable error，不靜默成功。
-
-**Delivered in Sprint 4B:**
-- Added `supabase/migrations/20260509_document_map_sprint4b.sql`.
-- DDL creates `guardrails_knowledge_nodes` / `guardrails_knowledge_claims` with UUID primary keys, synced `knowledge_id`, natural-key uniqueness on `(knowledge_id,node_uid)` / `(knowledge_id,claim_uid)`, line-bound checks, indexes, RLS, and `agents_rw` policy.
-- Added remote MCP read path backed by synced Supabase rows:
-  - `guardrails_remote_map_show` reads remote nodes and returns remote read next-actions.
-  - `guardrails_remote_read_range` reads bounded remote ranges, prefers remote `content_raw` when available, falls back to synced claims, and returns fixed `#<id> <title> Lx-Ly` citations.
-- Extended policy harness trace coverage so remote aliases must still follow `search → map_show → read_range → final answer with read_range citation`.
-- Review fix: fallback claim content hashes now hash the returned claim payload instead of reusing node `content_hash`.
-
----
-
-## Phase D — 搜尋品質與評測
-
-**目標：** 不只做功能，還要證明搜尋真的變準。
-
-### Task D1: 建立 Search QA Set
-
-**Files:**
-- Create: `tests/fixtures/search_queries.yaml`
-
-**最小集合：**
-
-```yaml
-- query: "PageIndex Document Map"
-  expected_id: 405
-  expected_terms: ["Document Map", "tool-gated"]
-- query: "MCP add 被 local sync 覆蓋"
-  expected_title_contains: "MCP add 與 local sync"
-- query: "agent runtime Dashboard 狀態同步表"
-  expected_terms: ["agent-runtime_guardrails_health", "agent-runtime_agent_sessions"]
-```
-
-### Task D2: Before/after metrics
-
-**Metrics:**
-
-| 指標 | 目標 |
+| Concept | Purpose |
 |---|---|
-| Top-1 hit rate | ≥ 80% |
-| Top-3 hit rate | ≥ 95% |
-| citation coverage | ≥ 90% 搜尋結果有 best_span |
-| read_range over-limit violations | 0 |
-| compile regression | `tests/test_e2e.py` 全過 |
+| `knowledge_nodes` | Section-level map: headings, line ranges, summaries |
+| `knowledge_claims` | Claim-level records connected to source spans |
 
-### Task D3: Dashboard health integration
+The local SQLite database remains the source of truth. Optional Supabase tables can mirror these rows for remote MCP reads.
 
-**Objective:** 把 Document Map 覆蓋率寫入 `agent-runtime_guardrails_health`。
+---
 
-**狀態（2026-05-09 Sprint 4C）：已完成。**
+## Agent reading loop
 
-**新增實作：**
-
-- `vault/guardrails_health.py`：從本地 SQLite 收集 Document Map health metrics。
-- `scripts/sync_to_supabase.py --health` / `--guardrails-health`：把每日 snapshot upsert 到 `agent-runtime_guardrails_health`。
-- `tests/test_guardrails_health_metrics.py`：SQLite collector + fake Supabase writer 測試，不依賴真實網路。
-
-**新指標：**
+Recommended loop:
 
 ```text
-map_coverage = entries_with_nodes / total_entries
-claim_coverage = entries_with_claims / total_entries
-citation_coverage = search_results_with_best_span / sampled_search_results
-read_range_over_limit_violations = count(nodes exceeding max read_range lines)
+1. vault search "query"
+   ↓
+2. vault map show <knowledge_id>
+   ↓
+3. vault map read <knowledge_id> --lines <start-end>
+   ↓
+4. Answer using only citations produced by bounded reads
 ```
 
-**Dashboard schema 映射（不新增未驗證欄位）：**
+Rules:
 
-| Document Map metric | `agent-runtime_guardrails_health` 欄位 |
-|---|---|
-| `total_entries` | `total_knowledge` |
-| `map_coverage * 100` | `convergence_rate` |
-| `citation_coverage * 100` | `avg_freshness` |
-| `read_range_over_limit_violations` | `contradiction_count` |
-| `entries_without_nodes + entries_without_claims` | `gap_count` |
-
-**踩坑決策：** deployed `agent-runtime_guardrails_health` 沒有 `id` 欄位，不能用 generic `_upsert_by_key(..., key_fields=("id",))`；daily snapshot 必須以 `check_date` 查詢後 update/insert，或用 REST `on_conflict=check_date`。Sprint 4C 採用專用 `_upsert_guardrails_health_by_check_date()`，避免 schema drift。
+- Search-result citations are navigation hints, not final-answer proof.
+- Final citations should come from bounded `read_range` / `map read` output.
+- Do not invent citations.
+- If a map is missing, build it before relying on section navigation.
 
 ---
 
-## Phase E — Agent 行為接入
-
-**目標：** 讓 assistant / Harness / 其他 profile 真正改變讀百科方式。
-
-### Task E1: 更新 guardrails skill
-
-**Files:**
-- Modify: `/home/user/.agent-runtime/skills/guardrails/SKILL.md`
-
-**新增規則：**
-
-```text
-查長知識條目時：先 search → get_structure → read_range；不要直接讀全文。
-回答百科內容時，優先附 #id + line range citation。
-```
-
-### Task E2: 更新 agent runtime System prompt / SOUL 相關操作提示
-
-不改人格，只加工具紀律：涉及百科引用時使用 Document Map 工具。
-
-### Task E3: Handoff 模板增加 citations
-
-大型開發 handoff 的「關鍵依據」欄位應支援：
-
-```text
-- Guardrails #405 L12-L40: Document Map + tool-gated reading
-```
-
----
-
-## 5. 不做什麼（Non-goals）
-
-1. **不重寫 Guardrails 成 PageIndex fork**：PageIndex 是啟發，不是依賴。
-2. **不取消向量搜尋**：vector / keyword / graph 都保留；Document Map 是定位與閱讀層。
-3. **不讓 LLM 自由生成不存在的引用**：citation 必須來自 `read_range()` 回傳。
-4. **不一次塞完整 raw content 給 Agent**：除非用戶明確要求全文導出。
-5. **不把 Supabase 當 source of truth**：Document Map 可同步到 Supabase，但 canonical data 仍在本地 SQLite；遠端同步必須可重建、可重跑。
-
----
-
-## 6. 風險與對策
-
-| 風險 | 影響 | 對策 |
-|---|---|---|
-| Schema migration 破壞現有 DB | 高 | 只新增表，不改 knowledge 主表；先備份 `guardrails.db` |
-| Map parser 對中文 Markdown 不穩 | 中 | 測試 fixture 覆蓋中文標題、無標題、重複標題 |
-| 搜尋 rerank 仍把無關結果排前 | 中 | 建 Search QA set；用 Top-1/Top-3 指標驗收 |
-| compile 變慢 | 中 | content_hash 增量 rebuild；先不做節點 embedding |
-| MCP 工具太多 Agent 不會用 | 中 | 更新 skill + system discipline；search 結果加 `recommended_next_tool` |
-| Supabase schema 同步複雜 | 中 | Phase C 先本地；雲端同步拆 P1/P2 |
-| 引用行號因 raw 改動失效 | 中 | compile 時重建 map；citation 回傳 content_hash |
-
----
-
-## 7. 驗收標準
-
-### 功能驗收
+## CLI examples
 
 ```bash
-cd /home/user/Guardrails-knowledge
-conda run -n guardrails-lite python -m pytest tests/test_e2e.py -v
-conda run -n guardrails-lite python -m pytest tests/test_document_map.py -v
-conda run -n guardrails-lite python -m pytest tests/test_search_map_integration.py -v
+# Backfill map rows for all entries or a specific entry
+vault map build
+vault map build 123
+
+# Inspect structure
+vault map show 123
+
+# Read a bounded line range
+vault map read 123 --lines 10-40
+
+# Query extracted claims
+vault map query "migration rollback"
 ```
 
-### 行為驗收
+---
 
-對這個問題：
+## MCP tools
+
+The MCP server exposes the same idea through tools:
+
+- `vault_map_show`
+- `vault_read_range`
+- `vault_remote_map_show` when optional remote sync is configured
+- `vault_remote_read_range` when optional remote sync is configured
+
+---
+
+## Optional remote sync
+
+Document Map rows can be synced to Supabase when teams or remote agents need read access:
+
+```bash
+pip install supabase
+python scripts/sync_to_supabase.py --document-map
+```
+
+Public sync model:
 
 ```text
-PageIndex 對 Guardrails 百科有什麼可借鑑？
+local SQLite source of truth → optional Supabase sync/read target
 ```
 
-理想流程應該是：
-
-1. `guardrails search "PageIndex Guardrails"` 找到 #405。
-2. `guardrails_get_structure(405)` 看到「摘要 / 具體模式 / 為什麼重要 / 適用場景 / 設計原則」。
-3. `guardrails_read_range(405, relevant_lines)` 只讀必要範圍。
-4. 回答附引用：`#405 Lx-Ly`。
-
-### 品質驗收
-
-| 指標 | 最低要求 | 理想要求 |
-|---|---:|---:|
-| map_coverage | 80% | 95% |
-| claim_coverage | 60% | 85% |
-| search Top-3 | 90% | 95% |
-| citation coverage | 80% | 90% |
-| compile regression | 0 fail | 0 fail |
+Do not treat Supabase as required for local usage.
 
 ---
 
-## 8. 推薦實作順序
+## Testing expectations
 
-### Sprint 1：Map 可用
+Document Map changes should preserve:
 
-1. A1 DB schema migration
-2. A2 Markdown section parser
-3. A3 claims table backfill
-4. A4 CLI read-only commands
+- local CLI map commands
+- MCP map/read payload shape
+- citation-policy behavior
+- Search QA metrics
+- no network requirement for core tests
 
-**交付物：** 可以對 #405 執行 `guardrails map show/read`。
+Useful checks:
 
-### Sprint 2：Agent 可用
+```bash
+python -m pytest tests/test_document_map.py tests/test_search_map_integration.py -q
+python -m pytest tests/test_agent_behavior_policy.py -q
+```
 
-1. B1 search result enrichment
-2. B2 MCP tools
-3. B3 range limit and citation guard
-4. E1 更新 guardrails skill
-
-**交付物：** assistant 查百科時能先看 structure，再 read_range。
-
-### Sprint 3：自動化與評測
-
-1. C1 compile hook
-2. C2 incremental rebuild
-3. D1 Search QA set
-4. D2 before/after metrics
-
-**交付物：** 每次 compile 自動更新 Document Map，並有搜尋品質報告。
-
-### Sprint 4：Dashboard / Supabase
-
-1. C3 Supabase sync schema decision
-2. D3 Dashboard health integration
-3. E3 Handoff citations
-
-**交付物：** Dashboard 可看到 map coverage / citation coverage。
-
----
-
-## 9. 對 user 的產品判斷
-
-這次升級不是「技術潔癖」，而是把百科從資料庫變成真正的 Agent 大腦：
-
-- 以前：Agent 搜到一篇文章，自己猜哪段重要。
-- 升級後：Agent 先看地圖，再打開必要段落，最後帶行號引用回答。
-
-最小可行版本不大：**先做本地 Document Map + CLI read_range + search 結果行號**，就能立刻改善 assistant 查百科時的準確度和可驗證性。
-
-如果要開工，建議先做 **Sprint 1 + Sprint 2**，不要一開始碰 Supabase 大改。
+Test names may change while the project is alpha; use `python -m pytest -q` for the full available suite.

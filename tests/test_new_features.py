@@ -143,11 +143,13 @@ print("\n" + "=" * 60)
 print("5. CONVERGENCE CHECK (dry run)")
 print("=" * 60)
 
-# Quick dry run test
+# Quick dry run test. Use the current Python interpreter instead of hardcoding a
+# conda environment so contributors can run the suite from any supported venv.
 import subprocess
+import sys
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 result = subprocess.run(
-    ["conda", "run", "-n", "guardrails-lite", "python",
+    [sys.executable,
      str(PROJECT_ROOT / "scripts" / "convergence_check.py"),
      "--limit", "1", "--min-trust", "0.9"],
     capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT)

@@ -1,228 +1,190 @@
-# Vault Knowledge Base憲法 — SCHEMA.md
+# Vault Knowledge Schema
 
-> 本文件是所有 Agent（agent runtime、Claude Code、OpenCode）操作百科時的唯一規範源。
-> 任何 Agent 進入百科，先讀 SCHEMA.md，再動手。
+This document defines the public knowledge format and operating rules for a Vault-for-LLM project.
 
-_建立：2026-04-22 | 靈感：花叔 Obsidian 橙皮書 + Karpathy LLM Wiki_
+Vault-for-LLM is local-first: Markdown files are the human-editable source material, and the local SQLite database is the compiled source of truth used by the CLI and MCP server. Optional remote systems such as Supabase are sync/read targets, not required infrastructure.
 
 ---
 
-## 1. 三層架構
+## 1. Data flow
 
+```text
+raw/ Markdown  →  vault compile  →  local SQLite database  →  vault search / MCP tools
+                                      ↓
+                                compiled/ artifacts
+                                      ↓
+                         optional Supabase sync target
 ```
-raw/        → 第一層：源材料（不可變，只增不改）
-compiled/   → 第二層：結構化知識（AI 維護，compiler 自動生成）
-output/     → 第三層：查詢產物（報告、分析、回答）
+
+Rules:
+
+1. `raw/` entries are human-editable source notes.
+2. `compiled/` artifacts are generated and may be rebuilt.
+3. SQLite is the local source of truth for CLI/MCP retrieval.
+4. Supabase, when configured, is an optional sync/read target.
+5. Search-result citations are navigation hints; final citations should come from bounded `read_range` output when using Document Map tools.
+
+---
+
+## 2. Recommended directory structure
+
+```text
+your-project/
+├── L0-identity/
+│   └── identity.md
+├── L1-core-facts/
+│   └── current-projects.md
+├── L2-context/
+│   └── recent-sessions/
+├── L3-knowledge/
+├── raw/
+├── compiled/
+├── guardrails.db
+└── templates/
 ```
 
-**數據流**：raw → compiled → output（單向，不回流）
-**Supabase**：L2+ 同步副本，所有 Agent 共享的 source of truth
+Historical naming note: the generated SQLite file is currently named `guardrails.db` for compatibility. Public commands use `vault` and `vault-mcp`.
 
 ---
 
-## 2. 命名規範
+## 3. Memory layers
 
-### raw/ 檔案
-- 格式：`YYYYMMDD-簡述.md`
-- 例：`20260422-wsl2-chrome-cdp-bridge.md`
-- 子目錄分類可選（code-snippets/、research/、web-clips/ 等），不超過 2 層
-
-### compiled/ 檔案
-- 格式：`YYYYMMDD_test_{category}_{序號}.md`（compiler 自動生成，勿手動改名）
-- 例：`20260411_test_error_base_techniques_162.md`
-- 子目錄按類別：`L3-architecture/`、`L2-architecture/`
-
-### Supabase
-- 表 `guardrails_knowledge`：id, title, content, category, tags, embedding, trust, source, created_at, updated_at
-- 表 `gr_entities`：id, name, type, description, created_at
-- 表 `gr_edges`：id, source_entity, target_entity, relation_type, weight
-- 表 `gr_entity_knowledge`：id, entity_id, knowledge_id
+| Layer | Purpose | Loading pattern |
+|---|---|---|
+| L0 | User/project identity and stable preferences | Load every session |
+| L1 | Stable environment and active project facts | Load every session |
+| L2 | Recent decisions, incidents, and working context | Load when relevant |
+| L3 | Deep knowledge, lessons, APIs, troubleshooting | Search on demand |
 
 ---
 
-## 3. Frontmatter 規規範（鐵律）
+## 4. Knowledge frontmatter
 
-### 必填字段（五字段 + summary）
+Each `raw/` Markdown entry should include YAML frontmatter:
 
 ```yaml
 ---
-title: "知識標題"
-category: "concept|technique|workflow|lesson|error|comparison|article-source|content-log"
-layer: 0-3
+title: "Knowledge title"
+category: "concept|technique|workflow|lesson|error|comparison|general"
+layer: L3
 tags: ["tag1", "tag2"]
-summary: "一句話摘要（30-80字，讓 AI 不用讀全文就能判斷相關性）"
+summary: "One short sentence explaining what this entry is about."
 trust: 0.0-1.0
-source: "來源標識"
+source: "source-description"
 created: "YYYY-MM-DD"
 ---
 ```
 
-### summary 欄位（⭐ 新增鐵律）
-- **每條知識必須有 summary**
-- 30-80 字，一句話說清楚「這條知識講什麼」
-- 寫法：假設有人問「這條筆記講啥」，你怎麼用一句話回答？那就是 summary
-- compiled/ 檔案的 summary 由 compiler 自動生成
-- raw/ 檔案的 summary 由寫入者提供，AI 可補充
+Recommended fields:
 
-### 可選字段
+| Field | Meaning |
+|---|---|
+| `title` | Human-readable entry title |
+| `category` | Broad knowledge type |
+| `layer` | `L0`, `L1`, `L2`, or `L3` |
+| `tags` | Lowercase tags for filtering/search |
+| `summary` | 1-sentence relevance preview |
+| `trust` | Confidence score from 0.0 to 1.0 |
+| `source` | Where the knowledge came from |
+| `created` | Creation date |
+
+Optional fields:
 
 ```yaml
 updated: "YYYY-MM-DD"
 status: "active|archived|deprecated"
-compression: "aaak"           # 僅 compiled/
-original_tokens: 1200         # 僅 compiled/
-compressed_tokens: 200        # 僅 compiled/
 ```
 
 ---
 
-## 4. 標籤體系
+## 5. Suggested categories and tags
 
-### 領域標籤（一級，不超過 20 個）
-| 標籤 | 涵蓋 |
-|------|------|
-| `llm` | 模型、推理、部署 |
-| `tools` | 開發工具、CLI、IDE |
-| `infra` | WSL2、Docker、網路、GPU |
-| `data` | 資料庫、向量搜尋、Supabase |
-| `content` | 文章、影片、社媒 |
-| `workflow` | 自動化、cron、agent |
-| `security` | 安全、審計、防護 |
-| `testing` | 測試、QA、CI/CD |
-| `design` | UI/UX、設計、圖片生成 |
-| `business` | 接案、定價、Upwork |
+Suggested `category` values:
 
-### 類型標籤（二級）
-| 標籤 | 用途 |
-|------|------|
-| `pitfall` | 踩坑記錄 |
-| `best-practice` | 最佳實踐 |
-| `architecture` | 架構決策 |
-| `integration` | 跨系統整合 |
-| `observation` | AI 行為觀察 |
+- `concept`
+- `technique`
+- `workflow`
+- `lesson`
+- `error`
+- `comparison`
+- `general`
 
-### 狀態標籤
-- `stub` — 存根，需擴充
-- `mature` — 成熟，已驗證
+Suggested tag families:
 
-### 規則
-- 標籤用英文小寫，多詞用连字符
-- **不要自創新的一級標籤**，如有需要先更新本文件
-- 嵌套不超過 2 層（如 `llm/vllm` 可接受，`llm/vllm/quant/gguf` 則否）
+| Tag family | Examples |
+|---|---|
+| `llm` | models, prompts, evaluation |
+| `tools` | CLI, IDE, MCP |
+| `infra` | Docker, network, runtime |
+| `data` | SQLite, vector-search, sync |
+| `workflow` | automation, QA, agents |
+| `security` | privacy, secrets, access control |
+| `testing` | regression, CI, fixtures |
+| `design` | UX, information architecture |
+
+Use lowercase tags and hyphenate multi-word tags.
 
 ---
 
-## 5. 人 vs AI 產出邊界
+## 6. Write and compile workflow
 
-### raw/ — 人的領地
-- 來源：用戶手動寫入、Agent 觀察後記錄
-- 規則：**只增不改** — 未經用戶確認，AI 不能修改或刪除 raw/ 內容
-- 信任度：最高，是 source of truth
+```bash
+# Add one entry directly
+vault add "Title" --content "What you learned and why it matters."
 
-### compiled/ — AI 的領地
-- 來源：compiler 從 raw/ 自動編譯
-- 規則：AI 可以自由更新、重新生成
-- 信任度：中等，衍生數據可隨時重新生成
+# Or write Markdown under raw/, then compile
+vault compile
 
-### agent-outputs/ — Agent 會話產物
-- 規則：暫存，定期清理或編譯進 compiled/
-- 信任度：低，需人工審核後才能升級
-
-### output/ — 查詢產物
-- 規則：基於 compiled/ 生產，好的 output 可以反哺 compiled/
-
----
-
-## 6. 知識生命週期
-
-```
-寫入 raw/ → compiler 編譯到 compiled/ → 同步 Supabase
-                                              ↓
-                                  query → output/（按需生成）
-                                              ↓
-                              好的 output 反哺 compiled/（人工觸發）
-                                              ↓
-                               過時 → status: deprecated → archived
+# Search later
+vault search "query"
 ```
 
-### 狀態轉換
-- `active` → `deprecated`（不再適用，如舊版 API 已下線）
-- `active` → `archived`（項目結束，知識保留但不活躍）
-- `deprecated` / `archived` 的知識仍可搜索到，但 AI 回答時會標注時效性
+Compiler expectations:
+
+1. Do not mutate `raw/` source content unexpectedly.
+2. Rebuild generated `compiled/` artifacts as needed.
+3. Update SQLite rows and indexes.
+4. Build Document Map rows where supported.
+5. Keep output deterministic enough for tests and review.
 
 ---
 
-## 7. Compiler 行為規範
+## 7. Retrieval rules for agents
 
-### 觸發
-- 手動：`python3 scripts/guardrails_compiler.py`
-- 自動：每日 06:00 cron（daily_knowledge_sync.py）
-- 即時：寫入 raw/ 後建議立即編譯
+When an agent uses a Vault project:
 
-### Compiler 保證
-1. raw/ 原文不動
-2. compiled/ 採 AAAK 壓縮（axioms + analogies + applications + keys）
-3. 每條 compiled 帶 frontmatter（含 summary）
-4. 編譯完自動更新 INDEX.md
-
-### Compiler 禁止
-1. 不刪除 raw/ 檔案
-2. 不修改已確認的 compiled/ 內容（只追加更新的）
-3. 不編造不存在的知識
+1. Read L0/L1 only when the project explicitly asks for always-loaded memory.
+2. Search L3 knowledge on demand with `vault search` or `vault_search`.
+3. Prefer keyword search first when no embedding provider is installed.
+4. For long entries, inspect Document Map structure before reading ranges.
+5. Use bounded `read_range` output for final citations when citation accuracy matters.
+6. Do not invent citations or claim a source was read if only search results were inspected.
 
 ---
 
-## 8. INDEX.md 生成規範
+## 8. Optional remote sync
 
-Compiler 完成後，自動生成 `INDEX.md` 在根目錄：
+Remote sync is optional. The expected public model is:
 
-```markdown
-# Vault Knowledge Base索引
-
-_最後更新：YYYY-MM-DD | 共 N 筆_
-
-## 按類別
-| 類別 | 數量 | 關鍵詞 |
-|------|------|--------|
-| error | 42 | ... |
-| technique | 38 | ... |
-
-## 按最近更新（Top 20）
-| 標題 | 日期 | Summary |
-|------|------|---------|
-| ... | ... | ... |
-
-## 待擴充（stub）
-- [[stub-1]] — 一句話描述
+```text
+local SQLite source of truth  →  optional Supabase sync/read target
 ```
 
----
-
-## 9. 搜尋優先級
-
-1. **INDEX.md** — 快速定位（AI 先掃索引，不用逐文件遍歷）
-2. **frontmatter summary** — 判斷相關性
-3. **關鍵字 grep** — `rg "關鍵字" raw/ compiled/`
-4. **向量搜尋** — `guardrails_wakeup.py --search`（Supabase）
-5. **圖譜擴展** — `guardrails search "X" --graph-expand 1`（Lite）
+A remote store should not silently overwrite local source data. If bidirectional sync is added in the future, conflict rules must be explicit and documented.
 
 ---
 
-## 10. 術語表
+## 9. Public terminology
 
-| 標準用詞 | 不用 |
-|----------|------|
-| Vault | 百科、知識庫（指系統時用 Vault） |
-| raw/ | 原始檔、源檔 |
-| compiled/ | 編譯檔、壓縮檔 |
-| compiler | 編譯器 |
-| Supabase | 雲端、遠端（指這個 DB 時用 Supabase） |
-| Lite | 本地版、離線版 |
-| AAAK | 壓縮格式（Axioms+Analogies+Applications+Keys） |
-| trust | 信任度、可信度 |
-| summary | 摘要 |
+| Use | Avoid in public docs |
+|---|---|
+| Vault-for-LLM | internal project names |
+| `vault` CLI | legacy command names in examples |
+| local SQLite vault | private/internal main database |
+| optional Supabase sync | required cloud dependency |
+| MCP server | product-specific internal wiring |
+| alpha/experimental feature | overclaiming stability |
 
 ---
 
-_Vault Knowledge Base憲法 · 第一次建立 2026-04-22_
-_Inspired by: Karpathy LLM Wiki three-layer architecture_
+_Last updated: 2026-05-16_

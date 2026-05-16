@@ -1,25 +1,13 @@
 #!/usr/bin/env python3
 """
-Guardrails MCP Server — 讓任何 AI agent 透過 MCP 協議直接讀寫 Guardrails 百科。
+Vault-for-LLM MCP server.
 
-暴露的 Tools：
-  - guardrails_search(query, mode, limit) — 搜尋知識
-  - guardrails_add(title, content, category, tags) — 新增知識
-  - guardrails_stats() — 百科統計
-  - guardrails_converge(limit) — 收斂檢查
-  - guardrails_freshness(apply) — 新鮮度檢查
-
-使用方式：
-  1. 作為 stdio MCP server（給 Hermes config.yaml 用）：
-     python3 guardrails_lite/guardrails_mcp.py
-
-  2. 在 Hermes config.yaml 加入：
-     mcp_servers:
-       guardrails:
-         command: "conda"
-         args: ["run", "-n", "guardrails-lite", "python3", "<project_dir>/guardrails_lite/guardrails_mcp.py"]
+The public MCP tool names use the ``vault_*`` prefix. Legacy ``guardrails_*``
+tool names are kept as compatibility aliases while the project is alpha.
 """
 
+import argparse
+import copy
 import hashlib
 import json
 import sqlite3
@@ -37,10 +25,38 @@ GUARDRAILS_DIR = str(Path(__file__).parent.parent)
 if GUARDRAILS_DIR not in sys.path:
     sys.path.insert(0, GUARDRAILS_DIR)
 
-DB_PATH = os.path.join(GUARDRAILS_DIR, "guardrails.db")
+DB_PATH = os.path.join(
+    os.environ.get("VAULT_PATH") or os.environ.get("GUARDRAILS_PATH") or GUARDRAILS_DIR,
+    "guardrails.db",
+)
 REMOTE_NODE_TABLE = "guardrails_knowledge_nodes"
 REMOTE_CLAIM_TABLE = "guardrails_knowledge_claims"
 REMOTE_KNOWLEDGE_TABLE = "guardrails_knowledge"
+
+
+def _set_project_dir(project_dir: str | os.PathLike[str]) -> None:
+    """Point the MCP server at a project's local SQLite vault."""
+    global DB_PATH
+    project_path = Path(project_dir).expanduser().resolve()
+    DB_PATH = str(project_path / "guardrails.db")
+
+
+VAULT_TOOL_ALIASES = {
+    "vault_search": "guardrails_search",
+    "vault_add": "guardrails_add",
+    "vault_stats": "guardrails_stats",
+    "vault_converge": "guardrails_converge",
+    "vault_freshness": "guardrails_freshness",
+    "vault_map_show": "guardrails_map_show",
+    "vault_read_range": "guardrails_read_range",
+    "vault_remote_map_show": "guardrails_remote_map_show",
+    "vault_remote_read_range": "guardrails_remote_read_range",
+}
+
+
+def _canonical_tool_name(name: str) -> str:
+    """Map public vault_* aliases to legacy implementation handlers."""
+    return VAULT_TOOL_ALIASES.get(name, name)
 
 
 def _get_db():
@@ -1013,8 +1029,29 @@ TOOLS = [
 ]
 
 
+def _public_tool_alias(tool: dict) -> dict:
+    """Return a public vault_* alias for a legacy guardrails_* tool definition."""
+    alias = copy.deepcopy(tool)
+    name = str(alias.get("name", ""))
+    if name.startswith("guardrails_"):
+        alias["name"] = "vault_" + name.removeprefix("guardrails_")
+    description = str(alias.get("description", ""))
+    alias["description"] = (
+        description
+        .replace("Guardrails 百科知識庫", "Vault-for-LLM knowledge vault")
+        .replace("Guardrails 百科", "Vault-for-LLM knowledge vault")
+        .replace("Guardrails", "Vault-for-LLM")
+    )
+    return alias
+
+
+LEGACY_TOOLS = TOOLS
+TOOLS = [_public_tool_alias(tool) for tool in LEGACY_TOOLS] + LEGACY_TOOLS
+
+
 def handle_tool_call(name: str, arguments: dict) -> dict:
     """處理 MCP tool call，回傳結果。"""
+    name = _canonical_tool_name(name)
     try:
         if name == "guardrails_search":
             compact = bool(arguments.get("compact", False))
@@ -1216,7 +1253,7 @@ def run_stdio():
                         "tools": {"listChanged": False},
                     },
                     "serverInfo": {
-                        "name": "guardrails-mcp",
+                        "name": "vault-mcp",
                         "version": __version__,
                     },
                 },
@@ -1265,28 +1302,45 @@ def run_stdio():
 
 # ── Direct CLI (for testing) ──────────────────────────
 
-def main():
-    """Entry point for guardrails-mcp command."""
-    # 如果有 --cli 參數，直接執行工具（不啟動 MCP server）
-    if len(sys.argv) > 1 and sys.argv[1] == "--cli":
-        tool_name = sys.argv[2] if len(sys.argv) > 2 else "stats"
-        args = {}
+def main(argv: list[str] | None = None):
+    """Entry point for the vault-mcp command."""
+    parser = argparse.ArgumentParser(
+        prog="vault-mcp",
+        description="Vault-for-LLM MCP server",
+    )
+    parser.add_argument(
+        "--project-dir",
+        help="Project directory containing guardrails.db (defaults to VAULT_PATH or package root)",
+    )
+    parser.add_argument(
+        "--cli",
+        nargs=argparse.REMAINDER,
+        help=argparse.SUPPRESS,
+    )
+    args = parser.parse_args(argv)
 
-        if tool_name == "search" and len(sys.argv) > 3:
-            args = {"query": sys.argv[3], "mode": "auto", "limit": 5}
-        elif tool_name == "add" and len(sys.argv) > 4:
-            args = {"title": sys.argv[3], "content": sys.argv[4]}
+    if args.project_dir:
+        _set_project_dir(args.project_dir)
+
+    if args.cli is not None:
+        cli_args = args.cli
+        tool_name = cli_args[0] if cli_args else "stats"
+        tool_args = {}
+
+        if tool_name == "search" and len(cli_args) > 1:
+            tool_args = {"query": cli_args[1], "mode": "auto", "limit": 5}
+        elif tool_name == "add" and len(cli_args) > 2:
+            tool_args = {"title": cli_args[1], "content": cli_args[2]}
         elif tool_name == "stats":
-            args = {}
+            tool_args = {}
         elif tool_name == "converge":
-            args = {"limit": 5}
+            tool_args = {"limit": 5}
         elif tool_name == "freshness":
-            args = {"stale_only": True}
+            tool_args = {"stale_only": True}
 
-        result = handle_tool_call(f"guardrails_{tool_name}", args)
+        result = handle_tool_call(f"vault_{tool_name}", tool_args)
         print(result.get("result", result.get("error", "")))
     else:
-        # 啟動 MCP stdio server
         run_stdio()
 
 

@@ -80,27 +80,24 @@ if limit > 0:
 
 ---
 
-### P0-005: Personal path exposure — `~/.hermes/.env`
+### P0-005: Personal path exposure — fixed internal environment fallback
 
-**File:** `scripts/cross_validate.py`, line 72  
-**Issue:** Hardcoded path to `~/.hermes/.env` exposes internal tooling:
-```python
-env_file = os.path.expanduser("~/.hermes/.env")
-```
+**File:** `scripts/cross_validate.py`
+**Issue:** An earlier implementation referenced a user-specific tool environment path as an implicit `.env` fallback, which is inappropriate for a public package.
 
-**Fix:** Remove this. Use standard `.env` loading via `_utils.py:load_dotenv_cascade()` instead. The comment in `sync_to_supabase.py` says "不再依賴 ~/.hermes/.env" but `cross_validate.py` still references it.
+**Fix:** Use standard project-local `.env` loading via `_utils.py:load_dotenv_cascade()` and avoid product-specific or user-specific home-directory fallbacks.
 
 ---
 
-### P0-006: Personal path exposure — `.hermes` in comment
+### P0-006: Personal path exposure — environment comment
 
 **File:** `scripts/sync_to_supabase.py`, line 23  
 **Issue:** Comment references internal tool:
 ```python
-# 載入 .env：優先用專案目錄的 .env，其次 ~/.env，不再依賴 ~/.hermes/.env
+# Load .env from the project directory first, then standard user-level fallbacks.
 ```
 
-**Fix:** Remove the reference to `~/.hermes/.env` from the comment.
+**Fix:** Keep comments generic and avoid references to user-specific tool directories.
 
 ---
 
@@ -153,26 +150,14 @@ env_file = os.path.expanduser("~/.hermes/.env")
 ### P1-003: Inconsistent naming — "Guardrails" vs "Vault" branding
 
 **Files:** Throughout codebase  
-**Issue:** The project is branded "Vault-for-LLM" (README, pyproject.toml, GitHub URL) but all internal code uses "Guardrails" / "guardrails_lite":
+**Issue:** The project is branded "Vault-for-LLM" (README, pyproject.toml, GitHub URL), while several compatibility-layer implementation details still use historical "Guardrails" names:
 - Package name: `guardrails_lite`
-- CLI entry point: `vault` (good) but prog name says `guardrails` (line 803)
 - DB file: `guardrails.db`
 - Cache dir: `~/.cache/guardrails-lite`
 - Logger: `guardrails-lite`
-- MCP server name: `guardrails-mcp`
-- All class names: `GuardrailsDB`, `GuardrailsCompiler`, `GuardrailsSearch`, etc.
+- Class names such as `GuardrailsDB`, `GuardrailsCompiler`, `GuardrailsSearch`
 
-**Fix:** For a clean open-source release, either:
-1. Rename the package to `vault_for_llm` (major effort), OR
-2. Update the `prog` name to `vault` (line 803), keep the internal module name as is, and add a note in README explaining the legacy naming.
-
-At minimum, fix line 803:
-```python
-parser = argparse.ArgumentParser(
-    prog="vault",  # Not "guardrails"
-    ...
-)
-```
+**Status:** Public CLI/MCP entry points now use `vault` / `vault-mcp`, and README/SCHEMA explain the legacy naming. A full internal rename to `vault_for_llm` can be handled as a future breaking change.
 
 ---
 
@@ -350,17 +335,12 @@ graphify-out/
 
 ---
 
-### P2-006: MCP server DB path is hardcoded to repo root
+### P2-006: MCP server project directory selection — FIXED
 
-**File:** `guardrails_lite/guardrails_mcp.py`, line 33  
-**Issue:** `DB_PATH` is hardcoded relative to the source file location:
-```python
-DB_PATH = os.path.join(GUARDRAILS_DIR, "guardrails.db")
-```
+**File:** `guardrails_lite/guardrails_mcp.py`
+**Previous issue:** The MCP server originally resolved `guardrails.db` relative to the package directory, which could point at the wrong database after installation.
 
-When installed via pip, this points to the package directory, not the user's project directory. The `--project-dir` flag documented in README is not implemented in the MCP server.
-
-**Fix:** Support `--project-dir` argument for the MCP server.
+**Status:** `vault-mcp` now supports `--project-dir`, honors `VAULT_PATH` / legacy `GUARDRAILS_PATH`, reports serverInfo as `vault-mcp`, and exposes public `vault_*` tool aliases while retaining legacy `guardrails_*` compatibility aliases.
 
 ---
 

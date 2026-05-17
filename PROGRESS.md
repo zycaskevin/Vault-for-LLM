@@ -4,7 +4,7 @@ Last updated: 2026-05-17 10:34 CST
 
 ## Current Status
 
-P0 public boundary cleanup is completed through Kanban and locally verified.
+P0 public boundary cleanup is completed through Kanban and locally verified. P1 release hygiene is now approved to run locally; no PyPI upload, git tag, push, or GitHub release is authorized yet.
 
 Latest planning/review artifacts:
 

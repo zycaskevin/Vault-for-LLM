@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.1] — 2026-05-17
+
+### Changed
+- Refresh package metadata for a post-cleanup PyPI release so the project description and long description match the public local-first Markdown + SQLite positioning without pre-A4 skill-marketplace wording.
+- Keep the release focused on metadata/version alignment; no README claim changes are required by `docs/readme_claim_matrix.md`.
+
 ## [0.4.0] — 2026-04-22
 
 ### Added

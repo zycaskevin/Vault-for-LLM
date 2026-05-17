@@ -1,8 +1,8 @@
 """Vault Document Map health metrics collector.
 
 SQLite remains the source of truth.  These metrics are intentionally compact and
-pure enough for unit tests; Supabase sync maps them into the existing Dashboard
-health table without introducing new remote columns.
+pure enough for unit tests; optional Supabase sync maps them into a neutral
+remote health table without introducing new local requirements.
 """
 
 from __future__ import annotations

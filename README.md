@@ -61,7 +61,7 @@ In other words: regular RAG focuses on retrieval; Vault-for-LLM focuses on wheth
 | MCP | `vault-mcp` exposes search/add/stats/map/read tools to compatible agents |
 | Quality tools | lint, freshness, convergence, cross-validation, dedup, Search QA snapshots |
 | Optional remote sync | Supabase sync scripts for teams or remote read paths |
-| Skill sharing | experimental skill marketplace commands under `vault skill` |
+| Local skill registry | experimental `vault skill` commands for sharing reusable workflows inside a local Vault; not a hosted marketplace |
 
 ---
 
@@ -76,7 +76,7 @@ These features exist today, but they are still alpha and should be treated as qu
 | Convergence checks | Detect whether a knowledge entry has enough definition, procedure, and edge-case detail | experimental |
 | Cross-validation | Verify extracted claims across different model families | experimental / optional-model dependent |
 | Freshness + dedup | Mark stale entries and detect repeated knowledge | experimental |
-| Skill registry | Push/search/pull reusable agent workflows | experimental |
+| Local skill registry | Push/search/pull reusable agent workflows in local SQLite | experimental / local-only |
 
 The stable path is still the core loop: `vault init` → `vault add` → `vault compile` → `vault search` → `vault-mcp`.
 
@@ -224,7 +224,7 @@ your-project/
 | `vault freshness` | Experimental freshness/review scheduling |
 | `vault dedup` | Detect or merge duplicate entries |
 | `vault search-qa run` | Run Search QA metrics snapshot |
-| `vault skill search "query"` | Search experimental skill marketplace entries |
+| `vault skill search "query"` | Search local experimental skill registry entries |
 
 Run `vault <command> --help` for command-specific options.
 
@@ -267,7 +267,7 @@ Current MCP tools include:
 
 Core Vault-for-LLM usage is local-only. Supabase support is for teams or remote read paths that want a synced copy of local SQLite data.
 
-The local SQLite database remains the source of truth. Supabase is a sync target.
+The local SQLite database remains the source of truth. Supabase is an optional sync/read target. Remote table names use Vault-branded defaults and can be overridden with `VAULT_SUPABASE_*_TABLE` environment variables when integrating an existing private schema.
 
 ```bash
 # install manually while this is alpha

@@ -786,7 +786,7 @@ def cmd_skill(args):
 
 
 def cmd_skill_push(args):
-    """向技能市場註冊一個技能。"""
+    """向本機技能登錄註冊一個技能。"""
     from vault.db import VaultDB
 
     project_dir = find_project_dir()
@@ -820,7 +820,7 @@ def cmd_skill_push(args):
         name=name,
         content_raw=content,
         version=args.version or "1.0.0",
-        agent_source=args.agent or "agent-runtime-main",
+        agent_source=args.agent or "vault-cli",
         category=args.category or "general",
         capabilities=args.capabilities or "",
         dependencies=args.dependencies or "",
@@ -834,7 +834,7 @@ def cmd_skill_push(args):
                 name,
                 version=args.version or "1.0.0",
                 content_raw=content,
-                agent_source=args.agent or "agent-runtime-main",
+                agent_source=args.agent or "vault-cli",
                 category=args.category or "general",
                 capabilities=args.capabilities or "",
                 dependencies=args.dependencies or "",
@@ -851,7 +851,7 @@ def cmd_skill_push(args):
 
 
 def cmd_skill_search(args):
-    """搜尋技能市場。"""
+    """搜尋本機技能登錄。"""
     from vault.db import VaultDB
 
     project_dir = find_project_dir()
@@ -886,7 +886,7 @@ def cmd_skill_search(args):
 
 
 def cmd_skill_pull(args):
-    """從技能市場下載技能到本機 skills/。"""
+    """從本機技能登錄下載技能到本機 skills/。"""
     from vault.db import VaultDB
 
     project_dir = find_project_dir()
@@ -895,12 +895,13 @@ def cmd_skill_pull(args):
 
     skill = db.get_skill(args.name)
     if not skill:
-        print(f"❌ 技能 '{args.name}' 不存在於技能市場")
+        print(f"❌ 技能 '{args.name}' 不存在於本機技能登錄")
         db.close()
         return
 
-    # 寫入 ~/.agent-runtime/skills/<name>/
-    skills_dir = Path.home() / ".agent-runtime" / "skills" / args.name
+    # 寫入 public-neutral local skill cache（預設 ~/.vault/skills/<name>/）
+    skills_root = Path(os.environ.get("VAULT_SKILLS_DIR", Path.home() / ".vault" / "skills"))
+    skills_dir = skills_root / args.name
     skills_dir.mkdir(parents=True, exist_ok=True)
 
     skill_file = skills_dir / "SKILL.md"
@@ -911,7 +912,7 @@ def cmd_skill_pull(args):
 
 
 def cmd_skill_list(args):
-    """列出技能市場所有技能。"""
+    """列出本機技能登錄所有技能。"""
     from vault.db import VaultDB
 
     project_dir = find_project_dir()
@@ -926,9 +927,9 @@ def cmd_skill_list(args):
     )
 
     if not results:
-        print("📭 技能市場是空的")
+        print("📭 本機技能登錄是空的")
     else:
-        print(f"🛠️  技能市場: {len(results)} 個技能\n")
+        print(f"🛠️  本機技能登錄: {len(results)} 個技能\n")
         for r in results:
             print(f"  [{r['agent_source']}] {r['name']} v{r['version']} "
                   f"(trust={r['trust']}, {r['category']})")
@@ -940,7 +941,7 @@ def cmd_skill_list(args):
 
 
 def cmd_skill_stats(args):
-    """技能市場統計。"""
+    """本機技能登錄統計。"""
     from vault.db import VaultDB
 
     project_dir = find_project_dir()
@@ -948,7 +949,7 @@ def cmd_skill_stats(args):
     db.connect()
 
     stats = db.stats()
-    print(f"🛠️  技能市場統計")
+    print(f"🛠️  本機技能登錄統計")
     print(f"   技能總數: {stats.get('skill_count', 0)}")
     print(f"   知識總數: {stats.get('knowledge_count', 0)}")
     print(f"   向量嵌入: {stats.get('embedding_count', 0)}")
@@ -1365,15 +1366,15 @@ def main():
     mp.add_argument("query", help="查詢文字")
     mp.add_argument("--limit", "-n", type=_positive_int, default=10)
 
-    # skill — 跨 Agent 技能共享
-    p = sub.add_parser("skill", help="技能市場（跨 Agent 共享）")
+    # skill — 本機跨 Agent 技能登錄（實驗性）
+    p = sub.add_parser("skill", help="本機技能登錄（實驗性）")
     skill_sub = p.add_subparsers(dest="skill_action", help="技能子命令")
 
-    sp = skill_sub.add_parser("push", help="註冊技能到市場")
+    sp = skill_sub.add_parser("push", help="註冊技能到本機登錄")
     sp.add_argument("--file", "-f", help="SKILL.md 路徑（預設讀 stdin）")
     sp.add_argument("--name", help="技能名稱（預設從 frontmatter 讀取）")
     sp.add_argument("--version", default="1.0.0", help="版本號")
-    sp.add_argument("--agent", default="agent-runtime-main", help="來源 Agent")
+    sp.add_argument("--agent", default="vault-cli", help="來源 Agent")
     sp.add_argument("--category", default="general", help="分類")
     sp.add_argument("--capabilities", default="", help="能力標籤（逗號分隔）")
     sp.add_argument("--dependencies", default="", help="依賴（逗號分隔）")
@@ -1381,7 +1382,7 @@ def main():
     sp.add_argument("--description", default="", help="簡短描述")
     sp.add_argument("--force", action="store_true", help="同名技能時強制覆蓋")
 
-    sp = skill_sub.add_parser("search", help="搜尋技能")
+    sp = skill_sub.add_parser("search", help="搜尋本機登錄技能")
     sp.add_argument("query", nargs="?", default="", help="搜尋關鍵字")
     sp.add_argument("--capabilities", help="依能力過濾")
     sp.add_argument("--category", help="依分類過濾")
@@ -1389,16 +1390,16 @@ def main():
     sp.add_argument("--min-trust", type=float, default=0.0)
     sp.add_argument("--limit", "-n", type=int, default=20)
 
-    sp = skill_sub.add_parser("pull", help="下載技能到本機")
+    sp = skill_sub.add_parser("pull", help="從本機登錄下載技能")
     sp.add_argument("name", help="技能名稱")
 
-    sp = skill_sub.add_parser("list", help="列出所有技能")
+    sp = skill_sub.add_parser("list", help="列出本機登錄技能")
     sp.add_argument("--agent", help="依來源過濾")
     sp.add_argument("--category", help="依分類過濾")
     sp.add_argument("--min-trust", type=float, default=0.0)
     sp.add_argument("--limit", "-n", type=int, default=100)
 
-    sp = skill_sub.add_parser("stats", help="技能市場統計")
+    sp = skill_sub.add_parser("stats", help="本機技能登錄統計")
 
     # graph
     p = sub.add_parser("graph", help="圖譜操作")

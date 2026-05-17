@@ -211,7 +211,7 @@ class VaultDB:
             )
         """)
 
-        # 技能共享表 — 跨 Agent 技能註冊與同步
+        # 本機技能登錄表 — 跨 Agent 技能註冊與同步
         c.execute("""
             CREATE TABLE IF NOT EXISTS skills (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,

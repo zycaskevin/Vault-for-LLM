@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fix missing gr_entity_knowledge links — insert only links not yet in Supabase."""
+"""Fix missing remote graph entity-knowledge links in optional Supabase sync."""
 
 import os
 import sqlite3
@@ -10,30 +10,47 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts._utils import find_db_path, load_dotenv_cascade
 load_dotenv_cascade()
 
-from supabase import create_client
+try:
+    from supabase import create_client
+except Exception:  # optional dependency for remote sync only
+    create_client = None
 
 # 從環境變數讀取，勿硬編碼 key
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_ANON_KEY", "")
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    print("❌ 請設定環境變數 SUPABASE_URL 和 SUPABASE_SERVICE_KEY（或 SUPABASE_ANON_KEY）")
-    sys.exit(1)
-
 DB_PATH = find_db_path()
+KNOWLEDGE_TABLE = os.getenv("VAULT_SUPABASE_KNOWLEDGE_TABLE", "vault_knowledge")
+GRAPH_ENTITIES_TABLE = os.getenv("VAULT_SUPABASE_GRAPH_ENTITIES_TABLE", "vault_graph_entities")
+GRAPH_ENTITY_KNOWLEDGE_TABLE = os.getenv(
+    "VAULT_SUPABASE_GRAPH_ENTITY_KNOWLEDGE_TABLE",
+    "vault_graph_entity_knowledge",
+)
+
+
+def _get_sb_client():
+    if create_client is None:
+        print("❌ Supabase Python client 未安裝，無法執行遠端同步")
+        return None
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        print("❌ SUPABASE_URL 或 SUPABASE_SERVICE_KEY（或 SUPABASE_ANON_KEY）未設定")
+        return None
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def main():
-    sp = create_client(SUPABASE_URL, SUPABASE_KEY)
+    sp = _get_sb_client()
+    if not sp:
+        return None
 
     # 1. Load Supabase data
     print("Loading Supabase mappings...")
-    titles = {r["title"]: r["id"] for r in sp.table("vault_knowledge").select("id,title").execute().data}
+    titles = {r["title"]: r["id"] for r in sp.table(KNOWLEDGE_TABLE).select("id,title").execute().data}
     
     # Get ALL existing EK links (handle pagination with range)
     existing_ek = set()
     offset = 0
     while True:
-        batch = sp.table("gr_entity_knowledge").select("entity_id,knowledge_id").range(offset, offset + 999).execute()
+        batch = sp.table(GRAPH_ENTITY_KNOWLEDGE_TABLE).select("entity_id,knowledge_id").range(offset, offset + 999).execute()
         if not batch.data:
             break
         for row in batch.data:
@@ -43,7 +60,7 @@ def main():
     print(f"  Existing EK links: {len(existing_ek)}")
 
     # 2. Build entity name→sp_id mapping
-    sp_ents = sp.table("gr_entities").select("id,name,entity_type").execute().data
+    sp_ents = sp.table(GRAPH_ENTITIES_TABLE).select("id,name,entity_type").execute().data
     name_key_to_sp_eid = {(r["name"], r["entity_type"]): r["id"] for r in sp_ents}
 
     # 3. Load local data
@@ -96,7 +113,7 @@ def main():
     for i in range(0, len(missing), 25):
         chunk = missing[i:i+25]
         try:
-            r = sp.table("gr_entity_knowledge").upsert(
+            r = sp.table(GRAPH_ENTITY_KNOWLEDGE_TABLE).upsert(
                 chunk, on_conflict="entity_id,knowledge_id"
             ).execute()
             inserted += len(r.data)
@@ -104,7 +121,7 @@ def main():
             print(f"  Batch {i//25} error: {e}")
             for item in chunk:
                 try:
-                    sp.table("gr_entity_knowledge").upsert(
+                    sp.table(GRAPH_ENTITY_KNOWLEDGE_TABLE).upsert(
                         item, on_conflict="entity_id,knowledge_id"
                     ).execute()
                     inserted += 1
@@ -119,12 +136,12 @@ def main():
     total = 0
     offset = 0
     while True:
-        batch = sp.table("gr_entity_knowledge").select("id").range(offset, offset + 999).execute()
+        batch = sp.table(GRAPH_ENTITY_KNOWLEDGE_TABLE).select("id").range(offset, offset + 999).execute()
         if not batch.data:
             break
         total += len(batch.data)
         offset += 1000
-    print(f"\nTotal gr_entity_knowledge rows: {total}")
+    print(f"\nTotal {GRAPH_ENTITY_KNOWLEDGE_TABLE} rows: {total}")
 
 
 if __name__ == "__main__":

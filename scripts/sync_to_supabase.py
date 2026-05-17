@@ -8,7 +8,7 @@ Sync Vault-knowledge local DB → Supabase
   sync_to_supabase.py              # 同步知識表（預設）
   sync_to_supabase.py --skills     # 同步技能表
   sync_to_supabase.py --document-map  # 同步 Document Map 表
-  sync_to_supabase.py --health        # 同步 Vault Dashboard health snapshot
+  sync_to_supabase.py --health        # 同步 Vault health metrics snapshot
 """
 
 import os
@@ -23,7 +23,11 @@ from scripts._utils import find_db_path, load_dotenv_cascade
 # 載入 .env：優先用專案目錄的 .env，其次 ~/.env
 load_dotenv_cascade()
 
-from supabase import create_client
+try:
+    from supabase import create_client
+except Exception:  # optional dependency for remote sync only
+    create_client = None
+
 from vault.db import VaultDB
 from vault.health import (
     DEFAULT_SAMPLE_LIMIT,
@@ -33,9 +37,9 @@ from vault.health import (
 
 DB_PATH = str(find_db_path())
 
-DOCUMENT_MAP_NODE_TABLE = 'vault_knowledge_nodes'
-DOCUMENT_MAP_CLAIM_TABLE = 'vault_knowledge_claims'
-VAULT_HEALTH_TABLE = 'agent-runtime_vault_health'
+DOCUMENT_MAP_NODE_TABLE = os.getenv('VAULT_SUPABASE_NODE_TABLE', 'vault_knowledge_nodes')
+DOCUMENT_MAP_CLAIM_TABLE = os.getenv('VAULT_SUPABASE_CLAIM_TABLE', 'vault_knowledge_claims')
+VAULT_HEALTH_TABLE = os.getenv('VAULT_SUPABASE_HEALTH_TABLE', 'vault_health_metrics')
 
 DOCUMENT_MAP_NODE_COLUMNS = [
     'knowledge_id',
@@ -111,6 +115,9 @@ def _parse_capabilities(caps_str) -> list:
 
 
 def _get_sb_client():
+    if create_client is None:
+        print("❌ Supabase Python client 未安裝，無法執行遠端同步")
+        return None
     url = os.getenv('SUPABASE_URL')
     key = os.getenv('SUPABASE_ANON_KEY') or os.getenv('SUPABASE_KEY')
     if not url or not key:
@@ -158,7 +165,7 @@ def _upsert_by_key(sb, table_name: str, payload: dict, key_fields: tuple[str, ..
 
 
 def _upsert_vault_health_by_check_date(sb, payload: dict) -> str:
-    """Upsert Dashboard health snapshots by check_date without requiring an id column."""
+    """Upsert remote Vault health snapshots by check_date without requiring an id column."""
     check_date = payload['check_date']
     existing = (
         sb.table(VAULT_HEALTH_TABLE)
@@ -457,14 +464,15 @@ def _vault_health_payload(
     metrics: VaultHealthMetrics,
     check_date: str | None = None,
 ) -> dict:
-    """Map Document Map health metrics into the existing Dashboard schema.
+    """Map Document Map health metrics into the public remote health schema.
 
-    The deployed agent-runtime_vault_health table has no JSONB/detail columns and
-    no map_coverage/claim_coverage/citation_coverage columns.  To avoid schema
-    drift in Sprint 4C we intentionally use the best existing numeric slots:
+    SQLite remains the source of truth; this optional Supabase payload is a
+    compact sync/read target. The default public table name is configurable via
+    VAULT_SUPABASE_HEALTH_TABLE and intentionally uses neutral Vault naming.
+    The metric names below preserve the existing lightweight schema shape:
     - total_knowledge = total_entries
-    - convergence_rate = map_coverage * 100 (Dashboard already treats as %)
-    - avg_freshness = citation_coverage * 100 (best available percentage slot)
+    - convergence_rate = map_coverage * 100
+    - avg_freshness = citation_coverage * 100
     - contradiction_count = read_range_over_limit_violations
     - gap_count = entries_without_nodes + entries_without_claims
     """
@@ -491,7 +499,7 @@ def _print_vault_health(metrics: VaultHealthMetrics, payload: dict) -> None:
     print(f"   Claim coverage: {metrics.claim_coverage:.2%}")
     print(f"   Citation coverage: {metrics.citation_coverage:.2%}")
     print(f"   Read-range over-limit violations: {metrics.read_range_over_limit_violations}")
-    print("   Dashboard payload mapping:")
+    print("   Remote health payload mapping:")
     print(f"     total_knowledge = {payload['total_knowledge']}")
     print(f"     convergence_rate = {payload['convergence_rate']:.2f}")
     print(f"     avg_freshness = {payload['avg_freshness']:.2f}")
@@ -505,7 +513,7 @@ def sync_vault_health(
     sb_client=None,
     check_date: str | None = None,
 ):
-    """Collect local Document Map health and upsert one Dashboard snapshot."""
+    """Collect local Document Map health and upsert one optional remote snapshot."""
     sb = sb_client or _get_sb_client()
     if not sb:
         return None
@@ -533,7 +541,7 @@ if __name__ == "__main__":
         "--vault-health",
         dest="health",
         action="store_true",
-        help="同步 Vault / Document Map dashboard health snapshot",
+        help="同步 Vault / Document Map remote health snapshot",
     )
     parser.add_argument(
         "--health-sample-limit",

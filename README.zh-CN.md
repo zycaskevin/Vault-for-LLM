@@ -61,7 +61,7 @@ Vault-for-LLM 不只是另一个向量数据库。它正在往 **Agent 记忆质
 | MCP | `vault-mcp` 将 search/add/stats/map/read 工具暴露给兼容 Agent |
 | 质量工具 | lint、freshness、convergence、cross-validation、dedup、Search QA snapshot |
 | 可选远端同步 | Supabase sync scripts，适合团队或远端读取 |
-| 技能共享 | 实验中的 `vault skill` 技能市场命令 |
+| 本机技能登记库 | 实验中的 `vault skill` 命令，用于在本地 Vault 内共享可复用 workflow；不是托管市场 |
 
 ---
 
@@ -76,7 +76,7 @@ Vault-for-LLM 不只是另一个向量数据库。它正在往 **Agent 记忆质
 | 收敛检查 | 判断知识是否具备定义、操作流程、边界案例 | 实验性 |
 | 交叉验证 | 用不同模型家族验证抽取出的 claims | 实验性 / 依赖可选模型 |
 | Freshness + dedup | 标记过期知识、检测重复条目 | 实验性 |
-| Skill registry | push/search/pull 可重复使用的 Agent workflows | 实验性 |
+| 本机技能登记库 | 在本地 SQLite 中 push/search/pull 可重复使用的 Agent workflows | 实验性 / 仅本地 |
 
 目前最稳定的路径仍是核心流程：`vault init` → `vault add` → `vault compile` → `vault search` → `vault-mcp`。
 
@@ -224,7 +224,7 @@ your-project/
 | `vault freshness` | 实验性新鲜度/复习排程 |
 | `vault dedup` | 检测或合并重复条目 |
 | `vault search-qa run` | 执行 Search QA metrics snapshot |
-| `vault skill search "query"` | 搜索实验性技能市场条目 |
+| `vault skill search "query"` | 搜索本机实验性技能登记库条目 |
 
 执行 `vault <command> --help` 可查看各命令参数。
 
@@ -267,7 +267,7 @@ MCP server 配置示例：
 
 Vault-for-LLM 的核心用法是本地-only。Supabase 支持是给需要团队同步或远端读取的人使用。
 
-本地 SQLite database 仍是 source of truth；Supabase 是同步目标。
+本地 SQLite database 仍是 source of truth；Supabase 是可选的同步/远端读取目标。远端表名默认使用 Vault 品牌命名；接入既有私有 schema 时，可用 `VAULT_SUPABASE_*_TABLE` 环境变量覆盖。
 
 ```bash
 # alpha 阶段请手动安装

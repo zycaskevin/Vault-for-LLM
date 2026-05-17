@@ -1,4 +1,4 @@
-"""Sprint 4C tests: Document Map health metrics and Dashboard sync."""
+"""Sprint 4C tests: Document Map health metrics and optional remote health sync."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class _FakeTableQuery:
             return
         for field in fields:
             if field == "id":
-                raise AssertionError("agent-runtime_vault_health fake schema has no id column")
+                raise AssertionError("remote health fake schema has no id column")
 
     def select(self, *args, **kwargs):
         self.operation = "select"
@@ -298,3 +298,30 @@ def test_sync_cli_help_exposes_health_flags():
     assert "--health" in result.stdout
     assert "--vault-health" in result.stdout
     assert "--health-sample-limit" in result.stdout
+
+
+def test_supabase_public_defaults_and_optional_imports_are_neutral(monkeypatch):
+    import importlib
+
+    env_vars = [
+        "VAULT_SUPABASE_HEALTH_TABLE",
+        "VAULT_SUPABASE_KNOWLEDGE_TABLE",
+        "VAULT_SUPABASE_GRAPH_ENTITIES_TABLE",
+        "VAULT_SUPABASE_GRAPH_EDGES_TABLE",
+        "VAULT_SUPABASE_GRAPH_ENTITY_KNOWLEDGE_TABLE",
+    ]
+    for env_var in env_vars:
+        monkeypatch.delenv(env_var, raising=False)
+
+    sync_module = importlib.reload(sync_to_supabase)
+    from scripts import fix_ek_links, sync_graph_to_supabase
+
+    graph_module = importlib.reload(sync_graph_to_supabase)
+    fix_module = importlib.reload(fix_ek_links)
+
+    assert sync_module.VAULT_HEALTH_TABLE == "vault_health_metrics"
+    assert graph_module.GRAPH_ENTITIES_TABLE == "vault_graph_entities"
+    assert graph_module.GRAPH_EDGES_TABLE == "vault_graph_edges"
+    assert graph_module.GRAPH_ENTITY_KNOWLEDGE_TABLE == "vault_graph_entity_knowledge"
+    assert fix_module.GRAPH_ENTITIES_TABLE == "vault_graph_entities"
+    assert fix_module.GRAPH_ENTITY_KNOWLEDGE_TABLE == "vault_graph_entity_knowledge"

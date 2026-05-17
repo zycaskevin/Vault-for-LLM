@@ -64,3 +64,7 @@ raw/
 
 # Logs
 *.log
+
+# Local agent/session artifacts
+.agent-runtime/
+.ruff_cache/

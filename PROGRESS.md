@@ -4,11 +4,15 @@ Last updated: 2026-05-17 09:30 CST
 
 ## Current Status
 
-No active implementation task is currently approved for execution.
+P0 public boundary cleanup is approved to start via Kanban.
 
 The latest planning artifact is:
 
 - `docs/agent_memory_qa_roadmap.md` — Agent Memory QA roadmap and Kanban execution graph inspired by agentmemory, while preserving Vault-for-LLM's local-first Markdown + SQLite positioning.
+
+Kanban board:
+
+- `vault-for-llm-public-cleanup`
 
 Current branch observed during this planning pass:
 

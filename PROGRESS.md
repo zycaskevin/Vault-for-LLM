@@ -1,18 +1,19 @@
 # Guardrails Internal Knowledge Capability — Progress
 
-Last updated: 2026-05-18 01:19 CST
+Last updated: 2026-05-18 01:39 CST
 
-## Current Phase: Phase B — 內部百科真正能力建設 — PLANNING
+## Current Phase: Phase B — 內部百科真正能力建設 — B1 COMPLETE / B6 NEXT
 
 ### Goal
 Let Nancy / Hermes / Guardrails dogfood the internal knowledge base every day so real retrieval, citation, capture, privacy, CJK search, and multi-agent convergence problems surface before public Vault-for-LLM productization.
 
-### Current Planning Artifact
+### Current Planning Artifacts
 - `docs/phase_b_internal_knowledge_capability_plan.md` — Phase B internal roadmap and execution order.
+- `docs/session_writeback_governance.md` — B1 governance contract for session → candidate → draft → review → promote.
 
 ### Phase B Priority Order
-1. B1 對話回寫治理
-2. B6 privacy scanner
+1. B1 對話回寫治理 — COMPLETE (design)
+2. B6 privacy scanner — NEXT
 3. B5 session capture draft queue
 4. B2 Document Map coverage strengthening
 5. B3 internal Search QA metrics
@@ -20,7 +21,7 @@ Let Nancy / Hermes / Guardrails dogfood the internal knowledge base every day so
 7. B7 multi-agent writing and convergence workflow
 
 ### Immediate Next Task
-Create `docs/session_writeback_governance.md` for B1, including shared/private/no-write classification, candidate extraction rules, dedupe/merge policy, trust/freshness/convergence defaults, privacy preflight, and review/promote/discard lifecycle.
+Create B6 privacy scanner design: shared scan layer for add/capture/compile/sync/MCP writes, blocker/redaction rules, override audit, and smoke cases derived from `docs/session_writeback_governance.md`.
 
 ---
 

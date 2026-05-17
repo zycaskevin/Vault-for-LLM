@@ -2,7 +2,7 @@
 
 > **For Hermes:** 這是 Guardrails 內部百科主線，不是 Vault-for-LLM public release 支線。實作時先用 `subagent-driven-development` 拆任務；每個子任務完成後更新本文件與 `PROGRESS.md` / handoff。
 
-**Last updated:** 2026-05-18 01:19 CST
+**Last updated:** 2026-05-18 01:39 CST
 
 **Scope:** Nancy / Hermes / Guardrails 內部 dogfood 能力建設
 
@@ -111,6 +111,8 @@ Public roadmap 的 Phase 0/1/F release hygiene 已經在 Vault-for-LLM 0.4.1/0.4
 ---
 
 ## 3. B1 — 對話回寫治理
+
+**Status:** COMPLETE (design) — see `docs/session_writeback_governance.md`.
 
 **Goal:** 從「做完問要不要寫」升級為「session → candidate → draft → review → promote」的治理流程。
 
@@ -363,17 +365,16 @@ B1 governance spec
 
 ## 11. Immediate next task
 
-建立 B1 詳細設計：`docs/session_writeback_governance.md`。
+建立 B6 詳細設計：`docs/privacy_scanner_design.md`。
 
 必須包含：
 
-1. candidate extraction rules
-2. shared/private/no-write 分級
-3. trust/freshness/convergence 初始值
-4. dedupe / merge strategy
-5. privacy preflight
-6. review / promote / discard lifecycle
-7. MCP / CLI / cron / Feishu trigger boundaries
-8. acceptance tests / smoke cases
+1. scanner module boundary and supported entry points
+2. blocker / redact / private-only / clear outcomes
+3. secret, PII, CRM, life-profile, and internal credential patterns
+4. redaction preview rules
+5. explicit override policy and audit trail
+6. integration points for CLI add, MCP add, capture import, compile, and sync
+7. smoke cases derived from `docs/session_writeback_governance.md`
 
-完成 B1 設計後，再拆 B6 scanner 與 B5 draft queue。
+完成 B6 設計後，再拆 B5 draft queue。

@@ -20,6 +20,10 @@ from vault.search_qa import (
 )
 
 
+REPO_ROOT = Path(__file__).parent.parent
+BENCHMARK_DIR = REPO_ROOT / "benchmarks" / "search_qa"
+
+
 ALPHA_RAW = "\n".join(
     [
         "# Tool-gated Reading Guide",
@@ -45,6 +49,31 @@ BETA_RAW = "\n".join(
     ]
 )
 
+GAMMA_RAW = "\n".join(
+    [
+        "# 文件地圖閱讀指南",
+        "簡介",
+        "## 文件地圖與讀取範圍",
+        "文件地圖幫助代理先查看章節，再使用讀取範圍取得證據。",
+        "此流程避免一次讀完整份文件。",
+    ]
+)
+GAMMA_AAAK = "\n".join(
+    [
+        "TITLE: 文件地圖閱讀指南",
+        "CLAIMS:",
+        "- [C1] 文件地圖幫助代理先查看章節，再使用讀取範圍取得證據。 (L4)",
+    ]
+)
+
+DELTA_RAW = "\n".join(
+    [
+        "# 引用政策邊界",
+        "搜尋引用只是導航提示，不是最終引用。",
+        "最終引用需要來自讀取範圍的輸出。",
+    ]
+)
+
 
 def _build_fixture_db(tmp_path: Path) -> Path:
     db_path = tmp_path / "vault.db"
@@ -65,6 +94,22 @@ def _build_fixture_db(tmp_path: Path) -> Path:
             category="decision",
             tags="citation,policy",
             trust=0.8,
+        )
+        gamma_id = db.add_knowledge(
+            "文件地圖閱讀指南",
+            GAMMA_RAW,
+            content_aaak=GAMMA_AAAK,
+            category="technique",
+            tags="文件地圖,讀取範圍,證據",
+            trust=0.87,
+        )
+        build_document_map_for_entry(db.conn, gamma_id)
+        db.add_knowledge(
+            "引用政策邊界",
+            DELTA_RAW,
+            category="decision",
+            tags="引用,政策",
+            trust=0.86,
         )
     finally:
         db.close()
@@ -110,6 +155,86 @@ def test_load_search_qa_set_accepts_extendable_repo_fixture():
     assert qa["version"] == 1
     assert qa["cases"]
     assert {"id", "query"}.issubset(qa["cases"][0])
+
+
+def test_public_search_qa_repository_fixtures_load_from_repo_root_and_cover_english_and_cjk():
+    en = load_search_qa_set(BENCHMARK_DIR / "basic.en.json")
+    zh = load_search_qa_set(BENCHMARK_DIR / "basic.zh-Hant.json")
+
+    assert en["version"] == 1
+    assert zh["version"] == 1
+    assert en["language"] == "en"
+    assert zh["language"] == "zh-Hant"
+    assert {case["id"] for case in en["cases"]} == {
+        "en_document_map_read_range",
+        "en_citation_policy_boundary",
+        "en_no_result_control",
+    }
+    assert {case["id"] for case in zh["cases"]} == {
+        "zh_document_map_read_range",
+        "zh_citation_policy_boundary",
+        "zh_no_result_control",
+    }
+    assert any("read_range" in case["query"] for case in en["cases"])
+    assert any("讀取範圍" in case["query"] for case in zh["cases"])
+    assert any(
+        any("\u4e00" <= char <= "\u9fff" for char in case["query"])
+        for case in zh["cases"]
+    )
+
+
+def test_public_search_qa_repository_fixtures_run_against_local_demo_db(tmp_path):
+    db_path = _build_fixture_db(tmp_path)
+
+    en_snapshot = evaluate_search_qa(
+        db_path=db_path,
+        qa_file=BENCHMARK_DIR / "basic.en.json",
+        mode="keyword",
+        limit=3,
+        generated_at="2026-01-02T03:04:05+00:00",
+    )
+    zh_snapshot = evaluate_search_qa(
+        db_path=db_path,
+        qa_file=BENCHMARK_DIR / "basic.zh-Hant.json",
+        mode="keyword",
+        limit=3,
+        generated_at="2026-01-02T03:04:05+00:00",
+    )
+
+    assert en_snapshot["aggregate"] == {
+        "total_cases": 3,
+        "cases_with_results": 2,
+        "top1_hits": 2,
+        "topk_hits": 2,
+        "mean_reciprocal_rank": 2 / 3,
+        "map_guidance_rate": 1 / 3,
+        "read_range_guidance_rate": 1 / 3,
+        "citation_policy_violations": 0,
+    }
+    assert zh_snapshot["aggregate"] == {
+        "total_cases": 3,
+        "cases_with_results": 2,
+        "top1_hits": 2,
+        "topk_hits": 2,
+        "mean_reciprocal_rank": 2 / 3,
+        "map_guidance_rate": 1 / 3,
+        "read_range_guidance_rate": 1 / 3,
+        "citation_policy_violations": 0,
+    }
+
+    zh_doc_case = next(
+        case for case in zh_snapshot["cases"] if case["id"] == "zh_document_map_read_range"
+    )
+    assert zh_doc_case["top1_hit"] is True
+    assert zh_doc_case["results"][0]["title"] == "文件地圖閱讀指南"
+    assert zh_doc_case["has_map_guidance"] is True
+    assert zh_doc_case["has_read_range_guidance"] is True
+    assert zh_doc_case["citation_policy_violations"] == []
+
+    assert all(
+        case["citation_policy_violations"] == []
+        for case in en_snapshot["cases"] + zh_snapshot["cases"]
+    )
 
 
 def test_expected_title_substrings_require_all_terms():

@@ -22,7 +22,7 @@ The adjacent `agentmemory` project demonstrates strong patterns worth borrowing:
 - BM25 + vector + graph retrieval fusion,
 - privacy filtering,
 - progressive disclosure,
-- benchmark packaging.
+- repository benchmark fixtures.
 
 But Vault-for-LLM should borrow those as **patterns**, not copy its product shape. Vault should preserve:
 
@@ -99,7 +99,7 @@ Vault-for-LLM should be explicit about non-goals:
 | CJK tokenizer | Add CJK-aware keyword/FTS baseline | Keep graceful fallback if tokenizer package is absent |
 | Privacy filter | Scan capture/add/compile/sync paths for secrets | Make clear regex filters are best-effort, not a compliance guarantee |
 | Progressive disclosure | Search → map show → bounded read_range | Search preview is navigation only; final citation comes from bounded read |
-| Benchmarks | Package Search QA fixtures and before/after metrics | Report retrieval metrics honestly; do not equate them with end-to-end agent success |
+| Benchmarks | Keep Search QA examples as source-checkout repository fixtures and provide before/after metrics | Report retrieval metrics honestly; do not equate them with end-to-end agent success or wheel-installed data |
 | Doctor/demo/connect UX | `vault doctor`, `vault demo`, `vault connect --print` | No silent writes into external agent config by default |
 
 ---
@@ -302,13 +302,13 @@ python -m pytest -q tests/test_search_map_integration.py tests/test_vault_mcp_ma
 
 ---
 
-## Phase 3 — Search QA and benchmark packaging
+## Phase 3 — Search QA and repository benchmark fixtures
 
 **Goal:** measure memory retrieval changes instead of trusting vibes.
 
 ### Work items
 
-1. Add public-safe Search QA fixtures.
+1. Add public-safe Search QA fixtures under the repository `benchmarks/search_qa/` directory.
 2. Include English and CJK cases.
 3. Track top1, hit@k, MRR, and citation-policy violations.
 4. Add before/after comparison examples.
@@ -319,7 +319,7 @@ python -m pytest -q tests/test_search_map_integration.py tests/test_vault_mcp_ma
 - `vault search-qa run` can produce deterministic snapshots.
 - `vault search-qa compare` highlights regressions.
 - CI can run a local-only Search QA smoke test.
-- Public benchmark docs do not imply end-to-end agent task success.
+- Public benchmark docs do not imply end-to-end agent task success or PyPI wheel inclusion for top-level repository fixtures.
 
 ### Suggested checks
 
@@ -327,6 +327,8 @@ python -m pytest -q tests/test_search_map_integration.py tests/test_vault_mcp_ma
 python -m pytest -q tests/test_search_quality_metrics.py
 vault search-qa run --qa-file benchmarks/search_qa/basic.zh-Hant.json --mode keyword --output /tmp/vault-searchqa.json
 ```
+
+The `benchmarks/search_qa/` paths above assume a repository source checkout; PyPI installs can use `vault search-qa` with user-provided QA files.
 
 ---
 

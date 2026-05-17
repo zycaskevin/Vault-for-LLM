@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "description": "Public-safe English Search QA fixture for retrieval regression smoke tests. It measures whether known local benchmark notes are retrieved; it is not an end-to-end agent benchmark.",
+  "language": "en",
+  "cases": [
+    {
+      "id": "en_document_map_read_range",
+      "query": "tool-gated reading map navigation read_range evidence",
+      "expected_title_substrings": ["Tool-gated Reading"]
+    },
+    {
+      "id": "en_citation_policy_boundary",
+      "query": "citation policy boundary final answer support",
+      "expected_titles": ["Citation Policy Boundary"]
+    },
+    {
+      "id": "en_no_result_control",
+      "query": "zzzxqv yyyqwv omegaquark",
+      "expected_titles": ["No Public Benchmark Match"]
+    }
+  ]
+}

@@ -59,7 +59,7 @@ In other words: regular RAG focuses on retrieval; Vault-for-LLM focuses on wheth
 | Knowledge graph | inferred entities/edges and graph expansion |
 | Document Map | section/claim navigation and bounded `read_range` citations ([policy and demo](docs/document_map_citation_policy.md)) |
 | MCP | `vault-mcp` exposes search/add/stats/map/read tools to compatible agents |
-| Quality tools | lint, freshness, convergence, cross-validation, dedup, Search QA snapshots |
+| Quality tools | lint, freshness, convergence, cross-validation, dedup, Search QA snapshots ([benchmarking guide](docs/search_qa_benchmarking.md)) |
 | Optional remote sync | Supabase sync scripts for teams or remote read paths |
 | Local skill registry | experimental `vault skill` commands for sharing reusable workflows inside a local Vault; not a hosted marketplace |
 
@@ -72,11 +72,13 @@ These features exist today, but they are still alpha and should be treated as qu
 | Tool | Purpose | Maturity |
 |---|---|---|
 | Document Map | Navigate sections/claims and read bounded source ranges with citations | usable, still evolving |
-| Search QA | Run fixed query sets and compare before/after retrieval metrics | usable for deterministic regression checks |
+| Search QA | Run fixed query sets and compare before/after retrieval metrics; see the [benchmarking guide](docs/search_qa_benchmarking.md) and source-checkout fixtures under `benchmarks/search_qa/` | usable for deterministic regression checks |
 | Convergence checks | Detect whether a knowledge entry has enough definition, procedure, and edge-case detail | experimental |
 | Cross-validation | Verify extracted claims across different model families | experimental / optional-model dependent |
 | Freshness + dedup | Mark stale entries and detect repeated knowledge | experimental |
 | Local skill registry | Push/search/pull reusable agent workflows in local SQLite | experimental / local-only |
+
+The `benchmarks/search_qa/` examples are repository fixtures in a source checkout, not files installed by the PyPI wheel. After `pip install vault-for-llm`, run `vault search-qa` with your own QA JSON files, or clone/download this repository to use the example fixtures.
 
 The stable path is still the core loop: `vault init` → `vault add` → `vault compile` → `vault search` → `vault-mcp`.
 
@@ -223,7 +225,7 @@ your-project/
 | `vault cross-validate` | Experimental cross-model validation |
 | `vault freshness` | Experimental freshness/review scheduling |
 | `vault dedup` | Detect or merge duplicate entries |
-| `vault search-qa run` | Run Search QA metrics snapshot |
+| `vault search-qa run` / `vault search-qa compare` | Run Search QA metrics snapshots and before/after comparisons ([guide](docs/search_qa_benchmarking.md)) |
 | `vault skill search "query"` | Search local experimental skill registry entries |
 
 Run `vault <command> --help` for command-specific options.

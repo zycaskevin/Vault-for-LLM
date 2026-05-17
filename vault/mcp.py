@@ -825,8 +825,8 @@ TOOLS = [
                 },
                 "compact": {
                     "type": "boolean",
-                    "description": "回傳精簡 payload（預設 false）",
-                    "default": False
+                    "description": "回傳精簡 payload（MCP 預設 true；設為 false 可取得含 content_preview 的完整輸出）",
+                    "default": True
                 },
             },
             "required": ["query"]
@@ -1015,7 +1015,7 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
     name = _canonical_tool_name(name)
     try:
         if name == "vault_search":
-            compact = bool(arguments.get("compact", False))
+            compact = bool(arguments.get("compact", True))
             db, search = _get_search()
             results = search.search(
                 query=arguments.get("query", ""),

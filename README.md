@@ -57,7 +57,7 @@ In other words: regular RAG focuses on retrieval; Vault-for-LLM focuses on wheth
 | Embeddings | optional ONNX Runtime or Ollama embeddings |
 | Memory layers | L0 identity, L1 core facts, L2 recent context, L3 deep knowledge |
 | Knowledge graph | inferred entities/edges and graph expansion |
-| Document Map | section/claim navigation and bounded `read_range` citations |
+| Document Map | section/claim navigation and bounded `read_range` citations ([policy and demo](docs/document_map_citation_policy.md)) |
 | MCP | `vault-mcp` exposes search/add/stats/map/read tools to compatible agents |
 | Quality tools | lint, freshness, convergence, cross-validation, dedup, Search QA snapshots |
 | Optional remote sync | Supabase sync scripts for teams or remote read paths |
@@ -228,6 +228,8 @@ your-project/
 
 Run `vault <command> --help` for command-specific options.
 
+For citation-safe memory use, see the [Document Map citation policy](docs/document_map_citation_policy.md): search results are navigation hints, while `vault map read` returns bounded source text for final citations.
+
 ---
 
 ## MCP integration
@@ -261,6 +263,8 @@ Current MCP tools include:
 - `vault_read_range`
 - `vault_remote_map_show` / `vault_remote_read_range` when optional Supabase sync is configured
 
+For agent loops, prefer `vault_search` → `vault_map_show` → `vault_read_range`. `vault_search` returns compact MCP payloads by default; pass `compact: false` only when a caller explicitly needs the fuller preview output. Final answers should cite `vault_read_range` output rather than search previews.
+
 ---
 
 ## Optional Supabase sync
@@ -283,7 +287,7 @@ python scripts/sync_to_supabase.py --document-map
 
 Vault-for-LLM is alpha software:
 
-- Internal package, module, database, and MCP tool names are Vault-branded.
+- Package, module, database, and MCP tool names are Vault-branded.
 - Advanced features such as convergence, cross-validation, Search QA, skills, and Supabase sync are evolving.
 - The default install is available from PyPI; source installs are for development.
 - APIs and schemas may change before a stable release.

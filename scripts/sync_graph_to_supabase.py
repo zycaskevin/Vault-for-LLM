@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sync graph data (entities, edges, entity_knowledge) from Lite → Supabase."""
+"""Sync Vault graph data to optional Supabase tables."""
 
 import json
 import os
@@ -12,21 +12,37 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts._utils import find_db_path, load_dotenv_cascade
 load_dotenv_cascade()
 
-from supabase import create_client
+try:
+    from supabase import create_client
+except Exception:  # optional dependency for remote sync only
+    create_client = None
 
 # --- Config（從環境變數讀取，勿硬編碼 key）---
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_ANON_KEY", "")
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    print("❌ 請設定環境變數 SUPABASE_URL 和 SUPABASE_SERVICE_KEY（或 SUPABASE_ANON_KEY）")
-    sys.exit(1)
-
 DB_PATH = find_db_path()
+KNOWLEDGE_TABLE = os.getenv("VAULT_SUPABASE_KNOWLEDGE_TABLE", "vault_knowledge")
+GRAPH_ENTITIES_TABLE = os.getenv("VAULT_SUPABASE_GRAPH_ENTITIES_TABLE", "vault_graph_entities")
+GRAPH_EDGES_TABLE = os.getenv("VAULT_SUPABASE_GRAPH_EDGES_TABLE", "vault_graph_edges")
+GRAPH_ENTITY_KNOWLEDGE_TABLE = os.getenv(
+    "VAULT_SUPABASE_GRAPH_ENTITY_KNOWLEDGE_TABLE",
+    "vault_graph_entity_knowledge",
+)
+
+
+def _get_sb_client():
+    if create_client is None:
+        print("❌ Supabase Python client 未安裝，無法執行遠端同步")
+        return None
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        print("❌ SUPABASE_URL 或 SUPABASE_SERVICE_KEY（或 SUPABASE_ANON_KEY）未設定")
+        return None
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def get_supabase_id_map(sp_client):
     """Build mapping: Lite title → Supabase UUID."""
-    rows = sp_client.table("vault_knowledge").select("id, title").execute()
+    rows = sp_client.table(KNOWLEDGE_TABLE).select("id, title").execute()
     title_to_id = {}
     for r in rows.data:
         title_to_id[r["title"]] = r["id"]
@@ -80,14 +96,14 @@ def sync_entities(sp, entities, ek, knowledge_rows, lite_id_to_supabase_id):
     for i in range(0, len(batch), 50):
         chunk = batch[i:i+50]
         try:
-            result = sp.table("gr_entities").upsert(chunk, on_conflict="name,entity_type").execute()
+            result = sp.table(GRAPH_ENTITIES_TABLE).upsert(chunk, on_conflict="name,entity_type").execute()
             created += len(result.data)
         except Exception as e:
             print(f"  Batch {i//50} error: {e}")
             # Try one by one
             for item in chunk:
                 try:
-                    r = sp.table("gr_entities").upsert(item, on_conflict="name,entity_type").execute()
+                    r = sp.table(GRAPH_ENTITIES_TABLE).upsert(item, on_conflict="name,entity_type").execute()
                     created += 1
                 except Exception as e2:
                     print(f"  Skipped entity '{item['name']}': {e2}")
@@ -95,7 +111,7 @@ def sync_entities(sp, entities, ek, knowledge_rows, lite_id_to_supabase_id):
     print(f"  Entities synced: {created}/{len(batch)}")
 
     # Build entity name→supabase_id mapping
-    all_entities = sp.table("gr_entities").select("id, name, entity_type").execute()
+    all_entities = sp.table(GRAPH_ENTITIES_TABLE).select("id, name, entity_type").execute()
     name_key_to_spid = {}
     for r in all_entities.data:
         name_key_to_spid[(r["name"], r["entity_type"])] = r["id"]
@@ -134,13 +150,13 @@ def sync_edges(sp, edges, lite_id_to_supabase_id, entity_map):
     for i in range(0, len(batch), 50):
         chunk = batch[i:i+50]
         try:
-            result = sp.table("gr_edges").upsert(chunk, on_conflict="source_id,target_id,relation").execute()
+            result = sp.table(GRAPH_EDGES_TABLE).upsert(chunk, on_conflict="source_id,target_id,relation").execute()
             created += len(result.data)
         except Exception as e:
             print(f"  Batch {i//50} error: {e}")
             for item in chunk:
                 try:
-                    r = sp.table("gr_edges").upsert(item, on_conflict="source_id,target_id,relation").execute()
+                    r = sp.table(GRAPH_EDGES_TABLE).upsert(item, on_conflict="source_id,target_id,relation").execute()
                     created += 1
                 except Exception as e2:
                     print(f"  Skipped edge: {e2}")
@@ -198,13 +214,13 @@ def sync_entity_knowledge(sp, ek, lite_id_to_supabase_id, entity_map):
     for i in range(0, len(final_batch), 50):
         chunk = final_batch[i:i+50]
         try:
-            result = sp.table("gr_entity_knowledge").upsert(chunk, on_conflict="entity_id,knowledge_id").execute()
+            result = sp.table(GRAPH_ENTITY_KNOWLEDGE_TABLE).upsert(chunk, on_conflict="entity_id,knowledge_id").execute()
             created += len(result.data)
         except Exception as e:
             print(f"  Batch {i//50} error: {e}")
             for item in chunk:
                 try:
-                    r = sp.table("gr_entity_knowledge").upsert(item, on_conflict="entity_id,knowledge_id").execute()
+                    r = sp.table(GRAPH_ENTITY_KNOWLEDGE_TABLE).upsert(item, on_conflict="entity_id,knowledge_id").execute()
                     created += 1
                 except Exception as e2:
                     print(f"  Skipped ek link: {e2}")
@@ -213,7 +229,9 @@ def sync_entity_knowledge(sp, ek, lite_id_to_supabase_id, entity_map):
 
 
 def main():
-    sp = create_client(SUPABASE_URL, SUPABASE_KEY)
+    sp = _get_sb_client()
+    if not sp:
+        return None
 
     print("=== Vault Graph → Supabase Sync ===\n")
 
@@ -252,7 +270,7 @@ def main():
     # 6. Summary
     print("\n=== Sync Complete ===")
     # Verify counts
-    for table in ["gr_entities", "gr_edges", "gr_entity_knowledge"]:
+    for table in [GRAPH_ENTITIES_TABLE, GRAPH_EDGES_TABLE, GRAPH_ENTITY_KNOWLEDGE_TABLE]:
         count = sp.table(table).select("id", count="exact").execute()
         print(f"   {table}: {len(count.data)} rows")
 

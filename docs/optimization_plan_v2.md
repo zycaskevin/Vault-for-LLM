@@ -1,6 +1,6 @@
 # Optimization Notes
 
-This document collects public optimization directions for Vault-for-LLM. It is intentionally product- and project-neutral: no private deployment paths, dashboards, or internal agent wiring are required to use Vault.
+This document collects public optimization directions for Vault-for-LLM. It is intentionally product- and project-neutral: no private deployment paths, remote admin surfaces, or internal agent wiring are required to use Vault.
 
 ---
 
@@ -110,4 +110,4 @@ Public docs should describe:
 - how local and optional remote modes differ
 - migration notes for old internal names
 
-Public docs should not include private paths, personal names, internal dashboards, or deployment-specific instructions from one user's environment.
+Public docs should not include private paths, personal names, internal admin surfaces, or deployment-specific instructions from one user's environment.

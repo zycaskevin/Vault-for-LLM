@@ -44,8 +44,8 @@ print(f"  Stats: {stats}")
 
 kid1 = db.add_knowledge(title="sqlite-vec 踩坑", content_raw="sqlite-vec 擴展需要在每次連線時重新載入，否則虛擬表找不到。WAL 模式建議搭配使用。", layer="L1", category="error", tags="sqlite-vec,踩坑,擴展", source="session")
 kid2 = db.add_knowledge(title="Ollama 超時處理", content_raw="Ollama 本地推理超時常見原因：模型未預載、GPU 記憶體不足、請求並發過高。解法：先 ollama pull，設定 timeout=120。", layer="L2", category="fix", tags="ollama,timeout,GPU", source="cron")
-kid3 = db.add_knowledge(title="Hermes delegate 陷阱", content_raw="delegate_task fallback 鏈全額度用完時三連敗。解法：指定 model 或 acp_command。", layer="L2", category="prevention", tags="hermes,delegate,fallback", source="skill")
-kid4 = db.add_knowledge(title="中文搜尋修復", content_raw="holographic memory CJK 分詞問題：需要安裝 jieba 並修改 tokeniser 才能正確搜尋中文。", layer="L2", category="fix", tags="CJK,搜尋,分詞", source="session")
+kid3 = db.add_knowledge(title="Agent tool fallback 陷阱", content_raw="工具 fallback 鏈全額度用完時可能連續失敗。解法：指定可用模型或改用更小的任務切分。", layer="L2", category="prevention", tags="agent,tooling,fallback", source="skill")
+kid4 = db.add_knowledge(title="中文搜尋修復", content_raw="CJK 知識搜尋分詞問題：需要安裝 jieba 並修改 tokeniser 才能正確搜尋中文。", layer="L2", category="fix", tags="CJK,搜尋,分詞", source="session")
 kid5 = db.add_knowledge(title="vLLM 部署筆記", content_raw="vLLM 本地部署 Qwen3 模型：設定 max_model_len、gpu_memory_utilization、served_model_name。", layer="L2", category="best", tags="vllm,部署,qwen", source="session")
 check("Insert 5 entries", all(kid is not None for kid in [kid1, kid2, kid3, kid4, kid5]))
 
@@ -111,7 +111,7 @@ norm1 = sum(v**2 for v in v1)**0.5
 check("Single encode", len(v1) == dim, f"dim={len(v1)}")
 check("Normalized (norm≈1.0)", 0.9 < norm1 < 1.1, f"norm={norm1:.4f}")
 
-vecs = embed_prov.encode(["Ollama timeout", "delegate fallback", "CJK 分詞"])
+vecs = embed_prov.encode(["Ollama timeout", "tool fallback", "CJK 分詞"])
 check("Batch encode", len(vecs) == 3, f"got {len(vecs)}")
 
 # Store vectors in DB
@@ -270,19 +270,26 @@ else:
         from supabase import create_client
         sp = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-        for t in ["vault_knowledge", "gr_entities", "gr_edges", "gr_entity_knowledge"]:
+        from scripts.sync_graph_to_supabase import (
+            GRAPH_EDGES_TABLE,
+            GRAPH_ENTITIES_TABLE,
+            GRAPH_ENTITY_KNOWLEDGE_TABLE,
+            KNOWLEDGE_TABLE,
+        )
+
+        for t in [KNOWLEDGE_TABLE, GRAPH_ENTITIES_TABLE, GRAPH_EDGES_TABLE, GRAPH_ENTITY_KNOWLEDGE_TABLE]:
             r = sp.table(t).select("id", count="exact").range(0, 0).execute()
             print(f"  {t}: {r.count} rows")
 
-        r = sp.table("vault_knowledge").select("id,title,category").ilike("title", "%sqlite%").execute()
+        r = sp.table(KNOWLEDGE_TABLE).select("id,title,category").ilike("title", "%sqlite%").execute()
         check("Supabase 'sqlite'", len(r.data) >= 1, f"got {len(r.data)}")
 
-        r = sp.table("gr_entities").select("id,name,entity_type").eq("name", "sqlite-vec").execute()
+        r = sp.table(GRAPH_ENTITIES_TABLE).select("id,name,entity_type").eq("name", "sqlite-vec").execute()
         check("Entity 'sqlite-vec'", len(r.data) >= 1)
 
         if r.data:
             ent_id = r.data[0]['id']
-            ek = sp.table("gr_entity_knowledge").select("knowledge_id").eq("entity_id", ent_id).execute()
+            ek = sp.table(GRAPH_ENTITY_KNOWLEDGE_TABLE).select("knowledge_id").eq("entity_id", ent_id).execute()
             print(f"  Entity 'sqlite-vec' linked to {len(ek.data)} knowledge entries")
 
         print("  ✅ Supabase integration PASSED\n")

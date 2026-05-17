@@ -31,15 +31,14 @@ BACKLINKS_DB = VAULT_DIR / '.backlinks.json'
 
 
 # ============================================================
-# 實體定義 — 已知可鏈接的實體列表
+# 實體定義 — 已知可鏈接的 public-safe 實體列表
 # ============================================================
 
-# 系統內建實體（從 Supabase gr_entities + 常見概念手動整理）
+# 系統內建實體（public-safe baseline + 常見概念手動整理）
 BUILTIN_ENTITIES = {
     # 技術工具
     "Vault": "vault",
-    "Hermes": "hermes",
-    "Hermes Agent": "hermes",
+    "Example Agent": "example-agent",
     "Claude Code": "claude-code",
     "OpenCode": "opencode",
     "Supabase": "supabase",
@@ -109,7 +108,7 @@ def scan_for_entities(text, entities=BUILTIN_ENTITIES):
     found = []
     seen = set()
     
-    # 按名稱長度降序排列，優先匹配長名（如 "Hermes Agent" 優先於 "Hermes"）
+    # 按名稱長度降序排列，優先匹配長名（如 "Example Agent" 優先於 "Agent"）
     sorted_entities = sorted(entities.items(), key=lambda x: len(x[0]), reverse=True)
     
     for entity_name, slug in sorted_entities:

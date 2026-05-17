@@ -1,20 +1,22 @@
 # Vault-for-LLM Public Release Progress
 
-Last updated: 2026-05-17 09:30 CST
+Last updated: 2026-05-17 10:34 CST
 
 ## Current Status
 
-P0 public boundary cleanup is approved to start via Kanban.
+P0 public boundary cleanup is completed through Kanban and locally verified.
 
-The latest planning artifact is:
+Latest planning/review artifacts:
 
 - `docs/agent_memory_qa_roadmap.md` — Agent Memory QA roadmap and Kanban execution graph inspired by agentmemory, while preserving Vault-for-LLM's local-first Markdown + SQLite positioning.
+- `docs/p0_public_string_audit.md` — public-boundary audit and remediation notes.
+- `docs/readme_claim_matrix.md` — README claim → proof → maturity matrix.
 
 Kanban board:
 
 - `vault-for-llm-public-cleanup`
 
-Current branch observed during this planning pass:
+Current branch observed during this pass:
 
 - `fix/vault-internal-rename`
 
@@ -28,20 +30,12 @@ The public project should not try to become a broad capture-first memory runtime
 
 ## Recommended Next Roadmap
 
-### P0 — Public boundary cleanup
+### P1 — Stable local core verification / release hygiene
 
-- Run a tracked-file audit for private/internal names and deployment assumptions.
-- Neutralize or remove public-unsuitable raw knowledge examples.
-- Split optional public Supabase sync from any private dashboard health assumptions.
-- Decide whether `vault skill` remains hidden, is downgraded to experimental, or is product-neutralized.
-- Build a README claim matrix: claim → proof → maturity.
-
-### P1 — Stable local core verification
-
-- Verify fresh install in a clean environment.
-- Ensure `vault doctor`, `vault init`, `vault add`, `vault compile`, and `vault search` work without cloud/model dependencies.
-- Guard optional dependency imports so full test collection does not fail when optional packages are absent.
-- Verify README command examples against actual CLI parser behavior.
+- Decide whether to publish the prepared `0.4.1` package release.
+- If publishing, run the PyPI release gate from `open-source-repo-operations`: tag exact commit, upload artifacts, verify fresh PyPI install, then rotate/restrict credentials.
+- Address build warnings before 2027 deadline: migrate `project.license` to SPDX string and remove deprecated license classifier.
+- Keep checking README command examples against actual CLI parser behavior before each release.
 
 ### P2 — Document Map as differentiator
 
@@ -73,17 +67,22 @@ The public project should not try to become a broad capture-first memory runtime
 - Do not present advanced commands as production-ready platform features.
 - Do not expand the default MCP tool surface without a strong agent-in-conversation need.
 - Do not enable silent auto-capture or uncontrolled auto-write.
-- Do not market `vault skill` as a mature marketplace until it is product-neutral and safety-reviewed.
-- Do not include private/internal paths, dashboards, or deployment details in public-facing docs.
+- Treat `vault skill` as an experimental local registry; do not market it as a hosted or mature marketplace until safety-reviewed.
+- Do not include private/internal paths, admin surfaces, or deployment details in public-facing docs.
 
-## Verification Notes From Planning Review
+## Verification Notes From P0
 
-Observed during the roadmap review:
+Verified after Kanban execution:
 
-- Existing README direction is closer now, but should still be tightened around maturity and proof.
-- Existing docs already mention Document Map and optimization principles.
-- Reviewers flagged that optional Supabase dependency handling may break full pytest collection if not guarded.
-- Reviewers also flagged possible internal/private vocabulary and product-specific skill defaults that should be handled in P0.
+- Full local test suite: `79 passed`.
+- `git diff --check` passed.
+- `python -m compileall -q vault scripts tests` passed.
+- `python -m vault.cli doctor` passed with only optional `optimum[onnxruntime]` missing.
+- `python -m vault.cli --help` and `python -m vault.mcp --help` passed.
+- Public stale-string grep found no stale Hermes/dashboard/marketplace wording in README/docs/default code paths.
+- Graphify rebuild completed: 117 nodes, 5 edges, 114 communities.
+- Build gate passed in a temporary venv: `python -m build` and `twine check dist/*` both passed for `0.4.1`; setuptools emitted deprecation warnings for legacy license metadata.
+- Clean wheel import from `/tmp` verified `vault.__version__ == "0.4.1"` from site-packages.
 
 ## Historical Archive
 

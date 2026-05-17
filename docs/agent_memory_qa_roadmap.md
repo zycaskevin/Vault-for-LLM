@@ -68,7 +68,7 @@ Vault-for-LLM should be explicit about non-goals:
 - Not a production-ready team collaboration backend.
 - Not a full replacement for a notes app.
 - Not a hidden personal data collector.
-- Not a mature workflow marketplace yet.
+- Not a hosted or mature workflow marketplace.
 - Not dependent on Supabase, Docker, ONNX, Ollama, or vector search for the core path.
 
 ### 2.3 Positioning against adjacent tools
@@ -212,8 +212,8 @@ Advanced QA tools should stay CLI-first unless there is a strong agent-in-conver
 
 1. Run a public string audit for internal/private terms.
 2. Remove or neutralize private raw memory entries.
-3. Split optional public Supabase sync from any private dashboard health sync.
-4. Decide whether `vault skill` is hidden, renamed, or product-neutralized.
+3. Split optional public Supabase sync from any private remote-health sync.
+4. Keep `vault skill` product-neutral as an experimental local skill registry, or hide it until that remains true.
 5. Build a README claim matrix: claim → proof → maturity.
 
 ### Acceptance criteria
@@ -226,7 +226,7 @@ Advanced QA tools should stay CLI-first unless there is a strong agent-in-conver
 ### Suggested checks
 
 ```bash
-git grep -nE 'Hermes|Guardrails|Dashboard|\.hermes|hermes_|private|internal' -- .
+git grep -nE 'private|internal|product-specific|deployment-specific' -- .
 git diff --check
 python -m compileall vault scripts tests
 python -m pytest -q
@@ -448,7 +448,7 @@ Use board: `vault-for-llm-public-cleanup` or a dedicated board such as `vault-ag
 |---|---|---|---|
 | A1 Public string audit | reviewer | none | all internal/private terms classified as remove/neutralize/allowed |
 | A2 Raw/example cleanup | writer / engineer | A1 | no private raw memory ships as public default; examples are neutral |
-| A3 Supabase/dashboard split | backend / reviewer | A1 | optional sync separated from private dashboard assumptions |
+| A3 Supabase/remote-health split | backend / reviewer | A1 | optional sync separated from private remote-health assumptions |
 | A4 Skill feature neutralization decision | analyst / backend | A1 | `vault skill` is hidden, clearly experimental, or product-neutral |
 
 ### Epic B — Public positioning
@@ -537,8 +537,8 @@ Do not start feature expansion before A/B/C are clean. The current pain is not l
 These findings should be verified and addressed in Phase 0/1:
 
 - Full test collection can fail if optional Supabase dependency import is not guarded.
-- Some public docs and code paths may still expose private/internal vocabulary or dashboard assumptions.
-- `vault skill` may still carry product-specific defaults and should not be marketed as a mature marketplace until neutralized.
+- Some public docs and code paths may still expose private/internal vocabulary or remote-service assumptions.
+- `vault skill` is positioned as an experimental local registry; it should not be marketed as a hosted or mature marketplace until safety-reviewed.
 - Raw tracked knowledge entries should be checked for public suitability.
 - README currently has the right direction but should be stricter about maturity and proof.
 

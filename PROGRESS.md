@@ -1,8 +1,30 @@
-# Guardrails Document Map Upgrade — Progress
+# Guardrails Internal Knowledge Capability — Progress
 
-Last updated: 2026-05-09 16:57 CST
+Last updated: 2026-05-18 01:19 CST
 
-## Current Sprint: Sprint 4E — Search QA Set + Before/After Metrics — COMPLETED
+## Current Phase: Phase B — 內部百科真正能力建設 — PLANNING
+
+### Goal
+Let Nancy / Hermes / Guardrails dogfood the internal knowledge base every day so real retrieval, citation, capture, privacy, CJK search, and multi-agent convergence problems surface before public Vault-for-LLM productization.
+
+### Current Planning Artifact
+- `docs/phase_b_internal_knowledge_capability_plan.md` — Phase B internal roadmap and execution order.
+
+### Phase B Priority Order
+1. B1 對話回寫治理
+2. B6 privacy scanner
+3. B5 session capture draft queue
+4. B2 Document Map coverage strengthening
+5. B3 internal Search QA metrics
+6. B4 CJK retrieval improvements
+7. B7 multi-agent writing and convergence workflow
+
+### Immediate Next Task
+Create `docs/session_writeback_governance.md` for B1, including shared/private/no-write classification, candidate extraction rules, dedupe/merge policy, trust/freshness/convergence defaults, privacy preflight, and review/promote/discard lifecycle.
+
+---
+
+## Previous Sprint: Sprint 4E — Search QA Set + Before/After Metrics — COMPLETED
 
 ### Goal
 Create a deterministic Search QA Set and before/after metric runner so Guardrails search quality can be measured before changing ranking logic. This sprint is about observability and regression safety, not about making search ranking smarter yet.

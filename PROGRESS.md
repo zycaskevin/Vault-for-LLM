@@ -1,16 +1,18 @@
 # Vault-for-LLM Public Release Progress
 
-Last updated: 2026-05-17 10:34 CST
+Last updated: 2026-05-17 11:05 CST
 
 ## Current Status
 
-P0 public boundary cleanup is completed through Kanban and locally verified. P1 release hygiene is now approved to run locally; no PyPI upload, git tag, push, or GitHub release is authorized yet.
+P0 public boundary cleanup and P1 local release hygiene are completed through Kanban and locally verified. No PyPI upload, git tag, push, or GitHub release is authorized yet.
 
 Latest planning/review artifacts:
 
 - `docs/agent_memory_qa_roadmap.md` — Agent Memory QA roadmap and Kanban execution graph inspired by agentmemory, while preserving Vault-for-LLM's local-first Markdown + SQLite positioning.
 - `docs/p0_public_string_audit.md` — public-boundary audit and remediation notes.
 - `docs/readme_claim_matrix.md` — README claim → proof → maturity matrix.
+- `docs/release_checklist_0_4_1.md` — no-side-effect release checklist for a future manually approved 0.4.1 publishing step.
+- `docs/p1_release_readiness_report.md` — final local release-readiness report and command evidence.
 
 Kanban board:
 
@@ -34,7 +36,7 @@ The public project should not try to become a broad capture-first memory runtime
 
 - Decide whether to publish the prepared `0.4.1` package release.
 - If publishing, run the PyPI release gate from `open-source-repo-operations`: tag exact commit, upload artifacts, verify fresh PyPI install, then rotate/restrict credentials.
-- Address build warnings before 2027 deadline: migrate `project.license` to SPDX string and remove deprecated license classifier.
+- License metadata warning remediation is complete: `project.license` now uses the SPDX `MIT` string, `project.license-files` includes `LICENSE`, and the deprecated license classifier has been removed.
 - Keep checking README command examples against actual CLI parser behavior before each release.
 
 ### P2 — Document Map as differentiator
@@ -70,19 +72,22 @@ The public project should not try to become a broad capture-first memory runtime
 - Treat `vault skill` as an experimental local registry; do not market it as a hosted or mature marketplace until safety-reviewed.
 - Do not include private/internal paths, admin surfaces, or deployment details in public-facing docs.
 
-## Verification Notes From P0
+## Verification Notes From P0/P1
 
 Verified after Kanban execution:
 
-- Full local test suite: `79 passed`.
+- Full local test suite in current environment: `79 passed`.
+- Clean `.[dev]` venv full test suite: `79 passed`.
 - `git diff --check` passed.
 - `python -m compileall -q vault scripts tests` passed.
 - `python -m vault.cli doctor` passed with only optional `optimum[onnxruntime]` missing.
 - `python -m vault.cli --help` and `python -m vault.mcp --help` passed.
-- Public stale-string grep found no stale Hermes/dashboard/marketplace wording in README/docs/default code paths.
+- Public stale-string grep found no stale Hermes/dashboard/marketplace wording in README/docs/default code paths except historical verification notes.
 - Graphify rebuild completed: 117 nodes, 5 edges, 114 communities.
-- Build gate passed in a temporary venv: `python -m build` and `twine check dist/*` both passed for `0.4.1`; setuptools emitted deprecation warnings for legacy license metadata.
-- Clean wheel import from `/tmp` verified `vault.__version__ == "0.4.1"` from site-packages.
+- Build gate passed in a temporary venv: `python -m build` and `twine check dist/*` both passed for `0.4.1`.
+- License metadata warning remediation is verified: no `project.license` TOML-table or deprecated license-classifier warnings remain in the build log.
+- Clean wheel import from `/tmp` verified `vault.__version__ == "0.4.1"` and import path from `/tmp/vfl-p1-site/`.
+- Clean `.[dev]` test-path bug fixed: `tests/test_e2e.py` now checks `onnxruntime` availability explicitly before enabling semantic embedding checks.
 
 ## Historical Archive
 

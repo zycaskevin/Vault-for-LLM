@@ -5,7 +5,9 @@
 ### Changed
 - Refresh package metadata for a post-cleanup PyPI release so the project description and long description match the public local-first Markdown + SQLite positioning without pre-A4 skill-marketplace wording.
 - Modernize package license metadata to the PEP 639 SPDX `MIT` form with explicit `LICENSE` inclusion, removing deprecated setuptools license-table/classifier usage while preserving MIT semantics.
-- Keep the release focused on metadata/version alignment; no README claim changes are required by `docs/readme_claim_matrix.md`.
+- Document citation-safe Document Map usage: search results are navigation hints; bounded `read_range` / `map read` output is the final citation source.
+- Add public repository Search QA fixtures for English and Traditional Chinese retrieval smoke checks, with docs that label benchmarks as retrieval-only and source-checkout examples rather than wheel-installed data.
+- Make MCP `vault_search` compact by default while preserving explicit `compact: false` for fuller preview output.
 
 ## [0.4.0] — 2026-04-22
 

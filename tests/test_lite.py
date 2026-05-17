@@ -118,6 +118,46 @@ trust: 0.7
     print("✅ test_compile_and_search")
 
 
+def test_compile_skips_git_commit_hygiene_in_non_git_project(tmp_path, capfd, monkeypatch):
+    """編譯非 Git 專案時不應洩漏 git stderr 或誤報 commit 成功。"""
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
+
+    raw_dir = project_dir / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "sample.md").write_text("""---
+title: PyPI Smoke
+category: test
+layer: L3
+tags: smoke
+trust: 0.8
+---
+# PyPI Smoke
+
+First-user flow in a non-Git temp directory should compile cleanly.
+""", encoding="utf-8")
+
+    db = VaultDB(str(project_dir / "vault.db"))
+    db.connect()
+    try:
+        compiler = VaultCompiler(project_dir, db=db, embed_provider=None)
+        capfd.readouterr()
+
+        stats = compiler.compile()
+        captured = capfd.readouterr()
+
+        assert stats["total_files"] == 1
+        assert stats["new"] == 1
+        assert stats["updated"] == 0
+        assert stats["errors"] == 0
+        assert "unknown option 'cached'" not in captured.err
+        assert "git diff --no-index" not in captured.err
+        assert "Git commit" not in captured.out
+    finally:
+        db.close()
+
+
 def test_lint():
     """測試 Lint"""
     db_path = tempfile.mktemp(suffix=".db")

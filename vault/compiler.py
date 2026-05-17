@@ -705,23 +705,41 @@ class VaultCompiler:
     def _git_commit(self, stats: dict):
         """自動 git commit（只加已 tracked 檔案，避免誤傷 runtime 檔案）。"""
         try:
+            # 非 Git 工作樹（例如初次使用的臨時目錄）不嘗試 auto-commit，避免 git diff
+            # fallback 到 --no-index 並把 raw stderr 洩漏到 CLI。
+            work_tree = subprocess.run(
+                ["git", "rev-parse", "--is-inside-work-tree"],
+                cwd=str(self.project_dir),
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if work_tree.returncode != 0 or work_tree.stdout.strip() != "true":
+                return
+
             # 只用 -u（更新已 tracking 的檔案），不用 -A（避免加 untracked runtime 檔案）
             result = subprocess.run(
                 ["git", "add", "-u"], cwd=str(self.project_dir),
                 capture_output=True, timeout=10
             )
+            if result.returncode != 0:
+                return
+
             # 檢查是否有東西 staged
             diff_check = subprocess.run(
                 ["git", "diff", "--cached", "--quiet"], cwd=str(self.project_dir),
-                timeout=5
+                capture_output=True, timeout=5
             )
             if diff_check.returncode == 0:
                 # 沒變更，跳過 commit
                 return
+            if diff_check.returncode != 1:
+                return
 
             msg = f"vault: compile {stats['new']} new, {stats['updated']} updated"
-            subprocess.run(["git", "commit", "-m", msg],
-                           cwd=str(self.project_dir), capture_output=True, timeout=10)
-            print(f"[compiler] ✅ Git commit: {msg}")
+            commit_result = subprocess.run(["git", "commit", "-m", msg],
+                                           cwd=str(self.project_dir), capture_output=True, timeout=10)
+            if commit_result.returncode == 0:
+                print(f"[compiler] ✅ Git commit: {msg}")
         except Exception as e:
             print(f"[compiler] ⚠️ Git commit 失敗（不影響編譯）: {e}")

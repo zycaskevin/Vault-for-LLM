@@ -1,10 +1,12 @@
 # Vault-for-LLM Public Release Progress
 
-Last updated: 2026-05-17 12:44 CST
+Last updated: 2026-05-17 16:58 CST
 
 ## Current Status
 
-P0 public boundary cleanup, P1 local release hygiene, P2 Document Map demo / citation policy cleanup, and P3 Search QA repository fixtures are completed locally through Kanban task `t_7cc24fa3`. No PyPI upload, git tag, push, or GitHub release is authorized yet.
+Vault-for-LLM `0.4.1` has been published to PyPI and pushed to GitHub at `d8c4c2d`; tag `v0.4.1` points to the same commit. Do not re-upload `0.4.1` because PyPI versions are immutable.
+
+Active patch branch: `fix/cli-non-git-diff-hygiene` from `origin/main` (`d8c4c2d`). Current post-release task: fix CLI hygiene where the first-user smoke flow succeeds in a non-Git temp directory but leaks `git diff --cached` / `git diff --no-index` stderr noise. If this fix is released, bump to `0.4.2` or later.
 
 Latest planning/review artifacts:
 
@@ -13,7 +15,7 @@ Latest planning/review artifacts:
 - `docs/readme_claim_matrix.md` — README claim → proof → maturity matrix.
 - `docs/document_map_citation_policy.md` — public Document Map citation policy and CLI/MCP demo for search → map show → read range.
 - `docs/search_qa_benchmarking.md` and `benchmarks/search_qa/` — public-safe Search QA fixture docs and English / Traditional Chinese retrieval smoke fixtures.
-- `docs/release_checklist_0_4_1.md` — no-side-effect release checklist for a future manually approved 0.4.1 publishing step.
+- `docs/release_checklist_0_4_1.md` — no-side-effect release checklist used for the 0.4.1 publishing step.
 - `docs/p1_release_readiness_report.md` — final local release-readiness report and command evidence.
 
 Kanban board:
@@ -22,7 +24,7 @@ Kanban board:
 
 Current branch observed during this pass:
 
-- `fix/vault-internal-rename`
+- `fix/cli-non-git-diff-hygiene`
 
 ## Current Decision
 
@@ -36,8 +38,8 @@ The public project should not try to become a broad capture-first memory runtime
 
 ### P1 — Stable local core verification / release hygiene
 
-- Decide whether to publish the prepared `0.4.1` package release.
-- If publishing, run the PyPI release gate from `open-source-repo-operations`: tag exact commit, upload artifacts, verify fresh PyPI install, then rotate/restrict credentials.
+- `0.4.1` is published; do not re-upload the same immutable PyPI version.
+- For this post-release hygiene fix, run the PyPI release gate from `open-source-repo-operations`, then decide whether to bump and publish `0.4.2`.
 - License metadata warning remediation is complete: `project.license` now uses the SPDX `MIT` string, `project.license-files` includes `LICENSE`, and the deprecated license classifier has been removed.
 - Keep checking README command examples against actual CLI parser behavior before each release.
 

@@ -320,13 +320,27 @@ def test_handle_tool_call_routes_document_map_tools(tmp_path, monkeypatch):
 
     search_response = vault_mcp.handle_tool_call(
         "vault_search",
-        {"query": "tool-gated reading", "mode": "keyword", "compact": True},
+        {"query": "tool-gated reading", "mode": "keyword"},
     )
     search_payload = json.loads(search_response["result"])
     assert search_payload[0]["id"] == knowledge_id
     assert search_payload[0]["next_action"]["tool"] == "vault_map_show"
+    assert search_payload[0]["next_actions"][1]["tool"] == "vault_read_range"
+    assert search_payload[0]["recommended_next_tool"] == "vault_read_range"
     assert "content_preview" not in search_payload[0]
+    assert "content_raw" not in search_payload[0]
+    assert "content_aaak" not in search_payload[0]
     assert "best_node" not in search_payload[0]
+
+    full_search_response = vault_mcp.handle_tool_call(
+        "vault_search",
+        {"query": "tool-gated reading", "mode": "keyword", "compact": False},
+    )
+    full_search_payload = json.loads(full_search_response["result"])
+    assert full_search_payload[0]["id"] == knowledge_id
+    assert "content_preview" in full_search_payload[0]
+    assert "Tool-gated reading keeps agents" in full_search_payload[0]["content_preview"]
+    assert "best_node" in full_search_payload[0]
 
     read_response = vault_mcp.handle_tool_call(
         "vault_read_range",
@@ -343,6 +357,8 @@ def test_public_vault_mcp_tools_are_listed_and_routed(tmp_path, monkeypatch):
 
     tool_names = {tool["name"] for tool in vault_mcp.TOOLS}
     assert "vault_search" in tool_names
+    search_tool = next(tool for tool in vault_mcp.TOOLS if tool["name"] == "vault_search")
+    assert search_tool["inputSchema"]["properties"]["compact"]["default"] is True
     assert "vault_add" in tool_names
     assert "vault_stats" in tool_names
     assert "vault_map_show" in tool_names

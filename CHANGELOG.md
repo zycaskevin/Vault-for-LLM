@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2] — 2026-05-17
+
+### Fixed
+- Skip Git auto-commit attempts when `vault compile` runs outside a Git worktree.
+- Suppress expected stderr from non-Git `git diff --cached` and `git diff --no-index` probes in first-user/non-Git smoke flows.
+- Add regression coverage for compile hygiene in non-Git projects.
+
 ## [0.4.1] — 2026-05-17
 
 ### Changed

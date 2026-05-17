@@ -1,12 +1,12 @@
 # Vault-for-LLM Public Release Progress
 
-Last updated: 2026-05-17 16:58 CST
+Last updated: 2026-05-17 18:15 CST
 
 ## Current Status
 
 Vault-for-LLM `0.4.1` has been published to PyPI and pushed to GitHub at `d8c4c2d`; tag `v0.4.1` points to the same commit. Do not re-upload `0.4.1` because PyPI versions are immutable.
 
-Active patch branch: `fix/cli-non-git-diff-hygiene` from `origin/main` (`d8c4c2d`). Current post-release task: fix CLI hygiene where the first-user smoke flow succeeds in a non-Git temp directory but leaks `git diff --cached` / `git diff --no-index` stderr noise. If this fix is released, bump to `0.4.2` or later.
+Active patch branch: `fix/cli-non-git-diff-hygiene` from `origin/main` (`d8c4c2d`). Current post-release task: prepare `0.4.2` after the CLI hygiene fix that skips Git auto-commit outside worktrees and suppresses non-Git `git diff --cached` / `git diff --no-index` stderr noise.
 
 Latest planning/review artifacts:
 
@@ -39,7 +39,7 @@ The public project should not try to become a broad capture-first memory runtime
 ### P1 — Stable local core verification / release hygiene
 
 - `0.4.1` is published; do not re-upload the same immutable PyPI version.
-- For this post-release hygiene fix, run the PyPI release gate from `open-source-repo-operations`, then decide whether to bump and publish `0.4.2`.
+- For this post-release hygiene fix, run the PyPI release gate from `open-source-repo-operations`, then publish `0.4.2` if the gate passes.
 - License metadata warning remediation is complete: `project.license` now uses the SPDX `MIT` string, `project.license-files` includes `LICENSE`, and the deprecated license classifier has been removed.
 - Keep checking README command examples against actual CLI parser behavior before each release.
 

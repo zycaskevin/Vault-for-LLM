@@ -1,8 +1,8 @@
 # Guardrails Internal Knowledge Capability — Progress
 
-Last updated: 2026-05-18 10:34 CST
+Last updated: 2026-05-18 11:09 CST
 
-## Current Phase: Phase B — 內部百科真正能力建設 — B1/B6/B5/B2 COMPLETE / B3 NEXT
+## Current Phase: Phase B — 內部百科真正能力建設 — B1/B6/B5/B2/B3 COMPLETE / B4 NEXT
 
 ### Goal
 Let Nancy / Hermes / Guardrails dogfood the internal knowledge base every day so real retrieval, citation, capture, privacy, CJK search, and multi-agent convergence problems surface before public Vault-for-LLM productization.
@@ -13,18 +13,79 @@ Let Nancy / Hermes / Guardrails dogfood the internal knowledge base every day so
 - `docs/privacy_scanner_design.md` — B6 shared scanner design for add/capture/compile/sync/MCP privacy gates.
 - `docs/session_capture_draft_queue_design.md` — B5 review-gated draft queue design for session capture.
 - `docs/document_map_coverage_plan.md` — B2 coverage plan for high-value Document Map/read_range/citation gaps.
+- `docs/search_qa_metrics_plan.md` — B3 internal Search QA metrics plan, internal dogfood QA set, baseline, self-compare, and daily reporting boundary.
 
 ### Phase B Priority Order
 1. B1 對話回寫治理 — COMPLETE (design)
 2. B6 privacy scanner — COMPLETE (design)
 3. B5 session capture draft queue — COMPLETE (design)
 4. B2 Document Map coverage strengthening — COMPLETE (design)
-5. B3 internal Search QA metrics — NEXT
-6. B4 CJK retrieval improvements
+5. B3 internal Search QA metrics — COMPLETE (design/artifact baseline)
+6. B4 CJK retrieval improvements — NEXT
 7. B7 multi-agent writing and convergence workflow
 
 ### Immediate Next Task
-Create B3 internal Search QA metrics plan: internal query set schema, gap ingestion from B2, top1/hit@k/MRR/map-guidance/read-range/citation-policy/CJK metrics, before/after comparison, and daily/cron reporting boundaries.
+Start B4 CJK retrieval improvements from concrete B3 cases: CJK alias pairs, Traditional/Simplified query parity, mixed Chinese/English technical-token queries, and release-hygiene misses in `qa/internal_guardrails_search_qa/core.json`.
+
+---
+
+## Current Sprint: Sprint 4F — Internal Search QA Dogfood Baseline — COMPLETED
+
+### Goal
+Create the internal dogfood Search QA artifact that turns Phase B retrieval/citation concerns into repeatable metrics before changing CJK tokenization, synonyms, ranking, or daily reporting.
+
+### Scope Delivered
+1. Added `docs/search_qa_metrics_plan.md` with:
+   - internal QA schema,
+   - baseline command and metrics,
+   - before/after comparison protocol,
+   - read-only daily reporting boundary,
+   - B4 handoff cases,
+   - implementation backlog.
+2. Added `qa/internal_guardrails_search_qa/core.json` with 14 internal cases across B2 gaps, Phase B anchors, citation policy, privacy/release hygiene, CJK aliases, and one non-gating negative control.
+3. Marked `negative-private-raw-transcript` as observational/non-gating until `expected_hit: false` evaluator semantics are implemented.
+4. Kept citation policy strict: search citations remain navigation hints; final evidence still requires `read_range`.
+
+### Baseline Metrics
+```text
+Search QA run complete
+- total_cases: 14
+- cases_with_results: 14
+- top1_hits: 4
+- topk_hits: 5
+- mean_reciprocal_rank: 0.32142857142857145
+- map_guidance_rate: 0.42857142857142855
+- read_range_guidance_rate: 0.42857142857142855
+- citation_policy_violations: 0
+```
+
+### Verification
+```bash
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python \
+  -m guardrails_lite.guardrails_cli search-qa run \
+  --qa-file qa/internal_guardrails_search_qa/core.json \
+  --mode keyword \
+  --limit 10 \
+  --output /tmp/guardrails_b3_search_qa_baseline.json
+# PASS: command exited 0; total_cases=14; citation_policy_violations=0.
+
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python \
+  -m guardrails_lite.guardrails_cli search-qa compare \
+  --before /tmp/guardrails_b3_search_qa_baseline.json \
+  --after /tmp/guardrails_b3_search_qa_baseline.json
+# PASS: all metric deltas are zero.
+
+git diff --check
+# PASS: no whitespace errors.
+```
+
+### Remaining Backlog
+- Add segment-aware aggregate metrics to `search_qa.py`.
+- Add real `expected_hit: false` support for negative controls.
+- Expand `query_variants` into evaluated subcases.
+- Add snapshot metadata: git SHA, DB path, QA hash, evaluator version.
+- Add explicit misses/regressions arrays to JSON output.
+- Add daily report renderer / cron only after Arthur approves schedule and destination.
 
 ---
 

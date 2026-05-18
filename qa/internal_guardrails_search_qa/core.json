@@ -1,0 +1,400 @@
+{
+  "version": 2,
+  "name": "internal_guardrails_search_qa_core",
+  "description": "Internal Guardrails dogfood Search QA core set. It extends the Sprint 4E evaluator with Phase B, B2 gap, CJK/mixed-language, release hygiene, and citation-policy anchors. Extra metadata is intentionally forward-compatible; current search_qa.py ignores unknown fields.",
+  "source_of_truth": {
+    "db_path": "/home/zycas/Guardrails-knowledge/guardrails.db",
+    "corpus": "formal knowledge rows only",
+    "excludes": [
+      "B5 unpromoted drafts",
+      "private drafts",
+      "no-write candidates",
+      "raw transcripts",
+      "private-only material",
+      "local handoff artifacts"
+    ]
+  },
+  "defaults": {
+    "mode": "keyword",
+    "limit": 10,
+    "expected_title_substrings_semantics": "AND",
+    "final_citation_policy": "search results are navigation only; final citations must come from read_range"
+  },
+  "cases": [
+    {
+      "id": "phase-b-roadmap-mixed",
+      "source": "b2_gap",
+      "priority": "P0",
+      "language": "mixed",
+      "query": "Phase B 內部百科 Document Map Search QA privacy scanner draft queue",
+      "query_variants": [
+        "Phase B 內部百科真正能力建設",
+        "對話回寫治理 privacy scanner draft queue",
+        "Guardrails internal dogfood Search QA metrics"
+      ],
+      "expected_ids": [
+        734
+      ],
+      "expected_title_substrings": [
+        "Phase B",
+        "內部百科"
+      ],
+      "expected_k": 10,
+      "map_expectation": "required_after_b2",
+      "should_have_map_guidance": true,
+      "should_require_read_range": true,
+      "gap_types": [
+        "no_document_map_nodes",
+        "missing_claims",
+        "phase_b_anchor"
+      ],
+      "tags": [
+        "phase-b",
+        "document-map",
+        "search-qa",
+        "cjk",
+        "privacy"
+      ]
+    },
+    {
+      "id": "citation-policy-read-range",
+      "source": "policy_regression",
+      "priority": "P0",
+      "language": "mixed",
+      "query": "Document Map citation policy search citation final citation read_range",
+      "expected_ids": [
+        452
+      ],
+      "expected_title_substrings": [
+        "citation",
+        "read_range"
+      ],
+      "expected_k": 10,
+      "map_expectation": "required_after_b2",
+      "should_have_map_guidance": true,
+      "should_require_read_range": true,
+      "citation_policy": {
+        "search_result_is_navigation_only": true,
+        "final_citation_must_come_from_read_range": true
+      },
+      "gap_types": [
+        "citation_policy_anchor",
+        "no_document_map_nodes"
+      ],
+      "tags": [
+        "document-map",
+        "citation-policy",
+        "read-range"
+      ]
+    },
+    {
+      "id": "document-map-compile-sync",
+      "source": "b2_gap",
+      "priority": "P0",
+      "language": "mixed",
+      "query": "Guardrails Document Map compile hook opt-in Supabase sync citation policy",
+      "expected_ids": [
+        454
+      ],
+      "expected_title_substrings": [
+        "Document Map",
+        "compile"
+      ],
+      "expected_k": 10,
+      "map_expectation": "required_after_b2",
+      "gap_types": [
+        "no_document_map_nodes",
+        "missing_claims"
+      ],
+      "tags": [
+        "document-map",
+        "compile",
+        "supabase-sync"
+      ]
+    },
+    {
+      "id": "remote-document-map-read-path",
+      "source": "b2_gap",
+      "priority": "P1",
+      "language": "mixed",
+      "query": "remote Document Map read_range Supabase MCP read path",
+      "expected_ids": [
+        456
+      ],
+      "expected_title_substrings": [
+        "remote",
+        "Document Map"
+      ],
+      "expected_k": 10,
+      "map_expectation": "required_after_b2",
+      "gap_types": [
+        "remote_sync_gap",
+        "no_document_map_nodes"
+      ],
+      "tags": [
+        "document-map",
+        "remote",
+        "supabase",
+        "mcp"
+      ]
+    },
+    {
+      "id": "sqlite-source-of-truth",
+      "source": "policy_regression",
+      "priority": "P0",
+      "language": "mixed",
+      "query": "Vault-for-LLM Document Map Local SQLite source of truth Supabase sync target",
+      "expected_ids": [
+        483
+      ],
+      "expected_title_substrings": [
+        "SQLite",
+        "source of truth"
+      ],
+      "expected_k": 10,
+      "map_expectation": "required_after_b2",
+      "gap_types": [
+        "source_of_truth_anchor",
+        "no_document_map_nodes"
+      ],
+      "tags": [
+        "sqlite",
+        "supabase",
+        "document-map",
+        "vault-for-llm"
+      ]
+    },
+    {
+      "id": "life-profile-write-governance",
+      "source": "privacy_boundary",
+      "priority": "P0",
+      "language": "zh-Hant",
+      "query": "人生側寫寫入治理 原始心事 不共享 協作規則 才共享",
+      "expected_ids": [
+        724
+      ],
+      "expected_title_substrings": [
+        "人生側寫",
+        "寫入治理"
+      ],
+      "expected_k": 10,
+      "map_expectation": "required_after_b2",
+      "gap_types": [
+        "privacy_boundary",
+        "no_document_map_nodes"
+      ],
+      "tags": [
+        "privacy",
+        "profile",
+        "memory-governance"
+      ]
+    },
+    {
+      "id": "public-boundary-privacy-scan",
+      "source": "release_sop",
+      "priority": "P0",
+      "language": "mixed",
+      "query": "Vault-for-LLM public release sync privacy scan secret scan worktree verification",
+      "expected_ids": [
+        482
+      ],
+      "expected_title_substrings": [
+        "public release",
+        "掃描"
+      ],
+      "expected_k": 10,
+      "map_expectation": "required_after_b2",
+      "gap_types": [
+        "release_sop",
+        "privacy_boundary",
+        "no_document_map_nodes"
+      ],
+      "tags": [
+        "vault-for-llm",
+        "public-release",
+        "privacy-scan",
+        "secret-scan"
+      ]
+    },
+    {
+      "id": "pypi-wheel-smoke",
+      "source": "release_sop",
+      "priority": "P0",
+      "language": "mixed",
+      "query": "PyPI release smoke install built wheel run real CLI flows sqlite-vec Vault-for-LLM",
+      "expected_ids": [
+        683
+      ],
+      "expected_title_substrings": [
+        "PyPI",
+        "smoke"
+      ],
+      "expected_k": 10,
+      "map_expectation": "required_after_b2",
+      "gap_types": [
+        "release_sop",
+        "no_document_map_nodes"
+      ],
+      "tags": [
+        "pypi",
+        "release",
+        "smoke-test",
+        "vault-for-llm"
+      ]
+    },
+    {
+      "id": "pypi-non-git-stderr-noise",
+      "source": "release_sop",
+      "priority": "P0",
+      "language": "mixed",
+      "query": "PyPI fresh install smoke non Git directory git diff cached stderr noise",
+      "expected_ids": [
+        714
+      ],
+      "expected_title_substrings": [
+        "PyPI",
+        "git diff"
+      ],
+      "expected_k": 10,
+      "map_expectation": "required_after_b2",
+      "gap_types": [
+        "release_sop",
+        "no_document_map_nodes"
+      ],
+      "tags": [
+        "pypi",
+        "release",
+        "git",
+        "cli-hygiene"
+      ]
+    },
+    {
+      "id": "trusted-publishing-release-workflow",
+      "source": "release_sop",
+      "priority": "P1",
+      "language": "mixed",
+      "query": "PyPI Trusted Publishing GitHub Actions id-token OIDC no token credentials",
+      "expected_ids": [
+        730
+      ],
+      "expected_title_substrings": [
+        "Trusted Publishing",
+        "id-token"
+      ],
+      "expected_k": 10,
+      "map_expectation": "required_after_b2",
+      "gap_types": [
+        "release_sop",
+        "no_document_map_nodes"
+      ],
+      "tags": [
+        "pypi",
+        "trusted-publishing",
+        "github-actions",
+        "oidc"
+      ]
+    },
+    {
+      "id": "path-filter-release-hygiene",
+      "source": "release_sop",
+      "priority": "P1",
+      "language": "mixed",
+      "query": "GitHub Actions path filters skip release hygiene commits Vault-for-LLM",
+      "expected_ids": [
+        732
+      ],
+      "expected_title_substrings": [
+        "path filters",
+        "release-hygiene"
+      ],
+      "expected_k": 10,
+      "map_expectation": "required_after_b2",
+      "gap_types": [
+        "release_sop",
+        "no_document_map_nodes"
+      ],
+      "tags": [
+        "github-actions",
+        "release-hygiene",
+        "vault-for-llm"
+      ]
+    },
+    {
+      "id": "cjk-session-writeback-alias",
+      "source": "cjk_recall",
+      "priority": "P0",
+      "language": "zh-Hant",
+      "query": "對話回寫治理 草稿隊列 隱私掃描 內部百科",
+      "expected_ids": [
+        734
+      ],
+      "expected_title_substrings": [
+        "Phase B",
+        "內部百科"
+      ],
+      "expected_k": 10,
+      "map_expectation": "required_after_b2",
+      "gap_types": [
+        "cjk_recall",
+        "alias_recall",
+        "known_b4_candidate"
+      ],
+      "tags": [
+        "cjk",
+        "alias",
+        "session-writeback",
+        "draft-queue",
+        "privacy-scanner"
+      ]
+    },
+    {
+      "id": "cjk-simplified-session-writeback-alias",
+      "source": "cjk_recall",
+      "priority": "P1",
+      "language": "zh-Hans",
+      "query": "对话回写治理 草稿队列 隐私扫描 内部百科",
+      "expected_ids": [
+        734
+      ],
+      "expected_title_substrings": [
+        "Phase B",
+        "內部百科"
+      ],
+      "expected_k": 10,
+      "map_expectation": "required_after_b2",
+      "gap_types": [
+        "cjk_recall",
+        "traditional_simplified_pair",
+        "known_b4_candidate"
+      ],
+      "tags": [
+        "cjk",
+        "zh-Hans",
+        "alias",
+        "b4-candidate"
+      ]
+    },
+    {
+      "id": "negative-private-raw-transcript",
+      "source": "negative_control",
+      "priority": "P0",
+      "language": "mixed",
+      "query": "raw private transcript customer phone secret token no-write draft",
+      "expected_ids": [],
+      "expected_hit": false,
+      "expected_k": 10,
+      "map_expectation": "not_required",
+      "gap_types": [
+        "negative_control",
+        "privacy_boundary"
+      ],
+      "tags": [
+        "negative-control",
+        "privacy",
+        "draft-exclusion"
+      ],
+      "evaluation_scope": "observational_until_expected_hit_false_supported",
+      "gating": false
+    }
+  ]
+}

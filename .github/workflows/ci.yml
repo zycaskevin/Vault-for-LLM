@@ -1,0 +1,317 @@
+name: Release Readiness CI
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
+    paths:
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'LICENSE'
+      - 'pyproject.toml'
+      - '.github/workflows/**'
+      - 'docs/**'
+      - 'vault/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'raw/**'
+      - 'benchmarks/**'
+  pull_request:
+    paths:
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'LICENSE'
+      - 'pyproject.toml'
+      - '.github/workflows/**'
+      - 'docs/**'
+      - 'vault/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'raw/**'
+      - 'benchmarks/**'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install package with development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Compile Python sources
+        run: python -m compileall -q vault scripts tests
+
+  build-smoke:
+    name: Build, twine check, and wheel smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Build source distribution and wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          rm -rf dist build *.egg-info
+          python -m build
+          python -m twine check dist/*
+
+      - name: Smoke test installed wheel outside source tree
+        run: |
+          python -m venv /tmp/vfl-wheel-smoke
+          /tmp/vfl-wheel-smoke/bin/python -m pip install --upgrade pip
+          /tmp/vfl-wheel-smoke/bin/python -m pip install dist/*.whl
+          cd /tmp
+          /tmp/vfl-wheel-smoke/bin/vault --help
+          /tmp/vfl-wheel-smoke/bin/python - <<'PY'
+          import importlib.metadata as metadata
+
+          print(metadata.version('vault-for-llm'))
+          PY
+
+  release-parity:
+    name: Release version parity
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check local version file parity
+        if: github.ref_type != 'tag'
+        run: python scripts/check_release_parity.py
+
+      - name: Check release tag parity
+        if: github.ref_type == 'tag'
+        run: python scripts/check_release_parity.py --tag "$GITHUB_REF_NAME"
+
+      - name: Verify tag resolves to checked commit
+        if: github.ref_type == 'tag'
+        run: |
+          tag_commit="$(git rev-list -n 1 "$GITHUB_REF_NAME")"
+          head_commit="$(git rev-parse HEAD)"
+          if [ "$tag_commit" != "$head_commit" ]; then
+            echo "Release tag $GITHUB_REF_NAME resolves to $tag_commit, but CI checked $head_commit" >&2
+            exit 1
+          fi
+          echo "Release tag $GITHUB_REF_NAME resolves to checked commit $head_commit"
+
+  lint-knowledge:
+    name: Lint raw/ knowledge files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install lint dependency
+        run: python -m pip install --upgrade pip pyyaml
+
+      - name: Lint YAML frontmatter
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import sys
+          import yaml
+
+          errors = 0
+          raw_root = Path('raw')
+          files = sorted(raw_root.rglob('*.md')) if raw_root.exists() else []
+          for path in files:
+              text = path.read_text(encoding='utf-8')
+              if not text.startswith('---\n'):
+                  print(f"❌ {path}: missing YAML frontmatter")
+                  errors += 1
+                  continue
+              parts = text.split('---', 2)
+              if len(parts) < 3:
+                  print(f"❌ {path}: malformed YAML frontmatter")
+                  errors += 1
+                  continue
+              try:
+                  frontmatter = yaml.safe_load(parts[1]) or {}
+              except yaml.YAMLError as exc:
+                  print(f"❌ {path}: invalid YAML frontmatter: {exc}")
+                  errors += 1
+                  continue
+              for field in ('title', 'category'):
+                  if field not in frontmatter:
+                      print(f"⚠️  {path}: missing '{field}' in frontmatter")
+                      errors += 1
+              title = str(frontmatter.get('title', ''))
+              if len(title) > 100:
+                  print(f"⚠️  {path}: title too long ({len(title)} chars)")
+                  errors += 1
+
+          if errors:
+              print(f"❌ Found {errors} issue(s)")
+              sys.exit(1)
+          print('✅ All knowledge files pass lint')
+          PY
+
+      - name: Check duplicate titles
+        run: |
+          python - <<'PY'
+          from collections import Counter
+          from pathlib import Path
+          import yaml
+
+          titles = []
+          raw_root = Path('raw')
+          for path in sorted(raw_root.rglob('*.md')) if raw_root.exists() else []:
+              text = path.read_text(encoding='utf-8')
+              if not text.startswith('---\n'):
+                  continue
+              parts = text.split('---', 2)
+              if len(parts) < 3:
+                  continue
+              try:
+                  frontmatter = yaml.safe_load(parts[1]) or {}
+              except yaml.YAMLError:
+                  continue
+              title = frontmatter.get('title')
+              if title:
+                  titles.append(str(title))
+          dupes = sorted(title for title, count in Counter(titles).items() if count > 1)
+          if dupes:
+              print('⚠️  Duplicate titles found:')
+              for title in dupes:
+                  print(title)
+          else:
+              print('✅ No duplicate titles')
+          PY
+
+      - name: Knowledge stats
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          counts = {}
+          for name in ('raw', 'L0-identity', 'L1-core-facts', 'L2-context'):
+              root = Path(name)
+              counts[name] = sum(1 for _ in root.rglob('*.md')) if root.exists() else 0
+          total = sum(counts.values())
+          print('📊 Knowledge stats:')
+          print(
+              f"  raw/: {counts['raw']}  L0: {counts['L0-identity']}  "
+              f"L1: {counts['L1-core-facts']}  L2: {counts['L2-context']}  Total: {total}"
+          )
+          PY
+
+  secret-scan-light:
+    name: Lightweight secret scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Scan for high-risk secret patterns
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          excluded_dirs = {
+              '.git', '.hg', '.svn', '.tox', '.nox', '.venv', 'venv', 'env',
+              'dist', 'build', '__pycache__', '.pytest_cache', '.ruff_cache',
+              '.mypy_cache', 'htmlcov', 'vault_for_llm.egg-info',
+          }
+          included_roots = [
+              Path('vault'), Path('scripts'), Path('tests'), Path('docs'), Path('raw'),
+              Path('benchmarks'), Path('.github/workflows'),
+          ]
+          included_files = [Path('README.md'), Path('CHANGELOG.md'), Path('pyproject.toml')]
+          suffixes = {'.py', '.md', '.toml', '.yml', '.yaml', '.json', '.txt'}
+          patterns = {
+              'private key block': re.compile(r'-----BEGIN [A-Z ]+ PRIVATE KEY-----'),
+              'AWS access key': re.compile(r'\b(?:AKIA|ASIA)[0-9A-Z]{16}\b'),
+              'GitHub token': re.compile(r'\bgh[pousr]_[A-Za-z0-9_]{36,255}\b'),
+              'OpenAI-style API key': re.compile(r'\bsk-[A-Za-z0-9]{20,}\b'),
+              'Anthropic API key': re.compile(r'\bsk-ant-[A-Za-z0-9_-]{20,}\b'),
+              'Slack token': re.compile(r'\bxox[baprs]-[A-Za-z0-9-]{20,}\b'),
+              'JWT': re.compile(r'\beyJ[A-Za-z0-9_-]{40,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b'),
+          }
+
+          def should_skip(path: Path) -> bool:
+              return any(part in excluded_dirs for part in path.parts)
+
+          candidates = []
+          for root in included_roots:
+              if root.exists() and not should_skip(root):
+                  candidates.extend(
+                      path for path in root.rglob('*')
+                      if path.is_file() and path.suffix in suffixes and not should_skip(path)
+                  )
+          candidates.extend(path for path in included_files if path.exists() and not should_skip(path))
+
+          findings = []
+          for path in sorted(set(candidates)):
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except UnicodeDecodeError:
+                  continue
+              for line_no, line in enumerate(text.splitlines(), start=1):
+                  for label, pattern in patterns.items():
+                      if pattern.search(line):
+                          findings.append((path, line_no, label))
+
+          if findings:
+              print('❌ Potential high-risk secrets found:')
+              for path, line_no, label in findings:
+                  print(f'{path}:{line_no}: {label}')
+              sys.exit(1)
+          print('✅ No high-risk secret patterns found')
+          PY

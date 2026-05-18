@@ -39,7 +39,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--tag",
-        help="Release tag to verify, for example v0.4.3. Defaults to GITHUB_REF_NAME when set.",
+        help=(
+            "Release tag to verify, for example v0.4.3. Defaults to GITHUB_REF_NAME "
+            "only when GITHUB_REF_TYPE=tag, or when GITHUB_REF_NAME is a full refs/tags/... ref."
+        ),
     )
     parser.add_argument(
         "--root",
@@ -57,6 +60,23 @@ def normalize_tag(raw_tag: str | None) -> str | None:
     if tag.startswith("refs/tags/"):
         tag = tag.removeprefix("refs/tags/")
     return tag
+
+
+def infer_tag_from_github_env(env: Mapping[str, str]) -> str | None:
+    """Infer a release tag from GitHub Actions environment without mistaking branches for tags."""
+    ref_name = env.get("GITHUB_REF_NAME")
+    if ref_name is None:
+        return None
+
+    ref_name = ref_name.strip()
+    if not ref_name:
+        return None
+
+    if env.get("GITHUB_REF_TYPE") == "tag":
+        return ref_name
+    if ref_name.startswith("refs/tags/"):
+        return ref_name
+    return None
 
 
 def version_from_tag(tag: str) -> str:
@@ -175,7 +195,7 @@ def check_release_parity(root: Path, tag: str | None = None) -> dict[str, str]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
-    tag = args.tag if args.tag is not None else os.environ.get("GITHUB_REF_NAME")
+    tag = args.tag if args.tag is not None else infer_tag_from_github_env(os.environ)
     try:
         versions = check_release_parity(args.root, tag)
     except ReleaseParityError as exc:

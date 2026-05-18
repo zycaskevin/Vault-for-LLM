@@ -55,6 +55,7 @@ version = "{pyproject}"
 def run_checker(root: Path, *args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     merged_env = os.environ.copy()
     merged_env.pop("GITHUB_REF_NAME", None)
+    merged_env.pop("GITHUB_REF_TYPE", None)
     if env:
         merged_env.update(env)
     return subprocess.run(
@@ -79,6 +80,20 @@ def test_accepts_matching_release_tag(tmp_path: Path) -> None:
     assert "CHANGELOG.md top entry: 0.4.3" in result.stdout
 
 
+def test_explicit_tag_wins_over_branch_environment(tmp_path: Path) -> None:
+    write_release_files(tmp_path, pyproject="0.4.3", vault="0.4.3", changelog="0.4.3")
+
+    result = run_checker(
+        tmp_path,
+        "--tag",
+        "v0.4.3",
+        env={"GITHUB_REF_TYPE": "branch", "GITHUB_REF_NAME": "main"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "release tag: 0.4.3" in result.stdout
+
+
 def test_reports_all_version_mismatches_against_tag(tmp_path: Path) -> None:
     write_release_files(tmp_path, pyproject="0.4.2", vault="0.4.1", changelog="0.4.0")
 
@@ -94,13 +109,23 @@ def test_reports_all_version_mismatches_against_tag(tmp_path: Path) -> None:
     assert "CHANGELOG.md top entry mismatch: expected 0.4.3 from release tag, found 0.4.0" in result.stderr
 
 
-def test_uses_github_ref_name_when_tag_argument_omitted(tmp_path: Path) -> None:
+def test_uses_github_ref_name_for_github_tag_runs(tmp_path: Path) -> None:
     write_release_files(tmp_path, pyproject="0.4.3", vault="0.4.3", changelog="0.4.3")
 
-    result = run_checker(tmp_path, env={"GITHUB_REF_NAME": "v0.4.3"})
+    result = run_checker(tmp_path, env={"GITHUB_REF_TYPE": "tag", "GITHUB_REF_NAME": "v0.4.3"})
 
     assert result.returncode == 0, result.stderr
     assert "release tag: 0.4.3" in result.stdout
+
+
+def test_github_branch_ref_name_uses_local_no_tag_parity(tmp_path: Path) -> None:
+    write_release_files(tmp_path, pyproject="0.4.3", vault="0.4.3", changelog="0.4.3")
+
+    result = run_checker(tmp_path, env={"GITHUB_REF_TYPE": "branch", "GITHUB_REF_NAME": "main"})
+
+    assert result.returncode == 0, result.stderr
+    assert "release tag: not provided; checked local version file parity" in result.stdout
+    assert "release tag: 0.4.3" not in result.stdout
 
 
 def test_accepts_full_refs_tags_env_value(tmp_path: Path) -> None:

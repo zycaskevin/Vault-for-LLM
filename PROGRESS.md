@@ -1,8 +1,8 @@
 # Guardrails Internal Knowledge Capability — Progress
 
-Last updated: 2026-05-18 09:51 CST
+Last updated: 2026-05-18 10:34 CST
 
-## Current Phase: Phase B — 內部百科真正能力建設 — B1/B6/B5 COMPLETE / B2 NEXT
+## Current Phase: Phase B — 內部百科真正能力建設 — B1/B6/B5/B2 COMPLETE / B3 NEXT
 
 ### Goal
 Let Nancy / Hermes / Guardrails dogfood the internal knowledge base every day so real retrieval, citation, capture, privacy, CJK search, and multi-agent convergence problems surface before public Vault-for-LLM productization.
@@ -12,18 +12,19 @@ Let Nancy / Hermes / Guardrails dogfood the internal knowledge base every day so
 - `docs/session_writeback_governance.md` — B1 governance contract for session → candidate → draft → review → promote.
 - `docs/privacy_scanner_design.md` — B6 shared scanner design for add/capture/compile/sync/MCP privacy gates.
 - `docs/session_capture_draft_queue_design.md` — B5 review-gated draft queue design for session capture.
+- `docs/document_map_coverage_plan.md` — B2 coverage plan for high-value Document Map/read_range/citation gaps.
 
 ### Phase B Priority Order
 1. B1 對話回寫治理 — COMPLETE (design)
 2. B6 privacy scanner — COMPLETE (design)
 3. B5 session capture draft queue — COMPLETE (design)
-4. B2 Document Map coverage strengthening — NEXT
-5. B3 internal Search QA metrics
+4. B2 Document Map coverage strengthening — COMPLETE (design)
+5. B3 internal Search QA metrics — NEXT
 6. B4 CJK retrieval improvements
 7. B7 multi-agent writing and convergence workflow
 
 ### Immediate Next Task
-Create B2 Document Map coverage plan: identify high-value entries without map nodes, define coverage metrics, build/read_range verification workflow, and decide whether to implement B1/B6/B5 first or continue planning B2/B3.
+Create B3 internal Search QA metrics plan: internal query set schema, gap ingestion from B2, top1/hit@k/MRR/map-guidance/read-range/citation-policy/CJK metrics, before/after comparison, and daily/cron reporting boundaries.
 
 ---
 

@@ -2,7 +2,7 @@
 
 > **For Hermes:** 這是 Guardrails 內部百科主線，不是 Vault-for-LLM public release 支線。實作時先用 `subagent-driven-development` 拆任務；每個子任務完成後更新本文件與 `PROGRESS.md` / handoff。
 
-**Last updated:** 2026-05-18 09:51 CST
+**Last updated:** 2026-05-18 10:34 CST
 
 **Scope:** Nancy / Hermes / Guardrails 內部 dogfood 能力建設
 
@@ -46,7 +46,7 @@ Guardrails 內部 Phase B 對應關係：
 | 內部 Phase B | Public roadmap 對應 | 內部優先度 |
 |---|---|---|
 | B1 對話回寫治理 | Phase 5 + Phase 6 的前置治理 | P0 |
-| B2 Document Map 強化 | Phase 2 | P0 |
+| B2 Document Map 強化 | Phase 2 | P0 — design complete |
 | B3 Search QA metrics | Phase 3 | P0 |
 | B4 CJK 搜尋 | Phase 3 + Phase 4 | P1 |
 | B5 session capture draft queue | Phase 5 | P1 — design complete |
@@ -164,6 +164,8 @@ review / promote
 
 ## 4. B2 — Document Map 強化
 
+**Status:** COMPLETE (design) — see `docs/document_map_coverage_plan.md`.
+
 **Goal:** 讓長知識可以先看 map，再局部 read_range；引用只來自 read_range。
 
 ### B2 work items
@@ -185,6 +187,10 @@ review / promote
 - Top 50 高價值知識有 map nodes。
 - 回答需要百科依據時，標準 trace 是 `search → map_show → read_range → answer`。
 - 對無 map nodes 條目，工具回 actionable next step。
+
+### B2 design artifact
+
+- `docs/document_map_coverage_plan.md` defines local SQLite coverage snapshot, P0/P1 backlog, map/claim/citation metrics, build/verify workflow, trace policy, gap schema, B3 Search QA feed, edge cases, smoke checks, and implementation tasks.
 
 ---
 
@@ -377,15 +383,15 @@ B1 governance spec
 
 ## 11. Immediate next task
 
-建立 B2 Document Map coverage plan。
+建立 B3 internal Search QA metrics plan。
 
 必須包含：
 
-1. identify high-value entries without map nodes
-2. define Document Map / claim / citation coverage metrics
-3. build/verify workflow for map_show and read_range
-4. priority list for Guardrails SOPs, Phase B docs, release/repo hygiene, and Arthur-confirmed decisions
-5. search → map_show → read_range trace requirements
-6. how to record coverage gaps and feed B3 Search QA
+1. internal query set schema, including gap ingestion from B2
+2. top1 / hit@k / MRR / map-guidance / read-range-guidance / citation-policy metrics
+3. CJK and mixed-language recall cases
+4. before/after comparison protocol
+5. daily/cron reporting boundaries and Feishu-friendly summary format
+6. how B3 consumes B2 gaps without rebuilding the old Sprint 4E foundation
 
-完成 B2 設計後，再拆 B3 internal Search QA set or decide whether to implement B1/B6/B5 first.
+完成 B3 設計後，再進 B4 CJK retrieval improvement 或回頭實作 B1/B6/B5/B2 的最小可用切片。

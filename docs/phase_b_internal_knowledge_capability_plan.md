@@ -339,6 +339,8 @@ normal search
 
 ## 9. B7 — 多 Agent 寫入與收斂
 
+**Status:** COMPLETE (design) — see `docs/multi_agent_convergence_workflow.md`.
+
 **Goal:** 多個 agent 可以共同貢獻知識，但不互相覆蓋、不重複、不污染。
 
 ### B7 work items
@@ -357,6 +359,10 @@ normal search
 - sync 不會覆蓋新知識而無告警。
 - partial / unknown 條目有固定收斂任務。
 - 多 Agent 寫入能追溯來源。
+
+### B7 design artifact
+
+- `docs/multi_agent_convergence_workflow.md` defines the local-first multi-agent writing workflow, append-only provenance, draft/review/promote state model, duplicate and contradiction handling, convergence/freshness queues, safe Supabase sync boundaries, public-safe Vault-for-LLM export manifest, and deterministic smoke cases.
 
 ---
 
@@ -383,15 +389,15 @@ B1 governance spec
 
 ## 11. Immediate next task
 
-建立 B3 internal Search QA metrics plan。
+Start the smallest safe B7 implementation slice: report-only duplicate/conflict detector plus convergence/freshness queue integration.
 
 必須包含：
 
-1. internal query set schema, including gap ingestion from B2
-2. top1 / hit@k / MRR / map-guidance / read-range-guidance / citation-policy metrics
-3. CJK and mixed-language recall cases
-4. before/after comparison protocol
-5. daily/cron reporting boundaries and Feishu-friendly summary format
-6. how B3 consumes B2 gaps without rebuilding the old Sprint 4E foundation
+1. queue/audit schema or JSON report contract for duplicate, contradiction, convergence, freshness, and sync-drift items
+2. exact-title, normalized-title, content-hash, semantic, and graph-neighbor duplicate signals
+3. MCP/direct-add bypass detection for DB-only rows missing raw/compiled/map provenance
+4. convergence/freshness outputs converted into fixed review queue items without rewriting knowledge content
+5. safe sync dry-run boundaries: local SQLite/raw source of truth, Supabase as sync target only, no remote overwrite
+6. deterministic smoke tests for draft invisibility, idempotent import, no-double-write, privacy block before sync, and queue creation
 
-完成 B3 設計後，再進 B4 CJK retrieval improvement 或回頭實作 B1/B6/B5/B2 的最小可用切片。
+完成 report-only B7 slice 後，再決定是否進入 promotion lock/idempotency、safe sync planner，或 public-safe Vault-for-LLM slice exporter。

@@ -1,8 +1,8 @@
 # Guardrails Internal Knowledge Capability — Progress
 
-Last updated: 2026-05-18 11:55 CST
+Last updated: 2026-05-18 12:11 CST
 
-## Current Phase: Phase B — 內部百科真正能力建設 — B1/B6/B5/B2/B3/B4 COMPLETE / B7 NEXT
+## Current Phase: Phase B — 內部百科真正能力建設 — B1/B6/B5/B2/B3/B4/B7 DESIGN COMPLETE / B7 IMPLEMENTATION NEXT
 
 ### Goal
 Let Nancy / Hermes / Guardrails dogfood the internal knowledge base every day so real retrieval, citation, capture, privacy, CJK search, and multi-agent convergence problems surface before public Vault-for-LLM productization.
@@ -14,6 +14,7 @@ Let Nancy / Hermes / Guardrails dogfood the internal knowledge base every day so
 - `docs/session_capture_draft_queue_design.md` — B5 review-gated draft queue design for session capture.
 - `docs/document_map_coverage_plan.md` — B2 coverage plan for high-value Document Map/read_range/citation gaps.
 - `docs/search_qa_metrics_plan.md` — B3 internal Search QA metrics plan, internal dogfood QA set, baseline, self-compare, and daily reporting boundary.
+- `docs/multi_agent_convergence_workflow.md` — B7 local-first multi-agent writing, dedupe/conflict, convergence/freshness queue, safe sync, and public-safe export design contract.
 
 ### Phase B Priority Order
 1. B1 對話回寫治理 — COMPLETE (design)
@@ -22,14 +23,48 @@ Let Nancy / Hermes / Guardrails dogfood the internal knowledge base every day so
 4. B2 Document Map coverage strengthening — COMPLETE (design)
 5. B3 internal Search QA metrics — COMPLETE (design/artifact baseline)
 6. B4 CJK retrieval improvements — COMPLETE
-7. B7 multi-agent writing and convergence workflow
+7. B7 multi-agent writing and convergence workflow — COMPLETE (design)
 
 ### Immediate Next Task
-Start B7 multi-agent writing and convergence workflow: duplicate detection, conflict handling, freshness/convergence checks, and safe sync flow from internal Guardrails source of truth to public-safe Vault-for-LLM slices.
+Implement the smallest safe B7 slice: report-only duplicate/conflict detection plus convergence/freshness queue integration. Do not auto-promote, destructively merge, or sync private material.
 
 ---
 
-## Current Sprint: Sprint 4G — CJK / Alias Keyword Retrieval — COMPLETED
+## Current Sprint: Sprint 4H — B7 Multi-agent Writing and Convergence Workflow — DESIGN COMPLETE
+
+### Goal
+Define how many agents can contribute Guardrails knowledge without overwriting, duplicating, leaking, or polluting the shared brain: local SQLite/raw stays source of truth, Supabase stays sync target, and public Vault-for-LLM output stays allowlisted/redacted.
+
+### Scope Delivered
+1. Added `docs/multi_agent_convergence_workflow.md` as the B7 design contract.
+2. Defined core invariants: local-first source of truth, drafts are not knowledge, no auto-promote, B6 privacy gates before boundary crossings, append-only audit, contradiction review, and public allowlisting.
+3. Defined actor permissions for Arthur, Nancy coordinator, subagents, MCP add, cron, Feishu review, and sync scripts.
+4. Defined canonical candidate/draft/review/promote/sync/public-export state model.
+5. Defined metadata/audit requirements for source_agent, source_session, trust, content fingerprint, nearest existing IDs, reviewer, decision reason, and evidence handles.
+6. Defined duplicate classes and merge/update policy: exact_same, same_lesson, same_topic_new_edge_case, near_duplicate_uncertain, and not_duplicate.
+7. Defined contradiction, convergence, and freshness queue behavior without automatic content rewrite.
+8. Defined safe Supabase sync boundaries and remote drift classes.
+9. Defined public-safe Vault-for-LLM export criteria and manifest fields.
+10. Added implementation backlog B7-T1 through B7-T8, with the first slice intentionally report-only.
+
+### Verification Plan
+```bash
+git diff --check
+# Expected: PASS, no whitespace errors.
+
+/usr/bin/python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"
+# Expected: run after docs change if graphify is available; classify missing module as tooling gap, not product regression.
+```
+
+### Remaining Follow-up
+- Implement B7-T2/T3 report-only queue slice first.
+- Add queue/audit schema or JSON contract only after reviewing current DB migration constraints.
+- Keep `scripts/deduplicate_semantic.py --merge` as a report source, not the B7 merge engine.
+- Harden Search QA with `expected_hit: false`, segment metrics, misses/regressions arrays, and snapshot metadata as part of B7-T8.
+
+---
+
+## Previous Sprint: Sprint 4G — CJK / Alias Keyword Retrieval — COMPLETED
 
 ### Goal
 Fix keyword retrieval misses surfaced by the B3 internal QA baseline without weakening citation policy: score mixed-language candidates before final limiting, add conservative CJK Traditional/Simplified and domain-alias query expansion, and keep regression coverage explicit.

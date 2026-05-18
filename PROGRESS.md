@@ -1,6 +1,6 @@
 # Vault-for-LLM Public Release Progress
 
-Last updated: 2026-05-17 22:52 CST
+Last updated: 2026-05-18 10:42 CST
 
 ## Current Status
 
@@ -8,10 +8,12 @@ Vault-for-LLM `0.4.2` has been published to PyPI and pushed to GitHub at `76be7a
 
 GitHub Release notes for `v0.4.2` are published at <https://github.com/zycaskevin/Vault-for-LLM/releases/tag/v0.4.2>. GitHub Actions `Vault CI` passed for both `main` and `v0.4.2` on commit `76be7a1`.
 
-Current post-release task: harden repo hygiene and design PyPI Trusted Publishing so future releases no longer require manual API-token upload from local machines.
+Current post-release task: first Trusted Publishing release-hygiene slice is implemented locally: release parity checker + full release-readiness CI workflow. Next step is to push, observe GitHub Actions on `main`, then implement `publish.yml` and external PyPI/GitHub Environment configuration in a separate slice.
 
 Latest planning/review artifacts:
 
+- `.github/workflows/ci.yml` — release-readiness CI covering Python 3.10/3.11/3.12 tests, compileall, release parity, build/twine/wheel smoke, raw knowledge lint, and lightweight secret scan.
+- `scripts/check_release_parity.py` and `tests/test_release_parity.py` — local/GitHub tag parity gate for version, changelog, and package metadata drift.
 - `docs/release_hygiene_trusted_publishing_design.md` — post-0.4.2 repo hygiene and Trusted Publishing implementation design.
 - `docs/agent_memory_qa_roadmap.md` — Agent Memory QA roadmap and Kanban execution graph inspired by agentmemory, while preserving Vault-for-LLM's local-first Markdown + SQLite positioning.
 - `docs/p0_public_string_audit.md` — public-boundary audit and remediation notes.
@@ -43,7 +45,9 @@ The public project should not try to become a broad capture-first memory runtime
 
 - `0.4.2` is published; do not re-upload immutable PyPI versions `0.4.1` or `0.4.2`.
 - GitHub Release notes for `v0.4.2` exist and CI passed on both `main` and tag `v0.4.2`.
-- Next release-hygiene priority: implement the design in `docs/release_hygiene_trusted_publishing_design.md` so release builds happen from a clean GitHub Actions checkout and publishing uses PyPI Trusted Publishing instead of manual local tokens.
+- First release-hygiene implementation slice is complete locally: `scripts/check_release_parity.py` plus `.github/workflows/ci.yml`.
+- New full CI replaces the old lightweight workflow and covers Python 3.10/3.11/3.12 tests, compileall, build, twine check, wheel smoke, version parity, raw knowledge lint, and lightweight secret scan.
+- Next release-hygiene priority: push these commits and observe GitHub Actions, then implement `publish.yml` with PyPI Trusted Publishing in a separate slice.
 - License metadata warning remediation is complete: `project.license` now uses the SPDX `MIT` string, `project.license-files` includes `LICENSE`, and the deprecated license classifier has been removed.
 - Keep checking README command examples against actual CLI parser behavior before each release.
 
@@ -121,6 +125,14 @@ Verified after Kanban execution:
 - Public repository fixtures validated locally against a temporary SQLite DB with English and Traditional Chinese entries; Document Map / `read_range` guidance metrics are nonzero and citation-policy violations remain zero.
 - Public wording was corrected to say these are repository/source-checkout fixtures, not wheel-installed files.
 - Graphify rebuild completed after code/test changes: 117 nodes, 5 edges, 114 communities.
+
+## Verification Notes From Trusted Publishing Release-Hygiene Slice
+
+- Task 1 release parity checker implemented and reviewed: `scripts/check_release_parity.py` validates release tag, `pyproject.toml`, `vault.__version__`, and top `CHANGELOG.md` version parity.
+- Task 1 regression tests passed locally: `tests/test_release_parity.py` now covers matching tags, mismatch messages, strict changelog top entry, invalid tag early failure, Python 3.10 parser fallback, branch-env no-tag parity, and GitHub tag-env parity.
+- Task 2 full CI implemented and reviewed: `.github/workflows/ci.yml` replaces `.github/workflows/auto-review.yml` with tests, compileall, build/twine/wheel smoke, release parity, raw knowledge lint, and lightweight secret scan.
+- Final local verification passed after Task 2 fix: full pytest `93 passed`, compileall, parity no-tag/branch/tag smokes, build, twine check, wheel install smoke, workflow shape validation, lightweight secret scan, `git diff --check`, and Graphify rebuild.
+- Important blocker found and fixed during review: GitHub branch pushes set `GITHUB_REF_NAME=main`; `check_release_parity.py` now only infers a tag from env when `GITHUB_REF_TYPE=tag` or `GITHUB_REF_NAME` is a full `refs/tags/...` ref.
 
 ## Historical Archive
 

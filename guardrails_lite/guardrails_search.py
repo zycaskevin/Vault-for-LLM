@@ -27,6 +27,60 @@ def _normalize_text(value: str) -> str:
 class GuardrailsSearch:
     """Guardrails Lite 搜尋引擎。"""
 
+    _MAX_KEYWORD_TERMS = 64
+
+    _SIMPLIFIED_TO_TRADITIONAL = str.maketrans(
+        {
+            "对": "對",
+            "话": "話",
+            "写": "寫",
+            "队": "隊",
+            "隐": "隱",
+            "扫": "掃",
+            "内": "內",
+            "识": "識",
+            "库": "庫",
+        }
+    )
+
+    _PHASE_B_ALIAS_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+        (
+            "對話回寫治理",
+            (
+                "session writeback governance",
+                "session-writeback governance",
+            ),
+        ),
+        (
+            "對話回寫",
+            (
+                "session writeback",
+                "session-writeback",
+            ),
+        ),
+        (
+            "草稿隊列",
+            (
+                "draft queue",
+                "draft-queue",
+            ),
+        ),
+        (
+            "隱私掃描",
+            (
+                "privacy scanner",
+                "privacy-scanner",
+            ),
+        ),
+        (
+            "內部百科",
+            (
+                "internal knowledge base",
+                "internal-knowledge-base",
+            ),
+        ),
+    )
+
     def __init__(
         self,
         db: GuardrailsDB,
@@ -395,24 +449,28 @@ class GuardrailsSearch:
         category: Optional[str] = None,
     ) -> list[dict]:
         """純關鍵字搜尋，自動拆詞 + LIKE 匹配。"""
-        # 拆詞：中文按字元，英文按空格
-        terms = self._tokenize(query)
+        terms = self._expand_query_terms(query)
         if not terms:
             return []
 
-        # 建構 WHERE 條件
+        # Build the complete matching candidate set first.  Ranking or limiting by
+        # trust before relevance can truncate lower-trust exact/alias-rich matches;
+        # apply the final limit only after Python scoring below.
         conditions = []
         params: list = [min_trust]
 
         for term in terms:
             conditions.append(
                 "(title LIKE ? OR content_raw LIKE ? OR content_aaak LIKE ? "
-                "OR tags LIKE ? OR category LIKE ?)"
+                "OR tags LIKE ? OR category LIKE ? OR summary LIKE ?)"
             )
             pattern = f"%{term}%"
-            params.extend([pattern] * 5)
+            params.extend([pattern] * 6)
 
-        where = f"trust >= ? AND ({' OR '.join(conditions)})" if len(terms) > 1 else f"trust >= ? AND {conditions[0]}"
+        if len(conditions) > 1:
+            where = f"trust >= ? AND ({' OR '.join(conditions)})"
+        else:
+            where = f"trust >= ? AND {conditions[0]}"
 
         if layer:
             where += " AND layer=?"
@@ -421,23 +479,28 @@ class GuardrailsSearch:
             where += " AND category=?"
             params.append(category)
 
-        sql = f"SELECT * FROM knowledge WHERE {where} ORDER BY trust DESC LIMIT ?"
-        params.append(limit)
+        sql = f"SELECT * FROM knowledge WHERE {where}"
 
         rows = self.db.conn.execute(sql, params).fetchall()
 
-        # 關鍵字評分：匹配詞數越多分越高
         results = []
         for row in rows:
             d = dict(row)
-            text = f"{d.get('title', '')} {d.get('content_raw', '')} {d.get('tags', '')}".lower()
-            matched = sum(1 for t in terms if t.lower() in text)
+            text = self._searchable_text(d)
+            matched = sum(1 for t in terms if t and t.lower() in text)
             d["_score"] = matched / len(terms)
             d["_mode"] = "keyword"
             results.append(d)
 
-        results.sort(key=lambda x: x["_score"], reverse=True)
-        return results
+        results.sort(
+            key=lambda x: (
+                x["_score"],
+                x.get("trust", 0),
+                x.get("id", 0),
+            ),
+            reverse=True,
+        )
+        return results[:limit]
 
     # ── 向量搜尋 ──────────────────────────────────────────
 
@@ -573,27 +636,96 @@ class GuardrailsSearch:
 
     # ── 工具 ──────────────────────────────────────────────
 
-    @staticmethod
-    def _tokenize(query: str) -> list[str]:
-        """
-        簡單分詞：英文按空格，中文按字元。
-        過濾掉太短的詞。
-        """
-        # 英文單詞
-        english = re.findall(r"[a-zA-Z]{2,}", query)
-        # 中文詞（2-4字元的連續中文字）
-        chinese = re.findall(r"[\u4e00-\u9fff]{2,4}", query)
-        # 如果中文只有單字，也拆開
-        if not chinese:
-            chars = re.findall(r"[\u4e00-\u9fff]", query)
-            chinese = [c for c in chars if len(c) == 1]
+    @classmethod
+    def _to_traditional(cls, text: str) -> str:
+        """Best-effort deterministic Simplified→Traditional mapping for B4 queries."""
+        return (text or "").translate(cls._SIMPLIFIED_TO_TRADITIONAL)
 
-        terms = english + chinese
-        # 去重，保留順序
+    @staticmethod
+    def _dedupe_terms(terms: list[str]) -> list[str]:
         seen = set()
         unique = []
-        for t in terms:
-            if t.lower() not in seen:
-                seen.add(t.lower())
-                unique.append(t)
-        return unique if unique else [query]
+        for term in terms:
+            normalized = (term or "").strip()
+            if not normalized:
+                continue
+            key = normalized.lower()
+            if key not in seen:
+                seen.add(key)
+                unique.append(normalized)
+        return unique
+
+    @staticmethod
+    def _searchable_text(row: dict) -> str:
+        return " ".join(
+            str(row.get(key) or "")
+            for key in (
+                "title",
+                "content_raw",
+                "content_aaak",
+                "summary",
+                "tags",
+                "category",
+            )
+        ).lower()
+
+    @classmethod
+    def _expand_query_terms(cls, query: str) -> list[str]:
+        """Tokenize plus narrow Phase-B alias expansion, all in memory."""
+        terms = cls._tokenize(query)
+        normalized_query = cls._to_traditional(query or "")
+        normalized_query_lower = normalized_query.lower()
+
+        for cjk_phrase, aliases in cls._PHASE_B_ALIAS_GROUPS:
+            alias_hit = cjk_phrase in normalized_query
+            if not alias_hit:
+                alias_hit = any(alias.lower() in normalized_query_lower for alias in aliases)
+            if not alias_hit:
+                continue
+
+            terms.append(cjk_phrase)
+            terms.extend(cls._tokenize(cjk_phrase))
+            for alias in aliases:
+                terms.append(alias)
+                terms.extend(cls._tokenize(alias))
+
+        return cls._dedupe_terms(terms)[:cls._MAX_KEYWORD_TERMS]
+
+    @classmethod
+    def _tokenize(cls, query: str) -> list[str]:
+        """
+        Deterministic mixed-language tokenizer for keyword search.
+
+        - Preserves hyphen/underscore technical tokens (`sqlite-vec`, `read_range`).
+        - Also emits their component words for partial matching.
+        - Adds overlapping CJK 2–4-grams and a small Simplified→Traditional variant.
+        """
+        variants = cls._dedupe_terms([query or "", cls._to_traditional(query or "")])
+        terms: list[str] = []
+
+        for variant in variants:
+            # Preserve technical identifiers before splitting them into components.
+            technical_tokens = re.findall(
+                r"[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)+",
+                variant,
+            )
+            for token in technical_tokens:
+                terms.append(token.lower())
+                terms.extend(
+                    part.lower()
+                    for part in re.split(r"[-_]", token)
+                    if len(part) >= 2
+                )
+
+            terms.extend(token.lower() for token in re.findall(r"[A-Za-z0-9]{2,}", variant))
+
+            for run in re.findall(r"[\u4e00-\u9fff]+", variant):
+                if len(run) == 1:
+                    terms.append(run)
+                    continue
+                if len(run) <= 12:
+                    terms.append(run)
+                for n in range(min(4, len(run)), 1, -1):
+                    terms.extend(run[i:i + n] for i in range(0, len(run) - n + 1))
+
+        return cls._dedupe_terms(terms)

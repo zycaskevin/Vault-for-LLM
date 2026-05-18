@@ -147,7 +147,7 @@ print("=" * 60)
 import subprocess
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 result = subprocess.run(
-    ["conda", "run", "-n", "guardrails-lite", "python",
+    [sys.executable,
      str(PROJECT_ROOT / "scripts" / "convergence_check.py"),
      "--limit", "1", "--min-trust", "0.9"],
     capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT)

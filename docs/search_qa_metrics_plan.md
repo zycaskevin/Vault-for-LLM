@@ -304,7 +304,7 @@ Current top-k misses:
 | `remote-document-map-read-path` | 456 | remote map recall | B2/B4 |
 | `sqlite-source-of-truth` | 483 | source-of-truth recall | B2/B4 |
 | `public-boundary-privacy-scan` | 482 | release/privacy recall | B4 |
-| `pypi-wheel-smoke` | 683 | release hygiene recall | B4 |
+| `pypi-wheel-real-cli-smoke` | 683 | release hygiene recall | B4 |
 | `trusted-publishing-release-workflow` | 730 | release hygiene recall | B4 |
 | `path-filter-release-hygiene` | 732 | release hygiene recall | B4 |
 

@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from guardrails_lite.guardrails_db import GuardrailsDB
 from guardrails_lite.guardrails_map import build_document_map_for_entry
+from guardrails_lite.guardrails_search import GuardrailsSearch
 from guardrails_lite.search_qa import (
     _matches_expected,
     compare_search_qa_snapshots,
@@ -110,6 +111,17 @@ def test_load_search_qa_set_accepts_extendable_repo_fixture():
     assert qa["version"] == 1
     assert qa["cases"]
     assert {"id", "query"}.issubset(qa["cases"][0])
+
+
+def test_internal_search_qa_core_case_ids_are_stable_and_unique():
+    qa_file = Path(__file__).parent.parent / "qa" / "internal_guardrails_search_qa" / "core.json"
+
+    qa = load_search_qa_set(qa_file)
+    case_ids = [case.get("id") for case in qa["cases"]]
+
+    assert all(case_ids)
+    assert len(case_ids) == len(set(case_ids))
+    assert not any("*" in case_id or "..." in case_id for case_id in case_ids)
 
 
 def test_expected_title_substrings_require_all_terms():
@@ -303,3 +315,122 @@ def test_search_qa_cli_run_and_compare_smoke(tmp_path):
     comparison = json.loads(compare_path.read_text(encoding="utf-8"))
     assert comparison["metrics"]["top1_hits"]["delta"] == 1
     assert "top1_hits" in result.stdout
+
+
+def test_keyword_search_scores_candidate_pool_before_final_limit(tmp_path):
+    db = GuardrailsDB(tmp_path / "guardrails.db").connect()
+    try:
+        db.conn.executemany(
+            """INSERT INTO knowledge (title, content_raw, tags, trust)
+               VALUES (?, ?, ?, ?)""",
+            [
+                (
+                    f"High-trust weak release note {index}",
+                    "rarealpha appears here, but the other anchor words are absent.",
+                    "candidate-pool",
+                    0.99,
+                )
+                for index in range(1001)
+            ],
+        )
+        db.conn.commit()
+        target_id = db.add_knowledge(
+            "Lower-trust complete rarealpha rarebeta raregamma guide",
+            "rarealpha rarebeta raregamma all appear together in this focused entry.",
+            tags="candidate-pool,target",
+            trust=0.42,
+        )
+
+        results = GuardrailsSearch(db).search_keyword("rarealpha rarebeta raregamma", limit=1)
+    finally:
+        db.close()
+
+    assert [result["id"] for result in results] == [target_id]
+
+
+def test_tokenize_preserves_mixed_technical_tokens_and_components():
+    tokens = {
+        token.lower()
+        for token in GuardrailsSearch._tokenize(
+            "Vault-for-LLM sqlite-vec read_range id-token"
+        )
+    }
+
+    assert "vault-for-llm" in tokens
+    assert "sqlite-vec" in tokens
+    assert "read_range" in tokens
+    assert "id-token" in tokens
+    assert {"vault", "llm", "sqlite", "vec", "read", "range", "id", "token"}.issubset(tokens)
+
+
+def test_knowledge_base_alias_expansion_is_narrow():
+    generic_terms = set(GuardrailsSearch._expand_query_terms("knowledge base"))
+    forbidden_expansions = {
+        "內部百科",
+        "對話回寫",
+        "對話回寫治理",
+        "草稿隊列",
+        "隱私掃描",
+        "session writeback governance",
+        "session-writeback governance",
+        "session writeback",
+        "session-writeback",
+        "draft queue",
+        "draft-queue",
+        "privacy scanner",
+        "privacy-scanner",
+        "internal knowledge base",
+        "internal-knowledge-base",
+    }
+
+    assert generic_terms.isdisjoint(forbidden_expansions)
+
+    specific_terms = set(GuardrailsSearch._expand_query_terms("internal knowledge base"))
+
+    assert "內部百科" in specific_terms
+    assert "internal knowledge base" in specific_terms
+
+
+def test_keyword_search_caps_long_mixed_query_terms_for_sqlite_limits(tmp_path):
+    db = GuardrailsDB(tmp_path / "guardrails.db").connect()
+    try:
+        db.add_knowledge(
+            "Long mixed query safe target",
+            "probe0 mixed CJK 查詢 smoke row",
+            tags="long-query",
+            trust=0.7,
+        )
+        long_query = " ".join(f"probe{index} 混合查詢{index}" for index in range(400))
+
+        results = GuardrailsSearch(db).search_keyword(long_query, limit=3)
+    finally:
+        db.close()
+
+    assert isinstance(results, list)
+
+
+def test_keyword_search_supports_phase_b_cjk_aliases_and_simplified_parity(tmp_path):
+    db = GuardrailsDB(tmp_path / "guardrails.db").connect()
+    try:
+        db.add_knowledge(
+            "內部百科 generic glossary",
+            "This generic entry mentions 內部百科 but not the Phase B workflow anchors.",
+            tags="cjk,generic",
+            trust=0.99,
+        )
+        target_id = db.add_knowledge(
+            "Phase B 內部百科 capability anchor",
+            "Session writeback governance coordinates the draft queue, privacy scanner, "
+            "and internal knowledge base for Phase B dogfooding.",
+            tags="phase-b,session-writeback,draft-queue,privacy-scanner,internal-knowledge",
+            trust=0.55,
+        )
+        search = GuardrailsSearch(db)
+
+        traditional = search.search_keyword("對話回寫治理 草稿隊列 隱私掃描 內部百科", limit=1)
+        simplified = search.search_keyword("对话回写治理 草稿队列 隐私扫描 内部百科", limit=1)
+    finally:
+        db.close()
+
+    assert [result["id"] for result in traditional] == [target_id]
+    assert [result["id"] for result in simplified] == [target_id]

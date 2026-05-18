@@ -1,8 +1,8 @@
 # Guardrails Internal Knowledge Capability — Progress
 
-Last updated: 2026-05-18 11:09 CST
+Last updated: 2026-05-18 11:55 CST
 
-## Current Phase: Phase B — 內部百科真正能力建設 — B1/B6/B5/B2/B3 COMPLETE / B4 NEXT
+## Current Phase: Phase B — 內部百科真正能力建設 — B1/B6/B5/B2/B3/B4 COMPLETE / B7 NEXT
 
 ### Goal
 Let Nancy / Hermes / Guardrails dogfood the internal knowledge base every day so real retrieval, citation, capture, privacy, CJK search, and multi-agent convergence problems surface before public Vault-for-LLM productization.
@@ -21,11 +21,88 @@ Let Nancy / Hermes / Guardrails dogfood the internal knowledge base every day so
 3. B5 session capture draft queue — COMPLETE (design)
 4. B2 Document Map coverage strengthening — COMPLETE (design)
 5. B3 internal Search QA metrics — COMPLETE (design/artifact baseline)
-6. B4 CJK retrieval improvements — NEXT
+6. B4 CJK retrieval improvements — COMPLETE
 7. B7 multi-agent writing and convergence workflow
 
 ### Immediate Next Task
-Start B4 CJK retrieval improvements from concrete B3 cases: CJK alias pairs, Traditional/Simplified query parity, mixed Chinese/English technical-token queries, and release-hygiene misses in `qa/internal_guardrails_search_qa/core.json`.
+Start B7 multi-agent writing and convergence workflow: duplicate detection, conflict handling, freshness/convergence checks, and safe sync flow from internal Guardrails source of truth to public-safe Vault-for-LLM slices.
+
+---
+
+## Current Sprint: Sprint 4G — CJK / Alias Keyword Retrieval — COMPLETED
+
+### Goal
+Fix keyword retrieval misses surfaced by the B3 internal QA baseline without weakening citation policy: score mixed-language candidates before final limiting, add conservative CJK Traditional/Simplified and domain-alias query expansion, and keep regression coverage explicit.
+
+### Root Cause Findings
+1. `search_keyword` currently orders SQL candidates by `trust DESC LIMIT ?` before Python relevance scoring, so high-trust weak matches can crowd out the actual best match.
+2. `_tokenize` is brittle for mixed technical terms: hyphen/underscore/domain tokens are split into noisy fragments (`Vault-for-LLM`, `sqlite-vec`, `read_range`, `id-token`).
+3. CJK tokenization uses non-overlapping 2–4 char chunks and lacks Traditional/Simplified normalization, so Simplified queries can pass only accidentally.
+4. No domain alias layer exists for Phase B language pairs such as `對話回寫` ↔ `session writeback`, `草稿隊列` ↔ `draft queue`, and `隱私掃描` ↔ `privacy scanner`.
+5. QA hygiene gap found: a redacted placeholder-like core QA case ID needed normalization; display-layer ellipsization was verified not to mutate the actual JSON IDs.
+
+### Implementation Rules
+- Add failing tests before changing search code.
+- Keep expansion in query-time memory only; do not mutate stored knowledge rows.
+- Keep alias dictionary narrow and Phase-B/domain specific.
+- Do not change final citation policy; search citations remain navigation hints.
+
+### Scope Delivered
+1. Changed keyword search to gather the full SQL candidate pool before final Python relevance scoring, avoiding `trust DESC LIMIT` truncation of lower-trust exact matches.
+2. Added deterministic mixed-language tokenization for hyphen/underscore technical identifiers (`Vault-for-LLM`, `sqlite-vec`, `read_range`, `id-token`) plus component tokens.
+3. Added narrow Phase-B alias expansion for `對話回寫`/`session writeback`, `草稿隊列`/`draft queue`, `隱私掃描`/`privacy scanner`, and `內部百科`/`internal knowledge base`.
+4. Added conservative Simplified→Traditional query normalization for the B4 CJK cases without mutating stored knowledge rows.
+5. Hardened QA hygiene checks for stable unique core QA case IDs and fixed the script-style `tests/test_new_features.py` smoke test to use the active Python interpreter instead of assuming `conda` is on PATH.
+
+### Final Metrics
+```text
+Search QA run complete
+- total_cases: 14
+- cases_with_results: 14
+- top1_hits: 11
+- topk_hits: 13
+- mean_reciprocal_rank: 0.8452380952380951
+- map_guidance_rate: 0.07142857142857142
+- read_range_guidance_rate: 0.07142857142857142
+- citation_policy_violations: 0
+
+Before/after from B3 baseline:
+- top1_hits: 4 -> 11 (+7)
+- topk_hits: 5 -> 13 (+8)
+- mean_reciprocal_rank: 0.32142857142857145 -> 0.8452380952380951 (+0.52380952381)
+- citation_policy_violations: 0 -> 0 (0)
+```
+
+### Verification
+```bash
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python tests/test_new_features.py
+# PASS: RESULTS: 26/26 PASSED, 0 FAILED
+
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python -m pytest -q
+# PASS: 80 passed, 2 warnings in 27.97s
+
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python \
+  -m guardrails_lite.guardrails_cli search-qa run \
+  --qa-file qa/internal_guardrails_search_qa/core.json \
+  --mode keyword \
+  --limit 10 \
+  --output /tmp/guardrails_b4_search_qa_final.json
+# PASS: top1_hits=11; topk_hits=13; citation_policy_violations=0.
+
+/home/zycas/miniconda3/envs/guardrails-lite/bin/python \
+  -m guardrails_lite.guardrails_cli search-qa compare \
+  --before /tmp/guardrails_b3_search_qa_baseline.json \
+  --after /tmp/guardrails_b4_search_qa_final.json \
+  --output /tmp/guardrails_b4_search_qa_final_compare.json
+# PASS: top1 +7, topk +8, MRR +0.52380952381, citation policy unchanged.
+
+/usr/bin/python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"
+# PASS: graphify rebuilt graph.json and GRAPH_REPORT.md; graph.html skipped because graph exceeds viz node limit.
+```
+
+### Remaining Follow-up
+- `negative-private-raw-transcript` remains a non-gating negative control; B7 or a later Search QA hardening sprint should implement first-class `expected_hit: false` evaluator semantics.
+- The lower `map_guidance_rate` / `read_range_guidance_rate` reflects better direct retrieval of expected entries; B7 should continue improving Document Map coverage and convergence evidence rather than weakening citation policy.
 
 ---
 

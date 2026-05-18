@@ -217,7 +217,7 @@
       ]
     },
     {
-      "id": "pypi-wheel-smoke",
+      "id": "pypi-wheel-real-cli-smoke",
       "source": "release_sop",
       "priority": "P0",
       "language": "mixed",

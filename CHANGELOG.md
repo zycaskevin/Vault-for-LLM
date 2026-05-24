@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.3] — 2026-05-24
+
+### Added
+- Add source-checkout repository hygiene tools for public release workflows:
+  - `scripts/public_pr_gate.py` scans actual PR diffs for public-boundary risks, including path-only internal artifacts, renamed paths, deleted/context lines, local paths, runtime data, secret-looking assignments, and large unexpected diffs.
+  - `scripts/artifact_audit.py` reports safe-delete generated caches, review-only runtime folders, and archive candidates without deleting files.
+  - `scripts/artifact_cleanup.py` defaults to dry-run and requires `--execute --safe-only` before deleting reproducible cache artifacts.
+- Add `docs/repo_governance.md` to document public/internal release boundaries, artifact hygiene, and whitelist staging.
+- Add regression tests for safe cache cleanup, review-only build/dist handling, public PR gate path scanning, deleted private payloads, and clean public diffs.
+
 ## [0.4.2] — 2026-05-17
 
 ### Fixed

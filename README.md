@@ -48,6 +48,19 @@ In other words: regular RAG focuses on retrieval; Vault-for-LLM focuses on wheth
 
 ---
 
+## What's new in 0.4.3
+
+Version 0.4.3 adds **repository hygiene and public-boundary tools** for teams that use Vault-for-LLM in both private work and open-source release flows:
+
+- `scripts/public_pr_gate.py` scans the actual PR diff and fails closed on private-only files, runtime data, local paths, secret-looking assignments, renamed paths, deleted lines, and large unexpected diffs.
+- `scripts/artifact_audit.py` reports generated caches, review-only runtime folders, and archive candidates without deleting anything.
+- `scripts/artifact_cleanup.py` defaults to dry-run and only deletes reproducible cache artifacts when explicitly run with `--execute --safe-only`.
+- `docs/repo_governance.md` documents the public/internal release boundary and whitelist staging workflow.
+
+These tools are source-checkout governance helpers; they do not change the core `vault` CLI memory workflow.
+
+---
+
 ## What it can do
 
 | Area | Capability |
@@ -60,6 +73,7 @@ In other words: regular RAG focuses on retrieval; Vault-for-LLM focuses on wheth
 | Document Map | section/claim navigation and bounded `read_range` citations ([policy and demo](docs/document_map_citation_policy.md)) |
 | MCP | `vault-mcp` exposes search/add/stats/map/read tools to compatible agents |
 | Quality tools | lint, freshness, convergence, cross-validation, dedup, Search QA snapshots ([benchmarking guide](docs/search_qa_benchmarking.md)) |
+| Repository governance | source-checkout public-boundary gate, artifact audit, and safe-only cleanup helpers ([governance guide](docs/repo_governance.md)) |
 | Optional remote sync | Supabase sync scripts for teams or remote read paths |
 | Local skill registry | experimental `vault skill` commands for sharing reusable workflows inside a local Vault; not a hosted marketplace |
 
@@ -77,6 +91,7 @@ These features exist today, but they are still alpha and should be treated as qu
 | Cross-validation | Verify extracted claims across different model families | experimental / optional-model dependent |
 | Freshness + dedup | Mark stale entries and detect repeated knowledge | experimental |
 | Local skill registry | Push/search/pull reusable agent workflows in local SQLite | experimental / local-only |
+| Repo hygiene scripts | Audit generated artifacts, clean safe caches, and scan public PR diffs before release | source-checkout helper |
 
 The `benchmarks/search_qa/` examples are repository fixtures in a source checkout, not files installed by the PyPI wheel. After `pip install vault-for-llm`, run `vault search-qa` with your own QA JSON files, or clone/download this repository to use the example fixtures.
 

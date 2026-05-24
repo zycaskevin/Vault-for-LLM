@@ -48,6 +48,19 @@ Vault-for-LLM 不只是另一个向量数据库。它正在往 **Agent 记忆质
 
 ---
 
+## 0.4.3 新增内容
+
+0.4.3 补上 **repo hygiene 与公开边界检查工具**，适合同一套功能同时服务私人工作流与开源发布流程的团队：
+
+- `scripts/public_pr_gate.py` 会扫描实际 PR diff，对私人文件、runtime 数据、本机路径、疑似 secret assignment、rename path、deleted line、过大的非预期 diff 采用 fail-closed。
+- `scripts/artifact_audit.py` 只读取并报告 generated cache、需人工复核的 runtime folder、可归档候选，不会删文件。
+- `scripts/artifact_cleanup.py` 默认 dry-run；只有明确加上 `--execute --safe-only` 时，才删除可重建的 cache artifacts。
+- `docs/repo_governance.md` 说明公开/内部 release 边界与 whitelist staging 流程。
+
+这些是 source checkout 内的治理辅助工具，不会改变核心 `vault` CLI 记忆工作流。
+
+---
+
 ## 它能做什么？
 
 | 领域 | 能力 |
@@ -60,6 +73,7 @@ Vault-for-LLM 不只是另一个向量数据库。它正在往 **Agent 记忆质
 | Document Map | 章节/主张导航，支持有行号范围的 citation |
 | MCP | `vault-mcp` 将 search/add/stats/map/read 工具暴露给兼容 Agent |
 | 质量工具 | lint、freshness、convergence、cross-validation、dedup、Search QA snapshot |
+| Repo 治理 | source checkout 内的公开边界 gate、artifact audit、safe-only cleanup helper |
 | 可选远端同步 | Supabase sync scripts，适合团队或远端读取 |
 | 本机技能登记库 | 实验中的 `vault skill` 命令，用于在本地 Vault 内共享可复用 workflow；不是托管市场 |
 
@@ -77,6 +91,7 @@ Vault-for-LLM 不只是另一个向量数据库。它正在往 **Agent 记忆质
 | 交叉验证 | 用不同模型家族验证抽取出的 claims | 实验性 / 依赖可选模型 |
 | Freshness + dedup | 标记过期知识、检测重复条目 | 实验性 |
 | 本机技能登记库 | 在本地 SQLite 中 push/search/pull 可重复使用的 Agent workflows | 实验性 / 仅本地 |
+| Repo hygiene scripts | 审计 generated artifacts、清理安全 cache、发布前扫描 public PR diff | source-checkout helper |
 
 目前最稳定的路径仍是核心流程：`vault init` → `vault add` → `vault compile` → `vault search` → `vault-mcp`。
 

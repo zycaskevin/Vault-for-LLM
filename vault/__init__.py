@@ -1,6 +1,6 @@
 """Vault-for-LLM — Local-first knowledge system for LLM agents."""
 
-__version__ = "0.4.2"
+__version__ = "0.4.3"
 
 from .db import VaultDB
 from .search import VaultSearch

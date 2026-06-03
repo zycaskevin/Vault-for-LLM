@@ -226,6 +226,7 @@ your-project/
 | `vault compile` | 编译 `raw/` 到 SQLite + `compiled/` |
 | `vault search "query"` | 搜索知识库 |
 | `vault search "query" --graph-expand 2` | 搜索并加上图谱扩展 |
+| `vault export obsidian --vault /path/to/ObsidianVault --dry-run` | 导出单向只读 Markdown notes，方便用 Obsidian 浏览 |
 | `vault list` | 列出知识条目 |
 | `vault stats` | 显示 vault 统计 |
 | `vault lint` | 执行质量检查 |
@@ -242,6 +243,19 @@ your-project/
 | `vault skill search "query"` | 搜索本机实验性技能登记库条目 |
 
 执行 `vault <command> --help` 可查看各命令参数。
+
+### Obsidian 导出
+
+如果想让人类用 Obsidian 浏览已编译的 vault，又不想改动知识库 source of truth，可以使用：
+
+```bash
+vault export obsidian \
+  --vault /path/to/ObsidianVault \
+  --category technique \
+  --dry-run
+```
+
+这个导出是刻意设计成单向、只读：只从 `vault.db` 读取，将 Markdown notes 写到 `00-Vault-Knowledge/`，包含 YAML frontmatter 与 `Vault #<id>` citation；不写回 `raw/`、`compiled/`、SQLite，也不触发任何 remote sync。重跑会覆盖同一组稳定路径，不会产生重复笔记。
 
 ---
 

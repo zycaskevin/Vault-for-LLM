@@ -7,6 +7,7 @@ Vault-for-LLM — CLI 入口。
   vault import novel.md   # 匯入長文件（自動分塊）
   vault compile           # 編譯 raw/ → db + compiled/
   vault search "查詢"     # 搜尋知識
+  vault export obsidian   # 匯出成 Obsidian vault Markdown notes
   vault list              # 列出知識
   vault lint              # 健康檢查
   vault doctor            # 環境診斷
@@ -1266,6 +1267,40 @@ def cmd_search_qa(args):
     print("error: search-qa requires action: run or compare", file=sys.stderr)
     raise SystemExit(2)
 
+
+def cmd_export(args):
+    """One-way export commands for human-readable knowledge browsing."""
+    if args.export_target != "obsidian":
+        print("error: export requires target: obsidian", file=sys.stderr)
+        raise SystemExit(2)
+
+    from vault.export_obsidian import export_obsidian_vault
+
+    try:
+        result = export_obsidian_vault(
+            project_dir=find_project_dir(),
+            vault_dir=args.vault,
+            category=args.category,
+            tag=args.tag,
+            layer=args.layer,
+            limit=args.limit,
+            min_trust=args.min_trust,
+            source=args.source,
+            dry_run=args.dry_run,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+    print(
+        "Obsidian export: "
+        f"matched={result['matched']} written={result['written']} "
+        f"dry_run={result['dry_run']} vault={result['vault_dir']}"
+    )
+    for path in result["paths"][:10]:
+        print(f"  {path}")
+    if len(result["paths"]) > 10:
+        print(f"  ... {len(result['paths']) - 10} more")
+
 # ── CLI 入口 ─────────────────────────────────────────────
 
 def main():
@@ -1342,6 +1377,20 @@ def main():
     p.add_argument("--no-embed", action="store_true", help="跳過嵌入生成")
     p.add_argument("--contextualize", action="store_true", help="Contextual Retrieval：用 Ollama 生成上下文摘要（Anthropic 2024）")
     p.add_argument("--ollama-model", default="qwen3:8b", help="Ollama 模型（用於 contextualize）")
+
+    # export — read-only export targets
+    p = sub.add_parser("export", help="匯出知識（單向、唯讀）")
+    export_sub = p.add_subparsers(dest="export_target", help="匯出目標")
+
+    ep = export_sub.add_parser("obsidian", help="匯出 Markdown notes 到 Obsidian vault")
+    ep.add_argument("--vault", required=True, help="Obsidian vault 目錄")
+    ep.add_argument("--category", help="只匯出指定 category")
+    ep.add_argument("--tag", help="只匯出含指定 tag 的條目")
+    ep.add_argument("--layer", choices=["L0", "L1", "L2", "L3"], help="只匯出指定 layer")
+    ep.add_argument("--limit", type=int, help="最多匯出幾條")
+    ep.add_argument("--min-trust", type=float, default=0.0, help="最低 trust 門檻")
+    ep.add_argument("--source", choices=["db", "raw", "compiled"], default="db", help="來源（MVP 支援 db）")
+    ep.add_argument("--dry-run", action="store_true", help="只列出將寫入的檔案，不建立檔案")
 
     # config
     p = sub.add_parser("config", help="配置管理")
@@ -1491,6 +1540,7 @@ def main():
         "stats": cmd_stats,
         "install-embedding": cmd_install_embedding,
         "import": cmd_import,
+        "export": cmd_export,
         "config": cmd_config,
         "map": cmd_map,
         "graph": cmd_graph,

@@ -1,146 +1,51 @@
 # entity_rules.yaml
-# Vault-for-LLM — 實體推斷規則
+# Vault-for-LLM — public-safe starter entity inference rules
 #
-# 格式：
+# Copy this file into your project root as `entity_rules.yaml` and customize it
+# for your own domain. The repository template intentionally stays generic:
+# it should not ship a maintainer's private customer, clinic, product, or
+# operational vocabulary as the default behavior.
+#
+# Format:
 #   entity_type:
 #     - keyword1
 #     - keyword2
 #
-# 規則：文字（title + tags + content）包含 keyword 時，自動建立對應實體並連結。
-# 建議：每次擴展新 domain 時，在對應分類加入關鍵詞。
-# 大小寫不敏感（系統會統一轉小寫比對）。
+# Rules: when a knowledge entry's title + tags + content contains a keyword,
+# Vault can infer the entity and link it to that entry. Matching is
+# case-insensitive.
 
-# ── AI / 技術工具 ─────────────────────────────────────────
+# Generic AI / developer-tool vocabulary. Keep this list short so fresh users
+# can see the shape without inheriting a domain-specific taxonomy.
 tool:
-  - ollama
   - sqlite
   - sqlite-vec
-  - onnx
-  - onnxruntime
   - python
-  - conda
   - docker
-  - ffmpeg
-  - supabase
-  - chromadb
-  - vllm
-  - langchain
-  - llamaindex
   - git
   - github
-  - n8n
-  - redis
-  - fastapi
-  - letta
-  - cursor
-  - claude code
-
-# ── AI 模型 ───────────────────────────────────────────────
-model:
-  - qwen
-  - gpt
-  - claude
-  - llama
-  - mistral
-  - glm
-  - gemini
-  - phi
-  - deepseek
-  - mixtral
-  - miniLM
-  - sonnet
-  - opus
-  - haiku
-
-# ── AI / 技術概念 ─────────────────────────────────────────
-concept:
-  - embed
-  - vector
-  - rag
-  - chunk
-  - token
-  - prompt
-  - fine-tuning
-  - 推理
-  - 嵌入
-  - 分塊
-  - 圖譜
-  - 搜尋
-  - 編譯
-  - 知識庫
-  - 語意
-  - 降級
-  - context
+  - ollama
   - mcp
+
+concept:
   - agent
+  - rag
+  - vector
+  - embedding
+  - citation
   - workflow
   - automation
+  - knowledge base
 
-# ── 平台 / 環境 ───────────────────────────────────────────
 platform:
-  - windows
-  - wsl
-  - wsl2
   - linux
   - macos
-  - gpu
-  - cpu
+  - windows
+  - wsl
 
-# ── domain-specificbusiness domain（自訂擴充）────────────────────────────
-medical_aesthetics:
-  # 治療項目
-  - domain-term-a
-  - domain-term-b
-  - 雷射
-  - domain-term-c
-  - 音波拉提
-  - 水光針
-  - 微針
-  - 光療
-  - 淨膚雷射
-  - 脈衝光
-  - 皮秒
-  - 飛梭
-  - 海芙
-  - 舒顏萃
-  - 童顏針
-  - 晶亮瓷
-  - 少女針
-  - 恩寶麗
-  # 部位
-  - 眼周
-  - 法令紋
-  - 淚溝
-  - 蘋果肌
-  - 下巴
-  - 額頭
-  - 脖紋
-  # 皮膚狀況
-  - 毛孔粗大
-  - 痘疤
-  - 色斑
-  - 黑眼圈
-  - 膚色暗沉
-  - 細紋
-  - 鬆弛
-  # business管理
-  - 預約
-  - 諮詢
-  - 療程
-  - 術後
-  - 回診
-  - 美療師
-  - 護理師
-
-# ── 業務 / 商業 domain（自訂擴充）────────────────────────
-business:
-  - line
-  - messaging integration
-  - web app
-  - chatbot
-  - 客服
-  - 自動化
-  - 訂閱
-  - 報價
-  - 提案
-  - crm
+# Add your own domain sections below or copy an example from examples/.
+# Example:
+# product:
+#   - onboarding
+#   - billing
+#   - support

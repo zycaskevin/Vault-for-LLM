@@ -7,7 +7,10 @@ builds a navigable index sorted by category, date, and tags.
 Usage:
     python3 scripts/generate_index.py [--output INDEX.md]
 """
-import os, re, glob, sys
+import argparse
+import os
+import re
+import glob
 from collections import Counter
 
 VAULT_DIR = os.environ.get('VAULT_PATH', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -157,9 +160,7 @@ def generate_index(output_path=None):
 
 
 if __name__ == '__main__':
-    out = None
-    if '--output' in sys.argv:
-        idx = sys.argv.index('--output')
-        if idx + 1 < len(sys.argv):
-            out = sys.argv[idx + 1]
-    generate_index(out)
+    parser = argparse.ArgumentParser(description="Generate INDEX.md from raw/ and compiled/ Markdown entries.")
+    parser.add_argument("--output", default=None, help="Output path (default: VAULT_PATH/INDEX.md).")
+    args = parser.parse_args()
+    generate_index(args.output)

@@ -8,6 +8,10 @@
   - `scripts/artifact_audit.py` reports safe-delete generated caches, review-only runtime folders, and archive candidates without deleting files.
   - `scripts/artifact_cleanup.py` defaults to dry-run and requires `--execute --safe-only` before deleting reproducible cache artifacts.
 - Add `docs/repo_governance.md` to document public/internal release boundaries, artifact hygiene, and whitelist staging.
+- Add `scripts/README.md` with maintainer script usage, safe defaults, and optional remote-sync boundaries.
+- Replace the default `templates/entity_rules.yaml` with a public-safe generic starter and add a neutral custom-domain example under `examples/`.
+- Ignore generated `INDEX.md` alongside runtime reports.
+- Document that `vault-mcp` is a local stdio server without built-in network authentication or user-level access control.
 - Add regression tests for safe cache cleanup, review-only build/dist handling, public PR gate path scanning, deleted private payloads, and clean public diffs.
 
 ## [0.4.2] — 2026-05-17

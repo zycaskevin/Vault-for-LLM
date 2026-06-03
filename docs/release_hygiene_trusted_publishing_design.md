@@ -1,6 +1,6 @@
 # Release Hygiene + PyPI Trusted Publishing Design
 
-> **For Hermes:** Use `subagent-driven-development` if this design is implemented as code. Keep release changes bite-sized and commit after each verified segment.
+> **For maintainers:** keep release changes bite-sized and commit after each verified segment.
 
 **Status:** design complete, implementation pending
 
@@ -24,7 +24,7 @@ Repo evidence:
 - `CHANGELOG.md` top entry is `0.4.2`.
 - `.github/workflows/auto-review.yml` is currently the only GitHub Actions workflow.
 - Existing CI only runs `tests/test_lite.py` on Python 3.11 and does not yet build/twine-check/wheel-smoke release artifacts.
-- `PROGRESS.md` has been updated to reflect that `0.4.2` is published and GitHub Release notes now exist.
+- Local progress and audit notes are intentionally excluded from the public repository; record release status in GitHub Releases, CHANGELOG entries, and current PR bodies instead.
 
 Official docs checked:
 
@@ -66,7 +66,7 @@ Key official requirements from those docs:
 
 4. Add or refresh release docs
    - Prefer a reusable `docs/release_checklist.md` over version-specific local notes.
-   - Keep `docs/release_checklist_0_4_1.md` as historical evidence if useful.
+   - Do not keep version-specific approval or release-readiness reports in the public repository unless they are rewritten as public release notes.
 
 5. Later OSS hygiene docs
    - `SECURITY.md`

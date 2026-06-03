@@ -29,6 +29,12 @@ Before pushing or opening a public PR, run a fail-closed public-boundary gate.
 python scripts/public_pr_gate.py --base origin/main --head HEAD
 ```
 
+For a cleanup PR that only removes internal-only files or renames them out of forbidden paths already present in the base branch, use the explicit cleanup flag:
+
+```bash
+python scripts/public_pr_gate.py --base origin/main --head HEAD --allow-cleanup-deletions
+```
+
 For CI or machine-readable output:
 
 ```bash

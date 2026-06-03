@@ -12,8 +12,8 @@ Scope: public `README.md` feature/capability claims after P0/A1-A4 cleanup. The 
 
 ## Evidence reviewed
 
-- P0/A1 output: `docs/p0_public_string_audit.md` found 9 public-boundary issues and no literal secrets or local absolute home paths.
-- P0/A2 output: raw/example content and product-specific fixtures were neutralized; remaining Supabase work was deferred to A3.
+- Public-boundary cleanup output: internal progress/audit artifacts were removed from the public source tree, and public-safe examples now live under `examples/` rather than tracked `raw/` knowledge.
+- Raw/example content and product-specific fixtures were neutralized; remaining optional Supabase work was deferred to A3.
 - P0/A3 output: Supabase/dashboard assumptions were split; public defaults are Vault-branded and Supabase is optional sync/read target.
 - P0/A4 output: `vault skill` remains visible only as an experimental local skill registry, not a hosted or mature marketplace.
 - Code/docs inspected: `README.md`, `pyproject.toml`, `vault/cli.py`, `vault/db.py`, `vault/mcp.py`, `vault/embed.py`, `vault/graph.py`, `vault/search_qa.py`, repository fixtures under `benchmarks/search_qa/`, `docs/agent_memory_qa_roadmap.md`, `docs/document_map_citation_policy.md`, `docs/search_qa_benchmarking.md`.
@@ -23,7 +23,7 @@ Scope: public `README.md` feature/capability claims after P0/A1-A4 cleanup. The 
   - Quickstart module smoke in a temp directory with `PYTHONPATH=<repo-root> python -m vault.cli ...` -> init/add/compile/search succeeded.
   - P2 Document Map citation-policy cleanup: `python -m pytest -q tests/test_vault_mcp_map.py tests/test_search_map_integration.py tests/test_agent_behavior_policy.py` -> **23 passed**; `git diff --check` passed.
   - P3 Search QA repository fixtures add `benchmarks/search_qa/basic.en.json`, `benchmarks/search_qa/basic.zh-Hant.json`, `benchmarks/search_qa/README.md`, and `docs/search_qa_benchmarking.md`; `tests/test_search_quality_metrics.py` validates source-checkout fixture loading and local English/CJK smoke snapshots.
-  - Public-string grep over README/docs outside this audit doc -> no stale `Hermes`, `hermes_vault`, `delegate_task`, `.hermes`, dashboard, `gr_*`, or marketplace wording in README/docs.
+  - Public-string grep over README/docs outside this matrix -> no stale private-runtime, internal dashboard, or marketplace wording in README/docs.
   - PyPI JSON check for `vault-for-llm` -> version `0.4.0` exists and classifier is Alpha; current PyPI long description still contains pre-A4 hosted-registry wording, so republishing is a release action.
 
 ## Claim matrix

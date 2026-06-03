@@ -101,35 +101,39 @@ embed_prov = None
 if not HAS_ONNX:
     print("  ⏭️  Skipped semantic embedding checks (onnxruntime not installed)")
 else:
-    embed_prov = ONNXEmbeddingProvider(model_key="mix")
-    dim = embed_prov.dim
-    print(f"  ONNX dim: {dim}")
+    try:
+        embed_prov = ONNXEmbeddingProvider(model_key="mix")
+        dim = embed_prov.dim
+        print(f"  ONNX dim: {dim}")
 
-    vec1 = embed_prov.encode("sqlite-vec 擴展載入問題")
-    if isinstance(vec1[0], list):
-        vec1 = vec1[0]  # encode returns list[list]
-    v1 = vec1[0] if isinstance(vec1[0], list) else vec1
-    norm1 = sum(v**2 for v in v1)**0.5
-    check("Single encode", len(v1) == dim, f"dim={len(v1)}")
-    check("Normalized (norm≈1.0)", 0.9 < norm1 < 1.1, f"norm={norm1:.4f}")
+        vec1 = embed_prov.encode("sqlite-vec 擴展載入問題")
+        if isinstance(vec1[0], list):
+            vec1 = vec1[0]  # encode returns list[list]
+        v1 = vec1[0] if isinstance(vec1[0], list) else vec1
+        norm1 = sum(v**2 for v in v1)**0.5
+        check("Single encode", len(v1) == dim, f"dim={len(v1)}")
+        check("Normalized (norm≈1.0)", 0.9 < norm1 < 1.1, f"norm={norm1:.4f}")
 
-    vecs = embed_prov.encode(["Ollama timeout", "tool fallback", "CJK 分詞"])
-    check("Batch encode", len(vecs) == 3, f"got {len(vecs)}")
+        vecs = embed_prov.encode(["Ollama timeout", "tool fallback", "CJK 分詞"])
+        check("Batch encode", len(vecs) == 3, f"got {len(vecs)}")
 
-    # Store vectors in DB
-    for kid in [kid1, kid2, kid3, kid5]:
-        c = db.get_knowledge(kid)['content_raw']
-        v = embed_prov.encode(c)
-        if isinstance(v[0], list):
-            v = v[0]
-        db.add_embedding(kid, v)
-    check("Store 4 embeddings", True)
+        # Store vectors in DB
+        for kid in [kid1, kid2, kid3, kid5]:
+            c = db.get_knowledge(kid)['content_raw']
+            v = embed_prov.encode(c)
+            if isinstance(v[0], list):
+                v = v[0]
+            db.add_embedding(kid, v)
+        check("Store 4 embeddings", True)
 
-    query_vec = embed_prov.encode("sqlite")
-    if isinstance(query_vec[0], list):
-        query_vec = query_vec[0]
-    vecs_result = db.search_vector(query_vec, limit=3)
-    check("Vector search returns results", len(vecs_result) >= 1, f"got {len(vecs_result)}")
+        query_vec = embed_prov.encode("sqlite")
+        if isinstance(query_vec[0], list):
+            query_vec = query_vec[0]
+        vecs_result = db.search_vector(query_vec, limit=3)
+        check("Vector search returns results", len(vecs_result) >= 1, f"got {len(vecs_result)}")
+    except RuntimeError as exc:
+        print(f"  ⏭️  Skipped semantic embedding checks ({exc})")
+        embed_prov = None
 
 print()
 

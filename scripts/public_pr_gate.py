@@ -63,6 +63,7 @@ PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 class DiffLine:
     path: str
     line: str
+    change: str
     line_number: int | None = None
 
 
@@ -70,6 +71,25 @@ class DiffLine:
 class ChangedPath:
     path: str
     source: str
+
+
+def _iter_removed_paths(diff_text: str) -> set[str]:
+    """Return paths being removed from the public tree."""
+    removed: set[str] = set()
+    old_path: str | None = None
+    for line in diff_text.splitlines():
+        if line.startswith("diff --git "):
+            parts = line.split()
+            old_path = _normalize_diff_path(parts[2]) if len(parts) >= 3 else None
+            continue
+        if line.startswith("rename from "):
+            normalized = _normalize_diff_path(line.removeprefix("rename from "))
+            if normalized:
+                removed.add(normalized)
+            continue
+        if line.startswith("+++ /dev/null") and old_path:
+            removed.add(old_path)
+    return removed
 
 
 def _normalize_diff_path(path: str) -> str | None:
@@ -126,15 +146,15 @@ def _iter_payload_lines(diff_text: str) -> list[DiffLine]:
             new_line_number = int(new_match.group(1)) if new_match else None
             continue
         if raw_line.startswith("+") and not raw_line.startswith("+++"):
-            payload.append(DiffLine(current_path, raw_line[1:], new_line_number))
+            payload.append(DiffLine(current_path, raw_line[1:], "add", new_line_number))
             if new_line_number is not None:
                 new_line_number += 1
         elif raw_line.startswith("-") and not raw_line.startswith("---"):
-            payload.append(DiffLine(current_path, raw_line[1:], old_line_number))
+            payload.append(DiffLine(current_path, raw_line[1:], "delete", old_line_number))
             if old_line_number is not None:
                 old_line_number += 1
         elif raw_line.startswith(" "):
-            payload.append(DiffLine(current_path, raw_line[1:], new_line_number))
+            payload.append(DiffLine(current_path, raw_line[1:], "context", new_line_number))
             if old_line_number is not None:
                 old_line_number += 1
             if new_line_number is not None:
@@ -171,11 +191,13 @@ def scan_diff(
     *,
     target_visibility: str = "public",
     max_changed_files: int = 80,
+    allow_cleanup_deletions: bool = False,
 ) -> dict[str, object]:
     """Scan a unified diff and return a fail-closed public-boundary report."""
     findings: list[dict[str, object]] = []
     changed_path_records = _iter_changed_paths(diff_text)
     changed_paths = sorted({record.path for record in changed_path_records})
+    removed_paths = _iter_removed_paths(diff_text) if allow_cleanup_deletions else set()
 
     if target_visibility == "public" and len(changed_paths) > max_changed_files:
         findings.append(
@@ -187,6 +209,8 @@ def scan_diff(
         )
 
     for path in changed_paths:
+        if allow_cleanup_deletions and path in removed_paths:
+            continue
         if target_visibility == "public" and _is_forbidden_path(path):
             findings.append(
                 {
@@ -197,6 +221,8 @@ def scan_diff(
             )
 
     for item in _iter_payload_lines(diff_text):
+        if allow_cleanup_deletions and item.change == "delete":
+            continue
         for kind, pattern in PATTERNS:
             if pattern.search(item.line):
                 finding: dict[str, object] = {
@@ -249,6 +275,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--stdin", action="store_true", help="Read unified diff from stdin.")
     parser.add_argument("--target-visibility", default="public", choices=["public", "private", "internal"])
     parser.add_argument("--max-changed-files", type=int, default=80)
+    parser.add_argument(
+        "--allow-cleanup-deletions",
+        action="store_true",
+        help="Allow deletion/rename-away of internal-only paths that already exist in the base branch.",
+    )
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of text.")
     args = parser.parse_args(argv)
 
@@ -257,6 +288,7 @@ def main(argv: list[str] | None = None) -> int:
         diff_text,
         target_visibility=args.target_visibility,
         max_changed_files=args.max_changed_files,
+        allow_cleanup_deletions=args.allow_cleanup_deletions,
     )
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))

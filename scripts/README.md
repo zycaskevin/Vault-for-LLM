@@ -24,6 +24,7 @@ Examples:
 
 ```bash
 python scripts/public_pr_gate.py --base origin/main --head HEAD
+python scripts/public_pr_gate.py --base origin/main --head HEAD --allow-cleanup-deletions  # cleanup PRs only
 python scripts/artifact_audit.py --root .
 python scripts/artifact_cleanup.py --root .              # dry-run
 python scripts/artifact_cleanup.py --root . --execute --safe-only

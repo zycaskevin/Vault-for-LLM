@@ -11,6 +11,8 @@
 - Add `scripts/README.md` with maintainer script usage, safe defaults, and optional remote-sync boundaries.
 - Replace the default `templates/entity_rules.yaml` with a public-safe generic starter and add a neutral custom-domain example under `examples/`.
 - Ignore generated `INDEX.md` alongside runtime reports.
+- Remove tracked internal progress/audit/release-readiness notes from the public source tree and move the synthetic example knowledge note from tracked `raw/` into `examples/knowledge/`.
+- Add an explicit public PR gate cleanup mode for PRs that remove already-tracked internal-only artifacts.
 - Document that `vault-mcp` is a local stdio server without built-in network authentication or user-level access control.
 - Add regression tests for safe cache cleanup, review-only build/dist handling, public PR gate path scanning, deleted private payloads, and clean public diffs.
 

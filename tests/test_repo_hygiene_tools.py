@@ -131,6 +131,40 @@ diff --git a/docs/old.md b/docs/old.md
     assert report["passed"] is False
 
 
+def test_public_pr_gate_cleanup_mode_allows_removing_existing_internal_artifacts():
+    private_dir = "." + "hermes"
+    user_path = "/".join(["", "home", "example_user", "private", "project"])
+    diff = f"""diff --git a/PROGRESS.md b/PROGRESS.md
+deleted file mode 100644
+--- a/PROGRESS.md
++++ /dev/null
+@@ -1,2 +0,0 @@
+-{user_path}
+-{private_dir}/runtime-note
+diff --git a/raw/example.md b/examples/knowledge/example.md
+similarity index 100%
+rename from raw/example.md
+rename to examples/knowledge/example.md
+diff --git a/docs/note.md b/docs/note.md
+--- a/docs/note.md
++++ b/docs/note.md
+@@ -1,2 +1,2 @@
+-{private_dir} legacy mention
++public-safe replacement
+"""
+
+    strict = public_pr_gate.scan_diff(diff, target_visibility="public")
+    cleanup = public_pr_gate.scan_diff(
+        diff,
+        target_visibility="public",
+        allow_cleanup_deletions=True,
+    )
+
+    assert strict["passed"] is False
+    assert cleanup["passed"] is True
+    assert cleanup["findings"] == []
+
+
 def test_public_pr_gate_flags_internal_data_dirs_worklogs_and_runtime_dbs():
     diff = """diff --git a/raw/private.md b/raw/private.md
 +++ b/raw/private.md

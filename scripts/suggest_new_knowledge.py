@@ -30,7 +30,7 @@ EXPECTED_TOPICS = {
     "vllm": "vLLM 部署與推理",
     "ollama": "Ollama 本地推理",
     "supabase": "Supabase 資料庫",
-    "telegram": "Telegram 整合",
+    "messaging": "Messaging / notification integration",
     "github": "GitHub 工作流",
     "cron": "Cron 定時任務",
     "tts": "語音合成",

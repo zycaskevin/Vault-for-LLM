@@ -1,6 +1,7 @@
 name: Release Readiness CI
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - '**'
@@ -11,6 +12,7 @@ on:
       - 'CHANGELOG.md'
       - 'LICENSE'
       - 'pyproject.toml'
+      - '.gitignore'
       - '.github/workflows/**'
       - 'docs/**'
       - 'vault/**'
@@ -24,6 +26,7 @@ on:
       - 'CHANGELOG.md'
       - 'LICENSE'
       - 'pyproject.toml'
+      - '.gitignore'
       - '.github/workflows/**'
       - 'docs/**'
       - 'vault/**'

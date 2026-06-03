@@ -1,0 +1,26 @@
+# Example custom entity rules for a neutral product-support vault.
+#
+# Copy this file to your project root as `entity_rules.yaml`, then replace the
+# keywords with terms from your own domain. This example is synthetic and does
+# not represent the maintainer's private business vocabulary.
+
+product_area:
+  - onboarding
+  - billing
+  - account settings
+  - workspace
+  - permissions
+
+workflow:
+  - incident review
+  - release checklist
+  - customer support
+  - migration
+  - rollback
+
+technology:
+  - api
+  - webhook
+  - database
+  - queue
+  - cache

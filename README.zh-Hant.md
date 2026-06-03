@@ -244,6 +244,19 @@ your-project/
 
 執行 `vault <command> --help` 可查看各指令參數。
 
+### Obsidian 匯出
+
+如果想讓人類用 Obsidian 瀏覽已編譯的 vault，又不想改動知識庫 source of truth，可以使用：
+
+```bash
+vault export obsidian \
+  --vault /path/to/ObsidianVault \
+  --category technique \
+  --dry-run
+```
+
+這個匯出是刻意設計成單向、唯讀：只從 `vault.db` 讀取，將 Markdown notes 寫到 `00-Vault-Knowledge/`，包含 YAML frontmatter 與 `Vault #<id>` citation；不寫回 `raw/`、`compiled/`、SQLite，也不觸發任何 remote sync。重跑會覆蓋同一組穩定路徑，不會產生重複筆記。
+
 ---
 
 ## MCP 整合

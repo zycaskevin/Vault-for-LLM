@@ -246,6 +246,19 @@ your-project/
 
 Run `vault <command> --help` for command-specific options.
 
+### Obsidian export
+
+Use `vault export obsidian` when you want humans to browse the compiled vault in Obsidian without changing the source knowledge base:
+
+```bash
+vault export obsidian \
+  --vault /path/to/ObsidianVault \
+  --category technique \
+  --dry-run
+```
+
+The export is intentionally one-way and read-only: it reads from `vault.db`, writes Markdown notes under `00-Vault-Knowledge/`, includes YAML frontmatter plus `Vault #<id>` citations, and does not write back to `raw/`, `compiled/`, SQLite, or any remote sync target. Re-running the command overwrites the same stable note paths instead of creating duplicates.
+
 For citation-safe memory use, see the [Document Map citation policy](docs/document_map_citation_policy.md): search results are navigation hints, while `vault map read` returns bounded source text for final citations.
 
 ---

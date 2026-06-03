@@ -18,6 +18,7 @@ Vault-for-LLM 每日知識同步 — 整合所有同步步驟的入口腳本。
   VAULT_DIR=/path/to/project python3 scripts/daily_knowledge_sync.py
 """
 
+import argparse
 import os
 import sys
 import subprocess
@@ -118,5 +119,14 @@ def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run the local Vault daily maintenance wrapper.")
+    parser.add_argument(
+        "--project-dir",
+        default=None,
+        help="Project root to operate on. Defaults to VAULT_DIR or auto-discovery.",
+    )
+    args = parser.parse_args()
+    if args.project_dir:
+        PROJECT_DIR = Path(args.project_dir).expanduser().resolve()
     ok = main()
     sys.exit(0 if ok else 1)

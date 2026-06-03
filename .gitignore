@@ -4,6 +4,7 @@
 *.db-wal
 
 # Runtime reports（不應進 git，每次執行會重新產生）
+INDEX.md
 duplicate_report.json
 trust_report.json
 lint_report.json

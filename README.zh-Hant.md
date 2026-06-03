@@ -59,6 +59,8 @@ Vault-for-LLM 不只是另一個向量資料庫。它正在往 **Agent 記憶品
 
 這些是 source checkout 內的治理輔助工具，不會改變核心 `vault` CLI 記憶工作流。
 
+腳本逐項用途與安全預設請看 [`scripts/README.md`](scripts/README.md)。
+
 ---
 
 ## 它能做什麼？
@@ -146,6 +148,8 @@ vault config set embedding.model nomic-embed-text
 pip install "vault-for-llm[mcp]"
 vault-mcp --project-dir /path/to/your/project
 ```
+
+安全提醒：`vault-mcp` 是本機 stdio MCP server，沒有內建網路認證或使用者層級存取控制。只把它配置給你信任、且可以讀寫該 `--project-dir` 的 Agent；若要給共享或實驗性 Agent 使用，建議使用獨立 project directory。
 
 ### 開發者：從原始碼安裝
 
@@ -267,6 +271,8 @@ vault export obsidian \
 pip install "vault-for-llm[mcp]"
 vault-mcp --project-dir /path/to/your/project
 ```
+
+安全提醒：`vault-mcp` 是本機 stdio MCP server，沒有內建網路認證或使用者層級存取控制。只把它配置給你信任、且可以讀寫該 `--project-dir` 的 Agent；若要給共享或實驗性 Agent 使用，建議使用獨立 project directory。
 
 MCP server 設定範例：
 

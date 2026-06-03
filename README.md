@@ -59,6 +59,8 @@ Version 0.4.3 adds **repository hygiene and public-boundary tools** for teams th
 
 These tools are source-checkout governance helpers; they do not change the core `vault` CLI memory workflow.
 
+See [`scripts/README.md`](scripts/README.md) for the script-by-script command guide and safety defaults.
+
 ---
 
 ## What it can do
@@ -148,6 +150,8 @@ vault config set embedding.model nomic-embed-text
 pip install "vault-for-llm[mcp]"
 vault-mcp --project-dir /path/to/your/project
 ```
+
+Security note: `vault-mcp` is a local stdio MCP server. It does not implement network authentication or user-level access control. Only configure it for agents you trust with read/write access to the selected `--project-dir`, and prefer a dedicated project directory for shared or experimental agents.
 
 ### Development install from source
 
@@ -271,6 +275,8 @@ Install MCP extras and start the server:
 pip install "vault-for-llm[mcp]"
 vault-mcp --project-dir /path/to/your/project
 ```
+
+Security note: `vault-mcp` is a local stdio MCP server. It does not implement network authentication or user-level access control. Only configure it for agents you trust with read/write access to the selected `--project-dir`, and prefer a dedicated project directory for shared or experimental agents.
 
 Example MCP server config:
 

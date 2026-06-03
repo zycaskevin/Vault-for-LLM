@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Sync Vault graph data to optional Supabase tables."""
 
+import argparse
 import json
 import os
 import sys
@@ -279,4 +280,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Sync Vault graph data to optional Supabase tables.")
+    parser.add_argument("--db", dest="db_path", help="Local vault.db path (default: auto-discover).")
+    args = parser.parse_args()
+    if args.db_path:
+        DB_PATH = Path(args.db_path).expanduser().resolve()
+    ok = main()
+    sys.exit(0 if ok is not False else 1)

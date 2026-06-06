@@ -321,3 +321,17 @@ jobs:
               sys.exit(1)
           print('✅ No high-risk secret patterns found')
           PY
+
+  history-privacy-scan:
+    name: Full history privacy scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out full repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Scan reachable history for private context
+        run: python scripts/history_privacy_scan.py

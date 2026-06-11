@@ -5,12 +5,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from vault.db import VaultDB
 from vault.semantic import (
+    CachedEmbeddingProvider,
     DeterministicHashEmbeddingProvider,
+    SemanticProviderError,
     rebuild_semantic_index,
     search_semantic_index,
     semantic_index_counts,
+    validate_embedding_provider,
 )
 
 
@@ -46,6 +51,77 @@ AAAK_V2 = "\n".join(
         "- [C2] Deterministic hash embeddings are public-safe test doubles. (L4)",
     ]
 )
+
+
+def test_provider_guard_fails_closed_for_hash_when_semantic_required():
+    provider = DeterministicHashEmbeddingProvider(dim=8)
+
+    assert validate_embedding_provider(provider, allow_hash=True) is provider
+    with pytest.raises(SemanticProviderError, match="not a semantic embedding provider"):
+        validate_embedding_provider(provider, require_semantic=True)
+    with pytest.raises(SemanticProviderError, match="hash/test provider"):
+        validate_embedding_provider(provider, allow_hash=False)
+
+
+class CountingEmbeddingProvider:
+    def __init__(self, provider_id: str = "counting", dim: int = 4):
+        self.provider_id = provider_id
+        self.is_semantic = True
+        self._dim = dim
+        self.calls: list[list[str]] = []
+
+    @property
+    def dim(self) -> int:
+        return self._dim
+
+    def encode(self, texts: str | list[str]) -> list[list[float]]:
+        text_list = [texts] if isinstance(texts, str) else list(texts)
+        self.calls.append(text_list)
+        return [[float(len(text) % 7)] * self._dim for text in text_list]
+
+
+def test_cached_embedding_provider_reuses_repeated_texts_and_keeps_provider_boundary():
+    first_raw = CountingEmbeddingProvider(provider_id="provider-a")
+    first = CachedEmbeddingProvider(first_raw)
+
+    assert first.encode("same") == first.encode("same")
+    assert first_raw.calls == [["same"]]
+    assert first.cache_size == 1
+
+    first.encode(["same", "new"])
+    assert first_raw.calls == [["same"], ["new"]]
+    assert first.cache_size == 2
+
+    second_raw = CountingEmbeddingProvider(provider_id="provider-b")
+    second = CachedEmbeddingProvider(second_raw)
+    second.encode("same")
+
+    assert second_raw.calls == [["same"]]
+    assert second.cache_size == 1
+
+
+def test_search_semantic_index_uses_cache_wrapper_for_repeated_queries(tmp_path: Path):
+    db = VaultDB(tmp_path / "vault.db").connect()
+    raw_provider = CountingEmbeddingProvider(provider_id="counting-semantic", dim=4)
+    cached = CachedEmbeddingProvider(raw_provider)
+    try:
+        db.add_knowledge(
+            "Semantic Index Guide",
+            RAW_V1,
+            content_aaak=AAAK_V1,
+            category="search",
+            tags="semantic,index,claim",
+            trust=0.9,
+        )
+        rebuild_semantic_index(db, cached, require_semantic=True)
+        raw_provider.calls.clear()
+
+        search_semantic_index(db, "repeat query", provider=cached, require_semantic=True)
+        search_semantic_index(db, "repeat query", provider=cached, require_semantic=True)
+
+        assert raw_provider.calls == [["repeat query"]]
+    finally:
+        db.close()
 
 
 def test_deterministic_hash_provider_is_stable_and_non_semantic():

@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import math
-from typing import Any
+from typing import Any, Protocol
 
 from .db import VaultDB
 from .docmap import build_document_map_for_entry
@@ -27,6 +27,117 @@ class SemanticIndexStats:
     claim_vectors: int
     provider_id: str
     dimension: int
+
+
+class SemanticEmbeddingProvider(Protocol):
+    """Minimal provider interface used by semantic-index plumbing."""
+
+    @property
+    def provider_id(self) -> str: ...
+
+    @property
+    def is_semantic(self) -> bool: ...
+
+    @property
+    def dim(self) -> int: ...
+
+    def encode(self, texts: str | list[str]) -> list[list[float]]: ...
+
+
+class SemanticProviderError(RuntimeError):
+    """Raised when a provider violates semantic-index safety gates."""
+
+
+def provider_id(provider: SemanticEmbeddingProvider) -> str:
+    return str(getattr(provider, "provider_id", provider.__class__.__name__))
+
+
+def provider_dimension(provider: SemanticEmbeddingProvider) -> int:
+    return int(provider.dim)
+
+
+def provider_is_semantic(provider: SemanticEmbeddingProvider) -> bool:
+    return bool(getattr(provider, "is_semantic", True))
+
+
+def validate_embedding_provider(
+    provider: SemanticEmbeddingProvider,
+    *,
+    require_semantic: bool = False,
+    allow_hash: bool = True,
+) -> SemanticEmbeddingProvider:
+    """Validate provider semantics before indexing or search.
+
+    Hash/test providers are allowed by default for local tests. Production-style
+    callers should set `require_semantic=True` or `allow_hash=False` to fail
+    closed instead of silently accepting deterministic hash vectors.
+    """
+    is_semantic = provider_is_semantic(provider)
+    pid = provider_id(provider)
+    if require_semantic and not is_semantic:
+        raise SemanticProviderError(
+            f"Provider {pid!r} is not a semantic embedding provider; "
+            "configure a real provider or disable require_semantic."
+        )
+    if not allow_hash and not is_semantic:
+        raise SemanticProviderError(
+            f"Provider {pid!r} is a hash/test provider; pass allow_hash=True only for tests."
+        )
+    return provider
+
+
+class CachedEmbeddingProvider:
+    """In-memory cache wrapper keyed by provider id, dimension, and text hash."""
+
+    cache_version = "v1"
+
+    def __init__(self, provider: SemanticEmbeddingProvider):
+        self.provider = provider
+        self._cache: dict[tuple[str, int, str, str], list[float]] = {}
+
+    @property
+    def provider_id(self) -> str:
+        return provider_id(self.provider)
+
+    @property
+    def is_semantic(self) -> bool:
+        return provider_is_semantic(self.provider)
+
+    @property
+    def dim(self) -> int:
+        return provider_dimension(self.provider)
+
+    def encode(self, texts: str | list[str]) -> list[list[float]]:
+        text_list = [texts] if isinstance(texts, str) else list(texts)
+        results: list[list[float] | None] = []
+        missing_texts: list[str] = []
+        missing_indexes: list[int] = []
+
+        for index, text in enumerate(text_list):
+            key = self._cache_key(text)
+            if key in self._cache:
+                results.append(self._cache[key])
+            else:
+                results.append(None)
+                missing_texts.append(text)
+                missing_indexes.append(index)
+
+        if missing_texts:
+            encoded = self.provider.encode(missing_texts)
+            for index, text, vector in zip(missing_indexes, missing_texts, encoded, strict=True):
+                key = self._cache_key(text)
+                self._cache[key] = vector
+                results[index] = vector
+
+        return [vector for vector in results if vector is not None]
+
+    def _cache_key(self, text: str) -> tuple[str, int, str, str]:
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        return (self.provider_id, self.dim, self.cache_version, digest)
+
+    @property
+    def cache_size(self) -> int:
+        return len(self._cache)
 
 
 class DeterministicHashEmbeddingProvider:
@@ -69,11 +180,18 @@ class DeterministicHashEmbeddingProvider:
 
 def rebuild_semantic_index(
     db: VaultDB,
-    provider: DeterministicHashEmbeddingProvider | None = None,
+    provider: SemanticEmbeddingProvider | None = None,
     knowledge_id: int | None = None,
+    *,
+    require_semantic: bool = False,
+    allow_hash: bool = True,
 ) -> SemanticIndexStats:
     """Rebuild deterministic node/claim vectors for one row or the whole DB."""
-    provider = provider or DeterministicHashEmbeddingProvider()
+    provider = validate_embedding_provider(
+        provider or DeterministicHashEmbeddingProvider(),
+        require_semantic=require_semantic,
+        allow_hash=allow_hash,
+    )
     rows = _knowledge_rows(db, knowledge_id)
     now = datetime.now(timezone.utc).isoformat()
     node_count = 0
@@ -104,12 +222,19 @@ def rebuild_semantic_index(
 def search_semantic_index(
     db: VaultDB,
     query: str,
-    provider: DeterministicHashEmbeddingProvider | None = None,
+    provider: SemanticEmbeddingProvider | None = None,
     vector_kind: str = "claim",
     limit: int = 10,
+    *,
+    require_semantic: bool = False,
+    allow_hash: bool = True,
 ) -> list[dict[str, Any]]:
     """Search stored deterministic semantic vectors and preserve citation metadata."""
-    provider = provider or DeterministicHashEmbeddingProvider()
+    provider = validate_embedding_provider(
+        provider or DeterministicHashEmbeddingProvider(),
+        require_semantic=require_semantic,
+        allow_hash=allow_hash,
+    )
     query_vec = provider.encode(query)[0]
     rows = db.conn.execute(
         """SELECT sv.*, k.title, k.category, k.layer, k.trust,
@@ -160,7 +285,7 @@ def _knowledge_rows(db: VaultDB, knowledge_id: int | None) -> list[Any]:
 def _delete_vectors_for_knowledge(
     db: VaultDB,
     knowledge_id: int,
-    provider: DeterministicHashEmbeddingProvider,
+    provider: SemanticEmbeddingProvider,
 ) -> None:
     db.conn.execute(
         """DELETE FROM semantic_vectors
@@ -222,7 +347,7 @@ def _insert_vectors(
     db: VaultDB,
     items: list[dict[str, Any]],
     vector_kind: str,
-    provider: DeterministicHashEmbeddingProvider,
+    provider: SemanticEmbeddingProvider,
     now: str,
 ) -> None:
     if not items:

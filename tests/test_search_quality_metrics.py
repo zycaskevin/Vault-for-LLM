@@ -75,6 +75,27 @@ DELTA_RAW = "\n".join(
 )
 
 
+def _assert_baseline_metrics(actual: dict):
+    expected_quality = {
+        "total_cases": 3,
+        "cases_with_results": 2,
+        "top1_hits": 2,
+        "topk_hits": 2,
+        "mean_reciprocal_rank": 2 / 3,
+        "map_guidance_rate": 1 / 3,
+        "read_range_guidance_rate": 1 / 3,
+        "citation_policy_violations": 0,
+    }
+    for key, value in expected_quality.items():
+        assert actual[key] == value
+    for key in ("mean_latency_ms", "p95_latency_ms", "min_latency_ms", "max_latency_ms"):
+        assert key in actual
+        assert actual[key] >= 0
+    assert actual["min_latency_ms"] <= actual["mean_latency_ms"] <= actual["max_latency_ms"]
+    assert actual["min_latency_ms"] <= actual["p95_latency_ms"] <= actual["max_latency_ms"]
+
+
+
 def _build_fixture_db(tmp_path: Path) -> Path:
     db_path = tmp_path / "vault.db"
     db = VaultDB(db_path).connect()
@@ -201,26 +222,8 @@ def test_public_search_qa_repository_fixtures_run_against_local_demo_db(tmp_path
         generated_at="2026-01-02T03:04:05+00:00",
     )
 
-    assert en_snapshot["aggregate"] == {
-        "total_cases": 3,
-        "cases_with_results": 2,
-        "top1_hits": 2,
-        "topk_hits": 2,
-        "mean_reciprocal_rank": 2 / 3,
-        "map_guidance_rate": 1 / 3,
-        "read_range_guidance_rate": 1 / 3,
-        "citation_policy_violations": 0,
-    }
-    assert zh_snapshot["aggregate"] == {
-        "total_cases": 3,
-        "cases_with_results": 2,
-        "top1_hits": 2,
-        "topk_hits": 2,
-        "mean_reciprocal_rank": 2 / 3,
-        "map_guidance_rate": 1 / 3,
-        "read_range_guidance_rate": 1 / 3,
-        "citation_policy_violations": 0,
-    }
+    _assert_baseline_metrics(en_snapshot["aggregate"])
+    _assert_baseline_metrics(zh_snapshot["aggregate"])
 
     zh_doc_case = next(
         case for case in zh_snapshot["cases"] if case["id"] == "zh_document_map_read_range"
@@ -261,16 +264,7 @@ def test_evaluate_search_qa_computes_deterministic_metrics(tmp_path):
     assert snapshot["mode"] == "keyword"
     assert snapshot["limit"] == 3
     assert snapshot["generated_at"] == "2026-01-02T03:04:05+00:00"
-    assert snapshot["aggregate"] == {
-        "total_cases": 3,
-        "cases_with_results": 2,
-        "top1_hits": 2,
-        "topk_hits": 2,
-        "mean_reciprocal_rank": 2 / 3,
-        "map_guidance_rate": 1 / 3,
-        "read_range_guidance_rate": 1 / 3,
-        "citation_policy_violations": 0,
-    }
+    _assert_baseline_metrics(snapshot["aggregate"])
     assert [case["id"] for case in snapshot["cases"]] == [
         "tool_gated_reading",
         "citation_policy",
@@ -336,6 +330,10 @@ def test_compare_search_qa_snapshots_computes_stable_deltas_and_text():
             "map_guidance_rate": 0.0,
             "read_range_guidance_rate": 0.0,
             "citation_policy_violations": 1,
+            "mean_latency_ms": 10.0,
+            "p95_latency_ms": 15.0,
+            "min_latency_ms": 5.0,
+            "max_latency_ms": 15.0,
         }
     }
     after = {
@@ -348,6 +346,10 @@ def test_compare_search_qa_snapshots_computes_stable_deltas_and_text():
             "map_guidance_rate": 0.5,
             "read_range_guidance_rate": 0.5,
             "citation_policy_violations": 0,
+            "mean_latency_ms": 7.0,
+            "p95_latency_ms": 12.0,
+            "min_latency_ms": 4.0,
+            "max_latency_ms": 12.0,
         }
     }
 
@@ -364,6 +366,11 @@ def test_compare_search_qa_snapshots_computes_stable_deltas_and_text():
         "delta": 0.5,
     }
     assert comparison["metrics"]["citation_policy_violations"]["delta"] == -1
+    assert comparison["metrics"]["mean_latency_ms"] == {
+        "before": 10.0,
+        "after": 7.0,
+        "delta": -3.0,
+    }
     assert json.loads(json.dumps(comparison)) == comparison
 
     text = format_search_qa_comparison(comparison)
@@ -403,6 +410,8 @@ def test_search_qa_cli_run_and_compare_smoke(tmp_path):
     assert after_path.exists()
     snapshot = json.loads(after_path.read_text(encoding="utf-8"))
     assert snapshot["aggregate"]["top1_hits"] == 2
+    assert "mean_latency_ms" in snapshot["aggregate"]
+    assert "mean_latency_ms" in result.stdout
     assert "Search QA" in result.stdout
 
     before = dict(snapshot)

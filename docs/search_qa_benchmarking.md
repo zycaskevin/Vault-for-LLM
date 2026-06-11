@@ -137,6 +137,11 @@ Search QA snapshots include these aggregate metrics:
 - `map_guidance_rate` — fraction of cases whose results include `vault_map_show` guidance.
 - `read_range_guidance_rate` — fraction of cases whose results include `vault_read_range` guidance.
 - `citation_policy_violations` — count of search results that are incorrectly labeled as final citations, or that expose search-result citations without `read_range` guidance.
+- `mean_latency_ms` — mean per-query retrieval latency in milliseconds for this run.
+- `p95_latency_ms` — nearest-rank p95 per-query retrieval latency in milliseconds.
+- `min_latency_ms` / `max_latency_ms` — minimum and maximum per-query retrieval latency in milliseconds.
+
+Latency metrics are intended for same-machine before/after comparisons. Treat them as directional baseline numbers, not absolute performance claims across machines or CI runners.
 
 ## CI usage
 

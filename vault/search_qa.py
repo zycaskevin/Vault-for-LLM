@@ -9,6 +9,8 @@ Search-result citations are treated as navigation hints only.
 from __future__ import annotations
 
 import json
+import math
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -25,6 +27,10 @@ METRIC_KEYS: tuple[str, ...] = (
     "map_guidance_rate",
     "read_range_guidance_rate",
     "citation_policy_violations",
+    "mean_latency_ms",
+    "p95_latency_ms",
+    "min_latency_ms",
+    "max_latency_ms",
 )
 
 
@@ -150,7 +156,11 @@ def format_search_qa_snapshot(snapshot: dict[str, Any]) -> str:
         f"- mean_reciprocal_rank: {aggregate.get('mean_reciprocal_rank', 0.0)}\n"
         f"- map_guidance_rate: {aggregate.get('map_guidance_rate', 0.0)}\n"
         f"- read_range_guidance_rate: {aggregate.get('read_range_guidance_rate', 0.0)}\n"
-        f"- citation_policy_violations: {aggregate.get('citation_policy_violations', 0)}"
+        f"- citation_policy_violations: {aggregate.get('citation_policy_violations', 0)}\n"
+        f"- mean_latency_ms: {aggregate.get('mean_latency_ms', 0.0)}\n"
+        f"- p95_latency_ms: {aggregate.get('p95_latency_ms', 0.0)}\n"
+        f"- min_latency_ms: {aggregate.get('min_latency_ms', 0.0)}\n"
+        f"- max_latency_ms: {aggregate.get('max_latency_ms', 0.0)}"
     )
 
 
@@ -172,7 +182,9 @@ def _evaluate_case(
     limit: int,
 ) -> dict[str, Any]:
     query = str(case["query"])
+    start = time.perf_counter()
     raw_results = search.search(query, mode=mode, limit=limit, use_rerank=False)
+    latency_ms = (time.perf_counter() - start) * 1000
     results = [_summarize_result(result) for result in raw_results[:limit]]
 
     hit_rank = _hit_rank(case, results)
@@ -194,6 +206,7 @@ def _evaluate_case(
         "has_map_guidance": has_map_guidance,
         "has_read_range_guidance": has_read_range_guidance,
         "citation_policy_violations": violations,
+        "latency_ms": round(latency_ms, 6),
         "results": results,
     }
 
@@ -244,7 +257,16 @@ def _aggregate_cases(cases: list[dict[str, Any]]) -> dict[str, int | float]:
             "map_guidance_rate": 0.0,
             "read_range_guidance_rate": 0.0,
             "citation_policy_violations": 0,
+            "mean_latency_ms": 0.0,
+            "p95_latency_ms": 0.0,
+            "min_latency_ms": 0.0,
+            "max_latency_ms": 0.0,
         }
+
+    latencies = [float(case.get("latency_ms", 0.0)) for case in cases]
+    sorted_latencies = sorted(latencies)
+    p95_index = max(0, math.ceil(0.95 * len(sorted_latencies)) - 1)
+
     return {
         "total_cases": total,
         "cases_with_results": sum(1 for case in cases if case["result_count"] > 0),
@@ -256,6 +278,10 @@ def _aggregate_cases(cases: list[dict[str, Any]]) -> dict[str, int | float]:
         "citation_policy_violations": sum(
             len(case["citation_policy_violations"]) for case in cases
         ),
+        "mean_latency_ms": round(sum(latencies) / total, 6),
+        "p95_latency_ms": round(sorted_latencies[p95_index], 6),
+        "min_latency_ms": round(min(latencies), 6),
+        "max_latency_ms": round(max(latencies), 6),
     }
 
 

@@ -196,6 +196,32 @@ class VaultDB:
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_claims_node_uid ON knowledge_claims(node_uid)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_claims_claim_type ON knowledge_claims(claim_type)")
 
+        # Deterministic semantic-index plumbing for node/claim vectors.
+        # Vectors are stored as JSON so tests and base installs do not require sqlite-vec.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS semantic_vectors (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                knowledge_id INTEGER NOT NULL,
+                vector_kind  TEXT NOT NULL,
+                item_uid     TEXT NOT NULL,
+                provider_id  TEXT NOT NULL,
+                dimension    INTEGER NOT NULL,
+                vector       TEXT NOT NULL,
+                source_text  TEXT NOT NULL DEFAULT '',
+                content_hash TEXT NOT NULL DEFAULT '',
+                line_start   INTEGER NOT NULL DEFAULT 0,
+                line_end     INTEGER NOT NULL DEFAULT 0,
+                created_at   TEXT NOT NULL DEFAULT '',
+                updated_at   TEXT NOT NULL DEFAULT '',
+                FOREIGN KEY (knowledge_id) REFERENCES knowledge(id),
+                UNIQUE(provider_id, dimension, vector_kind, knowledge_id, item_uid)
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_semantic_vectors_provider ON semantic_vectors(provider_id, dimension)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_semantic_vectors_knowledge_id ON semantic_vectors(knowledge_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_semantic_vectors_kind ON semantic_vectors(vector_kind)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_semantic_vectors_item_uid ON semantic_vectors(item_uid)")
+
         c.commit()
 
         # 文章追蹤表

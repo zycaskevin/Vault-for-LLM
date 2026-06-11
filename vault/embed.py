@@ -13,6 +13,7 @@ Vault-for-LLM — 嵌入生成模組。
 """
 
 import os
+import importlib.util
 from pathlib import Path
 from typing import Optional
 
@@ -50,6 +51,9 @@ DEFAULT_MODEL_KEY = "mix"
 class EmbeddingProvider:
     """嵌入生成基底類別。"""
 
+    provider_id = "embedding-provider"
+    is_semantic = True
+
     def __init__(self, dim: int = 384):
         self._dim = dim
 
@@ -64,9 +68,12 @@ class EmbeddingProvider:
 class ONNXEmbeddingProvider(EmbeddingProvider):
     """用 ONNX Runtime 跑嵌入模型。不需要 PyTorch。"""
 
+    is_semantic = True
+
     def __init__(self, model_key: str = "mix", cache_dir: Optional[str] = None):
         self.model_key = model_key
         self.model_info = MODELS[model_key]
+        self.provider_id = f"onnx:{self.model_info['name']}"
         self._dim = self.model_info["dim"]
         self.cache_dir = Path(cache_dir or os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))) / "vault-mcp" / "models"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -170,6 +177,8 @@ class ONNXEmbeddingProvider(EmbeddingProvider):
 class OllamaEmbeddingProvider(EmbeddingProvider):
     """用 Ollama API 做嵌入。適合已有 Ollama 的人。"""
 
+    is_semantic = True
+
     def __init__(
         self,
         model: str = "nomic-embed-text",
@@ -178,6 +187,7 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
     ):
         self.model = model
         self.base_url = base_url.rstrip("/")
+        self.provider_id = f"ollama:{self.base_url}:{self.model}"
         self._dim = dim
 
     @property
@@ -248,8 +258,11 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
 class SentenceTransformerProvider(EmbeddingProvider):
     """降級方案：用sentence-transformers（需要PyTorch）。"""
 
+    is_semantic = True
+
     def __init__(self, model_name: str = "paraphrase-multilingual-MiniLM-L12-v2"):
         self.model_name = model_name
+        self.provider_id = f"sentence-transformers:{model_name}"
         self._model = None
         self._dim = None
 
@@ -290,11 +303,8 @@ def create_embedding_provider(
     """
     if provider == "auto":
         # 1. 嘗試 ONNX
-        try:
-            import onnxruntime
+        if importlib.util.find_spec("onnxruntime") is not None:
             return ONNXEmbeddingProvider(model_key=model_key, cache_dir=cache_dir)
-        except ImportError:
-            pass
         # 2. 嘗試 Ollama
         try:
             import urllib.request
@@ -305,16 +315,14 @@ def create_embedding_provider(
         except Exception:
             pass
         # 3. 降級到 sentence-transformers
-        try:
-            from sentence_transformers import SentenceTransformer
+        if importlib.util.find_spec("sentence_transformers") is not None:
             return SentenceTransformerProvider()
-        except ImportError:
-            raise RuntimeError(
-                "找不到任何嵌入 provider！請安裝以下之一：\n"
-                "  pip install onnxruntime optimum  (推薦，最輕量)\n"
-                "  或啟動 Ollama\n"
-                "  或 pip install sentence-transformers  (需要 PyTorch 2GB+)"
-            )
+        raise RuntimeError(
+            "找不到任何嵌入 provider！請安裝以下之一：\n"
+            "  pip install onnxruntime optimum  (推薦，最輕量)\n"
+            "  或啟動 Ollama\n"
+            "  或 pip install sentence-transformers  (需要 PyTorch 2GB+)"
+        )
 
     elif provider == "onnx":
         return ONNXEmbeddingProvider(model_key=model_key, cache_dir=cache_dir)

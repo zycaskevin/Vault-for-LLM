@@ -17,13 +17,12 @@ Vault-for-LLM — CLI 入口。
 """
 
 import argparse
+import importlib.util
 import json
 import os
 import sqlite3
-import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 
 # ── 專案偵測 ─────────────────────────────────────────────
@@ -150,7 +149,7 @@ def cmd_compile(args):
     stats = compiler.compile(dry_run=args.dry_run)
     db.close()
 
-    print(f"\n📊 編譯結果:")
+    print("\n📊 編譯結果:")
     print(f"  檔案: {stats['total_files']}")
     print(f"  新增: {stats['new']}")
     print(f"  更新: {stats['updated']}")
@@ -214,7 +213,6 @@ def cmd_search(args):
             mode = r.get("_mode", "?")
             trust = r.get("trust", 0)
             layer = r.get("layer", "?")
-            freshness = r.get("freshness", None)
             conv_status = r.get("convergence_status", "")
             graph_dist = r.get("_graph_distance")
             graph_info = f", graph={graph_dist}" if graph_dist is not None else ""
@@ -394,7 +392,8 @@ def cmd_doctor(args):
 
     # optimum[onnxruntime]
     try:
-        from optimum.onnxruntime import ORTModelForFeatureExtraction
+        if importlib.util.find_spec("optimum.onnxruntime") is None:
+            raise ImportError
         checks.append(("optimum[onnxruntime]", "✅", True))
     except ImportError:
         try:
@@ -487,8 +486,8 @@ def cmd_install_embedding(args):
     db2._init_vec_table()
     db2.close()
 
-    print(f"\n✅ 完成！語意搜尋已啟用")
-    print(f"   試試: vault search \"查詢\"")
+    print("\n✅ 完成！語意搜尋已啟用")
+    print("   試試: vault search \"查詢\"")
 
 
 def cmd_stats(args):
@@ -567,13 +566,13 @@ def cmd_graph(args):
         """自動推斷實體和關聯。"""
         print("🔄 掃描知識庫，推斷圖譜...")
         result = graph.infer_all()
-        print(f"\n✅ 圖譜建構完成！")
+        print("\n✅ 圖譜建構完成！")
         print(f"   掃描條目: {result['total_knowledge']}")
         print(f"   新增實體: {result['entities_created']}")
         print(f"   新增關聯: {result['edges_created']}")
-        print(f"\n   試試: vault graph show")
-        print(f"         vault graph export --format mermaid")
-        print(f"         vault search '查詢' --graph-expand 1")
+        print("\n   試試: vault graph show")
+        print("         vault graph export --format mermaid")
+        print("         vault search '查詢' --graph-expand 1")
 
     elif action == "show":
         """顯示圖譜摘要。"""
@@ -650,7 +649,7 @@ def cmd_graph(args):
         edge_id = db.add_edge(source_id, target_id, relation, weight)
         src = db.get_knowledge(source_id)
         tgt = db.get_knowledge(target_id)
-        print(f"✅ 已建立關聯:")
+        print("✅ 已建立關聯:")
         print(f"   {src['title']} → [{relation}] → {tgt['title']}")
         print(f"   權重: {weight}, Edge ID: {edge_id}")
 
@@ -744,7 +743,7 @@ def cmd_import(args):
             ollama_model=args.ollama_model,
         )
 
-        print(f"\n✅ 匯入完成！")
+        print("\n✅ 匯入完成！")
         print(f"   分塊數: {len(ids)}")
         print(f"   策略: {strategy}")
         if args.contextualize:
@@ -757,9 +756,9 @@ def cmd_import(args):
             ).fetchone()[0]
             db_check.close()
             if has_context > 0:
-                print(f"   上下文增強: ✅ (Contextual Retrieval)")
+                print("   上下文增強: ✅ (Contextual Retrieval)")
             else:
-                print(f"   上下文增強: ⚠️ 未啟用（Ollama 未連線，已降級）")
+                print("   上下文增強: ⚠️ 未啟用（Ollama 未連線，已降級）")
         print(f"   ID 範圍: {ids[0]}-{ids[-1] if ids else '?'}")
 
     except Exception as e:
@@ -950,7 +949,7 @@ def cmd_skill_stats(args):
     db.connect()
 
     stats = db.stats()
-    print(f"🛠️  本機技能登錄統計")
+    print("🛠️  本機技能登錄統計")
     print(f"   技能總數: {stats.get('skill_count', 0)}")
     print(f"   知識總數: {stats.get('knowledge_count', 0)}")
     print(f"   向量嵌入: {stats.get('embedding_count', 0)}")
@@ -1268,6 +1267,143 @@ def cmd_search_qa(args):
     raise SystemExit(2)
 
 
+def _json_print(payload: dict, *, pretty: bool = False) -> None:
+    indent = 2 if pretty else None
+    print(json.dumps(payload, ensure_ascii=False, indent=indent, sort_keys=True))
+
+
+def _semantic_stats_payload(stats, provider) -> dict:
+    return {
+        "provider_id": provider.provider_id,
+        "is_semantic": bool(provider.is_semantic),
+        "dimension": int(provider.dim),
+        "knowledge_rows": int(stats.knowledge_rows),
+        "node_vectors": int(stats.node_vectors),
+        "claim_vectors": int(stats.claim_vectors),
+    }
+
+
+def _load_unique_qa_queries(qa_file: str | Path) -> list[str]:
+    from vault.search_qa import load_search_qa_set
+
+    qa = load_search_qa_set(qa_file)
+    seen: set[str] = set()
+    queries: list[str] = []
+    for case in qa["cases"]:
+        query = str(case["query"])
+        if query not in seen:
+            seen.add(query)
+            queries.append(query)
+    return queries
+
+
+def _create_semantic_provider(args, *, cached: bool = False):
+    from vault.db import VaultDB
+    from vault.embed import create_embedding_provider
+    from vault.semantic import (
+        CachedEmbeddingProvider,
+        DeterministicHashEmbeddingProvider,
+        validate_embedding_provider,
+    )
+
+    if args.allow_hash:
+        provider = DeterministicHashEmbeddingProvider(dim=args.hash_dim)
+        return CachedEmbeddingProvider(provider) if cached else provider
+
+    db_path = Path(args.db_path) if args.db_path else find_project_dir() / "vault.db"
+    with VaultDB(db_path) as db:
+        provider_name = db.get_config("embedding_provider", "auto")
+        model_key = db.get_config("embedding_model", "mix")
+    provider = create_embedding_provider(provider=provider_name, model_key=model_key)
+    validate_embedding_provider(provider, require_semantic=True, allow_hash=False)
+    return CachedEmbeddingProvider(provider) if cached else provider
+
+
+def cmd_semantic(args):
+    """Operator-facing semantic index workflows."""
+    from vault.db import VaultDB
+    from vault.search_qa import evaluate_search_qa, write_json
+    from vault.semantic import rebuild_semantic_index
+
+    action = args.semantic_action
+    if action not in {"rebuild", "warm", "smoke"}:
+        print("error: semantic requires action: rebuild, warm, or smoke", file=sys.stderr)
+        raise SystemExit(2)
+
+    db_path = Path(args.db_path) if args.db_path else find_project_dir() / "vault.db"
+
+    try:
+        if action == "rebuild":
+            provider = _create_semantic_provider(args, cached=False)
+            with VaultDB(db_path) as db:
+                stats = rebuild_semantic_index(
+                    db,
+                    provider,
+                    knowledge_id=args.knowledge_id,
+                    require_semantic=not args.allow_hash,
+                    allow_hash=args.allow_hash,
+                )
+            payload = {"action": "rebuild", **_semantic_stats_payload(stats, provider)}
+            _json_print(payload, pretty=args.pretty)
+            return
+
+        if action == "warm":
+            provider = _create_semantic_provider(args, cached=True)
+            queries = _load_unique_qa_queries(args.qa_file)
+            if queries:
+                provider.encode(queries)
+            payload = {
+                "action": "warm",
+                "provider_id": provider.provider_id,
+                "is_semantic": bool(provider.is_semantic),
+                "dimension": int(provider.dim),
+                "warmed_queries": len(queries),
+                "cache_size": provider.cache_size,
+            }
+            _json_print(payload, pretty=args.pretty)
+            return
+
+        provider = _create_semantic_provider(args, cached=True)
+        with VaultDB(db_path) as db:
+            stats = rebuild_semantic_index(
+                db,
+                provider,
+                knowledge_id=args.knowledge_id,
+                require_semantic=not args.allow_hash,
+                allow_hash=args.allow_hash,
+            )
+        queries = _load_unique_qa_queries(args.qa_file)
+        if queries:
+            provider.encode(queries)
+        qa_snapshot = evaluate_search_qa(
+            db_path=db_path,
+            qa_file=args.qa_file,
+            mode=args.mode,
+            limit=args.limit,
+        )
+        payload = {
+            "action": "smoke",
+            "provider_id": provider.provider_id,
+            "is_semantic": bool(provider.is_semantic),
+            "dimension": int(provider.dim),
+            "rebuild": {
+                "knowledge_rows": int(stats.knowledge_rows),
+                "node_vectors": int(stats.node_vectors),
+                "claim_vectors": int(stats.claim_vectors),
+            },
+            "warmed_queries": len(queries),
+            "cache_size": provider.cache_size,
+            "qa": {"aggregate": qa_snapshot["aggregate"]},
+            "output_written": bool(args.output),
+        }
+        if args.output:
+            write_json(args.output, payload)
+        _json_print(payload, pretty=args.pretty)
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+
+
 def cmd_export(args):
     """One-way export commands for human-readable knowledge browsing."""
     if args.export_target != "obsidian":
@@ -1527,6 +1663,32 @@ def main():
     qp.add_argument("--after", required=True, help="after snapshot JSON")
     qp.add_argument("--output", "-o", help="comparison JSON 輸出路徑")
 
+    # semantic — operator semantic-index workflows
+    p = sub.add_parser("semantic", help="語意索引工作流程（rebuild/warm/smoke）")
+    semantic_sub = p.add_subparsers(dest="semantic_action", help="Semantic workflow 子命令")
+
+    def add_semantic_common(sp):
+        sp.add_argument("--db-path", help="SQLite DB 路徑（預設 project_dir/vault.db）")
+        sp.add_argument("--allow-hash", action="store_true", help="明確允許測試用 deterministic hash provider")
+        sp.add_argument("--hash-dim", type=int, default=32, help="hash provider 維度（僅 --allow-hash）")
+        sp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    sp = semantic_sub.add_parser("rebuild", help="重建 semantic_vectors")
+    add_semantic_common(sp)
+    sp.add_argument("--knowledge-id", type=int, help="只重建指定 knowledge id")
+
+    sp = semantic_sub.add_parser("warm", help="預熱 QA 查詢 embedding cache（不寫入向量列）")
+    add_semantic_common(sp)
+    sp.add_argument("--qa-file", required=True, help="Search QA Set JSON 路徑")
+
+    sp = semantic_sub.add_parser("smoke", help="重建、預熱並執行 Search QA smoke snapshot")
+    add_semantic_common(sp)
+    sp.add_argument("--qa-file", required=True, help="Search QA Set JSON 路徑")
+    sp.add_argument("--knowledge-id", type=int, help="只重建指定 knowledge id")
+    sp.add_argument("--mode", choices=["auto", "keyword", "vector", "hybrid"], default="keyword")
+    sp.add_argument("--limit", "-n", type=int, default=10)
+    sp.add_argument("--output", "-o", help="combined semantic workflow JSON 輸出路徑")
+
     args = parser.parse_args()
 
     commands = {
@@ -1550,6 +1712,7 @@ def main():
         "freshness": cmd_freshness,
         "dedup": cmd_dedup,
         "search-qa": cmd_search_qa,
+        "semantic": cmd_semantic,
     }
 
     if args.command in commands:

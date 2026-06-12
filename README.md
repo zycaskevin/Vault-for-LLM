@@ -55,7 +55,7 @@ Version 0.5.0 upgrades Vault-for-LLM from “local keyword-search memory” into
 - **Search QA baseline** — run fixed query sets and compare retrieval quality/latency before and after search changes.
 - **FTS5/BM25 keyword search** — faster keyword retrieval when SQLite FTS5 is available, with safe fallback to the legacy `LIKE` path for compatibility and CJK misses.
 - **Guarded semantic workflow** — optional semantic vectors, provider validation, persistent embedding cache, and operator commands for rebuild/warm/smoke/startup/daemon.
-- **Explicit DB schema status/migration** — inspect and run idempotent SQLite migrations with [`vault db status/migrate`](docs/db_migrations.md).
+- **Explicit DB schema status/migration** — inspect and run idempotent SQLite migrations with [`vault db status/migrate`](docs/db_migrations.md), and create/verify/restore local SQLite backups with [`vault db backup/verify-backup/restore`](docs/db_backup_restore.md).
 - **Release gates** — README command smoke, wheel smoke, version parity, secret scan, full-history privacy scan, and public-boundary checks.
 
 Semantic search is **optional by design**: the base install still works with keyword search only. If you configure a real embedding provider, use [`vault semantic ...`](docs/semantic_search.md) to rebuild vectors, warm caches, and run smoke checks. Deterministic hash embeddings require `--allow-hash` and are for CI/local tests only.
@@ -263,6 +263,8 @@ your-project/
 | `vault freshness` | Experimental freshness/review scheduling |
 | `vault dedup` | Detect or merge duplicate entries |
 | `vault search-qa run` / `vault search-qa compare` | Run Search QA metrics snapshots and before/after comparisons ([guide](docs/search_qa_benchmarking.md)) |
+| `vault db status` / `vault db migrate` | Inspect or update local SQLite schema ([guide](docs/db_migrations.md)) |
+| `vault db backup` / `vault db verify-backup` / `vault db restore` | Create, verify, and safely restore local SQLite backups ([guide](docs/db_backup_restore.md)) |
 | `vault semantic rebuild` | Rebuild semantic vector rows after configuring a real embedding provider |
 | `vault semantic warm` | Precompute QA query embeddings without writing vector rows |
 | `vault semantic smoke` | Rebuild, warm, and run a Search QA smoke snapshot in one command |

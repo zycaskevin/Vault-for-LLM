@@ -1286,17 +1286,36 @@ def _json_print(payload: dict, *, pretty: bool = False) -> None:
 
 
 def cmd_db(args):
-    """SQLite schema migration/status workflows."""
+    """SQLite schema migration/status/backup workflows."""
     from vault.db import VaultDB
+    from vault.db_backup import BackupError, backup_database, restore_database, verify_backup
 
     action = args.db_action
-    if action not in {"status", "migrate"}:
-        print("error: db requires action: status or migrate", file=sys.stderr)
+    if action not in {"status", "migrate", "backup", "verify-backup", "restore"}:
+        print(
+            "error: db requires action: status, migrate, backup, verify-backup, or restore",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
 
-    db_path = Path(args.db_path) if args.db_path else find_project_dir() / "vault.db"
-    with VaultDB(db_path) as db:
-        payload = db.schema_status() if action == "status" else db.migrate()
+    try:
+        if action == "verify-backup":
+            payload = verify_backup(args.backup_path)
+            _json_print(payload, pretty=args.pretty)
+            return
+
+        db_path = Path(args.db_path) if args.db_path else find_project_dir() / "vault.db"
+        if action == "backup":
+            payload = backup_database(db_path, args.output, verify=args.verify)
+        elif action == "restore":
+            payload = restore_database(args.backup_path, db_path, force=args.force)
+        else:
+            with VaultDB(db_path) as db:
+                payload = db.schema_status() if action == "status" else db.migrate()
+    except BackupError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+
     _json_print(payload, pretty=args.pretty)
 
 
@@ -1712,16 +1731,33 @@ def main():
     p.add_argument("config_action", choices=["set", "get", "list"])
     p.add_argument("config_args", nargs="*")
 
-    # db — explicit SQLite schema status/migration workflow
-    p = sub.add_parser("db", help="SQLite schema status/migration")
+    # db — explicit SQLite schema status/migration/backup workflow
+    p = sub.add_parser("db", help="SQLite schema status/migration/backup")
     db_sub = p.add_subparsers(dest="db_action", help="DB 子命令")
-    for action_name, help_text in (
-        ("status", "顯示 schema 狀態"),
-        ("migrate", "執行 idempotent schema migration"),
-    ):
-        dp = db_sub.add_parser(action_name, help=help_text)
-        dp.add_argument("--db-path", help="SQLite DB 路徑（預設 project_dir/vault.db）")
-        dp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    dp = db_sub.add_parser("status", help="顯示 schema 狀態")
+    dp.add_argument("--db-path", help="SQLite DB 路徑（預設 project_dir/vault.db）")
+    dp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    dp = db_sub.add_parser("migrate", help="執行 idempotent schema migration")
+    dp.add_argument("--db-path", help="SQLite DB 路徑（預設 project_dir/vault.db）")
+    dp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    dp = db_sub.add_parser("backup", help="建立一致的 SQLite 備份")
+    dp.add_argument("--db-path", help="SQLite DB 路徑（預設 project_dir/vault.db）")
+    dp.add_argument("--output", help="備份輸出路徑（預設 db 旁 backups/vault-*.db）")
+    dp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+    dp.add_argument("--verify", action="store_true", help="備份後執行 integrity/schema/table-count 驗證")
+
+    dp = db_sub.add_parser("verify-backup", help="驗證 SQLite 備份檔")
+    dp.add_argument("backup_path", help="備份 DB 路徑")
+    dp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    dp = db_sub.add_parser("restore", help="從已驗證的備份還原 SQLite DB")
+    dp.add_argument("backup_path", help="備份 DB 路徑")
+    dp.add_argument("--db-path", help="SQLite DB 路徑（預設 project_dir/vault.db）")
+    dp.add_argument("--force", action="store_true", help="允許覆蓋既有 DB；覆蓋前會自動備份")
+    dp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     # map — Document Map read-only navigation + backfill
     p = sub.add_parser("map", help="Document Map 操作")

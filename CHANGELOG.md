@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.5.0] — 2026-06-12
+
+### Added
+- Add deterministic Search QA baseline fixtures and metrics to measure retrieval quality and latency before retrieval changes.
+- Add SQLite FTS5/BM25 keyword search with automatic fallback when FTS5 is unavailable or CJK matching needs the legacy LIKE path.
+- Add semantic index plumbing with `semantic_vectors` rows for knowledge and claim-level citation-aware vectors.
+- Add embedding provider metadata and fail-closed provider validation so production-like semantic paths require a real semantic provider.
+- Add in-memory and persistent embedding caches keyed by provider identity, vector dimension, cache version, and text hash.
+- Add `vault semantic rebuild`, `warm`, `smoke`, `cache-stats`, and `cache-prune` operator workflows.
+- Add importable semantic lifecycle hooks plus `vault semantic startup` and bounded `daemon` commands for service integration.
+- Add `docs/semantic_search.md`, README semantic workflow guidance in all README variants, and a README documented command smoke CI job.
+
+### Changed
+- Startup and daemon semantic workflows use the persistent embedding cache by default; pass `--no-persist-cache` for cold runs.
+- The semantic daemon is bounded by default with `--repeat 1`; `--repeat 0` is reserved for supervisor-managed forever mode.
+- Semantic test doubles are explicit: deterministic hash embeddings require `--allow-hash` and are documented as CI/local smoke only.
+
+### Verification
+- Full local test suite: `138 passed`.
+- README documented command smoke: init/add/compile/search, Search QA, semantic smoke, and cache-stats commands pass in a clean temp project.
+- Public-boundary gate and GitHub Release Readiness CI pass on `main`.
+
 ## [0.4.3] — 2026-05-24
 
 ### Added

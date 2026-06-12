@@ -1349,11 +1349,12 @@ def cmd_semantic(args):
     from vault.db import VaultDB
     from vault.search_qa import evaluate_search_qa, write_json
     from vault.semantic import embedding_cache_stats, prune_embedding_cache, rebuild_semantic_index
+    from vault.semantic_lifecycle import run_semantic_daemon, run_semantic_startup
 
     action = args.semantic_action
-    if action not in {"rebuild", "warm", "smoke", "cache-stats", "cache-prune"}:
+    if action not in {"rebuild", "warm", "smoke", "cache-stats", "cache-prune", "startup", "daemon"}:
         print(
-            "error: semantic requires action: rebuild, warm, smoke, cache-stats, or cache-prune",
+            "error: semantic requires action: rebuild, warm, smoke, cache-stats, cache-prune, startup, or daemon",
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -1361,6 +1362,33 @@ def cmd_semantic(args):
     db_path = Path(args.db_path) if args.db_path else find_project_dir() / "vault.db"
 
     try:
+        if action in {"startup", "daemon"}:
+            lifecycle_kwargs = {
+                "db_path": db_path,
+                "qa_file": args.qa_file,
+                "allow_hash": args.allow_hash,
+                "hash_dim": args.hash_dim,
+                "persist_cache": not args.no_persist_cache,
+                "rebuild": args.rebuild,
+                "smoke": args.smoke,
+                "mode": args.mode,
+                "limit": args.limit,
+                "older_than_days": args.older_than_days,
+                "max_rows": args.max_rows,
+            }
+            if action == "startup":
+                payload = run_semantic_startup(**lifecycle_kwargs)
+            else:
+                payload = run_semantic_daemon(
+                    repeat=args.repeat,
+                    interval=args.interval,
+                    **lifecycle_kwargs,
+                )
+            if args.output:
+                write_json(args.output, payload)
+            _json_print(payload, pretty=args.pretty)
+            return
+
         if action == "cache-stats":
             with VaultDB(db_path) as db:
                 stats = embedding_cache_stats(
@@ -1818,6 +1846,29 @@ def main():
     add_cache_filters(sp)
     sp.add_argument("--older-than-days", type=int, help="刪除 last_used_at 早於 N 天的列")
     sp.add_argument("--max-rows", type=int, help="保留最新 N 列，其餘刪除")
+
+    def add_semantic_lifecycle(sp):
+        sp.add_argument("--qa-file", help="Search QA Set JSON 路徑（用於 warm/smoke）")
+        sp.add_argument("--allow-hash", action="store_true", help="明確允許測試用 deterministic hash provider")
+        sp.add_argument("--hash-dim", type=int, default=32, help="hash provider 維度（僅 --allow-hash）")
+        sp.add_argument("--db-path", help="SQLite DB 路徑（預設 project_dir/vault.db）")
+        sp.add_argument("--no-persist-cache", action="store_true", help="停用預設 durable embedding cache")
+        sp.add_argument("--rebuild", action="store_true", help="在啟動流程中重建 semantic_vectors")
+        sp.add_argument("--smoke", action="store_true", help="若提供 --qa-file，執行 Search QA smoke aggregate")
+        sp.add_argument("--mode", choices=["auto", "keyword", "vector", "hybrid"], default="keyword")
+        sp.add_argument("--limit", "-n", type=int, default=10)
+        sp.add_argument("--older-than-days", type=int, help="啟動流程結尾清理早於 N 天的 cache rows")
+        sp.add_argument("--max-rows", type=int, help="啟動流程結尾最多保留 N 個 cache rows")
+        sp.add_argument("--output", "-o", help="JSON 輸出檔案路徑")
+        sp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    sp = semantic_sub.add_parser("startup", help="執行一次 importable semantic startup hook")
+    add_semantic_lifecycle(sp)
+
+    sp = semantic_sub.add_parser("daemon", help="執行 bounded semantic warm daemon（預設 repeat=1）")
+    add_semantic_lifecycle(sp)
+    sp.add_argument("--repeat", type=int, default=1, help="迭代次數；0=forever（只限 supervisor 管理）")
+    sp.add_argument("--interval", type=float, default=60.0, help="迭代間隔秒數；測試可用 0")
 
     args = parser.parse_args()
 

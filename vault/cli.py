@@ -1283,6 +1283,24 @@ def _semantic_stats_payload(stats, provider) -> dict:
     }
 
 
+def _persistent_cache_payload(provider) -> dict:
+    return {
+        "memory_rows": int(getattr(provider, "cache_size", 0)),
+        "persistent_hits": int(getattr(provider, "persistent_hits", 0)),
+        "persistent_misses": int(getattr(provider, "persistent_misses", 0)),
+        "writes": int(getattr(provider, "writes", 0)),
+    }
+
+
+def _close_provider(provider) -> None:
+    close = getattr(provider, "close", None)
+    if callable(close):
+        try:
+            close()
+        except Exception:
+            pass
+
+
 def _load_unique_qa_queries(qa_file: str | Path) -> list[str]:
     from vault.search_qa import load_search_qa_set
 
@@ -1319,62 +1337,155 @@ def _create_semantic_provider(args, *, cached: bool = False):
     return CachedEmbeddingProvider(provider) if cached else provider
 
 
+def _create_persistent_semantic_provider(args, db):
+    from vault.semantic import PersistentCachedEmbeddingProvider
+
+    provider = _create_semantic_provider(args, cached=False)
+    return PersistentCachedEmbeddingProvider(provider, db)
+
+
 def cmd_semantic(args):
     """Operator-facing semantic index workflows."""
     from vault.db import VaultDB
     from vault.search_qa import evaluate_search_qa, write_json
-    from vault.semantic import rebuild_semantic_index
+    from vault.semantic import embedding_cache_stats, prune_embedding_cache, rebuild_semantic_index
 
     action = args.semantic_action
-    if action not in {"rebuild", "warm", "smoke"}:
-        print("error: semantic requires action: rebuild, warm, or smoke", file=sys.stderr)
+    if action not in {"rebuild", "warm", "smoke", "cache-stats", "cache-prune"}:
+        print(
+            "error: semantic requires action: rebuild, warm, smoke, cache-stats, or cache-prune",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
 
     db_path = Path(args.db_path) if args.db_path else find_project_dir() / "vault.db"
 
     try:
-        if action == "rebuild":
-            provider = _create_semantic_provider(args, cached=False)
+        if action == "cache-stats":
             with VaultDB(db_path) as db:
-                stats = rebuild_semantic_index(
+                stats = embedding_cache_stats(
                     db,
-                    provider,
-                    knowledge_id=args.knowledge_id,
-                    require_semantic=not args.allow_hash,
-                    allow_hash=args.allow_hash,
+                    provider_id=args.provider_id,
+                    dimension=args.dimension,
                 )
-            payload = {"action": "rebuild", **_semantic_stats_payload(stats, provider)}
+            _json_print({"action": "cache-stats", **stats}, pretty=args.pretty)
+            return
+
+        if action == "cache-prune":
+            with VaultDB(db_path) as db:
+                deleted = prune_embedding_cache(
+                    db,
+                    provider_id=args.provider_id,
+                    dimension=args.dimension,
+                    older_than_days=args.older_than_days,
+                    max_rows=args.max_rows,
+                )
+            _json_print({"action": "cache-prune", "deleted_rows": deleted}, pretty=args.pretty)
+            return
+
+        if action == "rebuild":
+            if args.persist_cache:
+                with VaultDB(db_path) as db:
+                    provider = _create_persistent_semantic_provider(args, db)
+                    try:
+                        stats = rebuild_semantic_index(
+                            db,
+                            provider,
+                            knowledge_id=args.knowledge_id,
+                            require_semantic=not args.allow_hash,
+                            allow_hash=args.allow_hash,
+                        )
+                        payload = {"action": "rebuild", **_semantic_stats_payload(stats, provider)}
+                        payload["persistent_cache"] = _persistent_cache_payload(provider)
+                    finally:
+                        _close_provider(provider)
+            else:
+                provider = _create_semantic_provider(args, cached=False)
+                try:
+                    with VaultDB(db_path) as db:
+                        stats = rebuild_semantic_index(
+                            db,
+                            provider,
+                            knowledge_id=args.knowledge_id,
+                            require_semantic=not args.allow_hash,
+                            allow_hash=args.allow_hash,
+                        )
+                    payload = {"action": "rebuild", **_semantic_stats_payload(stats, provider)}
+                finally:
+                    _close_provider(provider)
             _json_print(payload, pretty=args.pretty)
             return
 
         if action == "warm":
-            provider = _create_semantic_provider(args, cached=True)
             queries = _load_unique_qa_queries(args.qa_file)
-            if queries:
-                provider.encode(queries)
-            payload = {
-                "action": "warm",
-                "provider_id": provider.provider_id,
-                "is_semantic": bool(provider.is_semantic),
-                "dimension": int(provider.dim),
-                "warmed_queries": len(queries),
-                "cache_size": provider.cache_size,
-            }
+            if args.persist_cache:
+                with VaultDB(db_path) as db:
+                    provider = _create_persistent_semantic_provider(args, db)
+                    try:
+                        if queries:
+                            provider.encode(queries)
+                        payload = {
+                            "action": "warm",
+                            "provider_id": provider.provider_id,
+                            "is_semantic": bool(provider.is_semantic),
+                            "dimension": int(provider.dim),
+                            "warmed_queries": len(queries),
+                            "cache_size": provider.cache_size,
+                            "persistent_cache": _persistent_cache_payload(provider),
+                        }
+                    finally:
+                        _close_provider(provider)
+            else:
+                provider = _create_semantic_provider(args, cached=True)
+                try:
+                    if queries:
+                        provider.encode(queries)
+                    payload = {
+                        "action": "warm",
+                        "provider_id": provider.provider_id,
+                        "is_semantic": bool(provider.is_semantic),
+                        "dimension": int(provider.dim),
+                        "warmed_queries": len(queries),
+                        "cache_size": provider.cache_size,
+                    }
+                finally:
+                    _close_provider(provider)
             _json_print(payload, pretty=args.pretty)
             return
 
-        provider = _create_semantic_provider(args, cached=True)
-        with VaultDB(db_path) as db:
-            stats = rebuild_semantic_index(
-                db,
-                provider,
-                knowledge_id=args.knowledge_id,
-                require_semantic=not args.allow_hash,
-                allow_hash=args.allow_hash,
-            )
         queries = _load_unique_qa_queries(args.qa_file)
-        if queries:
-            provider.encode(queries)
+        if args.persist_cache:
+            with VaultDB(db_path) as db:
+                provider = _create_persistent_semantic_provider(args, db)
+                try:
+                    stats = rebuild_semantic_index(
+                        db,
+                        provider,
+                        knowledge_id=args.knowledge_id,
+                        require_semantic=not args.allow_hash,
+                        allow_hash=args.allow_hash,
+                    )
+                    if queries:
+                        provider.encode(queries)
+                    cache_payload = _persistent_cache_payload(provider)
+                finally:
+                    _close_provider(provider)
+        else:
+            provider = _create_semantic_provider(args, cached=True)
+            try:
+                with VaultDB(db_path) as db:
+                    stats = rebuild_semantic_index(
+                        db,
+                        provider,
+                        knowledge_id=args.knowledge_id,
+                        require_semantic=not args.allow_hash,
+                        allow_hash=args.allow_hash,
+                    )
+                if queries:
+                    provider.encode(queries)
+                cache_payload = None
+            finally:
+                _close_provider(provider)
         qa_snapshot = evaluate_search_qa(
             db_path=db_path,
             qa_file=args.qa_file,
@@ -1396,6 +1507,8 @@ def cmd_semantic(args):
             "qa": {"aggregate": qa_snapshot["aggregate"]},
             "output_written": bool(args.output),
         }
+        if cache_payload is not None:
+            payload["persistent_cache"] = cache_payload
         if args.output:
             write_json(args.output, payload)
         _json_print(payload, pretty=args.pretty)
@@ -1673,13 +1786,21 @@ def main():
         sp.add_argument("--hash-dim", type=int, default=32, help="hash provider 維度（僅 --allow-hash）")
         sp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
+    def add_cache_filters(sp):
+        sp.add_argument("--provider-id", help="只處理指定 embedding provider")
+        sp.add_argument("--dimension", type=int, help="只處理指定 embedding 維度")
+        sp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+        sp.add_argument("--db-path", help="SQLite DB 路徑（預設 project_dir/vault.db）")
+
     sp = semantic_sub.add_parser("rebuild", help="重建 semantic_vectors")
     add_semantic_common(sp)
     sp.add_argument("--knowledge-id", type=int, help="只重建指定 knowledge id")
+    sp.add_argument("--persist-cache", action="store_true", help="使用 durable embedding_cache 快取")
 
     sp = semantic_sub.add_parser("warm", help="預熱 QA 查詢 embedding cache（不寫入向量列）")
     add_semantic_common(sp)
     sp.add_argument("--qa-file", required=True, help="Search QA Set JSON 路徑")
+    sp.add_argument("--persist-cache", action="store_true", help="使用 durable embedding_cache 快取")
 
     sp = semantic_sub.add_parser("smoke", help="重建、預熱並執行 Search QA smoke snapshot")
     add_semantic_common(sp)
@@ -1688,6 +1809,15 @@ def main():
     sp.add_argument("--mode", choices=["auto", "keyword", "vector", "hybrid"], default="keyword")
     sp.add_argument("--limit", "-n", type=int, default=10)
     sp.add_argument("--output", "-o", help="combined semantic workflow JSON 輸出路徑")
+    sp.add_argument("--persist-cache", action="store_true", help="使用 durable embedding_cache 快取")
+
+    sp = semantic_sub.add_parser("cache-stats", help="顯示 durable embedding cache 統計")
+    add_cache_filters(sp)
+
+    sp = semantic_sub.add_parser("cache-prune", help="清理 durable embedding cache")
+    add_cache_filters(sp)
+    sp.add_argument("--older-than-days", type=int, help="刪除 last_used_at 早於 N 天的列")
+    sp.add_argument("--max-rows", type=int, help="保留最新 N 列，其餘刪除")
 
     args = parser.parse_args()
 

@@ -230,15 +230,18 @@ def build_document_map_for_entry(conn: sqlite3.Connection, knowledge_id: int) ->
             for node in nodes
         ],
     )
-    conn.executemany(
-        """INSERT INTO knowledge_claims
-           (knowledge_id, node_uid, claim_uid, claim, claim_type, line_start,
-            line_end, confidence, source, content_hash, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        [
+    claim_rows = []
+    seen_claims: set[tuple[str, str]] = set()
+    for claim in claims:
+        node_uid = assign_claim_node_uid(nodes, claim.line_start)
+        claim_key = (node_uid, claim.claim)
+        if claim_key in seen_claims:
+            continue
+        seen_claims.add(claim_key)
+        claim_rows.append(
             (
                 knowledge_id,
-                assign_claim_node_uid(nodes, claim.line_start),
+                node_uid,
                 _claim_uid(claim.claim, claim.line_start, claim.line_end),
                 claim.claim,
                 "claim",
@@ -250,12 +253,18 @@ def build_document_map_for_entry(conn: sqlite3.Connection, knowledge_id: int) ->
                 now,
                 now,
             )
-            for claim in claims
-        ],
+        )
+
+    conn.executemany(
+        """INSERT INTO knowledge_claims
+           (knowledge_id, node_uid, claim_uid, claim, claim_type, line_start,
+            line_end, confidence, source, content_hash, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        claim_rows,
     )
     conn.commit()
 
-    return {"nodes": len(nodes), "claims": len(claims)}
+    return {"nodes": len(nodes), "claims": len(claim_rows)}
 
 
 def _clean_heading(raw_heading: str) -> str:

@@ -137,6 +137,36 @@ def test_map_show_prints_title_structure_paths_and_line_ranges(tmp_path, monkeyp
     assert "L3-L4" in out
 
 
+def test_map_build_deduplicates_repeated_claims_in_same_node(tmp_path, monkeypatch):
+    duplicate_aaak = "\n".join(
+        [
+            "TITLE: Duplicate Example",
+            "CLAIMS:",
+            "- [C1] Repeated claim should be stored only once. (L3)",
+            "- [C2] Repeated claim should be stored only once. (L4)",
+        ]
+    )
+    knowledge_id = _create_project_with_entry(
+        tmp_path,
+        monkeypatch,
+        title="Duplicate Example",
+        content_aaak=duplicate_aaak,
+    )
+
+    _run_cli(monkeypatch, "map", "build", str(knowledge_id))
+
+    db = VaultDB(tmp_path / "vault.db").connect()
+    try:
+        claim_count = db.conn.execute(
+            "SELECT COUNT(*) AS c FROM knowledge_claims WHERE knowledge_id=?",
+            (knowledge_id,),
+        ).fetchone()["c"]
+    finally:
+        db.close()
+
+    assert claim_count == 1
+
+
 @pytest.mark.parametrize(
     ("args", "expected"),
     [

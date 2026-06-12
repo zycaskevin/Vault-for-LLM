@@ -63,18 +63,34 @@ See [`scripts/README.md`](scripts/README.md) for the script-by-script command gu
 
 ---
 
+## What's new in the current source tree
+
+The current source tree adds a guarded semantic-search workflow on top of the local SQLite vault:
+
+- Keyword search now prefers SQLite FTS5/BM25 when available and falls back to `LIKE` when FTS5 is unavailable or misses CJK text.
+- `semantic_vectors` stores claim/knowledge-level embedding rows with source citations.
+- Embedding providers declare `provider_id`, vector dimension, and whether they are real semantic providers; deterministic hash embeddings are allowed only when explicitly requested for tests.
+- `vault semantic rebuild|warm|smoke|cache-stats|cache-prune|startup|daemon` provides operator workflows for rebuilding vectors, warming QA queries, checking durable cache stats, and running a bounded startup/daemon hook.
+- `embedding_cache` can persist embeddings across processes for startup and daemon workflows. Startup/daemon use the persistent cache by default; pass `--no-persist-cache` to disable it.
+
+The semantic commands are still alpha. They are designed to be measurable and fail-closed: production-like semantic paths require a real semantic provider unless you pass `--allow-hash` for local tests or CI smoke checks.
+
+See the [semantic workflow guide](docs/semantic_search.md) and upgrade notes under [`docs/upgrade/`](docs/upgrade/) for implementation details.
+
+---
+
 ## What it can do
 
 | Area | Capability |
 |---|---|
 | Knowledge storage | Markdown `raw/` files compiled into local SQLite |
-| Search | keyword search, optional vector search, hybrid search |
-| Embeddings | optional ONNX Runtime or Ollama embeddings |
+| Search | FTS5/BM25 keyword search with fallback, optional vector search, hybrid search |
+| Embeddings | optional ONNX Runtime or Ollama embeddings, provider guard, durable cache workflows |
 | Memory layers | L0 identity, L1 core facts, L2 recent context, L3 deep knowledge |
 | Knowledge graph | inferred entities/edges and graph expansion |
 | Document Map | section/claim navigation and bounded `read_range` citations ([policy and demo](docs/document_map_citation_policy.md)) |
 | MCP | `vault-mcp` exposes search/add/stats/map/read tools to compatible agents |
-| Quality tools | lint, freshness, convergence, cross-validation, dedup, Search QA snapshots ([benchmarking guide](docs/search_qa_benchmarking.md)) |
+| Quality tools | lint, freshness, convergence, cross-validation, dedup, Search QA snapshots ([benchmarking guide](docs/search_qa_benchmarking.md)), semantic smoke/warm workflows |
 | Repository governance | source-checkout public-boundary gate, artifact audit, and safe-only cleanup helpers ([governance guide](docs/repo_governance.md)) |
 | Optional remote sync | Supabase sync scripts for teams or remote read paths |
 | Local skill registry | experimental `vault skill` commands for sharing reusable workflows inside a local Vault; not a hosted marketplace |
@@ -201,6 +217,41 @@ created: "2026-05-16"
 What broke, why it broke, and how to avoid it next time.
 ```
 
+### Optional semantic workflow
+
+Semantic search is optional. The base install keeps working with keyword search. If you configure a real embedding provider, you can rebuild semantic vectors and run a small smoke check:
+
+```bash
+# after installing/configuring a real embedding provider
+vault semantic rebuild --persist-cache
+vault semantic cache-stats --pretty
+vault semantic smoke --qa-file benchmarks/search_qa/basic.en.json --mode keyword --pretty
+```
+
+For CI and local command-shape tests only, you can explicitly allow the deterministic hash provider:
+
+```bash
+vault semantic smoke \
+  --allow-hash \
+  --qa-file benchmarks/search_qa/basic.en.json \
+  --mode keyword \
+  --pretty
+```
+
+Do not use `--allow-hash` as production semantic retrieval. It is a deterministic test double, not a semantic model.
+
+Startup integration can call the importable lifecycle hook through the CLI:
+
+```bash
+vault semantic startup --qa-file benchmarks/search_qa/basic.en.json --smoke --pretty
+```
+
+The bounded daemon defaults to one iteration. Use `--repeat 0` only under a process supervisor:
+
+```bash
+vault semantic daemon --repeat 1 --interval 60 --pretty
+```
+
 ---
 
 ## Directory structure
@@ -246,6 +297,11 @@ your-project/
 | `vault freshness` | Experimental freshness/review scheduling |
 | `vault dedup` | Detect or merge duplicate entries |
 | `vault search-qa run` / `vault search-qa compare` | Run Search QA metrics snapshots and before/after comparisons ([guide](docs/search_qa_benchmarking.md)) |
+| `vault semantic rebuild` | Rebuild semantic vector rows after configuring a real embedding provider |
+| `vault semantic warm` | Precompute QA query embeddings without writing vector rows |
+| `vault semantic smoke` | Rebuild, warm, and run a Search QA smoke snapshot in one command |
+| `vault semantic cache-stats` / `vault semantic cache-prune` | Inspect or prune the durable embedding cache |
+| `vault semantic startup` / `vault semantic daemon` | Run importable startup or bounded daemon lifecycle hooks |
 | `vault skill search "query"` | Search local experimental skill registry entries |
 
 Run `vault <command> --help` for command-specific options.

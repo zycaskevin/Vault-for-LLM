@@ -73,6 +73,30 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q vault scripts tests
 
+  readme-command-smoke:
+    name: README documented command smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install package with development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run README documented command smoke
+        run: python scripts/readme_command_smoke.py
+
   build-smoke:
     name: Build, twine check, and wheel smoke
     runs-on: ubuntu-latest

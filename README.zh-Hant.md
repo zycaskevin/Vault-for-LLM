@@ -63,18 +63,34 @@ Vault-for-LLM 不只是另一個向量資料庫。它正在往 **Agent 記憶品
 
 ---
 
+## 目前 source tree 新增內容
+
+目前 source tree 在本地 SQLite vault 之上，加入一組有 guardrail 的語意搜尋工作流：
+
+- 關鍵字搜尋會優先使用 SQLite FTS5/BM25；若 FTS5 不可用或 CJK 命中不足，會 fallback 到 `LIKE`。
+- `semantic_vectors` 儲存 knowledge/claim 層級的 embedding rows 與來源 citation。
+- Embedding provider 會宣告 `provider_id`、向量維度，以及是否是真語意 provider；deterministic hash embedding 只有明確用於測試時才能啟用。
+- `vault semantic rebuild|warm|smoke|cache-stats|cache-prune|startup|daemon` 提供重建向量、預熱 QA query、檢查 durable cache、startup hook 與 bounded daemon 的操作流程。
+- `embedding_cache` 可跨 process 重用 embedding。startup/daemon 預設使用 persistent cache；可用 `--no-persist-cache` 關閉。
+
+語意指令仍屬 alpha。production-like 語意路徑需要真語意 provider；`--allow-hash` 只適合本機測試或 CI smoke。
+
+詳細操作請看 [語意搜尋工作流](docs/semantic_search.md) 與 [`docs/upgrade/`](docs/upgrade/) 升級紀錄。
+
+---
+
 ## 它能做什麼？
 
 | 領域 | 能力 |
 |---|---|
 | 知識存儲 | 將 `raw/` Markdown 編譯進本地 SQLite |
-| 搜尋 | 關鍵字搜尋、可選向量搜尋、混合搜尋 |
-| Embedding | 可選 ONNX Runtime 或 Ollama |
+| 搜尋 | FTS5/BM25 關鍵字搜尋與 fallback、可選向量搜尋、混合搜尋 |
+| Embedding | 可選 ONNX Runtime 或 Ollama、provider guard、durable cache workflow |
 | 記憶分層 | L0 身份、L1 核心事實、L2 近期上下文、L3 深知識 |
 | 知識圖譜 | 自動推斷實體/關聯，支援圖譜擴展 |
 | Document Map | 章節/主張導航，支援有行號範圍的 citation |
 | MCP | `vault-mcp` 將 search/add/stats/map/read 工具暴露給相容 Agent |
-| 品質工具 | lint、freshness、convergence、cross-validation、dedup、Search QA snapshot |
+| 品質工具 | lint、freshness、convergence、cross-validation、dedup、Search QA snapshot、semantic smoke/warm workflow |
 | Repo 治理 | source checkout 內的公開邊界 gate、artifact audit、safe-only cleanup helper |
 | 可選遠端同步 | Supabase sync scripts，適合團隊或遠端讀取 |
 | 本機技能登錄 | 實驗中的 `vault skill` 命令，用於在本機 Vault 內共享可重用 workflow；不是託管市場 |
@@ -199,6 +215,40 @@ created: "2026-05-16"
 記錄壞在哪裡、為什麼壞、下次怎麼避免。
 ```
 
+### 可選：語意工作流
+
+語意搜尋是可選功能。基礎安裝仍可用關鍵字搜尋。如果你已設定真 embedding provider，可以重建 semantic vectors 並跑 smoke check：
+
+```bash
+vault semantic rebuild --persist-cache
+vault semantic cache-stats --pretty
+vault semantic smoke --qa-file benchmarks/search_qa/basic.en.json --mode keyword --pretty
+```
+
+只在 CI 或本機 command-shape 測試時，才明確允許 deterministic hash provider：
+
+```bash
+vault semantic smoke \
+  --allow-hash \
+  --qa-file benchmarks/search_qa/basic.en.json \
+  --mode keyword \
+  --pretty
+```
+
+不要把 `--allow-hash` 當成 production semantic retrieval。它是 deterministic 測試替身，不是真語意模型。
+
+Startup integration 可透過 CLI 呼叫 importable lifecycle hook：
+
+```bash
+vault semantic startup --qa-file benchmarks/search_qa/basic.en.json --smoke --pretty
+```
+
+Bounded daemon 預設只跑一次 iteration。`--repeat 0` 只建議在 process supervisor 管理下使用：
+
+```bash
+vault semantic daemon --repeat 1 --interval 60 --pretty
+```
+
 ---
 
 ## 目錄結構
@@ -244,6 +294,11 @@ your-project/
 | `vault freshness` | 實驗性新鮮度/複習排程 |
 | `vault dedup` | 偵測或合併重複條目 |
 | `vault search-qa run` | 執行 Search QA metrics snapshot |
+| `vault semantic rebuild` | 設定真 embedding provider 後重建 semantic vector rows |
+| `vault semantic warm` | 預先計算 QA query embeddings，不寫入 vector rows |
+| `vault semantic smoke` | 一次執行 rebuild、warm 與 Search QA smoke snapshot |
+| `vault semantic cache-stats` / `vault semantic cache-prune` | 檢查或清理 durable embedding cache |
+| `vault semantic startup` / `vault semantic daemon` | 執行 importable startup 或 bounded daemon lifecycle hooks |
 | `vault skill search "query"` | 搜尋本機實驗性技能登錄條目 |
 
 執行 `vault <command> --help` 可查看各指令參數。

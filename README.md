@@ -74,7 +74,9 @@ Older repository hygiene tools from 0.4.3 are documented in [`scripts/README.md`
 | Memory layers | L0 identity, L1 core facts, L2 recent context, L3 deep knowledge |
 | Knowledge graph | inferred entities/edges and graph expansion |
 | Document Map | section/claim navigation and bounded `read_range` citations ([policy and demo](docs/document_map_citation_policy.md)) |
-| MCP | `vault-mcp` exposes search/add/stats/map/read tools to compatible agents |
+| MCP | `vault-mcp` exposes search/add/stats/map/read plus candidate-first memory tools to compatible agents ([MCP memory workflow](docs/mcp_memory_workflow.md)) |
+| Memory curator | `vault remember`, `vault promote`, and MCP propose/promote tools for gated autonomous memory writes |
+| Dream reports | `vault dream` produces report-first memory curation summaries for stale, duplicate, weak, or poorly-described knowledge ([dream workflow](docs/dream_workflow.md)) |
 | Quality tools | lint, freshness, convergence, cross-validation, dedup, Search QA snapshots ([benchmarking guide](docs/search_qa_benchmarking.md)), semantic smoke/warm workflows |
 | Repository governance | source-checkout public-boundary gate, artifact audit, and safe-only cleanup helpers ([governance guide](docs/repo_governance.md)) |
 | Optional remote sync | Supabase sync scripts for teams or remote read paths |
@@ -98,7 +100,7 @@ These features exist today, but their maturity differs. Core local commands are 
 
 The `benchmarks/search_qa/` examples are repository fixtures in a source checkout, not files installed by the PyPI wheel. After `pip install vault-for-llm`, run `vault search-qa` with your own QA JSON files, or clone/download this repository to use the example fixtures.
 
-The stable path is still the core loop: `vault init` → `vault add` → `vault compile` → `vault search` → `vault-mcp`.
+The stable path is still the core loop: `vault init` → `vault add`/`vault remember` → `vault compile`/`vault promote` → `vault search` → `vault-mcp`. For autonomous agents, prefer `vault_memory_propose` over direct `vault_add`.
 
 ---
 
@@ -185,6 +187,32 @@ vault search "what caused the bug"
 ```
 
 You can also add Markdown files directly under `raw/` and run `vault compile`.
+
+### Candidate-first agent memory
+
+For autonomous agents or unreviewed memories, prefer the safer candidate workflow:
+
+```bash
+vault remember "Memory title" \
+  --content "Markdown memory content" \
+  --reason "Why this is worth remembering"
+
+# after review
+vault promote mem_xxxxxxxxxxxx --confirm
+```
+
+MCP-compatible agents should use `vault_memory_propose` and `vault_memory_promote`; see [MCP memory workflow](docs/mcp_memory_workflow.md).
+
+### Dream curation reports
+
+Run a report-first memory curation pass:
+
+```bash
+vault dream --mode report --limit 50 --write-report
+```
+
+Reports are written under `reports/dream/`. See [dream workflow](docs/dream_workflow.md).
+
 
 Example entry:
 

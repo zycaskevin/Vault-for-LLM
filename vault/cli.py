@@ -1280,6 +1280,80 @@ def cmd_search_qa(args):
     raise SystemExit(2)
 
 
+def cmd_remember(args):
+    """Create a memory candidate or promote it immediately if gates allow."""
+    from vault.db import VaultDB
+    from vault.memory import propose_memory
+
+    project_dir = find_project_dir()
+    content = args.content or ""
+    if args.file:
+        content = Path(args.file).read_text(encoding="utf-8")
+    if not content:
+        content = sys.stdin.read()
+    try:
+        with VaultDB(project_dir / "vault.db") as db:
+            payload = propose_memory(
+                db,
+                title=args.title,
+                content=content,
+                reason=args.reason,
+                mode=args.mode,
+                layer=args.layer,
+                category=args.category,
+                tags=args.tags,
+                trust=args.trust,
+                source=args.source,
+                source_ref=args.source_ref,
+            )
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+    _json_print(payload, pretty=args.pretty)
+
+
+def cmd_promote(args):
+    """Promote a memory candidate into raw/ plus active SQLite knowledge."""
+    from vault.db import VaultDB
+    from vault.memory import promote_candidate
+
+    project_dir = find_project_dir()
+    try:
+        with VaultDB(project_dir / "vault.db") as db:
+            payload = promote_candidate(
+                db,
+                args.candidate_id,
+                confirm=args.confirm,
+                project_dir=project_dir,
+                compile=not args.no_compile,
+                build_map=not args.no_build_map,
+            )
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+    _json_print(payload, pretty=args.pretty)
+
+
+def cmd_dream(args):
+    """Run a deterministic report-first dream curation pass."""
+    from vault.dream import run_dream
+
+    project_dir = find_project_dir()
+    try:
+        payload = run_dream(
+            project_dir,
+            mode=args.mode,
+            checks=args.checks,
+            limit=args.limit,
+            write_report=args.write_report,
+            backup=not args.no_backup,
+        )
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+    _json_print(payload, pretty=args.pretty)
+
+
 def _json_print(payload: dict, *, pretty: bool = False) -> None:
     indent = 2 if pretty else None
     print(json.dumps(payload, ensure_ascii=False, indent=indent, sort_keys=True))
@@ -1652,6 +1726,28 @@ def main():
     p.add_argument("--tags", default="")
     p.add_argument("--trust", type=float, default=0.5)
 
+    # remember/promote — safe memory curator workflow
+    p = sub.add_parser("remember", help="提出記憶候選（預設不寫入 active knowledge）")
+    p.add_argument("title", help="記憶標題")
+    p.add_argument("--content", "-c", default="", help="記憶內容；省略時讀 stdin")
+    p.add_argument("--file", "-f", help="從檔案讀取記憶內容")
+    p.add_argument("--reason", required=True, help="為什麼值得記住")
+    p.add_argument("--mode", choices=["candidate", "promote_if_safe"], default="candidate")
+    p.add_argument("--layer", choices=["L0", "L1", "L2", "L3"], default="L3")
+    p.add_argument("--category", default="general")
+    p.add_argument("--tags", default="")
+    p.add_argument("--trust", type=float, default=0.5)
+    p.add_argument("--source", default="cli")
+    p.add_argument("--source-ref", default="")
+    p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    p = sub.add_parser("promote", help="將記憶候選提升為 active knowledge")
+    p.add_argument("candidate_id", help="memory candidate id")
+    p.add_argument("--confirm", action="store_true", help="必要：確認提升候選")
+    p.add_argument("--no-compile", action="store_true", help="跳過 raw/ 編譯，直接寫 active DB")
+    p.add_argument("--no-build-map", action="store_true", help="搭配 --no-compile 時跳過 Document Map 建置")
+    p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
     # compile
     p = sub.add_parser("compile", help="編譯 raw/ → db + compiled/")
     p.add_argument("--dry-run", action="store_true")
@@ -1867,6 +1963,16 @@ def main():
     p.add_argument("--limit", type=int, default=0, help="最多處理幾條（0=全部）")
     p.add_argument("--stale-only", action="store_true", help="只顯示過期條目")
 
+    # dream — deterministic report-first curation
+    p = sub.add_parser("dream", help="Dream 記憶整理報告（預設 report-only）")
+    p.add_argument("--mode", choices=["report", "apply_safe"], default="report")
+    p.add_argument("--checks", nargs="*", choices=["freshness", "dedup", "convergence", "metadata", "orphans"],
+                   help="要執行的檢查；預設全部")
+    p.add_argument("--limit", "-n", type=int, default=50)
+    p.add_argument("--write-report", action="store_true", help="寫入 reports/dream/*.md")
+    p.add_argument("--no-backup", action="store_true", help="apply_safe 時不建立 DB backup")
+    p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
     # dedup — semantic duplicate detection and merge
     p = sub.add_parser("dedup", help="語意去重 — 檢測與合併重複知識")
     p.add_argument("--merge", action="store_true", help="實際合併（預設為預覽模式）")
@@ -1964,6 +2070,8 @@ def main():
     commands = {
         "init": cmd_init,
         "add": cmd_add,
+        "remember": cmd_remember,
+        "promote": cmd_promote,
         "compile": cmd_compile,
         "search": cmd_search,
         "list": cmd_list,
@@ -1981,6 +2089,7 @@ def main():
         "converge": cmd_converge,
         "cross-validate": cmd_cross_validate,
         "freshness": cmd_freshness,
+        "dream": cmd_dream,
         "dedup": cmd_dedup,
         "search-qa": cmd_search_qa,
         "semantic": cmd_semantic,

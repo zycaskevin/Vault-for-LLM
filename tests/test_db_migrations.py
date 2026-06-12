@@ -19,6 +19,7 @@ def test_fresh_db_status_is_current(tmp_path):
         assert status["needs_migration"] is False
         assert len(status["applied_migrations"]) == VaultDB.SCHEMA_VERSION
         assert db.get_config("schema_version") == str(VaultDB.SCHEMA_VERSION)
+        assert "memory_candidates" in status["tables_present"]
 
 
 def test_old_pre_v3_db_migrates_to_current(tmp_path):
@@ -60,6 +61,18 @@ def test_migrate_is_idempotent_no_duplicate_migration_rows(tmp_path):
         assert second["ok"] is True
         assert versions == list(range(1, VaultDB.SCHEMA_VERSION + 1))
         assert len(versions) == len(set(versions))
+
+
+def test_schema_status_requires_memory_candidates_table(tmp_path):
+    db_path = tmp_path / "missing_candidate.db"
+    with VaultDB(db_path) as db:
+        assert db.conn is not None
+        db.conn.execute("DROP TABLE memory_candidates")
+        db.conn.commit()
+        status = db.schema_status()
+
+        assert status["needs_migration"] is True
+        assert "memory_candidates" in status["tables_missing"]
 
 
 def test_db_status_and_migrate_cli_pretty(tmp_path):

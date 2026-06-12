@@ -1,0 +1,99 @@
+import json
+
+from vault.db import VaultDB
+from vault.mcp import TOOLS, _set_project_dir, handle_tool_call
+
+
+def _payload(result):
+    assert "result" in result, result
+    return json.loads(result["result"])
+
+
+def test_mcp_memory_tools_are_advertised():
+    names = {tool["name"] for tool in TOOLS}
+    assert {"vault_memory_propose", "vault_memory_promote", "vault_dream_run"}.issubset(names)
+    add_tool = next(tool for tool in TOOLS if tool["name"] == "vault_add")
+    assert "Prefer vault_memory_propose" in add_tool["description"]
+
+
+def test_mcp_memory_propose_candidate_does_not_add_active_knowledge(tmp_path):
+    _set_project_dir(tmp_path)
+    result = handle_tool_call(
+        "vault_memory_propose",
+        {
+            "title": "MCP candidate",
+            "content": "Agents should propose memory before direct durable writes.",
+            "reason": "MCP candidate workflow test",
+            "source": "test",
+        },
+    )
+    payload = _payload(result)
+    assert payload["status"] == "candidate_created"
+    assert payload["gates"]["privacy"] == "pass"
+    assert payload["candidate_id"].startswith("mem_")
+
+    with VaultDB(tmp_path / "vault.db") as db:
+        assert db.get_memory_candidate(payload["candidate_id"])["title"] == "MCP candidate"
+        assert db.conn.execute("SELECT COUNT(*) AS n FROM knowledge").fetchone()["n"] == 0
+
+
+def test_mcp_memory_promote_writes_active_knowledge(tmp_path):
+    _set_project_dir(tmp_path)
+    proposed = _payload(handle_tool_call(
+        "vault_memory_propose",
+        {
+            "title": "MCP promote",
+            "content": "Promotion through MCP writes active knowledge and a raw note.",
+            "reason": "Exercise MCP promotion",
+            "source": "test",
+            "trust": 0.8,
+        },
+    ))
+    promoted = _payload(handle_tool_call(
+        "vault_memory_promote",
+        {
+            "candidate_id": proposed["candidate_id"],
+            "confirm": True,
+            "compile": False,
+            "build_map": True,
+        },
+    ))
+    assert promoted["status"] == "promoted"
+    assert promoted["knowledge_id"]
+    assert (tmp_path / "raw" / "mcp-promote.md").exists()
+
+    with VaultDB(tmp_path / "vault.db") as db:
+        knowledge = db.get_knowledge(promoted["knowledge_id"])
+        assert knowledge["title"] == "MCP promote"
+        nodes = db.conn.execute(
+            "SELECT COUNT(*) AS n FROM knowledge_nodes WHERE knowledge_id=?",
+            (promoted["knowledge_id"],),
+        ).fetchone()["n"]
+        assert nodes >= 1
+
+
+def test_mcp_dream_run_report_only(tmp_path):
+    _set_project_dir(tmp_path)
+    with VaultDB(tmp_path / "vault.db") as db:
+        db.add_knowledge(
+            title="Dream weak metadata",
+            content_raw="Report-only dream should inspect but not mutate active knowledge.",
+            source="test",
+            category="general",
+            tags="",
+            trust=0.3,
+        )
+        before = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge").fetchone()["n"]
+
+    payload = _payload(handle_tool_call(
+        "vault_dream_run",
+        {"mode": "report", "checks": ["metadata", "dedup"], "limit": 10, "write_report": True},
+    ))
+    assert payload["summary"]["metadata"] == 1
+    assert payload["summary"]["actions_applied"] == 0
+    assert payload["report_path"].startswith("reports/dream/")
+    assert (tmp_path / payload["report_path"]).exists()
+
+    with VaultDB(tmp_path / "vault.db") as db:
+        after = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge").fetchone()["n"]
+    assert after == before

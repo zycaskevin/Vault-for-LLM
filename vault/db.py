@@ -27,13 +27,14 @@ except ImportError:
 class VaultDB:
     """Vault-for-LLM 資料庫層。"""
 
-    SCHEMA_VERSION = 5
+    SCHEMA_VERSION = 6
     MIGRATIONS = {
         1: "initial_core_tables",
         2: "graph_and_skill_tables",
         3: "convergence_freshness_columns",
         4: "knowledge_summary_columns",
         5: "document_map_semantic_tables",
+        6: "memory_candidate_table",
     }
 
     def __init__(self, db_path: str | Path = "vault.db"):
@@ -265,6 +266,34 @@ class VaultDB:
         c.execute("CREATE INDEX IF NOT EXISTS idx_embedding_cache_provider_dim ON embedding_cache(provider_id, dimension)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_embedding_cache_last_used ON embedding_cache(last_used_at)")
 
+        # Memory curator candidate queue. Candidates are intentionally separate
+        # from active knowledge until explicitly promoted.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS memory_candidates (
+                id TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                layer TEXT NOT NULL,
+                category TEXT NOT NULL,
+                tags TEXT NOT NULL,
+                trust REAL NOT NULL,
+                source TEXT NOT NULL,
+                source_ref TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                status TEXT NOT NULL,
+                privacy_status TEXT NOT NULL,
+                duplicate_status TEXT NOT NULL,
+                gate_payload_json TEXT NOT NULL,
+                promoted_knowledge_id INTEGER,
+                FOREIGN KEY (promoted_knowledge_id) REFERENCES knowledge(id)
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_status ON memory_candidates(status)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_privacy ON memory_candidates(privacy_status)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_duplicate ON memory_candidates(duplicate_status)")
+
         c.commit()
 
         # 文章追蹤表
@@ -432,6 +461,7 @@ class VaultDB:
             "knowledge_claims",
             "semantic_vectors",
             "embedding_cache",
+            "memory_candidates",
             "content_log",
             "skills",
             "lint_cache",
@@ -741,6 +771,62 @@ class VaultDB:
         query += " ORDER BY trust DESC, updated_at DESC LIMIT ?"
         params.append(limit)
 
+        rows = self.conn.execute(query, params).fetchall()
+        return [dict(r) for r in rows]
+
+    # ── Memory candidate CRUD ───────────────────────────────
+
+    def add_memory_candidate(self, candidate: dict) -> str:
+        """Insert a memory candidate and return its id."""
+        now = datetime.now(timezone.utc).isoformat()
+        values = dict(candidate)
+        values.setdefault("created_at", now)
+        values.setdefault("updated_at", now)
+        values.setdefault("promoted_knowledge_id", None)
+        self.conn.execute(
+            """INSERT INTO memory_candidates
+               (id, created_at, updated_at, title, content, layer, category,
+                tags, trust, source, source_ref, reason, status,
+                privacy_status, duplicate_status, gate_payload_json,
+                promoted_knowledge_id)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                values["id"], values["created_at"], values["updated_at"],
+                values["title"], values["content"], values["layer"],
+                values["category"], values["tags"], values["trust"],
+                values["source"], values["source_ref"], values["reason"],
+                values["status"], values["privacy_status"],
+                values["duplicate_status"], values["gate_payload_json"],
+                values.get("promoted_knowledge_id"),
+            ),
+        )
+        self.conn.commit()
+        return str(values["id"])
+
+    def get_memory_candidate(self, candidate_id: str) -> Optional[dict]:
+        row = self.conn.execute(
+            "SELECT * FROM memory_candidates WHERE id=?", (candidate_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def update_memory_candidate(self, candidate_id: str, **fields) -> bool:
+        if not fields:
+            return False
+        fields["updated_at"] = datetime.now(timezone.utc).isoformat()
+        sets = ", ".join(f"{k}=?" for k in fields)
+        vals = list(fields.values()) + [candidate_id]
+        cur = self.conn.execute(f"UPDATE memory_candidates SET {sets} WHERE id=?", vals)
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    def list_memory_candidates(self, status: Optional[str] = None, limit: int = 100) -> list[dict]:
+        query = "SELECT * FROM memory_candidates"
+        params: list = []
+        if status:
+            query += " WHERE status=?"
+            params.append(status)
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
         rows = self.conn.execute(query, params).fetchall()
         return [dict(r) for r in rows]
 

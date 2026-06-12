@@ -834,7 +834,7 @@ TOOLS = [
     },
     {
         "name": "vault_add",
-        "description": "新增一筆知識到 Vault 百科。",
+        "description": "Direct low-level add to active Vault knowledge. Prefer vault_memory_propose for autonomous agents and unreviewed memories.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -868,6 +868,58 @@ TOOLS = [
                 },
             },
             "required": ["title", "content"]
+        }
+    },
+    {
+        "name": "vault_memory_propose",
+        "description": "Propose a possible memory through deterministic gates. Candidate-first; use this instead of vault_add for autonomous agents.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "content": {"type": "string"},
+                "source": {"type": "string", "default": "mcp"},
+                "source_ref": {"type": "string", "default": ""},
+                "layer": {"type": "string", "enum": ["L0", "L1", "L2", "L3"], "default": "L3"},
+                "category": {"type": "string", "default": "general"},
+                "tags": {"type": "string", "default": ""},
+                "trust": {"type": "number", "default": 0.5},
+                "reason": {"type": "string", "description": "Why this is worth remembering"},
+                "mode": {"type": "string", "enum": ["candidate", "promote_if_safe"], "default": "candidate"},
+            },
+            "required": ["title", "content", "reason"]
+        }
+    },
+    {
+        "name": "vault_memory_promote",
+        "description": "Promote a reviewed memory candidate into raw/ plus active SQLite knowledge. Requires confirm=true.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "candidate_id": {"type": "string"},
+                "confirm": {"type": "boolean", "default": True},
+                "compile": {"type": "boolean", "default": True},
+                "build_map": {"type": "boolean", "default": True},
+            },
+            "required": ["candidate_id", "confirm"]
+        }
+    },
+    {
+        "name": "vault_dream_run",
+        "description": "Run deterministic dream curation. Defaults to report-only and never deletes knowledge.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "mode": {"type": "string", "enum": ["report", "apply_safe"], "default": "report"},
+                "checks": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["freshness", "dedup", "convergence", "metadata", "orphans"]},
+                    "default": ["freshness", "dedup", "convergence", "metadata", "orphans"],
+                },
+                "limit": {"type": "integer", "default": 50},
+                "write_report": {"type": "boolean", "default": True},
+                "backup": {"type": "boolean", "default": True},
+            }
         }
     },
     {
@@ -1079,21 +1131,76 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
 
         elif name == "vault_add":
             db = _get_db()
-            kid = db.add_knowledge(
-                title=arguments.get("title", ""),
-                content_raw=arguments.get("content", ""),
-                category=arguments.get("category", "general"),
-                tags=arguments.get("tags", ""),
-                trust=arguments.get("trust", 0.5),
-                layer=arguments.get("layer", "L3"),
-                source="mcp",
-            )
-            db.close()
+            try:
+                kid = db.add_knowledge(
+                    title=arguments.get("title", ""),
+                    content_raw=arguments.get("content", ""),
+                    category=arguments.get("category", "general"),
+                    tags=arguments.get("tags", ""),
+                    trust=arguments.get("trust", 0.5),
+                    layer=arguments.get("layer", "L3"),
+                    source="mcp",
+                )
+            finally:
+                db.close()
             return {"result": json.dumps({
                 "success": True,
                 "id": kid,
                 "message": f"已新增知識 #{kid}: {arguments.get('title', '')}",
             }, ensure_ascii=False)}
+
+        elif name == "vault_memory_propose":
+            from vault.memory import propose_memory
+
+            db = _get_db()
+            try:
+                payload = propose_memory(
+                    db,
+                    title=arguments.get("title", ""),
+                    content=arguments.get("content", ""),
+                    reason=arguments.get("reason", ""),
+                    mode=arguments.get("mode", "candidate"),
+                    layer=arguments.get("layer", "L3"),
+                    category=arguments.get("category", "general"),
+                    tags=arguments.get("tags", ""),
+                    trust=arguments.get("trust", 0.5),
+                    source=arguments.get("source", "mcp"),
+                    source_ref=arguments.get("source_ref", ""),
+                )
+            finally:
+                db.close()
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
+
+        elif name == "vault_memory_promote":
+            from vault.memory import promote_candidate
+
+            project_dir = str(Path(DB_PATH).resolve().parent)
+            db = _get_db()
+            try:
+                payload = promote_candidate(
+                    db,
+                    arguments.get("candidate_id", ""),
+                    confirm=bool(arguments.get("confirm", False)),
+                    project_dir=project_dir,
+                    compile=bool(arguments.get("compile", True)),
+                    build_map=bool(arguments.get("build_map", True)),
+                )
+            finally:
+                db.close()
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
+
+        elif name == "vault_dream_run":
+            from vault.dream import run_dream
+
+            payload = run_dream(
+                Path(DB_PATH).resolve().parent,
+                mode=arguments.get("mode", "report"),
+                checks=arguments.get("checks"),
+                limit=arguments.get("limit", 50),
+                write_report=bool(arguments.get("write_report", True)),
+                backup=bool(arguments.get("backup", True)),
+            )
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 
         elif name == "vault_stats":
             db = _get_db()

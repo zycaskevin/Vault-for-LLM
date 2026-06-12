@@ -75,7 +75,9 @@ Vault-for-LLM 不只是另一个向量数据库。它正在往 **Agent 记忆质
 | 记忆分层 | L0 身份、L1 核心事实、L2 近期上下文、L3 深知识 |
 | 知识图谱 | 自动推断实体/关系，支持图谱扩展 |
 | Document Map | 章节/主张导航，支持有行号范围的 citation |
-| MCP | `vault-mcp` 将 search/add/stats/map/read 工具暴露给兼容 Agent |
+| MCP | `vault-mcp` 将 search/add/stats/map/read 与候选制记忆工具暴露给兼容 Agent（[MCP 记忆流程](docs/mcp_memory_workflow.md)） |
+| 记忆整理器 | `vault remember`、`vault promote`、MCP propose/promote 工具，让 autonomous memory write 先经过 gate |
+| Dream 报告 | `vault dream` 产生 report-first 记忆整理摘要，找出过期、重复、不完整或 metadata 弱的知识（[Dream workflow](docs/dream_workflow.md)） |
 | 质量工具 | lint、freshness、convergence、cross-validation、dedup、Search QA snapshot、semantic smoke/warm workflow |
 | Repo 治理 | source checkout 内的公开边界 gate、artifact audit、safe-only cleanup helper |
 | 可选远端同步 | Supabase sync scripts，适合团队或远端读取 |
@@ -97,7 +99,7 @@ Vault-for-LLM 不只是另一个向量数据库。它正在往 **Agent 记忆质
 | 本机技能登记库 | 在本地 SQLite 中 push/search/pull 可重复使用的 Agent workflows | 实验性 / 仅本地 |
 | Repo hygiene scripts | 审计 generated artifacts、清理安全 cache、发布前扫描 public PR diff | source-checkout helper |
 
-目前最稳定的路径仍是核心流程：`vault init` → `vault add` → `vault compile` → `vault search` → `vault-mcp`。
+目前最稳定的路径仍是核心流程：`vault init` → `vault add`/`vault remember` → `vault compile`/`vault promote` → `vault search` → `vault-mcp`。Autonomous agent 建议使用 `vault_memory_propose`，不要直接用 `vault_add` 写入未审核记忆。
 
 ---
 

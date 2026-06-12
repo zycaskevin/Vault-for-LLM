@@ -44,38 +44,22 @@ In other words: regular RAG focuses on retrieval; Vault-for-LLM focuses on wheth
 - **Agent-oriented memory** — split always-needed facts from searchable deep knowledge.
 - **Bounded retrieval** — Document Map tools help agents read the right section instead of dumping entire files into context.
 - **Optional sync** — Supabase support is an optional sync/read target, not required infrastructure.
-- **Alpha, CLI-first** — this is a developer-facing tool. Expect rough edges and evolving APIs.
+- **CLI-first** — this is a developer-facing tool. Core local usage is stable; advanced QA, semantic, and sync workflows still evolve.
 
 ---
 
-## What's new in 0.4.3
+## What's new in 0.5.0
 
-Version 0.4.3 adds **repository hygiene and public-boundary tools** for teams that use Vault-for-LLM in both private work and open-source release flows:
+Version 0.5.0 upgrades Vault-for-LLM from “local keyword-search memory” into a measurable retrieval workflow:
 
-- `scripts/public_pr_gate.py` scans the actual PR diff and fails closed on private-only files, runtime data, local paths, secret-looking assignments, renamed paths, deleted lines, and large unexpected diffs.
-- `scripts/artifact_audit.py` reports generated caches, review-only runtime folders, and archive candidates without deleting anything.
-- `scripts/artifact_cleanup.py` defaults to dry-run and only deletes reproducible cache artifacts when explicitly run with `--execute --safe-only`.
-- `docs/repo_governance.md` documents the public/internal release boundary and whitelist staging workflow.
+- **Search QA baseline** — run fixed query sets and compare retrieval quality/latency before and after search changes.
+- **FTS5/BM25 keyword search** — faster keyword retrieval when SQLite FTS5 is available, with safe fallback to the legacy `LIKE` path for compatibility and CJK misses.
+- **Guarded semantic workflow** — optional semantic vectors, provider validation, persistent embedding cache, and operator commands for rebuild/warm/smoke/startup/daemon.
+- **Release gates** — README command smoke, wheel smoke, version parity, secret scan, full-history privacy scan, and public-boundary checks.
 
-These tools are source-checkout governance helpers; they do not change the core `vault` CLI memory workflow.
+Semantic search is **optional by design**: the base install still works with keyword search only. If you configure a real embedding provider, use [`vault semantic ...`](docs/semantic_search.md) to rebuild vectors, warm caches, and run smoke checks. Deterministic hash embeddings require `--allow-hash` and are for CI/local tests only.
 
-See [`scripts/README.md`](scripts/README.md) for the script-by-script command guide and safety defaults.
-
----
-
-## What's new in the current source tree
-
-The current source tree adds a guarded semantic-search workflow on top of the local SQLite vault:
-
-- Keyword search now prefers SQLite FTS5/BM25 when available and falls back to `LIKE` when FTS5 is unavailable or misses CJK text.
-- `semantic_vectors` stores claim/knowledge-level embedding rows with source citations.
-- Embedding providers declare `provider_id`, vector dimension, and whether they are real semantic providers; deterministic hash embeddings are allowed only when explicitly requested for tests.
-- `vault semantic rebuild|warm|smoke|cache-stats|cache-prune|startup|daemon` provides operator workflows for rebuilding vectors, warming QA queries, checking durable cache stats, and running a bounded startup/daemon hook.
-- `embedding_cache` can persist embeddings across processes for startup and daemon workflows. Startup/daemon use the persistent cache by default; pass `--no-persist-cache` to disable it.
-
-The semantic commands are still alpha. They are designed to be measurable and fail-closed: production-like semantic paths require a real semantic provider unless you pass `--allow-hash` for local tests or CI smoke checks.
-
-See the [semantic workflow guide](docs/semantic_search.md) and upgrade notes under [`docs/upgrade/`](docs/upgrade/) for implementation details.
+Older repository hygiene tools from 0.4.3 are documented in [`scripts/README.md`](scripts/README.md) and [`docs/repo_governance.md`](docs/repo_governance.md).
 
 ---
 
@@ -99,7 +83,7 @@ See the [semantic workflow guide](docs/semantic_search.md) and upgrade notes und
 
 ## Quality tools roadmap
 
-These features exist today, but they are still alpha and should be treated as quality-assurance tools rather than a fully managed platform:
+These features exist today, but their maturity differs. Core local commands are the stable path; advanced QA, semantic, sync, and skill-registry workflows are still evolving:
 
 | Tool | Purpose | Maturity |
 |---|---|---|
@@ -219,38 +203,15 @@ What broke, why it broke, and how to avoid it next time.
 
 ### Optional semantic workflow
 
-Semantic search is optional. The base install keeps working with keyword search. If you configure a real embedding provider, you can rebuild semantic vectors and run a small smoke check:
+Semantic search is optional by design. The base install keeps working with keyword search only. After configuring a real embedding provider, the main operator commands are:
 
 ```bash
-# after installing/configuring a real embedding provider
 vault semantic rebuild --persist-cache
-vault semantic cache-stats --pretty
 vault semantic smoke --qa-file benchmarks/search_qa/basic.en.json --mode keyword --pretty
+vault semantic cache-stats --pretty
 ```
 
-For CI and local command-shape tests only, you can explicitly allow the deterministic hash provider:
-
-```bash
-vault semantic smoke \
-  --allow-hash \
-  --qa-file benchmarks/search_qa/basic.en.json \
-  --mode keyword \
-  --pretty
-```
-
-Do not use `--allow-hash` as production semantic retrieval. It is a deterministic test double, not a semantic model.
-
-Startup integration can call the importable lifecycle hook through the CLI:
-
-```bash
-vault semantic startup --qa-file benchmarks/search_qa/basic.en.json --smoke --pretty
-```
-
-The bounded daemon defaults to one iteration. Use `--repeat 0` only under a process supervisor:
-
-```bash
-vault semantic daemon --repeat 1 --interval 60 --pretty
-```
+For the full lifecycle — `warm`, `cache-prune`, `startup`, `daemon`, and the `--allow-hash` test-only provider — see [`docs/semantic_search.md`](docs/semantic_search.md).
 
 ---
 
@@ -367,7 +328,7 @@ Core Vault-for-LLM usage is local-only. Supabase support is for teams or remote 
 The local SQLite database remains the source of truth. Supabase is an optional sync/read target. Remote table names use Vault-branded defaults and can be overridden with `VAULT_SUPABASE_*_TABLE` environment variables when integrating an existing private schema.
 
 ```bash
-# install manually while this is alpha
+# optional integration dependency
 pip install supabase
 
 # configure Supabase credentials in your environment, then run sync scripts as needed
@@ -378,12 +339,12 @@ python scripts/sync_to_supabase.py --document-map
 
 ## Current maturity
 
-Vault-for-LLM is alpha software:
+Vault-for-LLM is CLI-first developer tooling:
 
-- Package, module, database, and MCP tool names are Vault-branded.
-- Advanced features such as convergence, cross-validation, Search QA, skills, and Supabase sync are evolving.
+- Core local commands (`init`, `add`, `compile`, `search`) are the most stable path.
+- Search QA, FTS5/BM25 keyword search, Document Map citation reads, and semantic workflow commands are usable but still evolving.
+- Optional integrations such as Supabase sync, MCP, and local skill registry may change before a stable 1.0 release.
 - The default install is available from PyPI; source installs are for development.
-- APIs and schemas may change before a stable release.
 
 If you want the most stable path, start with:
 

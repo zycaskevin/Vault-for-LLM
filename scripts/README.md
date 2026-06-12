@@ -28,7 +28,7 @@ python scripts/public_pr_gate.py --base origin/main --head HEAD --allow-cleanup-
 python scripts/artifact_audit.py --root .
 python scripts/artifact_cleanup.py --root .              # dry-run
 python scripts/artifact_cleanup.py --root . --execute --safe-only
-python scripts/check_release_parity.py --tag v0.4.3
+python scripts/check_release_parity.py --tag v0.5.0
 ```
 
 ## Local knowledge-quality helpers

@@ -2,15 +2,15 @@
 
 **English | [繁體中文](README.zh-Hant.md) | [简体中文](README.zh-CN.md)**
 
-> Local-first memory for LLM agents.
+> Local-first, production-grade memory for LLM agents.
 >
-> Vault-for-LLM creates a portable SQLite knowledge vault for your projects and AI agents. Add Markdown notes, compile them into searchable structured memory, and let agents query the vault through the `vault` CLI or the `vault-mcp` server.
+> Vault-for-LLM turns Markdown project knowledge into a portable SQLite memory vault that agents can search on demand. It is built for the boring parts that make agent memory usable in real projects: retrieval QA, bounded document reads, semantic search, schema migrations, and verified backup/restore.
 
 ---
 
 ## Why this exists
 
-LLM agents are powerful, but most of them forget project context between sessions. They lose decisions, repeated mistakes, user preferences, debugging history, and hard-won operational knowledge.
+LLM agents are powerful, but most of them forget the things that matter between sessions: project decisions, repeated mistakes, user preferences, debugging history, and hard-won operational knowledge.
 
 Vault-for-LLM gives an agent a simple local memory layer:
 
@@ -19,7 +19,7 @@ Vault-for-LLM gives an agent a simple local memory layer:
 3. Agents search it only when needed, instead of stuffing everything into every prompt.
 4. MCP-compatible agents can query the vault during a conversation.
 
-The goal is not to replace your notes app. The goal is to make your notes **usable by agents**.
+The goal is not to replace your notes app or become another hosted vector database. The goal is to make your project knowledge **usable, measurable, and recoverable by agents**.
 
 ---
 
@@ -50,7 +50,7 @@ In other words: regular RAG focuses on retrieval; Vault-for-LLM focuses on wheth
 
 ## What's new in 0.5.0
 
-Version 0.5.0 upgrades Vault-for-LLM from “local keyword-search memory” into a measurable retrieval workflow:
+Version 0.5.0 upgrades Vault-for-LLM from “local keyword-search memory” into a production-hardened local memory workflow:
 
 - **Search QA baseline** — run fixed query sets and compare retrieval quality/latency before and after search changes.
 - **FTS5/BM25 keyword search** — faster keyword retrieval when SQLite FTS5 is available, with safe fallback to the legacy `LIKE` path for compatibility and CJK misses.
@@ -120,6 +120,8 @@ This keeps the agent prompt small while still making deeper memory available whe
 ## Installation
 
 ### Install from PyPI
+
+> Release note: the GitHub source tree is currently `0.5.0`, while PyPI may still show an older version until Trusted Publisher publishing is unblocked. If you need the newest 0.5.0 source features immediately, use the source install below.
 
 ```bash
 python3 -m venv .venv

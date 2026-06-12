@@ -2,15 +2,15 @@
 
 **[English](README.md) | 繁體中文 | [简体中文](README.zh-CN.md)**
 
-> 給 LLM Agent 用的本地優先記憶層。
+> 給 LLM Agent 用的本地優先、生產級記憶層。
 >
-> Vault-for-LLM 會在你的專案裡建立一個可攜式 SQLite 知識庫。你可以用 Markdown 寫筆記，把它們編譯成可搜尋、可引用的結構化記憶，並透過 `vault` CLI 或 `vault-mcp` 讓 AI Agent 在對話中查詢。
+> Vault-for-LLM 會把 Markdown 專案知識轉成可攜式 SQLite 記憶庫，讓 Agent 需要時再搜尋。它處理的是讓 Agent 記憶能長期運作的無聊但重要部分：搜尋 QA、定界讀取、語意搜尋、schema migration，以及可驗證的 backup/restore。
 
 ---
 
 ## 為什麼需要它？
 
-LLM Agent 很強，但大多數 Agent 每次開新 session 就會忘記上下文：決策、踩坑、使用者偏好、專案設定、除錯過程都要重新教一次。
+LLM Agent 很強，但大多數 Agent 每次開新 session 就會忘記真正重要的上下文：決策、踩坑、使用者偏好、專案設定、除錯過程都要重新教一次。
 
 Vault-for-LLM 解決的是這件事：
 
@@ -19,7 +19,7 @@ Vault-for-LLM 解決的是這件事：
 3. Agent 需要時再搜尋，不用把所有內容塞進 prompt。
 4. 支援 MCP 的 Agent 可以在對話中直接查知識庫。
 
-它不是要取代你的筆記軟體，而是讓你的筆記**可以被 Agent 使用**。
+它不是要取代你的筆記軟體，也不是另一個託管向量資料庫。它的目標是讓你的專案知識**可以被 Agent 使用、被量測、也能被備份還原**。
 
 ---
 
@@ -50,11 +50,13 @@ Vault-for-LLM 不只是另一個向量資料庫。它正在往 **Agent 記憶品
 
 ## 0.5.0 新增內容
 
-0.5.0 把 Vault-for-LLM 從「本地關鍵字搜尋記憶庫」升級成可量測的 retrieval workflow：
+0.5.0 把 Vault-for-LLM 從「本地關鍵字搜尋記憶庫」升級成更接近生產級的本地記憶 workflow：
 
 - **Search QA baseline**：用固定 query set 比較搜尋品質與延遲，避免 retrieval 改動只靠感覺。
 - **FTS5/BM25 關鍵字搜尋**：SQLite 支援 FTS5 時使用更快的 BM25；FTS5 不可用或 CJK 命中不足時安全 fallback 到 `LIKE`。
 - **有 guardrail 的語意工作流**：可選 semantic vectors、provider validation、persistent embedding cache，以及 rebuild/warm/smoke/startup/daemon 操作指令。
+- **明確的 DB schema status/migration**：用 [`vault db status/migrate`](docs/db_migrations.md) 檢查並執行 idempotent SQLite migrations。
+- **本地 SQLite backup/verify/restore**：用 [`vault db backup/verify-backup/restore`](docs/db_backup_restore.md) 建立、驗證、還原備份；restore 前會拒絕非 Vault 或格式壞掉的 DB。
 - **Release gates**：README command smoke、wheel smoke、version parity、secret scan、full-history privacy scan、public-boundary checks。
 
 語意搜尋是**刻意設計成可選功能**：基礎安裝只靠關鍵字搜尋也能跑。設定真 embedding provider 後，可用 [`vault semantic ...`](docs/semantic_search.md) 重建 vectors、預熱 cache、跑 smoke checks。Deterministic hash embeddings 必須明確加 `--allow-hash`，只供 CI/本機測試使用。
@@ -117,6 +119,8 @@ Markdown raw/  →  vault compile  →  SQLite database  →  vault search / MCP
 ## 安裝
 
 ### 從 PyPI 安裝
+
+> 發布備註：GitHub source tree 目前是 `0.5.0`，但 PyPI 可能仍停在較舊版本，直到 Trusted Publisher 發布設定修好。如果你需要最新 0.5.0 source features，請先使用下方 source install。
 
 ```bash
 python3 -m venv .venv

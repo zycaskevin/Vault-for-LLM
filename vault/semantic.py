@@ -140,6 +140,221 @@ class CachedEmbeddingProvider:
         return len(self._cache)
 
 
+def embedding_text_hash(text: str) -> str:
+    """Return the stable public-safe hash used for embedding cache keys."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def get_cached_embedding(
+    db: VaultDB,
+    provider_id: str,
+    dimension: int,
+    text: str,
+) -> list[float] | None:
+    """Read one embedding from the durable cache and update usage counters."""
+    text_hash = embedding_text_hash(text)
+    row = db.conn.execute(
+        """SELECT id, vector FROM embedding_cache
+           WHERE provider_id=? AND dimension=? AND text_hash=?""",
+        (provider_id, dimension, text_hash),
+    ).fetchone()
+    if row is None:
+        return None
+    now = datetime.now(timezone.utc).isoformat()
+    db.conn.execute(
+        """UPDATE embedding_cache
+              SET last_used_at=?, hit_count=hit_count+1
+            WHERE id=?""",
+        (now, row["id"]),
+    )
+    db.conn.commit()
+    return [float(value) for value in json.loads(row["vector"])]
+
+
+def set_cached_embedding(
+    db: VaultDB,
+    provider_id: str,
+    dimension: int,
+    text: str,
+    vector: list[float],
+) -> None:
+    """Write or refresh one embedding in the durable cache."""
+    now = datetime.now(timezone.utc).isoformat()
+    db.conn.execute(
+        """INSERT INTO embedding_cache
+           (provider_id, text_hash, dimension, vector, text, created_at, last_used_at, hit_count)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+           ON CONFLICT(provider_id, dimension, text_hash) DO UPDATE SET
+             vector=excluded.vector,
+             text=excluded.text,
+             last_used_at=excluded.last_used_at""",
+        (provider_id, embedding_text_hash(text), dimension, json.dumps(vector), text, now, now),
+    )
+    db.conn.commit()
+
+
+def embedding_cache_stats(
+    db: VaultDB,
+    *,
+    provider_id: str | None = None,
+    dimension: int | None = None,
+) -> dict[str, Any]:
+    """Return aggregate durable embedding-cache statistics."""
+    where: list[str] = []
+    params: list[Any] = []
+    if provider_id is not None:
+        where.append("provider_id=?")
+        params.append(provider_id)
+    if dimension is not None:
+        where.append("dimension=?")
+        params.append(dimension)
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    row = db.conn.execute(
+        f"""SELECT count(*) AS total_rows,
+                  coalesce(sum(hit_count), 0) AS total_hits,
+                  min(last_used_at) AS oldest_last_used,
+                  max(last_used_at) AS newest_last_used
+             FROM embedding_cache {where_sql}""",
+        params,
+    ).fetchone()
+    payload: dict[str, Any] = {
+        "total_rows": int(row["total_rows"]),
+        "total_hits": int(row["total_hits"]),
+        "oldest_last_used": row["oldest_last_used"],
+        "newest_last_used": row["newest_last_used"],
+    }
+    if provider_id is not None:
+        payload["provider_id"] = provider_id
+    if dimension is not None:
+        payload["dimension"] = int(dimension)
+    return payload
+
+
+def prune_embedding_cache(
+    db: VaultDB,
+    *,
+    provider_id: str | None = None,
+    dimension: int | None = None,
+    older_than_days: int | None = None,
+    max_rows: int | None = None,
+) -> int:
+    """Delete durable cache rows by filters and/or keep only newest max_rows."""
+    deleted = 0
+    where: list[str] = []
+    params: list[Any] = []
+    if provider_id is not None:
+        where.append("provider_id=?")
+        params.append(provider_id)
+    if dimension is not None:
+        where.append("dimension=?")
+        params.append(dimension)
+    if older_than_days is not None:
+        cutoff = datetime.now(timezone.utc).timestamp() - (older_than_days * 86400)
+        cutoff_iso = datetime.fromtimestamp(cutoff, timezone.utc).isoformat()
+        where.append("last_used_at<?")
+        params.append(cutoff_iso)
+    if older_than_days is not None:
+        result = db.conn.execute(
+            f"DELETE FROM embedding_cache WHERE {' AND '.join(where)}",
+            params,
+        )
+        deleted += int(result.rowcount if result.rowcount != -1 else 0)
+
+    if max_rows is not None:
+        keep_where: list[str] = []
+        keep_params: list[Any] = []
+        if provider_id is not None:
+            keep_where.append("provider_id=?")
+            keep_params.append(provider_id)
+        if dimension is not None:
+            keep_where.append("dimension=?")
+            keep_params.append(dimension)
+        keep_sql = f"WHERE {' AND '.join(keep_where)}" if keep_where else ""
+        result = db.conn.execute(
+            f"""DELETE FROM embedding_cache
+                 WHERE id IN (
+                     SELECT ec.id FROM embedding_cache AS ec
+                     {keep_sql}
+                     ORDER BY ec.last_used_at DESC, ec.id DESC
+                     LIMIT -1 OFFSET ?
+                 )""",
+            [*keep_params, max_rows],
+        )
+        deleted += int(result.rowcount if result.rowcount != -1 else 0)
+    db.conn.commit()
+    return deleted
+
+
+class PersistentCachedEmbeddingProvider:
+    """Embedding provider with small in-memory cache backed by VaultDB."""
+
+    cache_version = "v1"
+
+    def __init__(self, provider: SemanticEmbeddingProvider, db: VaultDB):
+        self.provider = provider
+        self.db = db
+        self._cache: dict[tuple[str, int, str, str], list[float]] = {}
+        self.persistent_hits = 0
+        self.persistent_misses = 0
+        self.writes = 0
+
+    @property
+    def provider_id(self) -> str:
+        return provider_id(self.provider)
+
+    @property
+    def is_semantic(self) -> bool:
+        return provider_is_semantic(self.provider)
+
+    @property
+    def dim(self) -> int:
+        return provider_dimension(self.provider)
+
+    @property
+    def cache_size(self) -> int:
+        return len(self._cache)
+
+    def encode(self, texts: str | list[str]) -> list[list[float]]:
+        text_list = [texts] if isinstance(texts, str) else list(texts)
+        results: list[list[float] | None] = [None] * len(text_list)
+        unique_misses: dict[str, list[int]] = {}
+
+        for index, text in enumerate(text_list):
+            key = self._cache_key(text)
+            if key in self._cache:
+                results[index] = self._cache[key]
+                continue
+            vector = get_cached_embedding(self.db, self.provider_id, self.dim, text)
+            if vector is not None:
+                self.persistent_hits += 1
+                self._cache[key] = vector
+                results[index] = vector
+                continue
+            self.persistent_misses += 1
+            unique_misses.setdefault(text, []).append(index)
+
+        if unique_misses:
+            miss_texts = list(unique_misses)
+            encoded = self.provider.encode(miss_texts)
+            for text, vector in zip(miss_texts, encoded, strict=True):
+                key = self._cache_key(text)
+                self._cache[key] = vector
+                set_cached_embedding(self.db, self.provider_id, self.dim, text, vector)
+                self.writes += 1
+                for index in unique_misses[text]:
+                    results[index] = vector
+
+        return [vector for vector in results if vector is not None]
+
+    def close(self) -> None:
+        close = getattr(self.provider, "close", None)
+        if callable(close):
+            close()
+
+    def _cache_key(self, text: str) -> tuple[str, int, str, str]:
+        return (self.provider_id, self.dim, self.cache_version, embedding_text_hash(text))
+
+
 class DeterministicHashEmbeddingProvider:
     """Small deterministic embedding provider for tests and public demos.
 

@@ -99,6 +99,39 @@ def _vector_count(db_path: Path) -> int:
         db.close()
 
 
+def _cache_summary(db_path: Path) -> dict[str, int]:
+    db = VaultDB(db_path).connect()
+    try:
+        row = db.conn.execute(
+            "SELECT count(*) AS rows, coalesce(sum(hit_count), 0) AS hits FROM embedding_cache"
+        ).fetchone()
+        return {"rows": int(row["rows"]), "hits": int(row["hits"])}
+    finally:
+        db.close()
+
+
+def _write_unique_qa(tmp_path: Path, count: int = 3) -> Path:
+    qa_file = tmp_path / "qa_unique.json"
+    qa_file.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "cases": [
+                    {
+                        "id": f"case_{index}",
+                        "query": f"semantic workflow warm query {index}",
+                        "expected_titles": ["Semantic Workflow Guide"],
+                    }
+                    for index in range(count)
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return qa_file
+
+
 def test_semantic_cli_default_rejects_hash_provider_config(tmp_path: Path):
     db_path = _build_db(tmp_path, hash_config=True)
 
@@ -197,3 +230,148 @@ def test_semantic_cli_smoke_writes_combined_json_with_qa_aggregate(tmp_path: Pat
     assert payload["cache_size"] >= 1
     assert payload["qa"]["aggregate"]["total_cases"] == 2
     assert "cases_with_results" in payload["qa"]["aggregate"]
+
+
+def test_semantic_cli_persistent_warm_inserts_and_reuses_rows(tmp_path: Path):
+    db_path = _build_db(tmp_path)
+    qa_file = _write_qa(tmp_path)
+
+    first = _run_cli(
+        tmp_path,
+        "semantic",
+        "warm",
+        "--db-path",
+        str(db_path),
+        "--qa-file",
+        str(qa_file),
+        "--allow-hash",
+        "--hash-dim",
+        "8",
+        "--persist-cache",
+    )
+    assert first.returncode == 0, first.stderr
+    first_payload = json.loads(first.stdout)
+    assert first_payload["persistent_cache"]["writes"] == 1
+    assert _cache_summary(db_path) == {"rows": 1, "hits": 0}
+
+    second = _run_cli(
+        tmp_path,
+        "semantic",
+        "warm",
+        "--db-path",
+        str(db_path),
+        "--qa-file",
+        str(qa_file),
+        "--allow-hash",
+        "--hash-dim",
+        "8",
+        "--persist-cache",
+    )
+    assert second.returncode == 0, second.stderr
+    second_payload = json.loads(second.stdout)
+    assert second_payload["persistent_cache"]["persistent_hits"] == 1
+    assert second_payload["persistent_cache"]["writes"] == 0
+    assert _cache_summary(db_path) == {"rows": 1, "hits": 1}
+
+
+def test_semantic_cli_persistent_cache_dimension_mismatch_does_not_reuse(tmp_path: Path):
+    db_path = _build_db(tmp_path)
+    qa_file = _write_qa(tmp_path)
+
+    for dim in (8, 16):
+        result = _run_cli(
+            tmp_path,
+            "semantic",
+            "warm",
+            "--db-path",
+            str(db_path),
+            "--qa-file",
+            str(qa_file),
+            "--allow-hash",
+            "--hash-dim",
+            str(dim),
+            "--persist-cache",
+        )
+        assert result.returncode == 0, result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["persistent_cache"]["writes"] == 1
+        assert payload["persistent_cache"]["persistent_hits"] == 0
+
+    assert _cache_summary(db_path) == {"rows": 2, "hits": 0}
+
+
+def test_semantic_cli_cache_stats_returns_rows_and_hits(tmp_path: Path):
+    db_path = _build_db(tmp_path)
+    qa_file = _write_qa(tmp_path)
+    for _ in range(2):
+        result = _run_cli(
+            tmp_path,
+            "semantic",
+            "warm",
+            "--db-path",
+            str(db_path),
+            "--qa-file",
+            str(qa_file),
+            "--allow-hash",
+            "--hash-dim",
+            "8",
+            "--persist-cache",
+        )
+        assert result.returncode == 0, result.stderr
+
+    stats = _run_cli(
+        tmp_path,
+        "semantic",
+        "cache-stats",
+        "--db-path",
+        str(db_path),
+        "--provider-id",
+        "hash-deterministic-v1",
+        "--dimension",
+        "8",
+    )
+    assert stats.returncode == 0, stats.stderr
+    payload = json.loads(stats.stdout)
+    assert payload["action"] == "cache-stats"
+    assert payload["total_rows"] == 1
+    assert payload["total_hits"] == 1
+    assert payload["provider_id"] == "hash-deterministic-v1"
+    assert payload["dimension"] == 8
+
+
+def test_semantic_cli_cache_prune_max_rows_deletes_expected_rows(tmp_path: Path):
+    db_path = _build_db(tmp_path)
+    qa_file = _write_unique_qa(tmp_path, count=3)
+    warm = _run_cli(
+        tmp_path,
+        "semantic",
+        "warm",
+        "--db-path",
+        str(db_path),
+        "--qa-file",
+        str(qa_file),
+        "--allow-hash",
+        "--hash-dim",
+        "8",
+        "--persist-cache",
+    )
+    assert warm.returncode == 0, warm.stderr
+    assert _cache_summary(db_path)["rows"] == 3
+
+    prune = _run_cli(
+        tmp_path,
+        "semantic",
+        "cache-prune",
+        "--db-path",
+        str(db_path),
+        "--provider-id",
+        "hash-deterministic-v1",
+        "--dimension",
+        "8",
+        "--max-rows",
+        "1",
+    )
+    assert prune.returncode == 0, prune.stderr
+    payload = json.loads(prune.stdout)
+    assert payload == {"action": "cache-prune", "deleted_rows": 2}
+    assert _cache_summary(db_path)["rows"] == 1

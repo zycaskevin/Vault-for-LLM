@@ -222,6 +222,25 @@ class VaultDB:
         c.execute("CREATE INDEX IF NOT EXISTS idx_semantic_vectors_kind ON semantic_vectors(vector_kind)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_semantic_vectors_item_uid ON semantic_vectors(item_uid)")
 
+        # Durable embedding cache used by semantic workflow providers. Vectors are
+        # stored as JSON to keep base installs independent from sqlite-vec.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS embedding_cache (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider_id  TEXT NOT NULL,
+                text_hash    TEXT NOT NULL,
+                dimension    INTEGER NOT NULL,
+                vector       TEXT NOT NULL,
+                text         TEXT NOT NULL DEFAULT '',
+                created_at   TEXT NOT NULL,
+                last_used_at TEXT NOT NULL,
+                hit_count    INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(provider_id, dimension, text_hash)
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_embedding_cache_provider_dim ON embedding_cache(provider_id, dimension)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_embedding_cache_last_used ON embedding_cache(last_used_at)")
+
         c.commit()
 
         # 文章追蹤表

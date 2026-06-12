@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from vault.db import VaultDB
+from vault.semantic_lifecycle import close_provider, run_semantic_daemon, run_semantic_startup
 
 
 RAW = "\n".join(
@@ -375,3 +376,129 @@ def test_semantic_cli_cache_prune_max_rows_deletes_expected_rows(tmp_path: Path)
     payload = json.loads(prune.stdout)
     assert payload == {"action": "cache-prune", "deleted_rows": 2}
     assert _cache_summary(db_path)["rows"] == 1
+
+
+def test_semantic_startup_hook_warms_rebuilds_and_smokes(tmp_path: Path):
+    db_path = _build_db(tmp_path)
+    qa_file = _write_qa(tmp_path)
+
+    payload = run_semantic_startup(
+        db_path=db_path,
+        qa_file=qa_file,
+        allow_hash=True,
+        hash_dim=8,
+        persist_cache=True,
+        rebuild=True,
+        smoke=True,
+        limit=3,
+    )
+
+    assert payload["success"] is True
+    assert payload["provider"]["provider_id"] == "hash-deterministic-v1"
+    assert payload["provider"]["dimension"] == 8
+    assert payload["rebuild"] == {
+        "knowledge_rows": 1,
+        "node_vectors": 2,
+        "claim_vectors": 1,
+        "provider_id": "hash-deterministic-v1",
+        "dimension": 8,
+    }
+    assert payload["warmed_queries"] == 1
+    assert payload["cache_before"]["total_rows"] == 0
+    assert payload["cache_after"]["total_rows"] > 0
+    assert payload["persistent_cache"]["writes"] > 0
+    assert payload["smoke"]["aggregate"]["total_cases"] == 2
+
+
+def test_semantic_daemon_repeat_two_reuses_persistent_cache(tmp_path: Path):
+    db_path = _build_db(tmp_path)
+    qa_file = _write_qa(tmp_path)
+
+    payload = run_semantic_daemon(
+        db_path=db_path,
+        qa_file=qa_file,
+        allow_hash=True,
+        hash_dim=8,
+        persist_cache=True,
+        repeat=2,
+        interval=0,
+    )
+
+    assert payload["success"] is True
+    assert payload["repeat"] == 2
+    assert len(payload["iterations"]) == 2
+    assert payload["iterations"][0]["persistent_cache"]["writes"] == 1
+    assert payload["iterations"][1]["persistent_cache"]["persistent_hits"] == 1
+    assert _cache_summary(db_path)["rows"] > 0
+    assert _cache_summary(db_path)["hits"] > 0
+
+
+def test_close_provider_swallows_close_failure():
+    class BrokenClose:
+        def close(self):
+            raise RuntimeError("boom")
+
+    close_provider(BrokenClose())
+
+
+def test_semantic_cli_startup_outputs_json_and_file(tmp_path: Path):
+    db_path = _build_db(tmp_path)
+    qa_file = _write_qa(tmp_path)
+    output = tmp_path / "startup.json"
+
+    result = _run_cli(
+        tmp_path,
+        "semantic",
+        "startup",
+        "--db-path",
+        str(db_path),
+        "--qa-file",
+        str(qa_file),
+        "--allow-hash",
+        "--hash-dim",
+        "8",
+        "--rebuild",
+        "--smoke",
+        "--output",
+        str(output),
+        "--limit",
+        "3",
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert json.loads(output.read_text(encoding="utf-8")) == payload
+    assert payload["action"] == "startup"
+    assert payload["success"] is True
+    assert payload["warmed_queries"] == 1
+    assert payload["smoke"]["aggregate"]["total_cases"] == 2
+    assert _cache_summary(db_path)["rows"] > 0
+
+
+def test_semantic_cli_daemon_repeat_two_interval_zero(tmp_path: Path):
+    db_path = _build_db(tmp_path)
+    qa_file = _write_qa(tmp_path)
+
+    result = _run_cli(
+        tmp_path,
+        "semantic",
+        "daemon",
+        "--db-path",
+        str(db_path),
+        "--qa-file",
+        str(qa_file),
+        "--allow-hash",
+        "--hash-dim",
+        "8",
+        "--repeat",
+        "2",
+        "--interval",
+        "0",
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["action"] == "daemon"
+    assert payload["success"] is True
+    assert len(payload["iterations"]) == 2
+    assert payload["iterations"][1]["persistent_cache"]["persistent_hits"] == 1

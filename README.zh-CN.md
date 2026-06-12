@@ -205,9 +205,13 @@ created: "2026-05-16"
 
 ```bash
 vault semantic rebuild --persist-cache
-vault semantic smoke --qa-file benchmarks/search_qa/basic.en.json --mode keyword --pretty
+vault search "what caused the bug" --mode semantic
+vault search "what caused the bug" --mode hybrid
+vault semantic smoke --qa-file benchmarks/search_qa/basic.en.json --mode semantic --pretty
 vault semantic cache-stats --pretty
 ```
+
+`vault search --mode semantic` 会直接读取已存储的 `semantic_vectors`；`--mode hybrid` 会在可用时融合关键词与 stored semantic index，不可用时安全 fallback。
 
 完整 lifecycle（`warm`、`cache-prune`、`startup`、`daemon`、以及只供测试用的 `--allow-hash`）请看 [`docs/semantic_search.md`](docs/semantic_search.md)。
 

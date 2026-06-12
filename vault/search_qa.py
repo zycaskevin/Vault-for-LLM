@@ -60,6 +60,9 @@ def evaluate_search_qa(
     mode: str = "keyword",
     limit: int = 10,
     generated_at: str | None = None,
+    embed_provider: Any | None = None,
+    semantic_vector_kind: str = "claim",
+    allow_hash: bool = False,
 ) -> dict[str, Any]:
     """Run all QA cases through ``VaultSearch`` and return a JSON snapshot."""
     qa_path = Path(qa_file)
@@ -69,9 +72,16 @@ def evaluate_search_qa(
 
     db = VaultDB(db_path).connect()
     try:
-        search = VaultSearch(db, embed_provider=None)
+        search = VaultSearch(db, embed_provider=embed_provider)
         case_summaries = [
-            _evaluate_case(search, case, mode=mode, limit=limit)
+            _evaluate_case(
+                search,
+                case,
+                mode=mode,
+                limit=limit,
+                semantic_vector_kind=semantic_vector_kind,
+                allow_hash=allow_hash,
+            )
             for case in qa["cases"]
         ]
     finally:
@@ -180,10 +190,19 @@ def _evaluate_case(
     *,
     mode: str,
     limit: int,
+    semantic_vector_kind: str = "claim",
+    allow_hash: bool = False,
 ) -> dict[str, Any]:
     query = str(case["query"])
     start = time.perf_counter()
-    raw_results = search.search(query, mode=mode, limit=limit, use_rerank=False)
+    raw_results = search.search(
+        query,
+        mode=mode,
+        limit=limit,
+        use_rerank=False,
+        semantic_vector_kind=semantic_vector_kind,
+        allow_hash=allow_hash,
+    )
     latency_ms = (time.perf_counter() - start) * 1000
     results = [_summarize_result(result) for result in raw_results[:limit]]
 

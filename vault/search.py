@@ -16,6 +16,13 @@ from .embed import (
     create_embedding_provider,
     EmbeddingProvider,
 )
+from .semantic import (
+    SemanticProviderError,
+    provider_dimension,
+    provider_id,
+    search_semantic_index,
+    validate_embedding_provider,
+)
 
 
 def _normalize_text(value: str) -> str:
@@ -106,6 +113,8 @@ class VaultSearch:
         graph_expand: int = 0,
         use_rerank: bool = True,
         compact: bool = False,
+        semantic_vector_kind: str = "claim",
+        allow_hash: bool = False,
     ) -> list[dict]:
         """
         搜尋知識庫。
@@ -113,8 +122,9 @@ class VaultSearch:
         mode:
         - "auto": 有嵌入→混合，沒嵌入→關鍵字
         - "keyword": 純關鍵字
-        - "vector": 純向量
-        - "hybrid": 混合（RRF 融合）
+        - "vector": 純向量（legacy sqlite-vec）
+        - "semantic": stored semantic_vectors search
+        - "hybrid": keyword + stored semantic_vectors when available, with legacy vector fallback
 
         graph_expand:
         - 0: 不使用圖譜擴展（預設）
@@ -128,15 +138,49 @@ class VaultSearch:
         elif mode == "vector":
             results = self.search_vector(query, limit * 2, min_trust, layer, category)
             results = results[:limit]
+        elif mode == "semantic":
+            results = self.search_semantic(
+                query,
+                limit,
+                min_trust,
+                layer,
+                category,
+                vector_kind=semantic_vector_kind,
+                require_semantic=not allow_hash,
+                allow_hash=allow_hash,
+            )
         elif mode == "hybrid":
-            results = self.search_hybrid(query, limit, min_trust, layer, category)
+            results = self.search_hybrid(
+                query,
+                limit,
+                min_trust,
+                layer,
+                category,
+                semantic_vector_kind=semantic_vector_kind,
+                allow_hash=allow_hash,
+            )
         else:
-            # auto: 智慧降級
-            embed = self._get_embed()
-            if embed is not None and self.db._vec_available:
-                results = self.search_hybrid(query, limit, min_trust, layer, category)
+            # auto: safe by default: use stored semantic index only with a real semantic provider.
+            if self._semantic_index_available(
+                semantic_vector_kind,
+                require_semantic=not allow_hash,
+                allow_hash=allow_hash,
+            ):
+                results = self.search_hybrid(
+                    query,
+                    limit,
+                    min_trust,
+                    layer,
+                    category,
+                    semantic_vector_kind=semantic_vector_kind,
+                    allow_hash=allow_hash,
+                )
             else:
-                results = self.search_keyword(query, limit, min_trust, layer, category)
+                embed = self._get_embed()
+                if embed is not None and self.db._vec_available and bool(getattr(embed, "is_semantic", True)):
+                    results = self.search_hybrid(query, limit, min_trust, layer, category)
+                else:
+                    results = self.search_keyword(query, limit, min_trust, layer, category)
 
         # 圖譜擴展
         if graph_expand > 0 and self._graph is not None:
@@ -148,7 +192,8 @@ class VaultSearch:
 
         # 提取 best_claim
         for r in results:
-            r["best_claim"] = self._extract_best_claim(r.get("content_aaak", ""))
+            if not r.get("best_claim"):
+                r["best_claim"] = self._extract_best_claim(r.get("content_aaak", ""))
 
         # Document Map enrichment（best span / node / citation）
         if results:
@@ -552,6 +597,123 @@ class VaultSearch:
 
         return results[:limit]
 
+    # ── Stored semantic index search ─────────────────────────
+
+    def _semantic_provider(self, *, require_semantic: bool, allow_hash: bool):
+        provider = self._get_embed()
+        if provider is None:
+            return None
+        return validate_embedding_provider(
+            provider,
+            require_semantic=require_semantic,
+            allow_hash=allow_hash,
+        )
+
+    def _semantic_index_available(
+        self,
+        vector_kind: str = "claim",
+        *,
+        require_semantic: bool = True,
+        allow_hash: bool = False,
+    ) -> bool:
+        """Return True when the active provider has stored vectors for this DB."""
+        try:
+            provider = self._semantic_provider(
+                require_semantic=require_semantic,
+                allow_hash=allow_hash,
+            )
+            if provider is None:
+                return False
+            row = self.db.conn.execute(
+                """SELECT 1 FROM semantic_vectors
+                   WHERE provider_id=? AND dimension=? AND vector_kind=?
+                   LIMIT 1""",
+                (provider_id(provider), provider_dimension(provider), vector_kind),
+            ).fetchone()
+            return row is not None
+        except Exception:
+            return False
+
+    def search_semantic(
+        self,
+        query: str,
+        limit: int = 10,
+        min_trust: float = 0.0,
+        layer: Optional[str] = None,
+        category: Optional[str] = None,
+        *,
+        vector_kind: str = "claim",
+        require_semantic: bool = True,
+        allow_hash: bool = False,
+    ) -> list[dict]:
+        """Search stored semantic_vectors and return normal search result shape.
+
+        Missing providers or missing semantic-index tables are treated as an empty
+        explicit semantic result. Provider safety violations intentionally raise.
+        """
+        provider = self._semantic_provider(
+            require_semantic=require_semantic,
+            allow_hash=allow_hash,
+        )
+        if provider is None:
+            return []
+
+        try:
+            rows = search_semantic_index(
+                self.db,
+                query,
+                provider=provider,
+                vector_kind=vector_kind,
+                limit=limit * 4,
+                require_semantic=require_semantic,
+                allow_hash=allow_hash,
+            )
+        except SemanticProviderError:
+            raise
+        except (AttributeError, TypeError, RuntimeError):
+            return []
+        except sqlite3.OperationalError as exc:
+            if "semantic_vectors" in str(exc).lower():
+                return []
+            raise
+
+        results: list[dict] = []
+        seen: set[int] = set()
+        for row in rows:
+            kid = int(row.get("knowledge_id") or row.get("id"))
+            if kid in seen:
+                continue
+            knowledge = self.db.get_knowledge(kid)
+            if not knowledge:
+                continue
+            item = dict(knowledge)
+            if item.get("trust", 0.0) < min_trust:
+                continue
+            if layer and item.get("layer") != layer:
+                continue
+            if category and item.get("category") != category:
+                continue
+
+            item["_score"] = float(row.get("_score", 0.0) or 0.0)
+            item["_mode"] = "semantic_hash" if not bool(getattr(provider, "is_semantic", True)) else "semantic"
+            item["semantic_vector_kind"] = row.get("vector_kind", vector_kind)
+            item["semantic_item_uid"] = row.get("item_uid")
+            item["semantic_source_text"] = row.get("source_text")
+            if row.get("line_start") and row.get("line_end"):
+                item["line_start"] = int(row["line_start"])
+                item["line_end"] = int(row["line_end"])
+                item["best_span"] = f"L{item['line_start']}-L{item['line_end']}"
+            for key in ("node_uid", "heading", "path", "citation"):
+                if row.get(key):
+                    item[key] = row[key]
+            if row.get("source_text"):
+                item["best_claim"] = row["source_text"]
+            results.append(item)
+            seen.add(kid)
+            if len(results) >= limit:
+                break
+        return results
+
     # ── 混合搜尋（RRF） ────────────────────────────────────
 
     def search_hybrid(
@@ -561,20 +723,60 @@ class VaultSearch:
         min_trust: float = 0.0,
         layer: Optional[str] = None,
         category: Optional[str] = None,
+        *,
+        semantic_vector_kind: str = "claim",
+        allow_hash: bool = False,
     ) -> list[dict]:
         """
-        混合搜尋：Reciprocal Rank Fusion（RRF）。
-        向量跟關鍵字各自的排名做倒數加權融合。
+        Hybrid search with Reciprocal Rank Fusion (RRF).
+
+        Prefer the stored semantic index when a safe provider/index is available;
+        otherwise preserve the legacy sqlite-vec vector fallback.
         """
-        k = 60  # RRF 常數
+        k = 60  # RRF constant
 
-        # 取兩組結果
-        kw_results = self.search_keyword(query, limit=limit * 2, min_trust=min_trust,
-                                          layer=layer, category=category)
-        vec_results = self.search_vector(query, limit=limit * 2, min_trust=min_trust,
-                                          layer=layer, category=category)
+        kw_results = self.search_keyword(
+            query,
+            limit=limit * 2,
+            min_trust=min_trust,
+            layer=layer,
+            category=category,
+        )
 
-        # RRF 融合
+        try:
+            semantic_results = self.search_semantic(
+                query,
+                limit=limit * 2,
+                min_trust=min_trust,
+                layer=layer,
+                category=category,
+                vector_kind=semantic_vector_kind,
+                require_semantic=not allow_hash,
+                allow_hash=allow_hash,
+            )
+        except SemanticProviderError:
+            semantic_results = []
+
+        if semantic_results:
+            second_results = semantic_results
+            hybrid_mode = (
+                "hybrid_semantic_hash"
+                if any(item.get("_mode") == "semantic_hash" for item in semantic_results)
+                else "hybrid_semantic"
+            )
+        elif self._get_embed() is not None and self.db._vec_available:
+            second_results = self.search_vector(
+                query,
+                limit=limit * 2,
+                min_trust=min_trust,
+                layer=layer,
+                category=category,
+            )
+            hybrid_mode = "hybrid"
+        else:
+            second_results = []
+            hybrid_mode = "keyword"
+
         scores: dict[int, float] = {}
         all_items: dict[int, dict] = {}
 
@@ -583,23 +785,33 @@ class VaultSearch:
             scores[kid] = scores.get(kid, 0) + 1.0 / (k + rank + 1)
             all_items[kid] = item
 
-        for rank, item in enumerate(vec_results):
+        for rank, item in enumerate(second_results):
             kid = item["id"]
             scores[kid] = scores.get(kid, 0) + 1.0 / (k + rank + 1)
             if kid not in all_items:
                 all_items[kid] = item
             else:
-                # 合併：向量的 metadata 優先
-                all_items[kid]["_mode"] = "hybrid"
+                # Merge: semantic/vector span metadata wins, but keep the fused mode clear.
+                all_items[kid].update(
+                    {
+                        key: value
+                        for key, value in item.items()
+                        if key.startswith("semantic_")
+                        or key in {"best_span", "line_start", "line_end", "citation", "node_uid", "path", "heading"}
+                    }
+                )
+                all_items[kid]["_mode"] = hybrid_mode
 
-        # 排序
         sorted_ids = sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
         results = []
         for kid, score in sorted_ids[:limit]:
             item = all_items[kid]
             item["_score"] = score
-            item["_mode"] = item.get("_mode", "hybrid")
+            if second_results and item.get("_mode", "").split("_", 1)[0] in {"keyword", "semantic", "vector"}:
+                item["_mode"] = hybrid_mode
+            else:
+                item["_mode"] = item.get("_mode", hybrid_mode)
             results.append(item)
 
         return results

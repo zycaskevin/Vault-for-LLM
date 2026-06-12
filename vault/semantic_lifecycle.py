@@ -51,6 +51,7 @@ def run_semantic_startup(
     smoke: bool = False,
     mode: str = "keyword",
     limit: int = 10,
+    semantic_vector_kind: str = "claim",
     older_than_days: int | None = None,
     max_rows: int | None = None,
     knowledge_id: int | None = None,
@@ -142,6 +143,9 @@ def run_semantic_startup(
             qa_file=qa_path,
             mode=mode,
             limit=limit,
+            embed_provider=active_provider,
+            semantic_vector_kind=semantic_vector_kind,
+            allow_hash=allow_hash,
         )
         payload["smoke"] = {"aggregate": snapshot["aggregate"]}
 

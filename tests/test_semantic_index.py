@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from vault.db import VaultDB
+from vault.search import VaultSearch
 from vault.semantic import (
     CachedEmbeddingProvider,
     DeterministicHashEmbeddingProvider,
@@ -228,5 +229,111 @@ def test_semantic_index_search_preserves_citation_metadata(tmp_path: Path):
         assert results[0]["line_end"] == 4
         assert results[0]["citation"] == "#1 Semantic Index Guide L4-L4"
         assert results[0]["_mode"] == "semantic_hash"
+    finally:
+        db.close()
+
+
+class BagOfWordsSemanticProvider:
+    provider_id = "test-bow-semantic-v1"
+    is_semantic = True
+
+    def __init__(self):
+        self._dim = 4
+
+    @property
+    def dim(self) -> int:
+        return self._dim
+
+    def encode(self, texts: str | list[str]) -> list[list[float]]:
+        text_list = [texts] if isinstance(texts, str) else list(texts)
+        return [self._encode_one(text) for text in text_list]
+
+    def _encode_one(self, text: str) -> list[float]:
+        tokens = set(text.lower().replace("-", " ").replace(".", " ").split())
+        vehicle = {"automobile", "car", "vehicle", "garage", "maintenance"}
+        cooking = {"cooking", "recipe", "kitchen", "bread"}
+        vectors = [
+            float(bool(tokens & vehicle)),
+            float(bool(tokens & cooking)),
+            float("wrench" in tokens),
+            1.0,
+        ]
+        norm = sum(value * value for value in vectors) ** 0.5 or 1.0
+        return [value / norm for value in vectors]
+
+
+def _build_main_search_semantic_db(tmp_path: Path, provider) -> VaultDB:
+    db = VaultDB(tmp_path / "vault.db").connect()
+    db.add_knowledge(
+        "Workshop Notes",
+        "# Workshop Notes\nGarage maintenance uses a wrench for calibration.",
+        content_aaak="TITLE: Workshop Notes\nCLAIMS:\n- [C1] Garage maintenance uses a wrench for calibration. (L2)",
+        category="ops",
+        tags="tools",
+        trust=0.91,
+    )
+    db.add_knowledge(
+        "Sourdough Notes",
+        "# Sourdough Notes\nKitchen recipe timing controls bread flavor.",
+        content_aaak="TITLE: Sourdough Notes\nCLAIMS:\n- [C1] Kitchen recipe timing controls bread flavor. (L2)",
+        category="food",
+        tags="recipe",
+        trust=0.88,
+    )
+    rebuild_semantic_index(db, provider, require_semantic=bool(provider.is_semantic), allow_hash=True)
+    return db
+
+
+def test_vault_search_semantic_uses_stored_index_for_non_keyword_match(tmp_path: Path):
+    provider = BagOfWordsSemanticProvider()
+    db = _build_main_search_semantic_db(tmp_path, provider)
+    try:
+        search = VaultSearch(db, embed_provider=provider)
+        assert search.search("automobile", mode="keyword", limit=5, use_rerank=False) == []
+
+        results = search.search("automobile", mode="semantic", limit=2, use_rerank=False)
+
+        assert [result["title"] for result in results][:1] == ["Workshop Notes"]
+        assert results[0]["_mode"] == "semantic"
+        assert results[0]["semantic_vector_kind"] == "claim"
+        assert results[0]["best_span"] == "L2-L2"
+        assert results[0]["citation"] == "#1 Workshop Notes L2-L2"
+        assert "content_raw" in results[0]
+    finally:
+        db.close()
+
+
+def test_vault_search_hybrid_combines_keyword_and_stored_semantic_modes(tmp_path: Path):
+    provider = BagOfWordsSemanticProvider()
+    db = _build_main_search_semantic_db(tmp_path, provider)
+    try:
+        search = VaultSearch(db, embed_provider=provider)
+
+        results = search.search("automobile recipe", mode="hybrid", limit=5, use_rerank=False)
+        titles = {result["title"] for result in results}
+
+        assert {"Workshop Notes", "Sourdough Notes"}.issubset(titles)
+        assert all(result["_mode"] == "hybrid_semantic" for result in results)
+    finally:
+        db.close()
+
+
+def test_vault_search_semantic_rejects_hash_provider_by_default(tmp_path: Path):
+    provider = DeterministicHashEmbeddingProvider(dim=8)
+    db = _build_main_search_semantic_db(tmp_path, provider)
+    try:
+        search = VaultSearch(db, embed_provider=provider)
+
+        with pytest.raises(SemanticProviderError, match="not a semantic embedding provider"):
+            search.search("garage", mode="semantic", use_rerank=False)
+
+        hybrid = search.search("garage", mode="hybrid", use_rerank=False)
+        assert hybrid
+        assert hybrid[0]["title"] == "Workshop Notes"
+        assert "semantic" not in hybrid[0]["_mode"]
+
+        allowed = search.search("garage", mode="semantic", allow_hash=True, use_rerank=False)
+        assert allowed
+        assert allowed[0]["_mode"] == "semantic_hash"
     finally:
         db.close()

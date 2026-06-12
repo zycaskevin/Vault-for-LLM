@@ -207,9 +207,13 @@ Semantic search is optional by design. The base install keeps working with keywo
 
 ```bash
 vault semantic rebuild --persist-cache
-vault semantic smoke --qa-file benchmarks/search_qa/basic.en.json --mode keyword --pretty
+vault search "what caused the bug" --mode semantic
+vault search "what caused the bug" --mode hybrid
+vault semantic smoke --qa-file benchmarks/search_qa/basic.en.json --mode semantic --pretty
 vault semantic cache-stats --pretty
 ```
+
+`vault search --mode semantic` reads stored `semantic_vectors` directly. `--mode hybrid` fuses keyword results with the stored semantic index when available, and falls back safely when it is not.
 
 For the full lifecycle — `warm`, `cache-prune`, `startup`, `daemon`, and the `--allow-hash` test-only provider — see [`docs/semantic_search.md`](docs/semantic_search.md).
 

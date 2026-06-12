@@ -429,8 +429,8 @@ def rebuild_semantic_index(
         knowledge_rows=len(rows),
         node_vectors=node_count,
         claim_vectors=claim_count,
-        provider_id=provider.provider_id,
-        dimension=provider.dim,
+        provider_id=provider_id(provider),
+        dimension=provider_dimension(provider),
     )
 
 

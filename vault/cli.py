@@ -162,6 +162,7 @@ def cmd_search(args):
     from vault.db import VaultDB
     from vault.search import VaultSearch
     from vault.embed import create_embedding_provider
+    from vault.semantic import DeterministicHashEmbeddingProvider, SemanticProviderError
 
     project_dir = find_project_dir()
     db_path = project_dir / "vault.db"
@@ -175,7 +176,12 @@ def cmd_search(args):
         try:
             provider_name = db.get_config("embedding_provider", "auto")
             model_key = db.get_config("embedding_model", "mix")
-            if provider_name != "none":
+            if args.allow_hash:
+                embed = DeterministicHashEmbeddingProvider(dim=args.hash_dim)
+            elif provider_name == "hash-deterministic-v1":
+                # Instantiate so semantic safety gates can fail closed explicitly.
+                embed = DeterministicHashEmbeddingProvider(dim=args.hash_dim)
+            elif provider_name != "none":
                 embed = create_embedding_provider(provider=provider_name, model_key=model_key)
         except Exception:
             pass
@@ -192,16 +198,23 @@ def cmd_search(args):
     mode = "keyword" if args.keyword_only else args.mode
     search = VaultSearch(db, embed_provider=embed, graph=graph)
 
-    results = search.search(
-        args.query,
-        mode=mode,
-        limit=args.limit,
-        min_trust=args.min_trust,
-        layer=args.layer,
-        category=args.category,
-        graph_expand=args.graph_expand,
-        use_rerank=not args.no_rerank,
-    )
+    try:
+        results = search.search(
+            args.query,
+            mode=mode,
+            limit=args.limit,
+            min_trust=args.min_trust,
+            layer=args.layer,
+            category=args.category,
+            graph_expand=args.graph_expand,
+            use_rerank=not args.no_rerank,
+            semantic_vector_kind=args.semantic_vector_kind,
+            allow_hash=args.allow_hash,
+        )
+    except SemanticProviderError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        db.close()
+        raise SystemExit(2) from exc
 
     if not results:
         print("🔍 沒有找到匹配的知識")
@@ -1373,6 +1386,7 @@ def cmd_semantic(args):
                 "smoke": args.smoke,
                 "mode": args.mode,
                 "limit": args.limit,
+                "semantic_vector_kind": args.semantic_vector_kind,
                 "older_than_days": args.older_than_days,
                 "max_rows": args.max_rows,
             }
@@ -1519,6 +1533,9 @@ def cmd_semantic(args):
             qa_file=args.qa_file,
             mode=args.mode,
             limit=args.limit,
+            embed_provider=provider,
+            semantic_vector_kind=args.semantic_vector_kind,
+            allow_hash=args.allow_hash,
         )
         payload = {
             "action": "smoke",
@@ -1609,12 +1626,18 @@ def main():
     # search — 加入 --graph-expand
     p = sub.add_parser("search", help="搜尋知識")
     p.add_argument("query", help="搜尋查詢")
-    p.add_argument("--mode", choices=["auto", "keyword", "vector", "hybrid"], default="auto")
+    p.add_argument("--mode", choices=["auto", "keyword", "vector", "semantic", "hybrid"], default="auto")
     p.add_argument("--keyword-only", "-k", action="store_true")
     p.add_argument("--limit", "-n", type=int, default=10)
     p.add_argument("--min-trust", type=float, default=0.0)
     p.add_argument("--layer", choices=["L0", "L1", "L2", "L3"])
     p.add_argument("--category")
+    p.add_argument("--semantic-vector-kind", choices=["claim", "node"], default="claim",
+                   help="stored semantic_vectors kind for --mode semantic/hybrid")
+    p.add_argument("--allow-hash", action="store_true",
+                   help="explicitly allow deterministic hash provider for tests/dev")
+    p.add_argument("--hash-dim", type=int, default=32,
+                   help="hash provider dimension when --allow-hash or hash config is used")
     p.add_argument("--graph-expand", type=int, default=0,
                    help="圖譜擴展跳數（0=不擴展，1=1跳，2=2跳）")
     p.add_argument("--no-rerank", action="store_true",
@@ -1795,7 +1818,7 @@ def main():
     qp = qa_sub.add_parser("run", help="執行 Search QA Set 並輸出 snapshot JSON")
     qp.add_argument("--qa-file", required=True, help="Search QA Set JSON 路徑")
     qp.add_argument("--output", "-o", help="snapshot JSON 輸出路徑")
-    qp.add_argument("--mode", choices=["auto", "keyword", "vector", "hybrid"], default="keyword")
+    qp.add_argument("--mode", choices=["auto", "keyword", "vector", "semantic", "hybrid"], default="keyword")
     qp.add_argument("--limit", "-n", type=int, default=10)
     qp.add_argument("--db-path", help="SQLite DB 路徑（預設 project_dir/vault.db）")
 
@@ -1834,7 +1857,9 @@ def main():
     add_semantic_common(sp)
     sp.add_argument("--qa-file", required=True, help="Search QA Set JSON 路徑")
     sp.add_argument("--knowledge-id", type=int, help="只重建指定 knowledge id")
-    sp.add_argument("--mode", choices=["auto", "keyword", "vector", "hybrid"], default="keyword")
+    sp.add_argument("--mode", choices=["auto", "keyword", "vector", "semantic", "hybrid"], default="keyword")
+    sp.add_argument("--semantic-vector-kind", choices=["claim", "node"], default="claim",
+                    help="stored semantic_vectors kind for semantic/hybrid smoke")
     sp.add_argument("--limit", "-n", type=int, default=10)
     sp.add_argument("--output", "-o", help="combined semantic workflow JSON 輸出路徑")
     sp.add_argument("--persist-cache", action="store_true", help="使用 durable embedding_cache 快取")
@@ -1855,7 +1880,9 @@ def main():
         sp.add_argument("--no-persist-cache", action="store_true", help="停用預設 durable embedding cache")
         sp.add_argument("--rebuild", action="store_true", help="在啟動流程中重建 semantic_vectors")
         sp.add_argument("--smoke", action="store_true", help="若提供 --qa-file，執行 Search QA smoke aggregate")
-        sp.add_argument("--mode", choices=["auto", "keyword", "vector", "hybrid"], default="keyword")
+        sp.add_argument("--mode", choices=["auto", "keyword", "vector", "semantic", "hybrid"], default="keyword")
+        sp.add_argument("--semantic-vector-kind", choices=["claim", "node"], default="claim",
+                        help="stored semantic_vectors kind for semantic/hybrid smoke")
         sp.add_argument("--limit", "-n", type=int, default=10)
         sp.add_argument("--older-than-days", type=int, help="啟動流程結尾清理早於 N 天的 cache rows")
         sp.add_argument("--max-rows", type=int, help="啟動流程結尾最多保留 N 個 cache rows")

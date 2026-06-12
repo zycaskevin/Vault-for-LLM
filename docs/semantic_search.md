@@ -50,6 +50,21 @@ Useful options:
 - `--db-path <path>` targets a specific SQLite DB.
 - `--persist-cache` uses the durable `embedding_cache` table during the rebuild.
 
+## Search with the stored semantic index
+
+After `vault semantic rebuild`, main search exposes the stored index as an operator-facing mode:
+
+```bash
+vault search "query text" --mode semantic
+vault search "query text" --mode hybrid
+```
+
+- `--mode semantic` searches `semantic_vectors` and returns normal search results with content fields plus citation/span metadata when available.
+- `--mode hybrid` fuses keyword results with stored semantic-index results. If no safe semantic provider/index is available, it falls back to legacy vector search or keyword search.
+- `--mode auto` stays safe: keyword remains the default unless a real semantic provider and matching stored vectors are present.
+- Deterministic hash vectors are test-only and require explicit `--allow-hash` (and the matching `--hash-dim` if non-default) for main semantic search.
+- Use `--semantic-vector-kind claim|node` to choose claim-level or node-level stored vectors; `claim` is the default.
+
 ## Warm query embeddings
 
 Use warm when you have a Search QA file and want to precompute query embeddings without writing semantic vector rows:

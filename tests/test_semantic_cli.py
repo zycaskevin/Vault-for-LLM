@@ -194,6 +194,96 @@ def test_semantic_cli_warm_dedupes_and_does_not_write_vectors(tmp_path: Path):
     assert _vector_count(db_path) == 0
 
 
+def test_semantic_cli_allow_hash_main_search_mode_uses_stored_index(tmp_path: Path):
+    db_path = _build_db(tmp_path)
+    rebuild = _run_cli(
+        tmp_path,
+        "semantic",
+        "rebuild",
+        "--db-path",
+        str(db_path),
+        "--allow-hash",
+        "--hash-dim",
+        "8",
+    )
+    assert rebuild.returncode == 0, rebuild.stderr
+
+    result = _run_cli(
+        tmp_path,
+        "search",
+        "semantic workflow warm",
+        "--mode",
+        "semantic",
+        "--allow-hash",
+        "--hash-dim",
+        "8",
+        "--no-rerank",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Semantic Workflow Guide" in result.stdout
+    assert "semantic_hash" in result.stdout
+
+
+def test_semantic_cli_main_search_rejects_hash_without_allow_hash(tmp_path: Path):
+    db_path = _build_db(tmp_path, hash_config=True)
+    rebuild = _run_cli(
+        tmp_path,
+        "semantic",
+        "rebuild",
+        "--db-path",
+        str(db_path),
+        "--allow-hash",
+        "--hash-dim",
+        "8",
+    )
+    assert rebuild.returncode == 0, rebuild.stderr
+
+    result = _run_cli(
+        tmp_path,
+        "search",
+        "semantic workflow warm",
+        "--mode",
+        "semantic",
+        "--hash-dim",
+        "8",
+    )
+
+    assert result.returncode == 2
+    assert "not a semantic embedding provider" in result.stderr
+
+
+def test_semantic_cli_main_search_hybrid_marks_semantic_fusion(tmp_path: Path):
+    db_path = _build_db(tmp_path)
+    rebuild = _run_cli(
+        tmp_path,
+        "semantic",
+        "rebuild",
+        "--db-path",
+        str(db_path),
+        "--allow-hash",
+        "--hash-dim",
+        "8",
+    )
+    assert rebuild.returncode == 0, rebuild.stderr
+
+    result = _run_cli(
+        tmp_path,
+        "search",
+        "semantic workflow warm",
+        "--mode",
+        "hybrid",
+        "--allow-hash",
+        "--hash-dim",
+        "8",
+        "--no-rerank",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Semantic Workflow Guide" in result.stdout
+    assert "hybrid_semantic_hash" in result.stdout
+
+
 def test_semantic_cli_smoke_writes_combined_json_with_qa_aggregate(tmp_path: Path):
     db_path = _build_db(tmp_path)
     qa_file = _write_qa(tmp_path)
@@ -227,6 +317,33 @@ def test_semantic_cli_smoke_writes_combined_json_with_qa_aggregate(tmp_path: Pat
         "node_vectors": 2,
         "claim_vectors": 1,
     }
+
+
+def test_semantic_cli_smoke_semantic_mode_uses_rebuilt_provider(tmp_path: Path):
+    db_path = _build_db(tmp_path)
+    qa_file = _write_qa(tmp_path)
+
+    result = _run_cli(
+        tmp_path,
+        "semantic",
+        "smoke",
+        "--db-path",
+        str(db_path),
+        "--qa-file",
+        str(qa_file),
+        "--allow-hash",
+        "--hash-dim",
+        "8",
+        "--mode",
+        "semantic",
+        "--limit",
+        "3",
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["qa"]["aggregate"]["cases_with_results"] == 2
+    assert payload["qa"]["aggregate"]["topk_hits"] == 2
     assert payload["warmed_queries"] == 1
     assert payload["cache_size"] >= 1
     assert payload["qa"]["aggregate"]["total_cases"] == 2

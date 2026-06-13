@@ -2014,6 +2014,8 @@ def main():
     qp.add_argument("--output", "-o", help="snapshot JSON 輸出路徑")
     qp.add_argument("--mode", choices=["auto", "keyword", "vector", "semantic", "hybrid"], default="keyword")
     qp.add_argument("--limit", "-n", type=int, default=10)
+    qp.add_argument("--min-score", type=float, default=None,
+                    help="minimum keyword match score before counting weak/no-result matches")
     qp.add_argument("--db-path", help="SQLite DB 路徑（預設 project_dir/vault.db）")
     qp.add_argument("--semantic-vector-kind", choices=["claim", "node"], default="claim",
                     help="stored semantic_vectors kind for semantic/hybrid QA")

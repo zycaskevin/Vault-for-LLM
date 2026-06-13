@@ -50,16 +50,18 @@ Vault-for-LLM 不只是另一个向量数据库。它正在往 **Agent 记忆质
 
 ---
 
-## 0.5.0 新增内容
+## 当前源码状态：PR27 / 0.5.0
 
-0.5.0 把 Vault-for-LLM 从“本地关键词搜索记忆库”升级成更接近生产级的本地记忆 workflow：
+当前 source tree 已包含 PR27 的记忆 workflow。白话说，Vault 现在不像一个谁都能乱塞纸条的抽屉，更像一间有前台的小图书馆：
 
-- **Search QA baseline**：用固定 query set 比较搜索质量与延迟，避免 retrieval 改动只靠感觉。
-- **FTS5/BM25 关键词搜索**：SQLite 支持 FTS5 时使用更快的 BM25；FTS5 不可用或 CJK 命中不足时安全 fallback 到 `LIKE`。
-- **带 guardrail 的语义工作流**：可选 semantic vectors、provider validation、persistent embedding cache，以及 rebuild/warm/smoke/startup/daemon 操作命令。
+- **候选制记忆**：Agent 想记东西时，先交到前台（`vault remember` / `vault_memory_propose`），由 privacy、duplicate、metadata、quality gates 检查，再决定能不能上架。
+- **更安全的召回**：keyword search 有弱匹配门槛，应该找不到的 query 比较不会硬抓一条不相关记忆回来；可用 `--min-score` 调整。
+- **Search QA hard negatives**：固定题库可以写 `expected_no_results: true`，同时检查“该找到的有没有找到”和“不该找到时有没有乱认亲”。
+- **Dream 先出报告再整理**：`vault dream` 先写 report / plan；`apply_safe` 只做很小的 metadata 修正，并保留 backup/rollback 路径。
+- **有 guardrail 的语义工作流**：可选 semantic vectors、provider validation、persistent embedding cache，以及 CI/本机用 deterministic hash smoke tests。
 - **明确的 DB schema status/migration**：用 [`vault db status/migrate`](docs/db_migrations.md) 检查并执行 idempotent SQLite migrations。
 - **本地 SQLite backup/verify/restore**：用 [`vault db backup/verify-backup/restore`](docs/db_backup_restore.md) 创建、验证、还原备份；restore 前会拒绝非 Vault 或格式损坏的 DB。
-- **Release gates**：README command smoke、wheel smoke、version parity、secret scan、full-history privacy scan、public-boundary checks。
+- **Release gates**：README command smoke、wheel smoke、version parity、secret scan、full-history privacy scan、artifact audit、public-boundary checks。
 
 语义搜索是**刻意设计成可选功能**：基础安装只靠关键词搜索也能跑。配置真 embedding provider 后，可用 [`vault semantic ...`](docs/semantic_search.md) 重建 vectors、预热 cache、跑 smoke checks。Deterministic hash embeddings 必须明确加 `--allow-hash`，只供 CI/本地测试使用。
 
@@ -103,6 +105,8 @@ Vault-for-LLM 不只是另一个向量数据库。它正在往 **Agent 记忆质
 
 目前最稳定的路径仍是核心流程：`vault init` → `vault add`/`vault remember` → `vault compile`/`vault promote` → `vault search` → `vault-mcp`。Autonomous agent 建议使用 `vault_memory_propose`，不要直接用 `vault_add` 写入未审核记忆。
 
+可以把 direct `vault_add` 想成让人直接走进仓库把纸条塞上架；它仍留给可信脚本使用，但日常 Agent 记忆应该先走候选前台：先提案、检查 gates、再 promote。
+
 ---
 
 ## 架构
@@ -117,6 +121,20 @@ Markdown raw/  →  vault compile  →  SQLite database  →  vault search / MCP
 ```
 
 这样可以让 Agent 的 prompt 保持小，但需要时仍能查到深层记忆。
+
+### Agent 记忆生命周期
+
+```text
+对话 / 任务
+  → 提出候选记忆
+  → privacy + duplicate + metadata + quality gates
+  → promote 已审核记忆
+  → raw Markdown + SQLite active knowledge
+  → search / map / read_range 召回
+  → dream report 做整理与安全 metadata 修正
+```
+
+用故事讲：Agent 先写一张纸条，前台检查它安不安全、有没有重复、值不值得留下；通过后图书馆员才把它上架。之后 Agent 要用时，不是把整间图书馆搬进 prompt，而是查目录、找到书架、只读需要的段落。
 
 ---
 
@@ -207,6 +225,50 @@ created: "2026-05-16"
 记录坏在哪里、为什么坏、下次怎么避免。
 ```
 
+### 候选制 Agent 记忆
+
+Autonomous agent 或未审核记忆，建议走候选流程。这是 PR27 后的推荐路径：
+
+```bash
+vault remember "Memory title" \
+  --content "Markdown memory content" \
+  --reason "Why this is worth remembering"
+
+# 审核后
+vault promote mem_xxxxxxxxxxxx --confirm
+```
+
+MCP agent 应使用 `vault_memory_propose` 和 `vault_memory_promote`；详见 [MCP 记忆流程](docs/mcp_memory_workflow.md)。
+
+| Gate | 白话工作 |
+|---|---|
+| Privacy | “这是不是像密钥或私人资料？” |
+| Duplicate | “我们是不是已经有这条或很像的记忆？” |
+| Metadata | “至少有标题、内容、原因吗？” |
+| Quality | “这条记忆之后找得到、用得上吗？” |
+
+### Search QA：检查记忆召回健不健康
+
+Search QA 像是给 vault 的小考。有些题目应该找到指定记忆，有些 hard-negative 题目应该什么都找不到。这样能同时抓两种错：该记得却忘了，以及不该回却乱回。
+
+```bash
+vault search-qa run \
+  --qa-file benchmarks/search_qa/basic.zh-Hant.json \
+  --mode keyword \
+  --min-score 0.34 \
+  --output /tmp/searchqa.json
+```
+
+Fixture 可用 `expected_no_results: true` 表示“这题正确答案是不要回任何结果”。详见 [Search QA benchmarking guide](docs/search_qa_benchmarking.md)。
+
+### Dream 记忆整理报告
+
+```bash
+vault dream --mode report --limit 50 --write-report
+```
+
+报告会写到 `reports/dream/`。`apply_safe` 只会做很窄的 metadata 修正，并输出 plan 与 backup path；如果整理结果不符合预期，可以 rollback。详见 [dream workflow](docs/dream_workflow.md)。
+
 ### 可选：语义工作流
 
 语义搜索是刻意设计成可选功能。基础安装只靠关键词搜索也能跑。配置真 embedding provider 后，主要操作命令是：
@@ -254,7 +316,7 @@ your-project/
 | `vault add "Title" --file note.md` | 从 Markdown 文件新增条目 |
 | `vault import long-doc.md` | 导入并分块长文档 |
 | `vault compile` | 编译 `raw/` 到 SQLite + `compiled/` |
-| `vault search "query"` | 搜索知识库 |
+| `vault search "query"` | 搜索知识库；可用 `--min-score` 调整弱匹配抑制 |
 | `vault search "query" --graph-expand 2` | 搜索并加上图谱扩展 |
 | `vault export obsidian --vault /path/to/ObsidianVault --dry-run` | 导出单向只读 Markdown notes，方便用 Obsidian 浏览 |
 | `vault list` | 列出知识条目 |
@@ -269,7 +331,7 @@ your-project/
 | `vault cross-validate` | 实验性跨模型验证 |
 | `vault freshness` | 实验性新鲜度/复习排程 |
 | `vault dedup` | 检测或合并重复条目 |
-| `vault search-qa run` | 执行 Search QA metrics snapshot |
+| `vault search-qa run` | 执行 Search QA snapshot、hard-negative 检查与召回指标 |
 | `vault semantic rebuild` | 配置真 embedding provider 后重建 semantic vector rows |
 | `vault semantic warm` | 预先计算 QA query embeddings，不写入 vector rows |
 | `vault semantic smoke` | 一次执行 rebuild、warm 与 Search QA smoke snapshot |

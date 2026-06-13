@@ -27,7 +27,7 @@ except ImportError:
 class VaultDB:
     """Vault-for-LLM 資料庫層。"""
 
-    SCHEMA_VERSION = 6
+    SCHEMA_VERSION = 7
     MIGRATIONS = {
         1: "initial_core_tables",
         2: "graph_and_skill_tables",
@@ -35,6 +35,7 @@ class VaultDB:
         4: "knowledge_summary_columns",
         5: "document_map_semantic_tables",
         6: "memory_candidate_table",
+        7: "memory_candidate_quality_status",
     }
 
     def __init__(self, db_path: str | Path = "vault.db"):
@@ -53,11 +54,24 @@ class VaultDB:
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
 
-        # 註冊 sqlite-vec 擴展
+        # 註冊 sqlite-vec 擴展. Some Python sqlite builds (including many
+        # restricted or system builds) expose the sqlite module without loadable
+        # extension support. In that case vector search must degrade instead of
+        # blocking the local keyword/memory workflow.
         if self._vec_available:
-            self.conn.enable_load_extension(True)
-            sqlite_vec.load(self.conn)
-            self.conn.enable_load_extension(False)
+            if not hasattr(self.conn, "enable_load_extension"):
+                self._vec_available = False
+            else:
+                try:
+                    self.conn.enable_load_extension(True)
+                    sqlite_vec.load(self.conn)
+                except Exception:
+                    self._vec_available = False
+                finally:
+                    try:
+                        self.conn.enable_load_extension(False)
+                    except Exception:
+                        pass
 
         self._init_tables()
         return self
@@ -285,6 +299,7 @@ class VaultDB:
                 status TEXT NOT NULL,
                 privacy_status TEXT NOT NULL,
                 duplicate_status TEXT NOT NULL,
+                quality_status TEXT NOT NULL DEFAULT 'pass',
                 gate_payload_json TEXT NOT NULL,
                 promoted_knowledge_id INTEGER,
                 FOREIGN KEY (promoted_knowledge_id) REFERENCES knowledge(id)
@@ -293,6 +308,11 @@ class VaultDB:
         c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_status ON memory_candidates(status)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_privacy ON memory_candidates(privacy_status)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_duplicate ON memory_candidates(duplicate_status)")
+        self._ensure_table_columns(
+            "memory_candidates",
+            {"quality_status": "TEXT NOT NULL DEFAULT 'pass'"},
+        )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_quality ON memory_candidates(quality_status)")
 
         c.commit()
 
@@ -787,16 +807,17 @@ class VaultDB:
             """INSERT INTO memory_candidates
                (id, created_at, updated_at, title, content, layer, category,
                 tags, trust, source, source_ref, reason, status,
-                privacy_status, duplicate_status, gate_payload_json,
+                privacy_status, duplicate_status, quality_status, gate_payload_json,
                 promoted_knowledge_id)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 values["id"], values["created_at"], values["updated_at"],
                 values["title"], values["content"], values["layer"],
                 values["category"], values["tags"], values["trust"],
                 values["source"], values["source_ref"], values["reason"],
                 values["status"], values["privacy_status"],
-                values["duplicate_status"], values["gate_payload_json"],
+                values["duplicate_status"], values.get("quality_status", "pass"),
+                values["gate_payload_json"],
                 values.get("promoted_knowledge_id"),
             ),
         )

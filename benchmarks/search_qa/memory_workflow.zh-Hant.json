@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "description": "Public-safe memory lifecycle recall fixture covering promoted memory, CJK keyword recall, and no-result control.",
+  "language": "zh-Hant",
+  "cases": [
+    {
+      "id": "zh_promoted_memory_recall",
+      "query": "候選 記憶 promote active recall",
+      "expected_title_substrings": ["記憶", "召回"]
+    },
+    {
+      "id": "zh_cjk_tag_recall",
+      "query": "中文 記憶 標籤 召回",
+      "expected_title_substrings": ["中文"]
+    },
+    {
+      "id": "zh_no_result_control",
+      "query": "火星 香蕉 不存在 記憶 控制",
+      "expected_titles": ["不存在的記憶"]
+    }
+  ]
+}

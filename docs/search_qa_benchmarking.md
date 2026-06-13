@@ -109,6 +109,30 @@ vault search-qa compare \
   --output /tmp/searchqa-compare.json
 ```
 
+## Keyword vs semantic/hybrid QA
+
+Keyword QA is the stable base path and does not require embeddings, network
+access, or external services. Semantic and hybrid QA require a stored semantic
+index built with the same provider/model/dimension and vector kind that the QA
+run uses.
+
+For deterministic CI plumbing checks, use the hash provider explicitly:
+
+```bash
+vault semantic rebuild --allow-hash --hash-dim 8
+
+vault search-qa run \
+  --qa-file benchmarks/search_qa/semantic_hybrid.en.json \
+  --mode hybrid \
+  --allow-hash \
+  --hash-dim 8 \
+  --semantic-vector-kind claim \
+  --output /tmp/searchqa-hybrid.json
+```
+
+Hash vectors are test doubles. They prove command wiring, snapshot shape, and
+stored-index fusion, but they do not measure real semantic retrieval quality.
+
 Example comparison output:
 
 ```text

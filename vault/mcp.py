@@ -1130,6 +1130,17 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
             return {"result": json.dumps(output, ensure_ascii=False, indent=2)}
 
         elif name == "vault_add":
+            from vault.docmap import build_document_map_for_entry
+            from vault.privacy import scan_privacy
+
+            privacy = scan_privacy(f"{arguments.get('title', '')}\n{arguments.get('content', '')}")
+            if privacy["status"] == "fail":
+                return {"result": json.dumps({
+                    "success": False,
+                    "error": "privacy_gate_failed",
+                    "privacy": privacy,
+                    "message": "vault_add blocked secret-like content; use vault_memory_propose after removing secrets.",
+                }, ensure_ascii=False)}
             db = _get_db()
             try:
                 kid = db.add_knowledge(
@@ -1141,12 +1152,19 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     layer=arguments.get("layer", "L3"),
                     source="mcp",
                 )
+                try:
+                    build_document_map_for_entry(db.conn, kid)
+                    map_built = True
+                except Exception:
+                    map_built = False
             finally:
                 db.close()
             return {"result": json.dumps({
                 "success": True,
                 "id": kid,
                 "message": f"已新增知識 #{kid}: {arguments.get('title', '')}",
+                "warning": "vault_add is a direct low-level active-DB write without a raw Markdown source; autonomous agents should prefer vault_memory_propose.",
+                "document_map_built": map_built,
             }, ensure_ascii=False)}
 
         elif name == "vault_memory_propose":

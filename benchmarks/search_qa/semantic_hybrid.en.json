@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "description": "Public-safe semantic/hybrid Search QA fixture. Requires a matching semantic_vectors rebuild and provider settings.",
+  "language": "en",
+  "cases": [
+    {
+      "id": "semantic_runbook_synonym",
+      "query": "troubleshooting guide for model request delay",
+      "expected_title_substrings": ["runbook"]
+    },
+    {
+      "id": "hybrid_candidate_workflow",
+      "query": "candidate first memory review",
+      "expected_title_substrings": ["memory"]
+    }
+  ]
+}

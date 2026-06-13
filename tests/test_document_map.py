@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from vault.db import VaultDB
 
 
-EXPECTED_SCHEMA_VERSION = "6"
+EXPECTED_SCHEMA_VERSION = str(VaultDB.SCHEMA_VERSION)
 
 
 KNOWLEDGE_NODES_COLUMNS = {

@@ -246,6 +246,8 @@ vault semantic cache-stats --pretty
 
 `vault search --mode semantic` reads stored `semantic_vectors` directly. `--mode hybrid` fuses keyword results with the stored semantic index when available, and falls back safely when it is not.
 
+Search QA can also run semantic/hybrid snapshots, but the QA command must use the same provider/model/dimension and vector kind used to rebuild `semantic_vectors`. For deterministic local smoke tests, rebuild with `--allow-hash --hash-dim N` and pass the same flags to `vault search-qa run`; hash vectors validate plumbing only and are not a semantic-quality benchmark.
+
 For the full lifecycle — `warm`, `cache-prune`, `startup`, `daemon`, and the `--allow-hash` test-only provider — see [`docs/semantic_search.md`](docs/semantic_search.md).
 
 ---

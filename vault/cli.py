@@ -1258,11 +1258,25 @@ def cmd_search_qa(args):
     action = args.search_qa_action
     if action == "run":
         db_path = Path(args.db_path) if args.db_path else find_project_dir() / "vault.db"
+        embed_provider = None
+        if args.mode in {"semantic", "hybrid", "vector"}:
+            semantic_args = argparse.Namespace(
+                db_path=str(db_path),
+                allow_hash=getattr(args, "allow_hash", False),
+                hash_dim=getattr(args, "hash_dim", 32),
+            )
+            embed_provider = _create_semantic_provider(
+                semantic_args,
+                cached=args.mode in {"semantic", "hybrid"},
+            )
         snapshot = evaluate_search_qa(
             db_path=db_path,
             qa_file=args.qa_file,
             mode=args.mode,
             limit=args.limit,
+            embed_provider=embed_provider,
+            semantic_vector_kind=args.semantic_vector_kind,
+            allow_hash=args.allow_hash,
         )
         if args.output:
             write_json(args.output, snapshot)
@@ -1989,6 +2003,10 @@ def main():
     qp.add_argument("--mode", choices=["auto", "keyword", "vector", "semantic", "hybrid"], default="keyword")
     qp.add_argument("--limit", "-n", type=int, default=10)
     qp.add_argument("--db-path", help="SQLite DB 路徑（預設 project_dir/vault.db）")
+    qp.add_argument("--semantic-vector-kind", choices=["claim", "node"], default="claim",
+                    help="stored semantic_vectors kind for semantic/hybrid QA")
+    qp.add_argument("--allow-hash", action="store_true", help="明確允許測試用 deterministic hash provider")
+    qp.add_argument("--hash-dim", type=int, default=32, help="hash provider 維度（僅 --allow-hash）")
 
     qp = qa_sub.add_parser("compare", help="比較兩個 Search QA snapshot JSON")
     qp.add_argument("--before", required=True, help="before snapshot JSON")

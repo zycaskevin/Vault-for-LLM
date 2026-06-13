@@ -15,6 +15,30 @@ from vault.search import VaultSearch
 from vault.compiler import VaultCompiler
 
 
+def test_db_connect_degrades_when_sqlite_extension_loading_unavailable(tmp_path, monkeypatch):
+    original_connect = sqlite3.connect
+
+    class NoExtensionConnection(sqlite3.Connection):
+        @property
+        def enable_load_extension(self):
+            raise AttributeError("extension loading unavailable")
+
+    def connect_without_extension(*args, **kwargs):
+        kwargs["factory"] = NoExtensionConnection
+        return original_connect(*args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", connect_without_extension)
+    db = VaultDB(tmp_path / "vault.db")
+    db._vec_available = True
+    db.connect()
+    try:
+        assert db._vec_available is False
+        kid = db.add_knowledge("Keyword only", "Keyword search still works without vector extension.")
+        assert kid
+    finally:
+        db.close()
+
+
 def test_db_crud():
     """測試資料庫 CRUD"""
     db_path = tempfile.mktemp(suffix=".db")

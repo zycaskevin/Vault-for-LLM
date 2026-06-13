@@ -72,6 +72,27 @@ def test_mcp_memory_promote_writes_active_knowledge(tmp_path):
         assert nodes >= 1
 
 
+def test_mcp_vault_add_warns_and_builds_document_map(tmp_path):
+    _set_project_dir(tmp_path)
+    payload = _payload(handle_tool_call(
+        "vault_add",
+        {
+            "title": "Direct add compatibility",
+            "content": "Direct MCP add is a compatibility path; agents should prefer candidate memory.",
+            "tags": "mcp,direct",
+        },
+    ))
+    assert payload["success"] is True
+    assert "warning" in payload
+    assert payload["document_map_built"] is True
+    with VaultDB(tmp_path / "vault.db") as db:
+        nodes = db.conn.execute(
+            "SELECT COUNT(*) AS n FROM knowledge_nodes WHERE knowledge_id=?",
+            (payload["id"],),
+        ).fetchone()["n"]
+        assert nodes >= 1
+
+
 def test_mcp_dream_run_report_only(tmp_path):
     _set_project_dir(tmp_path)
     with VaultDB(tmp_path / "vault.db") as db:

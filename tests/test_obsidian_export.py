@@ -31,11 +31,11 @@ def _run_cli(project_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
 def _make_vault_db(path: Path) -> list[int]:
     with VaultDB(path) as db:
         first = db.add_knowledge(
-            title="Guardrails Document Map Sprint 4A",
-            content_raw="# Guardrails Document Map Sprint 4A\n\nTool-gated reading keeps long entries bounded.",
+            title="Vault Document Map Example",
+            content_raw="# Vault Document Map Example\n\nTool-gated reading keeps long entries bounded.",
             layer="L3",
             category="technique",
-            tags="guardrails, document-map",
+            tags="vault, document-map",
             trust=0.8,
             source="unit-test",
             summary="Tool-gated reading keeps long entries bounded.",
@@ -45,7 +45,7 @@ def _make_vault_db(path: Path) -> list[int]:
             content_raw="Unsafe filenames should still export safely.",
             layer="L3",
             category="error",
-            tags='["guardrails", "filenames"]',
+            tags='["vault", "filenames"]',
             trust=0.7,
             source="unit-test",
         )
@@ -63,7 +63,7 @@ def _make_vault_db(path: Path) -> list[int]:
             content_raw="Low trust body.",
             layer="L3",
             category="technique",
-            tags="guardrails, low-trust",
+            tags="vault, low-trust",
             trust=0.2,
             source="unit-test",
         )
@@ -107,17 +107,17 @@ def test_export_obsidian_writes_idempotent_markdown_with_frontmatter(tmp_path):
     assert result["written"] == 1
     assert result["matched"] == 1
     assert result["dry_run"] is False
-    note = vault_dir / "00-Vault-Knowledge" / "technique" / "0001-Guardrails-Document-Map-Sprint-4A.md"
+    note = vault_dir / "00-Vault-Knowledge" / "technique" / "0001-Vault-Document-Map-Example.md"
     assert note.exists()
 
     content = note.read_text(encoding="utf-8")
     assert "vault_id: 1" in content
-    assert 'title: "Guardrails Document Map Sprint 4A"' in content
+    assert 'title: "Vault Document Map Example"' in content
     assert 'category: "technique"' in content
-    assert 'tags: ["guardrails", "document-map"]' in content
+    assert 'tags: ["vault", "document-map"]' in content
     assert 'layer: "L3"' in content
     assert "trust: 0.8" in content
-    assert "# Guardrails Document Map Sprint 4A" in content
+    assert "# Vault Document Map Example" in content
     assert "## Citation\n\nVault #1" in content
 
     # Running again overwrites the same path rather than creating duplicates.
@@ -141,10 +141,10 @@ def test_export_obsidian_filters_layer_min_trust_and_limit_in_id_order(tmp_path)
 
     assert result["matched"] == 2
     assert [Path(path).name for path in result["paths"]] == [
-        "0001-Guardrails-Document-Map-Sprint-4A.md",
+        "0001-Vault-Document-Map-Example.md",
         "0002-Bad-Name-Quoted.md",
     ]
-    assert (tmp_path / "ObsidianVault" / "00-Vault-Knowledge" / "technique" / "0001-Guardrails-Document-Map-Sprint-4A.md").exists()
+    assert (tmp_path / "ObsidianVault" / "00-Vault-Knowledge" / "technique" / "0001-Vault-Document-Map-Example.md").exists()
     assert (tmp_path / "ObsidianVault" / "00-Vault-Knowledge" / "error" / "0002-Bad-Name-Quoted.md").exists()
     assert not (tmp_path / "ObsidianVault" / "00-Vault-Knowledge" / "general" / "0003-Private-Draft.md").exists()
     assert not (tmp_path / "ObsidianVault" / "00-Vault-Knowledge" / "technique" / "0004-Low-Trust-Entry.md").exists()
@@ -165,7 +165,7 @@ def test_export_obsidian_parses_json_tags_and_adds_heading_for_plain_body(tmp_pa
     note_path = Path(result["paths"][0])
     content = note_path.read_text(encoding="utf-8")
     assert note_path.name == "0002-Bad-Name-Quoted.md"
-    assert 'tags: ["guardrails", "filenames"]' in content
+    assert 'tags: ["vault", "filenames"]' in content
     assert '# Bad / Name: "Quoted"?' in content
     assert "Unsafe filenames should still export safely." in content
 
@@ -263,7 +263,7 @@ def test_export_obsidian_cli_writes_notes(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "matched=2" in result.stdout
     assert "written=2" in result.stdout
-    assert (vault_dir / "00-Vault-Knowledge" / "technique" / "0001-Guardrails-Document-Map-Sprint-4A.md").exists()
+    assert (vault_dir / "00-Vault-Knowledge" / "technique" / "0001-Vault-Document-Map-Example.md").exists()
     assert (vault_dir / "00-Vault-Knowledge" / "error" / "0002-Bad-Name-Quoted.md").exists()
 
 

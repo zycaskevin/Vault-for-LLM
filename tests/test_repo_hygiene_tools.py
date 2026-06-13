@@ -178,8 +178,8 @@ diff --git a/runtime/state.sqlite b/runtime/state.sqlite
 +++ b/runtime/state.sqlite
 @@ -0,0 +1 @@
 +synthetic clean text
-diff --git a/guardrails.db b/guardrails.db
-+++ b/guardrails.db
+diff --git a/vault.db b/vault.db
++++ b/vault.db
 @@ -0,0 +1 @@
 +synthetic clean text
 diff --git a/worklogs/private.md b/worklogs/private.md
@@ -195,7 +195,7 @@ diff --git a/worklogs/private.md b/worklogs/private.md
         "raw/private.md",
         "compiled/private.md",
         "runtime/state.sqlite",
-        "guardrails.db",
+        "vault.db",
         "worklogs/private.md",
     }.issubset(forbidden_paths)
     assert report["passed"] is False

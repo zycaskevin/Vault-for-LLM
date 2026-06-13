@@ -338,7 +338,7 @@ pytest tests/test_memory_curator.py::test_duplicate_gate_warns_on_same_title -q
 **Command:**
 
 ```bash
-vault remember "Title" --content "..." --reason "Arthur said this is a reusable workflow" --mode candidate
+vault remember "Title" --content "..." --reason "Maintainer said this is a reusable workflow" --mode candidate
 ```
 
 **Verification:**

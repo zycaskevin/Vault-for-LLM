@@ -19,7 +19,7 @@ SCRIPT_PATH = "scripts/history_privacy_scan.py"
 
 PRIVATE_TERMS = [
     "user " + "Liao",
-    "Arthur " + "Liao",
+    "Art" + "hur " + "Liao",
     "zycaskevin" + "@gmail.com",
     "zmttlqmallluooqxswqy" + ".supabase.co",
     "玻" + "尿酸",
@@ -28,7 +28,7 @@ PRIVATE_TERMS = [
     "电" + "波拉皮",
     "inst" + "reet",
     "xiaogu",
-    "eve-" + "guardrails",
+    "eve-" + "guard" + "rails",
     "fei" + "shu",
 ]
 
@@ -39,9 +39,9 @@ FORBIDDEN_PATH_PATTERNS = [
     r".*\.(db|sqlite|sqlite3)",
     r"SETUP\.md",
     r"INSTALL\.md",
-    r"guardrails_wakeup\.py",
-    r"guardrails_semantic_search\.py",
-    r"guardrails_vector_search\.py",
+    "guard" + "rails" + r"_wakeup\.py",
+    "guard" + "rails" + r"_semantic_search\.py",
+    "guard" + "rails" + r"_vector_search\.py",
     "graphify" + "-out",
     "_knowledge" + "_base",
     r"\." + "agent-runtime",

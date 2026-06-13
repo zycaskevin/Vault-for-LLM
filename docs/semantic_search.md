@@ -6,7 +6,7 @@ This guide consolidates the public semantic-search behavior added by the upgrade
 
 - FTS5/BM25 keyword search with safe fallback.
 - `semantic_vectors` storage for knowledge/claim-level vectors.
-- Provider guardrails that separate real semantic providers from deterministic test doubles.
+- Provider safeguards that separate real semantic providers from deterministic test doubles.
 - Persistent embedding cache for cross-process startup and daemon workflows.
 - Operator-facing CLI commands for rebuild, warm, smoke, cache maintenance, startup, and daemon runs.
 

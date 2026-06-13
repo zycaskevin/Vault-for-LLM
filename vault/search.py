@@ -24,6 +24,8 @@ from .semantic import (
     validate_embedding_provider,
 )
 
+DEFAULT_KEYWORD_MIN_SCORE = 0.34
+
 
 def _normalize_text(value: str) -> str:
     """Normalize text for best-effort claim matching."""
@@ -115,6 +117,7 @@ class VaultSearch:
         compact: bool = False,
         semantic_vector_kind: str = "claim",
         allow_hash: bool = False,
+        min_score: float | None = None,
     ) -> list[dict]:
         """
         搜尋知識庫。
@@ -134,7 +137,7 @@ class VaultSearch:
         use_rerank: 是否使用 reranker 重排序（預設 True）
         """
         if mode == "keyword":
-            results = self.search_keyword(query, limit, min_trust, layer, category)
+            results = self.search_keyword(query, limit, min_trust, layer, category, min_score=min_score)
         elif mode == "vector":
             results = self.search_vector(query, limit * 2, min_trust, layer, category)
             results = results[:limit]
@@ -158,6 +161,7 @@ class VaultSearch:
                 category,
                 semantic_vector_kind=semantic_vector_kind,
                 allow_hash=allow_hash,
+                min_score=min_score,
             )
         else:
             # auto: safe by default: use stored semantic index only with a real semantic provider.
@@ -174,13 +178,14 @@ class VaultSearch:
                     category,
                     semantic_vector_kind=semantic_vector_kind,
                     allow_hash=allow_hash,
+                    min_score=min_score,
                 )
             else:
                 embed = self._get_embed()
                 if embed is not None and self.db._vec_available and bool(getattr(embed, "is_semantic", True)):
-                    results = self.search_hybrid(query, limit, min_trust, layer, category)
+                    results = self.search_hybrid(query, limit, min_trust, layer, category, min_score=min_score)
                 else:
-                    results = self.search_keyword(query, limit, min_trust, layer, category)
+                    results = self.search_keyword(query, limit, min_trust, layer, category, min_score=min_score)
 
         # 圖譜擴展
         if graph_expand > 0 and self._graph is not None:
@@ -472,11 +477,13 @@ class VaultSearch:
         min_trust: float = 0.0,
         layer: Optional[str] = None,
         category: Optional[str] = None,
+        min_score: float | None = None,
     ) -> list[dict]:
         """Keyword search with optional FTS5/BM25 and LIKE fallback."""
         terms = self._tokenize(query)
         if not terms:
             return []
+        score_floor = DEFAULT_KEYWORD_MIN_SCORE if min_score is None else max(0.0, float(min_score))
 
         try:
             results = self.db.search_fts_keyword(
@@ -499,9 +506,9 @@ class VaultSearch:
                 d["_score"] = matched / len(terms)
                 d["_bm25"] = bm25_score
                 d["_mode"] = "keyword_fts"
-            return results
+            return [d for d in results if d.get("_score", 0.0) >= score_floor]
 
-        return self._search_keyword_like(query, terms, limit, min_trust, layer, category)
+        return self._search_keyword_like(query, terms, limit, min_trust, layer, category, min_score=score_floor)
 
     def _search_keyword_like(
         self,
@@ -511,6 +518,7 @@ class VaultSearch:
         min_trust: float = 0.0,
         layer: Optional[str] = None,
         category: Optional[str] = None,
+        min_score: float = DEFAULT_KEYWORD_MIN_SCORE,
     ) -> list[dict]:
         """LIKE keyword fallback used when FTS5 is unavailable or yields no hits."""
         # 建構 WHERE 條件
@@ -547,7 +555,8 @@ class VaultSearch:
             matched = sum(1 for t in terms if t.lower() in text)
             d["_score"] = matched / len(terms)
             d["_mode"] = "keyword"
-            results.append(d)
+            if d["_score"] >= min_score:
+                results.append(d)
 
         results.sort(key=lambda x: x["_score"], reverse=True)
         return results
@@ -726,6 +735,7 @@ class VaultSearch:
         *,
         semantic_vector_kind: str = "claim",
         allow_hash: bool = False,
+        min_score: float | None = None,
     ) -> list[dict]:
         """
         Hybrid search with Reciprocal Rank Fusion (RRF).
@@ -741,6 +751,7 @@ class VaultSearch:
             min_trust=min_trust,
             layer=layer,
             category=category,
+            min_score=min_score,
         )
 
         try:

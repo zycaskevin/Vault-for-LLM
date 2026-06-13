@@ -2,10 +2,13 @@
 
 __version__ = "0.5.0"
 
-from .db import VaultDB
-from .search import VaultSearch
-from .compiler import VaultCompiler
-from .embed import create_embedding_provider, EmbeddingProvider
-from .llm import create_llm_provider, LLMProvider
-from .graph import VaultGraph
-from .log import log, setup_logging
+from .db import VaultDB as VaultDB
+from .search import VaultSearch as VaultSearch
+from .compiler import VaultCompiler as VaultCompiler
+from .embed import (
+    create_embedding_provider as create_embedding_provider,
+    EmbeddingProvider as EmbeddingProvider,
+)
+from .llm import create_llm_provider as create_llm_provider, LLMProvider as LLMProvider
+from .graph import VaultGraph as VaultGraph
+from .log import log as log, setup_logging as setup_logging

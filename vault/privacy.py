@@ -9,9 +9,9 @@ from typing import Iterable
 _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("private_key", re.compile(r"-----BEGIN\s+(?:RSA\s+|EC\s+|OPENSSH\s+)?PRIVATE KEY-----[\s\S]*?-----END\s+(?:RSA\s+|EC\s+|OPENSSH\s+)?PRIVATE KEY-----")),
     ("github_token", re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}\b")),
-    ("api_key", re.compile(r"(?i)\b(?:api[_-]?key|apikey|access[_-]?key|secret[_-]?key)\b\s*[:=]\s*['\"]?([A-Za-z0-9_\-]{16,})['\"]?")),
+    ("api_key", re.compile(r"(?i)\b(?:api[\s_-]?key|apikey|access[\s_-]?key|secret[\s_-]?key)\b\s*(?::|=|\bis\b)\s*['\"]?([A-Za-z0-9_\-]{16,})['\"]?")),
     ("bearer_token", re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/\-]+=*")),
-    ("password", re.compile(r"(?i)\b(?:password|passwd|pwd)\b\s*[:=]\s*['\"]?([^'\"\s]{8,})['\"]?")),
+    ("password", re.compile(r"(?i)\b(?:password|passwd|pwd)\b\s*(?::|=|\bis\b)\s*['\"]?([^'\"\s]{8,})['\"]?")),
 ]
 
 _WARN_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
@@ -67,4 +67,3 @@ def redact_secrets(text: str) -> str:
 
 # Friendly alias for callers/tests.
 privacy_gate = scan_privacy
-

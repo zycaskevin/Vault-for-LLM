@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Test new features: convergence, freshness, claims, reranker"""
 import sys
-import os
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -145,8 +145,6 @@ print("=" * 60)
 
 # Quick dry run test. Use the current Python interpreter instead of hardcoding a
 # conda environment so contributors can run the suite from any supported venv.
-import subprocess
-import sys
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 result = subprocess.run(
     [sys.executable,

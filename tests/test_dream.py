@@ -55,8 +55,11 @@ def test_dream_report_only_does_not_mutate_active_db_or_raw(tmp_path):
     assert payload["summary"]["metadata"] >= 1
     assert payload["summary"]["duplicates"] >= 1
     assert payload["summary"]["actions_applied"] == 0
+    assert payload["proposed_actions"]
+    assert payload["plan_path"].startswith("reports/dream/plans/")
     report = tmp_path / payload["report_path"]
     assert report.exists()
+    assert (tmp_path / payload["plan_path"]).exists()
     report_text = report.read_text(encoding="utf-8")
     assert "# Vault Dream Report" in report_text
     assert "Recommended actions" in report_text
@@ -67,9 +70,9 @@ def test_dream_report_only_does_not_mutate_active_db_or_raw(tmp_path):
     assert sorted(p.name for p in raw_dir.glob("*.md")) == raw_before
 
 
-def test_dream_apply_safe_is_no_delete_and_reports_actions(tmp_path):
+def test_dream_apply_safe_updates_low_risk_metadata_and_backs_up(tmp_path):
     with VaultDB(tmp_path / "vault.db") as db:
-        db.add_knowledge(
+        kid = db.add_knowledge(
             title="Apply safe item",
             content_raw="Apply safe currently reports and backs up without deleting.",
             source="test",
@@ -84,11 +87,16 @@ def test_dream_apply_safe_is_no_delete_and_reports_actions(tmp_path):
         checks=["metadata"],
         limit=5,
         write_report=False,
-        backup=False,
+        backup=True,
     )
-    assert payload["summary"]["actions_applied"] == 0
+    assert payload["summary"]["actions_applied"] == 2
+    assert payload["backup_path"]
+    assert payload["applied_actions"]
     with VaultDB(tmp_path / "vault.db") as db:
         assert db.conn.execute("SELECT COUNT(*) AS n FROM knowledge").fetchone()["n"] == 1
+        row = db.get_knowledge(kid)
+        assert row["tags"] == "needs-review"
+        assert row["category"] == "review"
 
 
 def test_dream_cli_smoke_writes_report(tmp_path):
@@ -111,4 +119,5 @@ def test_dream_cli_smoke_writes_report(tmp_path):
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["summary"]["actions_applied"] == 0
+    assert payload["proposed_actions"]
     assert (tmp_path / payload["report_path"]).exists()

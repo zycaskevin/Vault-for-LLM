@@ -716,7 +716,7 @@ def import_document(
                     continue
                 if len(ch_text) <= 2000:
                     all_chunks.append((
-                        ChunkResult(0, f"§1", ch_text, ch_start, ch_end, "chapter"),
+                        ChunkResult(0, "§1", ch_text, ch_start, ch_end, "chapter"),
                         f"{source}#{ch_title}",
                         f"{title} — {ch_title}",
                     ))
@@ -770,7 +770,6 @@ def import_document(
             max_propositions_per_chunk=8, paragraph_max_chars=2000,
         )
         for chunk in chunks:
-            heading = chunk.title.split(" §")[0] if " §" in chunk.title else chunk.title
             all_chunks.append((chunk, source, f"{title} — {chunk.title}"))
 
     else:

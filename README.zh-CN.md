@@ -2,7 +2,7 @@
 
 **[English](README.md) | [繁體中文](README.zh-Hant.md) | 简体中文**
 
-> 给 LLM Agent 用的本地优先、生产级记忆层。
+> 给 LLM Agent 用的本地优先、以生产实践为目标的记忆工作流。
 >
 > Vault-for-LLM 会把 Markdown 项目知识转成可移植的 SQLite 记忆库，让 Agent 需要时再搜索。它处理的是让 Agent 记忆能长期运作的无聊但重要部分：搜索 QA、定界读取、语义搜索、schema migration，以及可验证的 backup/restore。
 
@@ -34,6 +34,8 @@ Vault-for-LLM 不只是另一个向量数据库。它正在往 **Agent 记忆质
 - 可重复使用的 Agent workflow，能不能变成技能共享，而不是每个项目重新摸索？
 
 换句话说：一般 RAG 重点是“把资料找出来”；Vault-for-LLM 更关心的是“这些记忆能不能被 Agent 正确使用”。
+
+如果想看它和 Mem0、Letta/MemGPT、Zep、LangGraph memory 的定位差异，请看 [memory system comparison](docs/memory_system_comparison.md)。白话版：Vault-for-LLM 偏向本地、可审查、候选制的项目记忆，重视 retrieval QA 与定界引用；如果你需要托管式个性化记忆、完整 stateful-agent runtime，或企业级 temporal graph memory，其他系统可能更合适。
 
 ---
 
@@ -218,6 +220,8 @@ vault semantic cache-stats --pretty
 ```
 
 `vault search --mode semantic` 会直接读取已存储的 `semantic_vectors`；`--mode hybrid` 会在可用时融合关键词与 stored semantic index，不可用时安全 fallback。
+
+Search QA 也可以跑 semantic/hybrid snapshot，但 QA 命令必须使用和 `vault semantic rebuild` 相同的 provider/model/dimension 与 vector kind。若使用 deterministic hash provider 做本地 smoke test，请在 rebuild 和 `vault search-qa run` 都传入相同的 `--allow-hash --hash-dim N`；hash vectors 只验证流程与 JSON 形状，不代表真实语义搜索质量。
 
 完整 lifecycle（`warm`、`cache-prune`、`startup`、`daemon`、以及只供测试用的 `--allow-hash`）请看 [`docs/semantic_search.md`](docs/semantic_search.md)。
 

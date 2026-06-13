@@ -302,7 +302,10 @@ def test_verify_rejects_malformed_auxiliary_vault_tables(tmp_path):
     target = tmp_path / "target.db"
     conn = sqlite3.connect(fake)
     conn.execute("CREATE TABLE config(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
-    conn.execute("INSERT INTO config(key, value) VALUES('schema_version', '6')")
+    conn.execute(
+        "INSERT INTO config(key, value) VALUES('schema_version', ?)",
+        (str(VaultDB.SCHEMA_VERSION),),
+    )
     conn.execute(
         """CREATE TABLE knowledge(
             id INTEGER, title TEXT, content_raw TEXT, content_aaak TEXT,
@@ -310,7 +313,7 @@ def test_verify_rejects_malformed_auxiliary_vault_tables(tmp_path):
         )"""
     )
     conn.execute("CREATE TABLE schema_migrations(version INTEGER, name TEXT, applied_at TEXT)")
-    for version in range(1, 7):
+    for version in range(1, VaultDB.SCHEMA_VERSION + 1):
         conn.execute(
             "INSERT INTO schema_migrations(version, name, applied_at) VALUES(?, ?, '')",
             (version, f"v{version}"),
@@ -338,7 +341,7 @@ def test_verify_rejects_malformed_auxiliary_vault_tables(tmp_path):
     )
     for table in ["content_log", "skills", "lint_cache", "edges", "entities", "entity_knowledge"]:
         conn.execute(f"CREATE TABLE {table}(id INTEGER)")
-    conn.execute("PRAGMA user_version=6")
+    conn.execute(f"PRAGMA user_version={VaultDB.SCHEMA_VERSION}")
     conn.commit()
     conn.close()
 

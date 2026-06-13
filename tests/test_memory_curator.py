@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from vault.db import VaultDB
-from vault.memory import create_candidate, duplicate_gate, promote_candidate
+from vault.memory import create_candidate, duplicate_gate, promote_candidate, propose_memory, quality_gate
 from vault.privacy import scan_privacy
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -31,6 +31,39 @@ def test_duplicate_gate_warns_on_same_title(tmp_path):
         assert any(f["type"] == "active_title" for f in result["findings"])
 
 
+def test_duplicate_gate_warns_on_near_duplicate_content(tmp_path):
+    with VaultDB(tmp_path / "vault.db") as db:
+        db.add_knowledge(
+            title="Ollama timeout fix",
+            content_raw="Ollama timeout failures are fixed by warming the model and setting timeout=120.",
+            source="test",
+        )
+        result = duplicate_gate(
+            db,
+            "Fix Ollama timeout",
+            "Ollama timeout failures are fixed by warming the model and setting timeout=120.",
+        )
+        assert result["status"] == "warn"
+        assert any(f["type"] in {"active_content", "active_near_duplicate"} for f in result["findings"])
+
+
+def test_quality_gate_warns_on_short_generic_memory():
+    result = quality_gate({"title": "note", "content": "tiny", "tags": "", "reason": ""})
+    assert result["status"] == "warn"
+    types = {finding["type"] for finding in result["findings"]}
+    assert {"content_too_short", "generic_title", "missing_tags"}.issubset(types)
+
+
+def test_quality_gate_passes_actionable_memory():
+    result = quality_gate({
+        "title": "Ollama timeout runbook",
+        "content": "Ollama timeout is caused by cold models; fix it by warming the model and setting timeout=120.",
+        "tags": "ollama,timeout",
+        "reason": "Keep troubleshooting steps.",
+    })
+    assert result["status"] == "pass"
+
+
 def test_candidate_creation_does_not_alter_active_knowledge(tmp_path):
     with VaultDB(tmp_path / "vault.db") as db:
         before = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge").fetchone()["n"]
@@ -47,6 +80,40 @@ def test_candidate_creation_does_not_alter_active_knowledge(tmp_path):
         assert before == after == 0
         assert row["title"] == "Candidate only"
         assert json.loads(row["gate_payload_json"])["privacy"]["status"] == "pass"
+        assert json.loads(row["gate_payload_json"])["quality"]["status"] in {"pass", "warn"}
+
+
+def test_promote_if_safe_requires_all_gates_to_pass(tmp_path):
+    with VaultDB(tmp_path / "vault.db") as db:
+        payload = propose_memory(
+            db,
+            mode="promote_if_safe",
+            title="No Tags",
+            content="This memory has useful context because it explains a fix but intentionally lacks tags.",
+            reason="Regression for strict promote_if_safe gate",
+            source="test",
+        )
+        assert payload["status"] == "candidate_created"
+        assert payload["gates"]["quality"] == "warn"
+        assert payload["auto_promotion"]["status"] == "skipped"
+        assert db.conn.execute("SELECT COUNT(*) AS n FROM knowledge").fetchone()["n"] == 0
+
+
+def test_promote_if_safe_promotes_only_when_all_gates_pass(tmp_path):
+    with VaultDB(tmp_path / "vault.db") as db:
+        payload = propose_memory(
+            db,
+            mode="promote_if_safe",
+            title="Tagged safe memory",
+            content="Tagged safe memory is caused by a repeated workflow need; the fix is to store reviewed context.",
+            reason="Regression for strict promote_if_safe success path",
+            tags="workflow,memory",
+            category="workflow",
+            source="test",
+            project_dir=tmp_path,
+        )
+        assert payload["status"] == "promoted"
+        assert payload["knowledge_id"]
 
 
 def test_privacy_fail_candidate_is_rejected_and_redacted(tmp_path):
@@ -101,6 +168,29 @@ def test_promotion_writes_raw_and_active_db(tmp_path):
         assert knowledge["title"] == "Promote Me"
         assert knowledge["content_raw"] == "Promotion writes a raw Markdown note and active knowledge row."
         assert knowledge["layer"] == "L2"
+        assert knowledge["source"] == "promote-me.md"
+
+
+def test_promotion_uses_exact_source_for_similar_filenames(tmp_path):
+    with VaultDB(tmp_path / "vault.db") as db:
+        raw = tmp_path / "raw"
+        raw.mkdir()
+        (raw / "my-foo.md").write_text(
+            "---\n{\"title\":\"Existing Foo\",\"source\":\"my-foo.md\"}\n---\n\nExisting body",
+            encoding="utf-8",
+        )
+        first = create_candidate(
+            db,
+            title="Foo",
+            content="Foo memory explains the because and fix context for exact source lookup.",
+            reason="Regression for exact source matching",
+            tags="foo,source",
+            source="test",
+        )
+        promoted = promote_candidate(db, first["candidate_id"], confirm=True, project_dir=tmp_path)
+        knowledge = db.get_knowledge(promoted["knowledge_id"])
+        assert knowledge["title"] == "Foo"
+        assert knowledge["source"] == "foo.md"
 
 
 def test_cli_remember_and_promote_smoke(tmp_path):

@@ -2,7 +2,7 @@
 
 **English | [繁體中文](README.zh-Hant.md) | [简体中文](README.zh-CN.md)**
 
-> Local-first, production-grade memory for LLM agents.
+> Local-first, production-minded memory workflows for LLM agents.
 >
 > Vault-for-LLM turns Markdown project knowledge into a portable SQLite memory vault that agents can search on demand. It is built for the boring parts that make agent memory usable in real projects: retrieval QA, bounded document reads, semantic search, schema migrations, and verified backup/restore.
 
@@ -246,6 +246,8 @@ vault semantic cache-stats --pretty
 
 `vault search --mode semantic` reads stored `semantic_vectors` directly. `--mode hybrid` fuses keyword results with the stored semantic index when available, and falls back safely when it is not.
 
+Search QA can also run semantic/hybrid snapshots, but the QA command must use the same provider/model/dimension and vector kind used to rebuild `semantic_vectors`. For deterministic local smoke tests, rebuild with `--allow-hash --hash-dim N` and pass the same flags to `vault search-qa run`; hash vectors validate plumbing only and are not a semantic-quality benchmark.
+
 For the full lifecycle — `warm`, `cache-prune`, `startup`, `daemon`, and the `--allow-hash` test-only provider — see [`docs/semantic_search.md`](docs/semantic_search.md).
 
 ---
@@ -347,12 +349,12 @@ Example MCP server config:
 
 Current MCP tools include:
 
-- `vault_search`
-- `vault_add`
-- `vault_stats`
-- `vault_map_show`
-- `vault_read_range`
-- `vault_remote_map_show` / `vault_remote_read_range` when optional Supabase sync is configured
+- Retrieval: `vault_search`, `vault_stats`
+- Candidate-first memory: `vault_memory_propose`, `vault_memory_promote`
+- Curation: `vault_dream_run`
+- Bounded reading: `vault_map_show`, `vault_read_range`
+- Compatibility direct write: `vault_add` (prefer candidate-first tools for autonomous agents)
+- Optional remote reads: `vault_remote_map_show` / `vault_remote_read_range` when optional Supabase sync is configured
 
 For agent loops, prefer `vault_search` → `vault_map_show` → `vault_read_range`. `vault_search` returns compact MCP payloads by default; pass `compact: false` only when a caller explicitly needs the fuller preview output. Final answers should cite `vault_read_range` output rather than search previews.
 

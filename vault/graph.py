@@ -262,7 +262,7 @@ class VaultGraph:
             related_ids = self.db.get_knowledge_for_entity(entity["name"])
             for other_id in related_ids:
                 if other_id != knowledge_id:
-                    edge_id = self.db.add_edge(
+                    self.db.add_edge(
                         knowledge_id, other_id,
                         relation=f"shared_{entity['name']}",
                         weight=0.5,
@@ -394,14 +394,6 @@ class VaultGraph:
                 lines.append(f'    N{nid}["{label}"]{style}')
 
         # 生成邊
-        relation_labels = {
-            "related_to": "---",
-            "shared_tool": "--工具---",
-            "shared_model": "--模型---",
-            "shared_concept": "--概念---",
-            "shared_platform": "--平台---",
-        }
-
         for e in unique_edges:
             # 通用格式
             rel = e["relation"]
@@ -410,7 +402,6 @@ class VaultGraph:
                 arrow = f'--"{label}"-->'
             else:
                 arrow = "-->"
-            auto_tag = "自動" if e.get("auto_inferred") else "手動"
             lines.append(f"    N{e['source_id']} {arrow} N{e['target_id']}")
 
         lines.append("")

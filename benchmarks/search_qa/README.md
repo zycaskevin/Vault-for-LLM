@@ -23,13 +23,15 @@ Each file uses the schema accepted by `vault.search_qa.load_search_qa_set`:
       "query": "retrieval query",
       "expected_titles": ["Exact expected title"],
       "expected_title_substrings": ["optional", "all required substrings"],
-      "expected_ids": ["optional stable knowledge IDs"]
+      "expected_ids": ["optional stable knowledge IDs"],
+      "expected_no_results": false
     }
   ]
 }
 ```
 
 Use `expected_titles` or `expected_title_substrings` for portable fixtures. Use `expected_ids` only when the target database has stable IDs.
+Use `expected_no_results: true` for hard-negative cases where the correct behavior is to return no matches; Search QA will count false positives separately.
 
 ## Scope and limits
 

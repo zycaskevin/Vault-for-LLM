@@ -6,17 +6,21 @@
     {
       "id": "zh_document_map_read_range",
       "query": "文件地圖 讀取範圍 證據",
-      "expected_titles": ["文件地圖閱讀指南"]
+      "expected_titles": [
+        "文件地圖閱讀指南"
+      ]
     },
     {
       "id": "zh_citation_policy_boundary",
       "query": "搜尋引用 導航提示 最終引用",
-      "expected_titles": ["引用政策邊界"]
+      "expected_titles": [
+        "引用政策邊界"
+      ]
     },
     {
       "id": "zh_no_result_control",
       "query": "不存在基準 火星香蕉 控制案例",
-      "expected_titles": ["不存在的公開基準項目"]
+      "expected_no_results": true
     }
   ]
 }

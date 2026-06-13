@@ -23,6 +23,9 @@ METRIC_KEYS: tuple[str, ...] = (
     "cases_with_results",
     "top1_hits",
     "topk_hits",
+    "no_result_cases",
+    "no_result_false_positives",
+    "no_result_precision",
     "mean_reciprocal_rank",
     "map_guidance_rate",
     "read_range_guidance_rate",
@@ -63,6 +66,7 @@ def evaluate_search_qa(
     embed_provider: Any | None = None,
     semantic_vector_kind: str = "claim",
     allow_hash: bool = False,
+    min_score: float | None = None,
 ) -> dict[str, Any]:
     """Run all QA cases through ``VaultSearch`` and return a JSON snapshot."""
     qa_path = Path(qa_file)
@@ -81,6 +85,7 @@ def evaluate_search_qa(
                 limit=limit,
                 semantic_vector_kind=semantic_vector_kind,
                 allow_hash=allow_hash,
+                min_score=min_score,
             )
             for case in qa["cases"]
         ]
@@ -93,6 +98,7 @@ def evaluate_search_qa(
         "qa_file": str(qa_path),
         "mode": mode,
         "limit": limit,
+        "min_score": min_score,
         "generated_at": generated_at,
         "aggregate": aggregate,
         "cases": case_summaries,
@@ -163,6 +169,9 @@ def format_search_qa_snapshot(snapshot: dict[str, Any]) -> str:
         f"- cases_with_results: {aggregate.get('cases_with_results', 0)}\n"
         f"- top1_hits: {aggregate.get('top1_hits', 0)}\n"
         f"- topk_hits: {aggregate.get('topk_hits', 0)}\n"
+        f"- no_result_cases: {aggregate.get('no_result_cases', 0)}\n"
+        f"- no_result_false_positives: {aggregate.get('no_result_false_positives', 0)}\n"
+        f"- no_result_precision: {aggregate.get('no_result_precision', 0.0)}\n"
         f"- mean_reciprocal_rank: {aggregate.get('mean_reciprocal_rank', 0.0)}\n"
         f"- map_guidance_rate: {aggregate.get('map_guidance_rate', 0.0)}\n"
         f"- read_range_guidance_rate: {aggregate.get('read_range_guidance_rate', 0.0)}\n"
@@ -192,8 +201,10 @@ def _evaluate_case(
     limit: int,
     semantic_vector_kind: str = "claim",
     allow_hash: bool = False,
+    min_score: float | None = None,
 ) -> dict[str, Any]:
     query = str(case["query"])
+    expected_no_results = bool(case.get("expected_no_results", False))
     start = time.perf_counter()
     raw_results = search.search(
         query,
@@ -202,6 +213,7 @@ def _evaluate_case(
         use_rerank=False,
         semantic_vector_kind=semantic_vector_kind,
         allow_hash=allow_hash,
+        min_score=min_score,
     )
     latency_ms = (time.perf_counter() - start) * 1000
     results = [_summarize_result(result) for result in raw_results[:limit]]
@@ -217,7 +229,10 @@ def _evaluate_case(
         "expected_ids": _as_list(case.get("expected_ids")),
         "expected_titles": _as_list(case.get("expected_titles")),
         "expected_title_substrings": _as_list(case.get("expected_title_substrings")),
+        "expected_no_results": expected_no_results,
         "result_count": len(results),
+        "no_result_hit": expected_no_results and len(results) == 0,
+        "no_result_false_positive": expected_no_results and len(results) > 0,
         "top1_hit": hit_rank == 1,
         "topk_hit": hit_rank is not None,
         "hit_rank": hit_rank,
@@ -272,6 +287,9 @@ def _aggregate_cases(cases: list[dict[str, Any]]) -> dict[str, int | float]:
             "cases_with_results": 0,
             "top1_hits": 0,
             "topk_hits": 0,
+            "no_result_cases": 0,
+            "no_result_false_positives": 0,
+            "no_result_precision": 0.0,
             "mean_reciprocal_rank": 0.0,
             "map_guidance_rate": 0.0,
             "read_range_guidance_rate": 0.0,
@@ -285,12 +303,24 @@ def _aggregate_cases(cases: list[dict[str, Any]]) -> dict[str, int | float]:
     latencies = [float(case.get("latency_ms", 0.0)) for case in cases]
     sorted_latencies = sorted(latencies)
     p95_index = max(0, math.ceil(0.95 * len(sorted_latencies)) - 1)
+    no_result_cases = sum(1 for case in cases if case.get("expected_no_results"))
+    no_result_false_positives = sum(
+        1 for case in cases if case.get("no_result_false_positive")
+    )
+    no_result_precision = (
+        (no_result_cases - no_result_false_positives) / no_result_cases
+        if no_result_cases
+        else 0.0
+    )
 
     return {
         "total_cases": total,
         "cases_with_results": sum(1 for case in cases if case["result_count"] > 0),
         "top1_hits": sum(1 for case in cases if case["top1_hit"]),
         "topk_hits": sum(1 for case in cases if case["topk_hit"]),
+        "no_result_cases": no_result_cases,
+        "no_result_false_positives": no_result_false_positives,
+        "no_result_precision": no_result_precision,
         "mean_reciprocal_rank": sum(case["reciprocal_rank"] for case in cases) / total,
         "map_guidance_rate": sum(1 for case in cases if case["has_map_guidance"]) / total,
         "read_range_guidance_rate": sum(1 for case in cases if case["has_read_range_guidance"]) / total,

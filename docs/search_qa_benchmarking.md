@@ -66,12 +66,14 @@ vault search-qa run \
   --db-path /tmp/vault-searchqa-demo/vault.db \
   --qa-file benchmarks/search_qa/basic.en.json \
   --mode keyword \
+  --min-score 0.34 \
   --output /tmp/vault-searchqa.en.json
 
 vault search-qa run \
   --db-path /tmp/vault-searchqa-demo/vault.db \
   --qa-file benchmarks/search_qa/basic.zh-Hant.json \
   --mode keyword \
+  --min-score 0.34 \
   --output /tmp/vault-searchqa.zh-Hant.json
 ```
 
@@ -81,6 +83,7 @@ If you are already inside the project whose `vault.db` you want to test, `--db-p
 vault search-qa run \
   --qa-file benchmarks/search_qa/basic.en.json \
   --mode keyword \
+  --min-score 0.34 \
   --output /tmp/vault-searchqa.en.json
 ```
 
@@ -157,6 +160,9 @@ Search QA snapshots include these aggregate metrics:
 - `cases_with_results` — cases returning at least one search result.
 - `top1_hits` — cases where the first result matches `expected_ids`, `expected_titles`, or all `expected_title_substrings`.
 - `topk_hits` — cases where any returned result within the configured limit matches expectations.
+- `no_result_cases` — hard-negative cases marked with `expected_no_results: true`.
+- `no_result_false_positives` — hard-negative cases that returned at least one result.
+- `no_result_precision` — share of hard-negative cases that correctly returned no results.
 - `mean_reciprocal_rank` — average reciprocal rank of the first expected result, with `0.0` for misses.
 - `map_guidance_rate` — fraction of cases whose results include `vault_map_show` guidance.
 - `read_range_guidance_rate` — fraction of cases whose results include `vault_read_range` guidance.

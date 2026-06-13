@@ -81,6 +81,9 @@ def _assert_baseline_metrics(actual: dict):
         "cases_with_results": 2,
         "top1_hits": 2,
         "topk_hits": 2,
+        "no_result_cases": 1,
+        "no_result_false_positives": 0,
+        "no_result_precision": 1.0,
         "mean_reciprocal_rank": 2 / 3,
         "map_guidance_rate": 1 / 3,
         "read_range_guidance_rate": 1 / 3,
@@ -157,7 +160,7 @@ def _write_qa_file(tmp_path: Path) -> Path:
                     {
                         "id": "no_result_control",
                         "query": "zzznomatch qqqnomatch",
-                        "expected_titles": ["Not Present"],
+                        "expected_no_results": True,
                     },
                 ],
             },
@@ -263,6 +266,7 @@ def test_evaluate_search_qa_computes_deterministic_metrics(tmp_path):
     assert snapshot["qa_file"] == str(qa_file)
     assert snapshot["mode"] == "keyword"
     assert snapshot["limit"] == 3
+    assert snapshot["min_score"] is None
     assert snapshot["generated_at"] == "2026-01-02T03:04:05+00:00"
     _assert_baseline_metrics(snapshot["aggregate"])
     assert [case["id"] for case in snapshot["cases"]] == [
@@ -285,6 +289,9 @@ def test_evaluate_search_qa_computes_deterministic_metrics(tmp_path):
     assert second["has_read_range_guidance"] is False
 
     third = snapshot["cases"][2]
+    assert third["expected_no_results"] is True
+    assert third["no_result_hit"] is True
+    assert third["no_result_false_positive"] is False
     assert third["result_count"] == 0
     assert third["reciprocal_rank"] == 0.0
 
@@ -319,6 +326,49 @@ def test_search_qa_flags_search_citation_without_read_range_guidance_conservativ
     assert snapshot["aggregate"]["citation_policy_violations"] == 2
 
 
+def test_search_qa_min_score_can_expose_no_result_false_positives(tmp_path):
+    db_path = _build_fixture_db(tmp_path)
+    qa_file = tmp_path / "weak_no_result.json"
+    qa_file.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "cases": [
+                    {
+                        "id": "weak_no_result",
+                        "query": "mars banana nonexistent policy",
+                        "expected_no_results": True,
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    strict_snapshot = evaluate_search_qa(
+        db_path=db_path,
+        qa_file=qa_file,
+        mode="keyword",
+        limit=3,
+        generated_at="2026-01-02T03:04:05+00:00",
+    )
+    loose_snapshot = evaluate_search_qa(
+        db_path=db_path,
+        qa_file=qa_file,
+        mode="keyword",
+        limit=3,
+        min_score=0.0,
+        generated_at="2026-01-02T03:04:05+00:00",
+    )
+
+    assert strict_snapshot["aggregate"]["no_result_false_positives"] == 0
+    assert strict_snapshot["cases"][0]["no_result_hit"] is True
+    assert loose_snapshot["min_score"] == 0.0
+    assert loose_snapshot["aggregate"]["no_result_false_positives"] == 1
+    assert loose_snapshot["cases"][0]["no_result_false_positive"] is True
+
+
 def test_compare_search_qa_snapshots_computes_stable_deltas_and_text():
     before = {
         "aggregate": {
@@ -326,6 +376,9 @@ def test_compare_search_qa_snapshots_computes_stable_deltas_and_text():
             "cases_with_results": 1,
             "top1_hits": 0,
             "topk_hits": 1,
+            "no_result_cases": 1,
+            "no_result_false_positives": 1,
+            "no_result_precision": 0.0,
             "mean_reciprocal_rank": 0.25,
             "map_guidance_rate": 0.0,
             "read_range_guidance_rate": 0.0,
@@ -342,6 +395,9 @@ def test_compare_search_qa_snapshots_computes_stable_deltas_and_text():
             "cases_with_results": 2,
             "top1_hits": 1,
             "topk_hits": 2,
+            "no_result_cases": 1,
+            "no_result_false_positives": 0,
+            "no_result_precision": 1.0,
             "mean_reciprocal_rank": 0.75,
             "map_guidance_rate": 0.5,
             "read_range_guidance_rate": 0.5,
@@ -366,6 +422,8 @@ def test_compare_search_qa_snapshots_computes_stable_deltas_and_text():
         "delta": 0.5,
     }
     assert comparison["metrics"]["citation_policy_violations"]["delta"] == -1
+    assert comparison["metrics"]["no_result_false_positives"]["delta"] == -1
+    assert comparison["metrics"]["no_result_precision"]["delta"] == 1.0
     assert comparison["metrics"]["mean_latency_ms"] == {
         "before": 10.0,
         "after": 7.0,
@@ -404,12 +462,16 @@ def test_search_qa_cli_run_and_compare_smoke(tmp_path):
         "keyword",
         "--limit",
         "3",
+        "--min-score",
+        "0.34",
     ]
     result = subprocess.run(run_cmd, cwd=Path(__file__).parent.parent, text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
     assert after_path.exists()
     snapshot = json.loads(after_path.read_text(encoding="utf-8"))
     assert snapshot["aggregate"]["top1_hits"] == 2
+    assert snapshot["min_score"] == 0.34
+    assert snapshot["aggregate"]["no_result_false_positives"] == 0
     assert "mean_latency_ms" in snapshot["aggregate"]
     assert "mean_latency_ms" in result.stdout
     assert "Search QA" in result.stdout

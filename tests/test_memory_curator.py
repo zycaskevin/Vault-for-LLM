@@ -5,7 +5,6 @@ from pathlib import Path
 
 from vault.db import VaultDB
 from vault.memory import create_candidate, duplicate_gate, promote_candidate, propose_memory, quality_gate
-from vault.memory import create_candidate, duplicate_gate, promote_candidate, quality_gate
 from vault.privacy import scan_privacy
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

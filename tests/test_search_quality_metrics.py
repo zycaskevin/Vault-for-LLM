@@ -480,3 +480,46 @@ def test_search_qa_cli_hybrid_allow_hash_uses_semantic_index(tmp_path):
     snapshot = json.loads(output_path.read_text(encoding="utf-8"))
     modes = {item.get("mode") for case in snapshot["cases"] for item in case["results"]}
     assert "hybrid_semantic_hash" in modes
+
+
+def test_search_qa_cli_auto_allow_hash_can_use_semantic_index(tmp_path):
+    from vault.semantic import DeterministicHashEmbeddingProvider, rebuild_semantic_index
+
+    db_path = _build_fixture_db(tmp_path)
+    qa_file = _write_qa_file(tmp_path)
+    output_path = tmp_path / "auto.json"
+    db = VaultDB(db_path).connect()
+    try:
+        rebuild_semantic_index(db, provider=DeterministicHashEmbeddingProvider(dim=8), allow_hash=True)
+    finally:
+        db.close()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "vault.cli",
+            "search-qa",
+            "run",
+            "--db-path",
+            str(db_path),
+            "--qa-file",
+            str(qa_file),
+            "--output",
+            str(output_path),
+            "--mode",
+            "auto",
+            "--allow-hash",
+            "--hash-dim",
+            "8",
+            "--limit",
+            "3",
+        ],
+        cwd=Path(__file__).parent.parent,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+    snapshot = json.loads(output_path.read_text(encoding="utf-8"))
+    modes = {item.get("mode") for case in snapshot["cases"] for item in case["results"]}
+    assert "hybrid_semantic_hash" in modes

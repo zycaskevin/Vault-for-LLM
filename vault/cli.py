@@ -1259,6 +1259,12 @@ def cmd_search_qa(args):
     if action == "run":
         db_path = Path(args.db_path) if args.db_path else find_project_dir() / "vault.db"
         embed_provider = None
+        needs_provider = args.mode in {"semantic", "hybrid", "vector"} or (
+            args.mode == "auto" and (
+                getattr(args, "allow_hash", False) or _semantic_vectors_exist(db_path)
+            )
+        )
+        if needs_provider:
         if args.mode in {"semantic", "hybrid", "vector"}:
             semantic_args = argparse.Namespace(
                 db_path=str(db_path),
@@ -1405,6 +1411,15 @@ def cmd_db(args):
         raise SystemExit(2) from exc
 
     _json_print(payload, pretty=args.pretty)
+
+
+def _semantic_vectors_exist(db_path: Path) -> bool:
+    try:
+        with sqlite3.connect(str(db_path)) as conn:
+            row = conn.execute("SELECT 1 FROM semantic_vectors LIMIT 1").fetchone()
+            return row is not None
+    except sqlite3.Error:
+        return False
 
 
 def _semantic_stats_payload(stats, provider) -> dict:

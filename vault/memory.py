@@ -167,6 +167,11 @@ def _gate_payload(privacy: dict, duplicate: dict, metadata: dict, quality: dict)
     return {"privacy": privacy, "duplicate": duplicate, "metadata": metadata, "quality": quality}
 
 
+def _all_gates_pass(result: dict) -> bool:
+    gates = result.get("gates") or {}
+    return all(gates.get(name) == "pass" for name in ("privacy", "duplicate", "metadata", "quality"))
+
+
 def create_candidate(db: VaultDB, **kwargs) -> dict:
     meta = normalize_metadata(**kwargs)
     privacy = scan_privacy(f"{meta['title']}\n{meta['content']}\n{meta['source_ref']}\n{meta['reason']}")
@@ -205,9 +210,15 @@ def create_candidate(db: VaultDB, **kwargs) -> dict:
 def propose_memory(db: VaultDB, mode: str = "candidate", **kwargs) -> dict:
     project_dir = kwargs.pop("project_dir", None)
     result = create_candidate(db, **kwargs)
+    if mode == "promote_if_safe" and result["status"] == "candidate_created" and _all_gates_pass(result):
     if mode == "promote_if_safe" and result["status"] == "candidate_created" and result["gates"]["privacy"] != "fail":
         promoted = promote_candidate(db, result["candidate_id"], confirm=True, project_dir=project_dir)
         result.update({"status": "promoted", "knowledge_id": promoted["knowledge_id"], "promotion": promoted})
+    elif mode == "promote_if_safe" and result["status"] == "candidate_created":
+        result["auto_promotion"] = {
+            "status": "skipped",
+            "reason": "promote_if_safe requires privacy, duplicate, metadata, and quality gates to pass",
+        }
     return result
 
 

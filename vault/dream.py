@@ -1,15 +1,15 @@
 """Deterministic, report-first dream curation engine.
 
-The dream workflow is intentionally small and safe: report mode never mutates
-raw/ or active DB state. apply_safe is currently a no-delete/no-op apply hook that
-still produces the same deterministic findings and can optionally create a DB
-backup before future safe actions are added.
+The dream workflow is intentionally conservative: report mode never mutates
+raw/ or active DB state. apply_safe creates a backup by default and applies only
+low-risk metadata fixes that can be reviewed in the generated action payload.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 from typing import Iterable
 
@@ -167,6 +167,8 @@ def build_dream_report(payload: dict) -> str:
         "- Review duplicate groups before merging; dream never deletes automatically.",
         "- Promote or reject old memory candidates through explicit memory tools.",
         "- Improve weak metadata (category, tags, trust, source) manually or via reviewed candidates.",
+        f"- Proposed safe actions: {len(payload.get('proposed_actions', []))}",
+        f"- Applied safe actions: {len(payload.get('applied_actions', []))}",
     ]
     for section, title in [
         ("freshness", "Freshness"),
@@ -181,6 +183,76 @@ def build_dream_report(payload: dict) -> str:
             lines.append(f"- {item}")
     lines.append("")
     return "\n".join(lines)
+
+
+def _build_safe_actions(findings: dict[str, list[dict]]) -> list[dict]:
+    """Build deterministic low-risk actions from report findings.
+
+    The first safe action set is deliberately narrow: it only improves weak
+    metadata previews by adding a review tag or replacing the catch-all
+    ``general`` category with ``review``. It never deletes, merges, rewrites
+    content, or changes trust.
+    """
+    actions: list[dict] = []
+    seen: set[tuple[str, int]] = set()
+    for item in findings.get("metadata", []):
+        kid = int(item.get("id") or 0)
+        if kid <= 0:
+            continue
+        issues = set(item.get("issues") or [])
+        if "missing_tags" in issues and ("set_tags", kid) not in seen:
+            actions.append({
+                "type": "set_tags",
+                "knowledge_id": kid,
+                "value": "needs-review",
+                "reason": "metadata check found missing_tags",
+            })
+            seen.add(("set_tags", kid))
+        if "weak_category" in issues and ("set_category", kid) not in seen:
+            actions.append({
+                "type": "set_category",
+                "knowledge_id": kid,
+                "value": "review",
+                "reason": "metadata check found weak_category",
+            })
+            seen.add(("set_category", kid))
+    return actions
+
+
+def _write_plan(project: Path, payload: dict) -> str:
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
+    path = project / "reports" / "dream" / "plans" / f"{stamp}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return str(path.relative_to(project))
+
+
+def _apply_safe_actions(db: VaultDB, actions: list[dict]) -> list[dict]:
+    applied: list[dict] = []
+    for action in actions:
+        action_type = action.get("type")
+        kid = int(action.get("knowledge_id") or 0)
+        row = db.get_knowledge(kid)
+        if not row:
+            applied.append({**action, "status": "skipped", "reason": "knowledge row not found"})
+            continue
+        if action_type == "set_tags":
+            before = row.get("tags", "")
+            if str(before).strip():
+                applied.append({**action, "status": "skipped", "before": before, "reason": "tags no longer empty"})
+                continue
+            db.update_knowledge(kid, tags=str(action.get("value") or "needs-review"))
+            applied.append({**action, "status": "applied", "before": before, "after": action.get("value")})
+        elif action_type == "set_category":
+            before = row.get("category", "")
+            if before not in {"", "general"}:
+                applied.append({**action, "status": "skipped", "before": before, "reason": "category no longer weak"})
+                continue
+            db.update_knowledge(kid, category=str(action.get("value") or "review"))
+            applied.append({**action, "status": "applied", "before": before, "after": action.get("value")})
+        else:
+            applied.append({**action, "status": "skipped", "reason": "unsupported safe action"})
+    return applied
 
 
 def run_dream(
@@ -206,6 +278,7 @@ def run_dream(
     generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     report_path = ""
     backup_path = ""
+    plan_path = ""
 
     findings: dict[str, list[dict]] = {}
     actions_applied = 0
@@ -226,6 +299,9 @@ def run_dream(
                 "actions_applied": 0,
             },
             "findings": findings,
+            "proposed_actions": [],
+            "applied_actions": [],
+            "plan_path": plan_path,
             "report_path": report_path,
             "backup_path": backup_path,
             "warning": "vault.db missing; report generated without creating or mutating the active database",
@@ -239,6 +315,9 @@ def run_dream(
             payload["report_path"] = str(path.relative_to(project))
         return payload
 
+    proposed_actions: list[dict] = []
+    applied_actions: list[dict] = []
+
     with VaultDB(db_path) as db:
         if "freshness" in selected:
             findings["freshness"] = _freshness_findings(db, limit_i)
@@ -251,12 +330,15 @@ def run_dream(
         if "orphans" in selected:
             findings["orphans"] = _orphan_findings(db, limit_i)
 
+        proposed_actions = _build_safe_actions(findings)
         if mode == "apply_safe" and backup:
             from .db_backup import backup_database
 
             backup_result = backup_database(db_path, verify=True)
             backup_path = backup_result.get("backup_path", "")
-        # No automatic mutation yet: this is a safe apply hook, not deletion/merge.
+        if mode == "apply_safe":
+            applied_actions = _apply_safe_actions(db, proposed_actions)
+            actions_applied = sum(1 for action in applied_actions if action.get("status") == "applied")
 
     summary = {
         "stale": len(findings.get("freshness", [])),
@@ -273,10 +355,16 @@ def run_dream(
         "generated_at": generated_at,
         "summary": summary,
         "findings": findings,
+        "proposed_actions": proposed_actions,
+        "applied_actions": applied_actions,
+        "plan_path": plan_path,
         "report_path": report_path,
         "backup_path": backup_path,
-        "next_action": "Review report, then rerun with apply_safe if desired",
+        "next_action": "Review report and proposed_actions, then rerun with apply_safe if desired" if mode == "report" else "Review applied_actions; restore backup_path if the safe apply needs rollback",
     }
+    if proposed_actions:
+        plan_path = _write_plan(project, payload)
+        payload["plan_path"] = plan_path
     if write_report:
         stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
         path = project / "reports" / "dream" / f"{stamp}.md"

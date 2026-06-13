@@ -1283,6 +1283,7 @@ def cmd_search_qa(args):
             embed_provider=embed_provider,
             semantic_vector_kind=args.semantic_vector_kind,
             allow_hash=args.allow_hash,
+            min_score=args.min_score,
         )
         if args.output:
             write_json(args.output, snapshot)

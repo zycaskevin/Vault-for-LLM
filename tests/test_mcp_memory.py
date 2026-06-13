@@ -110,6 +110,23 @@ def test_mcp_vault_add_blocks_privacy_fail_content(tmp_path):
         assert db.conn.execute("SELECT COUNT(*) AS n FROM knowledge").fetchone()["n"] == 0
 
 
+def test_mcp_vault_add_blocks_privacy_fail_metadata(tmp_path):
+    _set_project_dir(tmp_path)
+    token = "ghp_" + "A" * 36
+    payload = _payload(handle_tool_call(
+        "vault_add",
+        {
+            "title": "Direct metadata secret",
+            "content": "Safe body should not override unsafe metadata.",
+            "tags": token,
+        },
+    ))
+    assert payload["success"] is False
+    assert payload["error"] == "privacy_gate_failed"
+    with VaultDB(tmp_path / "vault.db") as db:
+        assert db.conn.execute("SELECT COUNT(*) AS n FROM knowledge").fetchone()["n"] == 0
+
+
 def test_mcp_dream_run_report_only(tmp_path):
     _set_project_dir(tmp_path)
     with VaultDB(tmp_path / "vault.db") as db:

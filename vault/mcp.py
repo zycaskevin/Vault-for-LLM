@@ -1133,7 +1133,12 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
             from vault.docmap import build_document_map_for_entry
             from vault.privacy import scan_privacy
 
-            privacy = scan_privacy(f"{arguments.get('title', '')}\n{arguments.get('content', '')}")
+            privacy = scan_privacy(
+                "\n".join(
+                    str(arguments.get(field, ""))
+                    for field in ("title", "content", "category", "tags", "layer")
+                )
+            )
             if privacy["status"] == "fail":
                 return {"result": json.dumps({
                     "success": False,

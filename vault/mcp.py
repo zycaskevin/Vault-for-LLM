@@ -1131,7 +1131,16 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
 
         elif name == "vault_add":
             from vault.docmap import build_document_map_for_entry
+            from vault.privacy import scan_privacy
 
+            privacy = scan_privacy(f"{arguments.get('title', '')}\n{arguments.get('content', '')}")
+            if privacy["status"] == "fail":
+                return {"result": json.dumps({
+                    "success": False,
+                    "error": "privacy_gate_failed",
+                    "privacy": privacy,
+                    "message": "vault_add blocked secret-like content; use vault_memory_propose after removing secrets.",
+                }, ensure_ascii=False)}
             db = _get_db()
             try:
                 kid = db.add_knowledge(

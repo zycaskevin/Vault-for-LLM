@@ -1260,7 +1260,12 @@ def cmd_search_qa(args):
     if action == "run":
         db_path = Path(args.db_path) if args.db_path else find_project_dir() / "vault.db"
         embed_provider = None
-        if args.mode in {"semantic", "hybrid", "vector"}:
+        needs_provider = args.mode in {"semantic", "hybrid", "vector"} or (
+            args.mode == "auto" and (
+                getattr(args, "allow_hash", False) or _semantic_vectors_exist(db_path)
+            )
+        )
+        if needs_provider:
             semantic_args = argparse.Namespace(
                 db_path=str(db_path),
                 allow_hash=getattr(args, "allow_hash", False),
@@ -1268,7 +1273,7 @@ def cmd_search_qa(args):
             )
             embed_provider = _create_semantic_provider(
                 semantic_args,
-                cached=args.mode in {"semantic", "hybrid"},
+                cached=args.mode in {"auto", "semantic", "hybrid"},
             )
         snapshot = evaluate_search_qa(
             db_path=db_path,

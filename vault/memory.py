@@ -208,6 +208,11 @@ def propose_memory(db: VaultDB, mode: str = "candidate", **kwargs) -> dict:
     if mode == "promote_if_safe" and result["status"] == "candidate_created" and result["gates"]["privacy"] != "fail":
         promoted = promote_candidate(db, result["candidate_id"], confirm=True, project_dir=project_dir)
         result.update({"status": "promoted", "knowledge_id": promoted["knowledge_id"], "promotion": promoted})
+    elif mode == "promote_if_safe" and result["status"] == "candidate_created":
+        result["auto_promotion"] = {
+            "status": "skipped",
+            "reason": "promote_if_safe requires privacy, duplicate, metadata, and quality gates to pass",
+        }
     return result
 
 

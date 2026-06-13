@@ -14,7 +14,6 @@ Vault-for-LLM — 本地編譯器。
 """
 
 import hashlib
-import re
 import subprocess
 import yaml
 from datetime import datetime, timezone
@@ -366,9 +365,9 @@ def assign_layer(metadata: dict) -> str:
         "L2-context": "L2",
         "L3-knowledge": "L3",
     }
-    for d, l in dir_map.items():
+    for d, layer_name in dir_map.items():
         if d in source:
-            return l
+            return layer_name
 
     # 根據分類推斷
     cat = metadata.get("category", "")
@@ -536,7 +535,6 @@ class VaultCompiler:
         if isinstance(tags, list):
             tags = ",".join(str(t) for t in tags)
         trust = float(metadata.get("trust", 0.5))
-        source = metadata.get("source", source_file)
 
         # AAAK 壓縮
         aaak = simple_aaak_compress(title, body)

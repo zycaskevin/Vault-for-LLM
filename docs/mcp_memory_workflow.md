@@ -15,7 +15,7 @@ Vault-for-LLM now exposes a safer agent memory workflow over MCP. Autonomous age
 
 ## Why not direct `vault_add`?
 
-`vault_add` is still available for compatibility and controlled scripts, but it writes directly to active knowledge. For autonomous agents and unreviewed memories, use `vault_memory_propose` so the memory passes deterministic gates first.
+`vault_add` is still available for compatibility and controlled scripts, but it writes directly to active knowledge. It blocks obvious privacy failures and builds a Document Map when possible, but it still bypasses candidate review. For autonomous agents and unreviewed memories, use `vault_memory_propose` so the memory passes deterministic gates first.
 
 ## Tools
 
@@ -57,7 +57,8 @@ Return shape:
   "gates": {
     "privacy": "pass",
     "duplicate": "pass",
-    "metadata": "pass"
+    "metadata": "pass",
+    "quality": "pass"
   },
   "next_action": {
     "tool": "vault_memory_promote",
@@ -104,5 +105,5 @@ vault_search → vault_map_show → vault_read_range → final answer citation
 
 - Candidate memories are intentionally lower trust by default.
 - Secret-like content is blocked or warned by the deterministic privacy gate.
-- Duplicate title/content matches are reported before promotion.
+- Duplicate title/content matches, near duplicates, weak metadata, and weak quality are reported before promotion.
 - Direct low-level writes should be reserved for trusted scripts and operators.

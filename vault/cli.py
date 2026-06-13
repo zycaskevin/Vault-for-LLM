@@ -1407,6 +1407,15 @@ def cmd_db(args):
     _json_print(payload, pretty=args.pretty)
 
 
+def _semantic_vectors_exist(db_path: Path) -> bool:
+    try:
+        with sqlite3.connect(str(db_path)) as conn:
+            row = conn.execute("SELECT 1 FROM semantic_vectors LIMIT 1").fetchone()
+            return row is not None
+    except sqlite3.Error:
+        return False
+
+
 def _semantic_stats_payload(stats, provider) -> dict:
     return {
         "provider_id": provider.provider_id,

@@ -72,13 +72,17 @@ Return shape:
 
 ## `apply_safe`
 
-`apply_safe` is intentionally conservative. It may create a backup and run future low-risk actions, but it must never silently delete, merge, or overwrite high-trust knowledge.
+`apply_safe` is intentionally conservative. It creates a backup by default and applies only low-risk metadata actions from the report plan, such as adding a `needs-review` tag to entries with empty tags or replacing the catch-all `general` category with `review`. It must never silently delete, merge, rewrite content, or overwrite high-trust knowledge.
 
 ```bash
 vault dream --mode apply_safe --write-report
 ```
 
-Current implementation keeps `actions_applied=0`; it is a safe extension point.
+The JSON output includes `proposed_actions`, `applied_actions`, `backup_path`, and `plan_path`. If the result needs to be reverted, restore the emitted backup:
+
+```bash
+vault db restore /path/to/backup.db --db-path ./vault.db --force --pretty
+```
 
 ## Scheduling
 

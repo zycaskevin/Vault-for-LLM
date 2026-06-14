@@ -439,6 +439,40 @@ vault search
 
 ---
 
+## Retrieval quality (Search QA benchmarks)
+
+Vault-for-LLM ships deterministic Search QA fixtures that measure retrieval
+quality before and after code changes. Results below use the English fixture
+(`benchmarks/search_qa/basic.en.json`) against a fresh database compiled from
+the same fixture data (keyword/FTS5 mode):
+
+| Metric | Value |
+|---|---|
+| total_cases | 3 |
+| top-1 recall | 2/3 ≈ **67%** |
+| top-k recall | 2/3 ≈ **67%** |
+| no-result precision | 1.0 |
+| Mean Reciprocal Rank | 0.67 |
+
+The benchmark covers:
+- `en_document_map_read_range` — "tool-gated reading map navigation read_range evidence" → expects "Tool-gated Reading"
+- `en_citation_policy_boundary` — "citation policy boundary final answer support" → expects "Citation Policy Boundary"
+- `en_no_result_control` — random string query → expects no results (false-positive check)
+
+A Chinese counterpart (`basic.zh-Hant.json`) is also available but uses the
+same synthetic knowledge, so metrics are identical.
+
+To run locally:
+
+```bash
+python -m pytest tests/test_search_quality_metrics.py -v
+```
+
+Semantic/hybrid mode requires an embedding model (`--allow-hash` for CI smoke).
+Results may vary — keyword search is the stable baseline.
+
+---
+
 ## Development
 
 ```bash

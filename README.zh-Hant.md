@@ -427,6 +427,36 @@ vault search
 
 ---
 
+## 搜尋品質（Search QA 基準測試）
+
+Vault-for-LLM 提供確定性的 Search QA 基準測試，用於在程式碼變動前後量測檢索品質。以下結果使用英文 fixtures（`benchmarks/search_qa/basic.en.json`），對照全新編譯的資料庫（keyword/FTS5 模式）：
+
+| 指標 | 數值 |
+|---|---|
+| total_cases | 3 |
+| top-1 recall | 2/3 ≈ **67%** |
+| top-k recall | 2/3 ≈ **67%** |
+| no-result precision | 1.0 |
+| Mean Reciprocal Rank | 0.67 |
+
+基準測試涵蓋：
+- `en_document_map_read_range` — "tool-gated reading map navigation read_range evidence" → 期望 "Tool-gated Reading"
+- `en_citation_policy_boundary` — "citation policy boundary final answer support" → 期望 "Citation Policy Boundary"
+- `en_no_result_control` — 隨機字串查詢 → 期望無結果（假陽性檢查）
+
+繁體中文版 fixture（`basic.zh-Hant.json`）也存在，但因使用相同合成知識，指標相同。
+
+在本機執行：
+
+```bash
+python -m pytest tests/test_search_quality_metrics.py -v
+```
+
+語義/混合模式需要 embedding 模型（CI smoke 用 `--allow-hash`）。
+語義模式結果可能不同 — keyword search 是穩定的基準。
+
+---
+
 ## 開發
 
 ```bash

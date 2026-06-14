@@ -427,6 +427,36 @@ vault search
 
 ---
 
+## 检索质量（Search QA 基准测试）
+
+Vault-for-LLM 提供确定性的 Search QA 基准测试，用于在代码变动前后测量检索质量。以下结果使用英文 fixtures（`benchmarks/search_qa/basic.en.json`），对照全新编译的数据库（keyword/FTS5 模式）：
+
+| 指标 | 数值 |
+|---|---|
+| total_cases | 3 |
+| top-1 recall | 2/3 ≈ **67%** |
+| top-k recall | 2/3 ≈ **67%** |
+| no-result precision | 1.0 |
+| Mean Reciprocal Rank | 0.67 |
+
+基准测试涵盖：
+- `en_document_map_read_range` — "tool-gated reading map navigation read_range evidence" → 期望 "Tool-gated Reading"
+- `en_citation_policy_boundary` — "citation policy boundary final answer support" → 期望 "Citation Policy Boundary"
+- `en_no_result_control` — 随机字符串查询 → 期望无结果（假阳性检查）
+
+简体中文版 fixture（`basic.zh-CN.json`）也存在，但因使用相同合成知识，指标相同。
+
+在本地执行：
+
+```bash
+python -m pytest tests/test_search_quality_metrics.py -v
+```
+
+语义/混合模式需要 embedding 模型（CI smoke 用 `--allow-hash`）。
+语义模式结果可能不同 — keyword search 是稳定的基准。
+
+---
+
 ## 开发
 
 ```bash

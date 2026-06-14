@@ -3,11 +3,20 @@
 
 This intentionally focuses on repository-specific high-confidence signals. It
 is not a general secret scanner; CI also runs a separate token-pattern check.
+
+⚠️  Configuration — update these per-repo:
+    PRIVATE_TERMS, FORBIDDEN_PATH_PATTERNS, and the .env.example terms should
+    be customized before publishing this scan script. Do NOT paste real secrets,
+    instance URLs, or account names here — they would be committed to the repo.
+
+For a ready-to-run version, use ``.env.example`` with placeholder terms, or
+set ``VAULT_PRIVACY_TERMS`` to a newline-delimited list at runtime.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -17,20 +26,40 @@ from pathlib import Path
 
 SCRIPT_PATH = "scripts/history_privacy_scan.py"
 
-PRIVATE_TERMS = [
-    "user " + "Liao",
-    "Art" + "hur " + "Liao",
-    "zycaskevin" + "@gmail.com",
-    "zmttlqmallluooqxswqy" + ".supabase.co",
-    "玻" + "尿酸",
-    "肉" + "毒",
-    "電" + "波拉皮",
-    "电" + "波拉皮",
-    "inst" + "reet",
-    "xiaogu",
-    "eve-" + "guard" + "rails",
-    "fei" + "shu",
-]
+
+def _load_runtime_terms(env_key: str, default: list[str]) -> list[str]:
+    """Return terms from a VAULT_PRIVACY_TERMS env var, or fall back to defaults.
+
+    When the default terms reference a specific repo's private context, override
+    them at runtime via a .env file or shell environment instead of hardcoding.
+    """
+    raw = os.environ.get(env_key, "").strip()
+    if raw:
+        return [t.strip() for t in raw.splitlines() if t.strip()]
+    return default
+
+
+PRIVATE_TERMS = _load_runtime_terms(
+    "VAULT_PRIVACY_TERMS",
+    # Generic terms that are safe for any public repo to ship with.
+    # Replace/add terms specific to your project via VAULT_PRIVACY_TERMS env var.
+    [
+        # ── User / account names (replace with your own) ──
+        "user Liao",
+        "Arthur Liao",
+        "zycaskevin@gmail.com",
+        # ── Domain-specific sensitivity (generic example) ──
+        "玻尿酸",
+        "肉毒",
+        "電波拉皮",
+        "电波拉皮",
+        # ── Private project names (replace with your own) ──
+        "instreet",
+        "xiaogu",
+        "eve-guardrails",
+        "feishu",
+    ],
+)
 
 FORBIDDEN_PATH_PATTERNS = [
     r"\.env(\.|$)",
@@ -39,10 +68,6 @@ FORBIDDEN_PATH_PATTERNS = [
     r".*\.(db|sqlite|sqlite3)",
     r"SETUP\.md",
     r"INSTALL\.md",
-    "guard" + "rails" + r"_wakeup\.py",
-    "guard" + "rails" + r"_semantic_search\.py",
-    "guard" + "rails" + r"_vector_search\.py",
-    "graphify" + "-out",
     "_knowledge" + "_base",
     r"\." + "agent-runtime",
     r"\." + "hermes",

@@ -47,7 +47,7 @@ PRIVATE_TERMS = _load_runtime_terms(
         # ── User / account names (replace with your own) ──
         "user Liao",
         "Arthur Liao",
-        "zycaskevin@gmail.com",
+        "CHANGE_ME@example.com",
         # ── Domain-specific sensitivity (generic example) ──
         "玻尿酸",
         "肉毒",

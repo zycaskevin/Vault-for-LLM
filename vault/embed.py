@@ -13,6 +13,7 @@ Vault-for-LLM — 嵌入生成模組。
 """
 
 import os
+import sys
 import importlib.util
 from pathlib import Path
 from typing import Optional
@@ -300,7 +301,12 @@ def create_embedding_provider(
     - "onnx": ONNX Runtime
     - "ollama": Ollama API
     - "sentence-transformers": PyTorch 降級方案
+    - "hash": 確定性哈希嵌入（輕量，無外部依賴，用於測試）
     """
+    if provider == "hash":
+        from vault.semantic import DeterministicHashEmbeddingProvider
+        return DeterministicHashEmbeddingProvider(dim=384)
+
     if provider == "auto":
         # 1. 嘗試 ONNX
         if importlib.util.find_spec("onnxruntime") is not None:
@@ -321,7 +327,8 @@ def create_embedding_provider(
             "找不到任何嵌入 provider！請安裝以下之一：\n"
             "  pip install onnxruntime optimum  (推薦，最輕量)\n"
             "  或啟動 Ollama\n"
-            "  或 pip install sentence-transformers  (需要 PyTorch 2GB+)"
+            "  或 pip install sentence-transformers  (需要 PyTorch 2GB+)\n"
+            "  或使用 provider=\"hash\" 進行測試（非語義嵌入）"
         )
 
     elif provider == "onnx":
@@ -334,4 +341,4 @@ def create_embedding_provider(
         return SentenceTransformerProvider()
 
     else:
-        raise ValueError(f"未知 provider: {provider}，可選: auto, onnx, ollama, sentence-transformers")
+        raise ValueError(f"未知 provider: {provider}，可選: auto, onnx, ollama, sentence-transformers, hash")

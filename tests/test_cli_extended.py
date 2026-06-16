@@ -47,6 +47,9 @@ def temp_vault_project(tmp_path):
         trust=0.7,
     )
     
+    # Use hash embedding provider for tests (works without external dependencies)
+    db.set_config("embedding_provider", "hash")
+    
     db.close()
     
     # Create raw/ directory for cmd_add tests
@@ -612,11 +615,16 @@ class TestCmdCrossValidate:
         args.local_model = "local-test"
         args.cloud_model = "cloud-test"
         
-        with patch('vault.cli.cross_validate', create=True) as mock_cv:
-            mock_cv.return_value = None
-            cmd_cross_validate(args)
-            captured = capsys.readouterr()
-            assert isinstance(captured.out, str)
+        # Mock the cross_validate function before it's imported inside cmd_cross_validate
+        mock_cv_func = MagicMock(return_value=None)
+        
+        # We need to patch at the source since cmd_cross_validate imports inside the function
+        import scripts.cross_validate as cv_module
+        monkeypatch.setattr(cv_module, 'cross_validate', mock_cv_func)
+        
+        cmd_cross_validate(args)
+        captured = capsys.readouterr()
+        assert isinstance(captured.out, str)
 
 
 class TestCmdDream:

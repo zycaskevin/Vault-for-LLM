@@ -220,19 +220,43 @@ def semantic_chunk(
     vectors = embed_provider.encode(texts)
 
     # 計算相鄰句子相似度
-    import numpy as np
+    try:
+        import numpy as np
+        _has_numpy = True
+    except ImportError:
+        _has_numpy = False
 
-    vecs = np.array(vectors)
-    # 餘弦相似度
-    norms = np.linalg.norm(vecs, axis=1, keepdims=True)
-    norms = np.where(norms == 0, 1, norms)
-    vecs_normed = vecs / norms
+    if _has_numpy:
+        vecs = np.array(vectors)
+        # 餘弦相似度
+        norms = np.linalg.norm(vecs, axis=1, keepdims=True)
+        norms = np.where(norms == 0, 1, norms)
+        vecs_normed = vecs / norms
 
-    # 相鄰句子相似度
-    similarities = []
-    for i in range(len(vecs_normed) - 1):
-        sim = float(np.dot(vecs_normed[i], vecs_normed[i + 1]))
-        similarities.append(sim)
+        # 相鄰句子相似度
+        similarities = []
+        for i in range(len(vecs_normed) - 1):
+            sim = float(np.dot(vecs_normed[i], vecs_normed[i + 1]))
+            similarities.append(sim)
+    else:
+        # Pure Python fallback
+        import math
+
+        def _norm(v):
+            return math.sqrt(sum(x * x for x in v))
+
+        def _cosine_sim(v1, v2):
+            dot = sum(a * b for a, b in zip(v1, v2))
+            n1 = _norm(v1)
+            n2 = _norm(v2)
+            if n1 == 0 or n2 == 0:
+                return 0.0
+            return dot / (n1 * n2)
+
+        similarities = []
+        for i in range(len(vectors) - 1):
+            sim = _cosine_sim(vectors[i], vectors[i + 1])
+            similarities.append(sim)
 
     # 找切斷點：相似度 < threshold
     breaks = [0]  # 第一句一定是起點

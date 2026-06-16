@@ -7,10 +7,17 @@ import sqlite3
 from datetime import datetime, timezone
 
 import pytest
-import numpy as np
 
 from vault.db import VaultDB
 from vault.search import VaultSearch, _normalize_text
+
+
+class _MockArray:
+    """Lightweight replacement for numpy array in tests."""
+    def __init__(self, data):
+        self._data = list(data)
+    def tolist(self):
+        return list(self._data)
 
 
 class TestNormalizeText:
@@ -1874,7 +1881,7 @@ class TestCrossEncoderRerankerWithMockSentenceTransformers:
 
         # Mock sentence_transformers.CrossEncoder
         mock_ce = MagicMock()
-        mock_ce.predict.return_value = np.array([0.9, 0.5, 0.7])
+        mock_ce.predict.return_value = _MockArray([0.9, 0.5, 0.7])
 
         mock_module = MagicMock()
         mock_module.CrossEncoder = MagicMock(return_value=mock_ce)
@@ -1930,7 +1937,7 @@ class TestCrossEncoderRerankerWithMockSentenceTransformers:
         CrossEncoderReranker.clear_cache()
 
         mock_ce = MagicMock()
-        mock_ce.predict.return_value = np.array([0.9, 0.8, 0.7, 0.6, 0.5])
+        mock_ce.predict.return_value = _MockArray([0.9, 0.8, 0.7, 0.6, 0.5])
 
         mock_module = MagicMock()
         mock_module.CrossEncoder = MagicMock(return_value=mock_ce)
@@ -1968,7 +1975,7 @@ class TestCrossEncoderRerankerWithMockSentenceTransformers:
         CrossEncoderReranker.clear_cache()
 
         mock_ce = MagicMock()
-        mock_ce.predict.return_value = np.array([0.8])
+        mock_ce.predict.return_value = _MockArray([0.8])
 
         mock_module = MagicMock()
         mock_module.CrossEncoder = MagicMock(return_value=mock_ce)
@@ -1996,7 +2003,7 @@ class TestCrossEncoderRerankerWithMockSentenceTransformers:
         CrossEncoderReranker.clear_cache()
 
         mock_ce = MagicMock()
-        mock_ce.predict.return_value = np.array([0.5])
+        mock_ce.predict.return_value = _MockArray([0.5])
 
         mock_module = MagicMock()
         mock_module.CrossEncoder = MagicMock(return_value=mock_ce)
@@ -2079,7 +2086,7 @@ class TestCrossEncoderRerankerWithMockSentenceTransformers:
         CrossEncoderReranker.clear_cache()
 
         mock_ce = MagicMock()
-        mock_ce.predict.return_value = np.array([0.1, 0.2, 0.3])
+        mock_ce.predict.return_value = _MockArray([0.1, 0.2, 0.3])
 
         mock_module = MagicMock()
         mock_module.CrossEncoder = MagicMock(return_value=mock_ce)
@@ -2102,7 +2109,7 @@ class TestCrossEncoderRerankerWithMockSentenceTransformers:
         CrossEncoderReranker.clear_cache()
 
         mock_ce = MagicMock()
-        mock_ce.predict.return_value = np.array([0.5])
+        mock_ce.predict.return_value = _MockArray([0.5])
 
         mock_module = MagicMock()
         mock_module.CrossEncoder = MagicMock(return_value=mock_ce)
@@ -7182,5 +7189,1447 @@ class TestHybridSearchAdvanced:
                 mode = results[0].get("_mode", "")
                 # 模式應該包含 hybrid 或 semantic
                 assert "hybrid" in mode or "semantic" in mode or "keyword" in mode
+        finally:
+            db.close()
+
+
+# ============================================================================
+# Fallback Error Detection Tests
+# ============================================================================
+
+class TestFallbackErrorDetection:
+    """測試向量和 FTS 錯誤檢測靜態方法。"""
+
+    def test_is_vector_db_fallback_error_dimension_mismatch(self):
+        """測試 dimension mismatch 錯誤被識別。"""
+        from vault.search import VaultSearch
+        exc = sqlite3.OperationalError("dimension mismatch detected")
+        assert VaultSearch._is_vector_db_fallback_error(exc) is True
+
+    def test_is_vector_db_fallback_error_query_vector(self):
+        """測試 query vector 錯誤被識別。"""
+        from vault.search import VaultSearch
+        exc = sqlite3.OperationalError("invalid query vector")
+        assert VaultSearch._is_vector_db_fallback_error(exc) is True
+
+    def test_is_vector_db_fallback_error_vector_table(self):
+        """測試 vector table 錯誤被識別。"""
+        from vault.search import VaultSearch
+        exc = sqlite3.OperationalError("vector table not found")
+        assert VaultSearch._is_vector_db_fallback_error(exc) is True
+
+    def test_is_vector_db_fallback_error_sqlite_vec(self):
+        """測試 sqlite-vec 錯誤被識別。"""
+        from vault.search import VaultSearch
+        exc = sqlite3.OperationalError("sqlite-vec: error loading")
+        assert VaultSearch._is_vector_db_fallback_error(exc) is True
+
+    def test_is_vector_db_fallback_error_knowledge_vec(self):
+        """測試 knowledge_vec 錯誤被識別。"""
+        from vault.search import VaultSearch
+        exc = sqlite3.OperationalError("knowledge_vec table missing")
+        assert VaultSearch._is_vector_db_fallback_error(exc) is True
+
+    def test_is_vector_db_fallback_error_vec0(self):
+        """測試 vec0 錯誤被識別。"""
+        from vault.search import VaultSearch
+        exc = sqlite3.OperationalError("vec0: invalid operation")
+        assert VaultSearch._is_vector_db_fallback_error(exc) is True
+
+    def test_is_vector_db_fallback_error_embedding_column(self):
+        """測試 embedding column 錯誤被識別。"""
+        from vault.search import VaultSearch
+        exc = sqlite3.OperationalError("embedding column type error")
+        assert VaultSearch._is_vector_db_fallback_error(exc) is True
+
+    def test_is_vector_db_fallback_error_unrelated(self):
+        """測試不相關錯誤不會被誤判。"""
+        from vault.search import VaultSearch
+        exc = sqlite3.OperationalError("no such table: knowledge")
+        assert VaultSearch._is_vector_db_fallback_error(exc) is False
+
+    def test_is_vector_db_fallback_error_case_insensitive(self):
+        """測試大小寫不敏感。"""
+        from vault.search import VaultSearch
+        exc = sqlite3.OperationalError("Dimension Mismatch Error")
+        assert VaultSearch._is_vector_db_fallback_error(exc) is True
+
+    def test_is_fts_fallback_error_fts5_keyword(self):
+        """測試 fts5 錯誤被識別（OperationalError）。"""
+        from vault.search import VaultSearch
+        exc = sqlite3.OperationalError("fts5: no such module")
+        assert VaultSearch._is_fts_fallback_error(exc) is True
+
+    def test_is_fts_fallback_error_malformed_match(self):
+        """測試 malformed match 錯誤被識別。"""
+        from vault.search import VaultSearch
+        exc = sqlite3.OperationalError("malformed match expression")
+        assert VaultSearch._is_fts_fallback_error(exc) is True
+
+    def test_is_fts_fallback_error_knowledge_fts(self):
+        """測試 knowledge_fts 錯誤被識別。"""
+        from vault.search import VaultSearch
+        exc = sqlite3.OperationalError("no such table: knowledge_fts")
+        assert VaultSearch._is_fts_fallback_error(exc) is True
+
+    def test_is_fts_fallback_error_runtime_error(self):
+        """測試 RuntimeError 包含 fts5 被識別。"""
+        from vault.search import VaultSearch
+        exc = RuntimeError("fts5 module not available")
+        assert VaultSearch._is_fts_fallback_error(exc) is True
+
+    def test_is_fts_fallback_error_unrelated_operational(self):
+        """測試不相關 OperationalError 不會被誤判。"""
+        from vault.search import VaultSearch
+        exc = sqlite3.OperationalError("database is locked")
+        assert VaultSearch._is_fts_fallback_error(exc) is False
+
+    def test_is_fts_fallback_error_unrelated_runtime(self):
+        """測試不相關 RuntimeError 不會被誤判。"""
+        from vault.search import VaultSearch
+        exc = RuntimeError("something else went wrong")
+        assert VaultSearch._is_fts_fallback_error(exc) is False
+
+    def test_is_fts_fallback_error_other_exception_type(self):
+        """測試其他異常類型不會被誤判。"""
+        from vault.search import VaultSearch
+        exc = ValueError("invalid value")
+        assert VaultSearch._is_fts_fallback_error(exc) is False
+
+    def test_is_fts_fallback_error_syntax_error(self):
+        """測試 fts5 syntax error 被識別。"""
+        from vault.search import VaultSearch
+        exc = sqlite3.OperationalError("fts5: syntax error")
+        assert VaultSearch._is_fts_fallback_error(exc) is True
+
+
+# ============================================================================
+# More Tokenize Edge Case Tests
+# ============================================================================
+
+class TestTokenizeMoreEdgeCases:
+    """更多分詞器邊界情況測試。"""
+
+    def test_tokenize_only_punctuation(self):
+        """測試只有標點符號的情況。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._tokenize("!!!???...")
+        # Should fall back to returning original
+        assert isinstance(result, list)
+        assert len(result) >= 1
+
+    def test_tokenize_numbers_only(self):
+        """測試只有數字的情況。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._tokenize("12345")
+        assert isinstance(result, list)
+        assert len(result) >= 1
+
+    def test_tokenize_mixed_numbers_and_chinese(self):
+        """測試數字和中文混合。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._tokenize("第123章")
+        # Should extract Chinese chars
+        assert any("\u4e00" <= c <= "\u9fff" for c in result if len(c) == 1) or \
+               any("\u4e00" <= c <= "\u9fff" for word in result for c in word)
+
+    def test_tokenize_single_english_char(self):
+        """測試單個英文字母。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._tokenize("a")
+        assert result == ["a"]
+
+    def test_tokenize_two_chinese_chars(self):
+        """測試兩個中文字（<=2 不加滑動窗口）。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._tokenize("測試")
+        # Only the original two-char word, no sliding window
+        assert "測試" in result
+
+    def test_tokenize_three_chinese_chars(self):
+        """測試三個中文字（>2 加滑動窗口）。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._tokenize("測試中")
+        assert "測試中" in result  # 原詞
+        assert "測試" in result  # 雙字
+        assert "試中" in result  # 雙字
+
+    def test_tokenize_preserves_order_mixed(self):
+        """測試複雜混合文本的詞序。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._tokenize("hello 中文 world 測試")
+        # First token should be hello (appears first in text)
+        assert result[0].lower() == "hello"
+
+    def test_tokenize_empty_string_returns_list_with_empty(self):
+        """測試空字符串返回 ['']。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._tokenize("")
+        assert result == [""]
+
+    def test_tokenize_spaces_only(self):
+        """測試只有空格的字符串。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._tokenize("   ")
+        assert isinstance(result, list)
+
+    def test_tokenize_special_characters(self):
+        """測試特殊字符。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._tokenize("@#$%^&*()")
+        assert isinstance(result, list)
+        assert len(result) >= 1
+
+    def test_tokenize_deduplication_case_insensitive(self):
+        """測試大小寫不敏感的去重。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._tokenize("Hello HELLO hello")
+        assert len(result) == 1
+        assert result[0].lower() == "hello"
+
+
+# ============================================================================
+# More Best Claim Edge Case Tests
+# ============================================================================
+
+class TestBestClaimExtended:
+    """更多原子主張提取邊界情況測試。"""
+
+    def test_extract_best_claim_none(self):
+        """測試 None 輸入。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._extract_best_claim(None)
+        assert result == ""
+
+    def test_extract_best_claim_only_claims_header(self):
+        """測試只有 CLAIMS: 標題沒有內容。"""
+        from vault.search import VaultSearch
+        content = "CLAIMS:"
+        result = VaultSearch._extract_best_claim(content)
+        assert result == ""
+
+    def test_extract_best_claim_claims_with_empty_lines(self):
+        """測試 CLAIMS 段中有空行。"""
+        from vault.search import VaultSearch
+        content = """CLAIMS:
+- [C1] First claim
+
+- [C2] Second claim
+"""
+        result = VaultSearch._extract_best_claim(content)
+        # Should stop at empty line (non-bracket line)
+        assert result == "First claim"
+
+    def test_extract_best_claim_multiple_brackets(self):
+        """測試有多個括號標記的情況。"""
+        from vault.search import VaultSearch
+        content = """CLAIMS:
+- [C10] Claim with two-digit index (L100)
+"""
+        result = VaultSearch._extract_best_claim(content)
+        assert result == "Claim with two-digit index"
+
+    def test_extract_best_claim_line_number_no_parens(self):
+        """測試行號不在括號中的情況。"""
+        from vault.search import VaultSearch
+        content = """CLAIMS:
+- [C1] Claim text L42
+"""
+        result = VaultSearch._extract_best_claim(content)
+        # Without parentheses, "L42" stays as part of claim
+        assert "L42" in result
+
+    def test_extract_best_claim_claims_in_middle_of_content(self):
+        """測試 CLAIMS 在內容中間。"""
+        from vault.search import VaultSearch
+        content = """Some intro text here.
+More content before claims.
+CLAIMS:
+- [C1] The best claim ever (L5)
+- [C2] Another claim (L8)
+SOME_OTHER_SECTION:
+More content after.
+"""
+        result = VaultSearch._extract_best_claim(content)
+        assert result == "The best claim ever"
+
+    def test_extract_best_claim_no_space_after_bracket(self):
+        """測試括號後沒有空格的情況。"""
+        from vault.search import VaultSearch
+        content = """CLAIMS:
+- [C1]Text without space after bracket
+"""
+        result = VaultSearch._extract_best_claim(content)
+        # The regex might not match properly, should fall to fallback strip
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_extract_best_claim_different_bracket_formats(self):
+        """測試不同的括號格式。"""
+        from vault.search import VaultSearch
+        # Test with [C1], [C2], etc.
+        content = """CLAIMS:
+- [S1] Section claim (L10)
+"""
+        result = VaultSearch._extract_best_claim(content)
+        # Should match any [X] pattern
+        assert result == "Section claim"
+
+    def test_extract_best_claim_long_claim_text(self):
+        """測試較長的主張文本。"""
+        from vault.search import VaultSearch
+        long_text = "A" * 200
+        content = f"""CLAIMS:
+- [C1] {long_text} (L1)
+"""
+        result = VaultSearch._extract_best_claim(content)
+        assert result == long_text
+
+
+# ============================================================================
+# More Compact Result Tests
+# ============================================================================
+
+class TestCompactResultExtended:
+    """更多緊湊結果測試。"""
+
+    def test_compact_result_empty_dict(self):
+        """測試空字典輸入。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._compact_result({})
+        assert result == {}
+
+    def test_compact_result_preserves_rerank_score(self):
+        """測試保留 rerank_score。"""
+        from vault.search import VaultSearch
+        doc = {
+            "id": 1,
+            "title": "Test",
+            "_rerank_score": 0.95,
+            "content_raw": "should be removed",
+        }
+        result = VaultSearch._compact_result(doc)
+        assert result["rerank_score"] == 0.95
+        assert "content_raw" not in result
+
+    def test_compact_result_without_rerank_score(self):
+        """測試沒有 rerank_score 的情況。"""
+        from vault.search import VaultSearch
+        doc = {
+            "id": 1,
+            "title": "Test",
+            "content_raw": "should be removed",
+        }
+        result = VaultSearch._compact_result(doc)
+        assert "rerank_score" not in result
+        assert "content_raw" not in result
+
+    def test_compact_result_all_fields(self):
+        """測試所有字段都存在的情況。"""
+        from vault.search import VaultSearch
+        doc = {
+            "id": 1,
+            "title": "Test Doc",
+            "category": "tech",
+            "layer": "core",
+            "trust": 0.9,
+            "tags": "test,example",
+            "best_claim": "best claim text",
+            "best_span": "L1-L10",
+            "node_uid": "node_123",
+            "path": "/docs/test",
+            "heading": "Test Heading",
+            "line_start": 1,
+            "line_end": 10,
+            "citation": "#1 Test Doc L1-L10",
+            "recommended_next_tool": "vault_read_range",
+            "next_action": {"tool": "test", "arguments": {}},
+            "next_actions": [{"tool": "test"}],
+            "content_raw": "should not appear",
+            "_score": 0.8,
+        }
+        result = VaultSearch._compact_result(doc)
+        assert "content_raw" not in result
+        assert "_score" not in result
+        assert result["id"] == 1
+        assert result["title"] == "Test Doc"
+        assert result["category"] == "tech"
+        assert result["best_claim"] == "best claim text"
+        assert result["citation"] == "#1 Test Doc L1-L10"
+
+    def test_compact_result_partial_fields(self):
+        """測試只有部分字段的情況。"""
+        from vault.search import VaultSearch
+        doc = {"id": 1, "title": "Test"}
+        result = VaultSearch._compact_result(doc)
+        assert result == {"id": 1, "title": "Test"}
+
+    def test_compact_result_preserves_only_known_fields(self):
+        """測試只保留已知字段，移除其他字段。"""
+        from vault.search import VaultSearch
+        doc = {
+            "id": 1,
+            "title": "Test",
+            "custom_field_1": "value1",
+            "custom_field_2": "value2",
+            "content_raw": "raw content",
+        }
+        result = VaultSearch._compact_result(doc)
+        assert "custom_field_1" not in result
+        assert "custom_field_2" not in result
+        assert "content_raw" not in result
+        assert result["id"] == 1
+        assert result["title"] == "Test"
+
+
+# ============================================================================
+# More Normalize Chinese Tests (cover all TC_SC_MAP entries)
+# ============================================================================
+
+class TestNormalizeChineseFull:
+    """完整覆蓋 TC_SC_MAP 所有條目的測試。"""
+
+    def test_normalize_chinese_all_entries(self):
+        """測試 TC_SC_MAP 中所有繁簡轉換條目。"""
+        from vault.search import VaultSearch
+        tc_sc_map = VaultSearch._TC_SC_MAP
+        for tc, sc in tc_sc_map.items():
+            result = VaultSearch._normalize_chinese(tc)
+            assert result == sc, f"Failed for '{tc}': expected '{sc}', got '{result}'"
+
+    def test_normalize_chinese_all_in_one_text(self):
+        """測試包含所有繁體詞的文本。"""
+        from vault.search import VaultSearch
+        tc_sc_map = VaultSearch._TC_SC_MAP
+        all_tc = " ".join(tc_sc_map.keys())
+        result = VaultSearch._normalize_chinese(all_tc)
+        for tc, sc in tc_sc_map.items():
+            # After normalization, traditional forms should be replaced
+            assert tc not in result or tc == sc  # Some might be same already
+
+    def test_normalize_chinese_already_simplified(self):
+        """測試已經是簡體的文本不變。"""
+        from vault.search import VaultSearch
+        text = "什么是机器学习数据库优化性能"
+        result = VaultSearch._normalize_chinese(text)
+        assert result == text
+
+    def test_normalize_chinese_empty(self):
+        """測試空字符串。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._normalize_chinese("")
+        assert result == ""
+
+    def test_normalize_chinese_english_only(self):
+        """測試只有英文的文本。"""
+        from vault.search import VaultSearch
+        text = "hello world python"
+        result = VaultSearch._normalize_chinese(text)
+        assert result == text
+
+
+# ============================================================================
+# Static Rerank Method Extended Tests
+# ============================================================================
+
+class TestStaticRerankExtended:
+    """靜態 rerank 方法更多邊界情況。"""
+
+    def test_rerank_rrf_score_above_one(self):
+        """測試 RRF 分數大於 1 的情況（正規化分支）。"""
+        from vault.search import VaultSearch
+        results = [
+            {"_score": 2.5, "trust": 0.8, "updated_at": "2024-01-01T00:00:00Z"},
+            {"_score": 1.5, "trust": 0.9, "updated_at": "2024-01-01T00:00:00Z"},
+        ]
+        reranked = VaultSearch._rerank(results)
+        assert len(reranked) == 2
+        # _rerank_score should be set
+        assert "_rerank_score" in reranked[0]
+        assert "_original_score" in reranked[0]
+
+    def test_rerank_without_query(self):
+        """測試無 query 時使用基礎 rerank。"""
+        from vault.search import VaultSearch
+        results = [
+            {"_score": 0.8, "trust": 0.9},
+            {"_score": 0.7, "trust": 0.8},
+        ]
+        reranked = VaultSearch._rerank(results)
+        assert len(reranked) == 2
+        assert "_rerank_score" in reranked[0]
+
+    def test_rerank_empty_results(self):
+        """測試空結果列表。"""
+        from vault.search import VaultSearch
+        results = []
+        reranked = VaultSearch._rerank(results)
+        assert reranked == []
+
+    def test_rerank_with_graph_distance(self):
+        """測試有圖譜距離的結果。"""
+        from vault.search import VaultSearch
+        results = [
+            {"_score": 0.7, "trust": 0.8, "_graph_distance": 0},
+            {"_score": 0.7, "trust": 0.8, "_graph_distance": 2},
+        ]
+        reranked = VaultSearch._rerank(results)
+        # The one with distance 0 should rank higher (graph bonus)
+        assert reranked[0].get("_graph_distance", -1) == 0
+
+    def test_rerank_no_score_defaults(self):
+        """測試沒有 _score 字段的結果。"""
+        from vault.search import VaultSearch
+        results = [
+            {"trust": 0.8, "updated_at": "2024-01-01T00:00:00Z"},
+        ]
+        reranked = VaultSearch._rerank(results)
+        assert len(reranked) == 1
+        assert "_rerank_score" in reranked[0]
+
+    def test_rerank_with_existing_freshness(self):
+        """測試已有 freshness 字段的情況。"""
+        from vault.search import VaultSearch
+        results = [
+            {"_score": 0.7, "trust": 0.8, "freshness": 0.9},
+        ]
+        reranked = VaultSearch._rerank(results)
+        assert len(reranked) == 1
+        assert "_rerank_score" in reranked[0]
+
+    def test_rerank_single_result(self):
+        """測試單個結果。"""
+        from vault.search import VaultSearch
+        results = [{"_score": 0.5, "trust": 0.5}]
+        reranked = VaultSearch._rerank(results)
+        assert len(reranked) == 1
+        assert "_rerank_score" in reranked[0]
+
+    def test_rerank_with_query_and_content(self):
+        """測試有 query 時使用輕量 reranker。"""
+        from vault.search import VaultSearch
+        results = [
+            {"id": 1, "title": "Python tutorial", "content_raw": "Python is great", "_score": 0.5},
+            {"id": 2, "title": "Java guide", "content_raw": "Java is also good", "_score": 0.6},
+        ]
+        reranked = VaultSearch._rerank(results, query="Python")
+        assert len(reranked) == 2
+        # Python result should rank higher due to query match
+        assert reranked[0]["id"] == 1
+        assert "_rerank_score" in reranked[0]
+
+
+# ============================================================================
+# LightweightReranker._extract_terms Edge Cases
+# ============================================================================
+
+class TestLightweightRerankerExtractTerms:
+    """LightweightReranker._extract_terms 的邊界情況測試。"""
+
+    def test_extract_terms_empty_string(self):
+        """測試空字符串。"""
+        from vault.search import LightweightReranker
+        result = LightweightReranker._extract_terms("")
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0] == ""
+
+    def test_extract_terms_single_chinese_char(self):
+        """測試單個中文字符。"""
+        from vault.search import LightweightReranker
+        result = LightweightReranker._extract_terms("學")
+        assert isinstance(result, list)
+        assert len(result) >= 1
+        # Should contain the char
+        assert any("\u4e00" <= c <= "\u9fff" for c in result)
+
+    def test_extract_terms_two_chinese_chars(self):
+        """測試兩個中文字符（<=2 不加滑動窗口）。"""
+        from vault.search import LightweightReranker
+        result = LightweightReranker._extract_terms("測試")
+        assert isinstance(result, list)
+        assert len(result) >= 1
+
+    def test_extract_terms_mixed_language(self):
+        """測試中英文混合。"""
+        from vault.search import LightweightReranker
+        result = LightweightReranker._extract_terms("AI 人工智能")
+        assert isinstance(result, list)
+        assert len(result) > 0
+
+    def test_extract_terms_deduplication(self):
+        """測試去重功能。"""
+        from vault.search import LightweightReranker
+        result = LightweightReranker._extract_terms("test test TEST")
+        # Should be deduplicated (case-insensitive)
+        assert len(result) == 1
+        assert result[0].lower() == "test"
+
+    def test_extract_terms_order_preserved(self):
+        """測試詞序保留。"""
+        from vault.search import LightweightReranker
+        result = LightweightReranker._extract_terms("first second third")
+        assert result[0].lower() == "first"
+        assert result[1].lower() == "second"
+        assert result[2].lower() == "third"
+
+    def test_extract_terms_numbers(self):
+        """測試數字不被視為英文詞（因為不是字母）。"""
+        from vault.search import LightweightReranker
+        result = LightweightReranker._extract_terms("123 456")
+        assert isinstance(result, list)
+
+    def test_extract_terms_special_characters(self):
+        """測試特殊字符。"""
+        from vault.search import LightweightReranker
+        result = LightweightReranker._extract_terms("!@#$%^&*()")
+        assert isinstance(result, list)
+        assert len(result) >= 1
+
+    def test_extract_terms_chinese_sliding_window(self):
+        """測試中文滑動窗口分詞。"""
+        from vault.search import LightweightReranker
+        result = LightweightReranker._extract_terms("機器學習")
+        # Should have original + 2-char windows
+        assert "機器學習" in result
+        assert "機器" in result
+        assert "學習" in result
+
+
+# ============================================================================
+# More Keyword Search LIKE Fallback Tests
+# ============================================================================
+
+class TestKeywordSearchLikeFallback:
+    """關鍵字搜尋 LIKE 降級的更多測試。"""
+
+    def test_search_keyword_like_with_multiple_terms(self, tmp_path):
+        """測試多個搜尋詞的 LIKE 搜尋。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Python Programming Guide",
+                content_raw="This is a comprehensive Python programming tutorial.",
+                trust=0.9,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            # Use terms that would trigger LIKE fallback (if FTS5 unavailable)
+            results = search._search_keyword_like(
+                "Python programming",
+                ["python", "programming"],
+                limit=10,
+            )
+            assert isinstance(results, list)
+            for r in results:
+                assert "_score" in r
+                assert "_mode" in r
+        finally:
+            db.close()
+
+    def test_search_keyword_like_with_min_score_filter(self, tmp_path):
+        """測試 min_score 過濾。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Python Guide",
+                content_raw="Python content here",
+                trust=0.9,
+            )
+            db.add_knowledge(
+                title="Other Doc",
+                content_raw="completely unrelated content",
+                trust=0.9,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            results = search._search_keyword_like(
+                "Python",
+                ["python"],
+                limit=10,
+                min_score=0.5,
+            )
+            assert isinstance(results, list)
+            for r in results:
+                assert r["_score"] >= 0.5
+        finally:
+            db.close()
+
+    def test_search_keyword_like_no_matches(self, tmp_path):
+        """測試無匹配結果。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Test", content_raw="test content", trust=0.9)
+            search = VaultSearch(db, embed_provider=None)
+            results = search._search_keyword_like(
+                "xyz_nonexistent",
+                ["xyz_nonexistent"],
+                limit=10,
+            )
+            assert results == []
+        finally:
+            db.close()
+
+    def test_search_keyword_like_with_layer_and_category(self, tmp_path):
+        """測試帶有 layer 和 category 過濾的 LIKE 搜尋。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Core Python",
+                content_raw="Python core content",
+                layer="core",
+                category="tech",
+                trust=0.9,
+            )
+            db.add_knowledge(
+                title="Non-core Python",
+                content_raw="Python non-core content",
+                layer="extended",
+                category="tech",
+                trust=0.9,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            results = search._search_keyword_like(
+                "Python",
+                ["python"],
+                limit=10,
+                layer="core",
+                category="tech",
+            )
+            assert isinstance(results, list)
+            for r in results:
+                assert r.get("layer") == "core"
+                assert r.get("category") == "tech"
+        finally:
+            db.close()
+
+    def test_search_keyword_like_ordered_by_score(self, tmp_path):
+        """測試結果按分數降序排列。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Python Python Python",
+                content_raw="Python programming with Python Python",
+                trust=0.9,
+            )
+            db.add_knowledge(
+                title="Java Guide",
+                content_raw="Java programming guide",
+                trust=0.9,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            results = search._search_keyword_like(
+                "Python programming",
+                ["python", "programming"],
+                limit=10,
+            )
+            if len(results) >= 2:
+                # Should be sorted by score descending
+                assert results[0]["_score"] >= results[1]["_score"]
+        finally:
+            db.close()
+
+
+# ============================================================================
+# More Query Expansion Edge Case Tests
+# ============================================================================
+
+class TestQueryExpansionMoreEdgeCases:
+    """更多查詢擴展邊界情況測試。"""
+
+    def test_expand_query_disabled_returns_original(self, tmp_path):
+        """測試禁用查詢擴展時返回原始查詢。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, enable_query_expansion=False)
+            result = search._expand_query("test query")
+            assert len(result) == 1
+            assert result[0][0] == "test query"
+            assert result[0][1] == 1.0
+        finally:
+            db.close()
+
+    def test_expand_query_abbreviation_ai(self, tmp_path):
+        """測試 AI 縮寫擴展。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            result = search._expand_query("AI 技術")
+            queries = [q for q, w in result]
+            # Should have both ai and 人工智能 variations
+            assert any("ai" in q.lower() for q in queries)
+        finally:
+            db.close()
+
+    def test_expand_query_fullform_to_abbr(self, tmp_path):
+        """測試全稱轉縮寫的擴展。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            result = search._expand_query("人工智能 技術")
+            queries = [q for q, w in result]
+            # Should have 人工智能 expanded to ai
+            assert any("ai" in q.lower() for q in queries)
+        finally:
+            db.close()
+
+    def test_expand_query_keyword_extraction(self, tmp_path):
+        """測試關鍵詞提取（停用詞過濾）。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            # Query with stop words
+            result = search._expand_query("什麼是 機器學習 和 深度學習")
+            assert isinstance(result, list)
+            assert len(result) >= 1
+        finally:
+            db.close()
+
+    def test_expand_query_count_zero(self, tmp_path):
+        """測試 query_expansion_count 為 0。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, query_expansion_count=0)
+            result = search._expand_query("什麼是機器學習")
+            # Even with count 0, it should return the original query
+            assert len(result) >= 1
+        finally:
+            db.close()
+
+    def test_expand_query_how_to_pattern(self, tmp_path):
+        """測試「怎麼用/如何使用」問句變換。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            result = search._expand_query("怎麼用 Python")
+            queries = [q for q, w in result]
+            # Should include variations
+            assert any("使用方法" in q for q in queries) or any("教程" in q for q in queries)
+        finally:
+            db.close()
+
+    def test_expand_query_how_to_pattern_simplified(self, tmp_path):
+        """測試簡體中文「怎么用」問句變換。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            result = search._expand_query("怎么用 Python")
+            queries = [q for q, w in result]
+            assert any("使用方法" in q for q in queries) or any("教程" in q for q in queries)
+        finally:
+            db.close()
+
+    def test_expand_query_why_pattern(self, tmp_path):
+        """測試「為什麼/why」問句變換。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            result = search._expand_query("為什麼要用 Python")
+            queries = [q for q, w in result]
+            assert any("原因" in q for q in queries)
+        finally:
+            db.close()
+
+    def test_expand_query_how_to_do_pattern(self, tmp_path):
+        """測試「怎麼做/如何實現」問句變換。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            result = search._expand_query("怎麼做 機器學習")
+            queries = [q for q, w in result]
+            assert any("实现" in q for q in queries) or any("方法" in q for q in queries)
+        finally:
+            db.close()
+
+    def test_expand_query_multiple_expansions_sorted_by_weight(self, tmp_path):
+        """測試多個擴展按權重降序排列。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            result = search._expand_query("什麼是 AI 機器學習")
+            # Should be sorted by weight descending
+            weights = [w for q, w in result]
+            for i in range(len(weights) - 1):
+                assert weights[i] >= weights[i + 1]
+        finally:
+            db.close()
+
+    def test_expand_query_synonym_replacement(self, tmp_path):
+        """測試同義詞替換擴展。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            result = search._expand_query("向量 數據庫")
+            queries = [q for q, w in result]
+            # Should have "embedding" synonym for 向量
+            assert any("embedding" in q.lower() for q in queries) or \
+                   any("嵌入" in q for q in queries)
+        finally:
+            db.close()
+
+    def test_expand_query_abbr_db(self, tmp_path):
+        """測試 db 縮寫擴展。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            result = search._expand_query("db 查詢")
+            queries = [q for q, w in result]
+            assert any("數據庫" in q or "数据库" in q for q in queries)
+        finally:
+            db.close()
+
+    def test_expand_query_normalized_chinese_match(self, tmp_path):
+        """測試標準化中文（簡體）的縮寫匹配。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            # Use simplified Chinese that should match through normalization
+            result = search._expand_query("数据库 优化")
+            queries = [q for q, w in result]
+            assert any("db" in q.lower() for q in queries)
+        finally:
+            db.close()
+
+
+# ============================================================================
+# More Graph Expand Edge Case Tests
+# ============================================================================
+
+class TestGraphExpandExtended:
+    """更多圖譜擴展邊界情況測試。"""
+
+    def test_apply_graph_expand_no_results(self, tmp_path):
+        """測試空結果列表。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, graph="fake_graph")
+            expanded = search._apply_graph_expand([], 2, 10)
+            assert expanded == []
+        finally:
+            db.close()
+
+    def test_apply_graph_expand_graph_none(self, tmp_path):
+        """測試 graph 為 None 時直接返回。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Test", content_raw="test")
+            search = VaultSearch(db, embed_provider=None, graph=None)
+            results = [{"id": 1, "_score": 0.8, "title": "Test"}]
+            expanded = search._apply_graph_expand(results, 2, 10)
+            assert len(expanded) == len(results)
+        finally:
+            db.close()
+
+    def test_apply_graph_expand_respects_limit(self, tmp_path):
+        """測試結果數量不超過 limit。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Test 1", content_raw="test one")
+            db.add_knowledge(title="Test 2", content_raw="test two")
+            search = VaultSearch(db, embed_provider=None)
+            results = [{"id": 1, "_score": 0.8, "title": "Test 1"}]
+            expanded = search._apply_graph_expand(results, 1, 1)
+            assert len(expanded) <= 1
+        finally:
+            db.close()
+
+    def test_apply_graph_expand_sorting(self, tmp_path):
+        """測試擴展結果的排序。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Doc A", content_raw="content A", trust=0.9)
+            db.add_knowledge(title="Doc B", content_raw="content B", trust=0.8)
+            search = VaultSearch(db, embed_provider=None)
+            results = [
+                {"id": 1, "_score": 0.9, "title": "Doc A"},
+                {"id": 2, "_score": 0.7, "title": "Doc B"},
+            ]
+            expanded = search._apply_graph_expand(results, 1, 10)
+            # Original results should maintain order
+            if len(expanded) >= 2:
+                assert expanded[0]["_score"] >= expanded[1]["_score"]
+        finally:
+            db.close()
+
+
+# ============================================================================
+# More Lightweight Reranker Edge Case Tests
+# ============================================================================
+
+class TestLightweightRerankerExtended:
+    """LightweightReranker 更多邊界情況測試。"""
+
+    def test_rerank_empty_documents(self):
+        """測試空文檔列表。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        result = reranker.rerank("query", [])
+        assert result == []
+
+    def test_rerank_empty_query_returns_all(self):
+        """測試空 query 時仍然返回所有文檔。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        docs = [
+            {"id": 1, "title": "Doc 1", "content_raw": "content", "_score": 0.5},
+            {"id": 2, "title": "Doc 2", "content_raw": "content", "_score": 0.6},
+        ]
+        # Empty query still processes, returns all docs
+        result = reranker.rerank("", docs)
+        assert len(result) == 2
+
+    def test_rerank_single_document(self):
+        """測試單個文檔。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        docs = [{"id": 1, "title": "Test", "content_raw": "test content", "_score": 0.5}]
+        result = reranker.rerank("test", docs)
+        assert len(result) == 1
+        assert "_rerank_score" in result[0]
+
+    def test_rerank_with_title_match_boost(self):
+        """測試標題匹配加成。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        docs = [
+            {"id": 1, "title": "Python Guide", "content_raw": "some content", "_score": 0.5},
+            {"id": 2, "title": "Other Title", "content_raw": "Python content here", "_score": 0.5},
+        ]
+        result = reranker.rerank("Python", docs)
+        # Doc with title match should rank higher
+        assert result[0]["id"] == 1
+
+    def test_rerank_with_content_multi_word_match(self):
+        """測試多詞匹配加成。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        docs = [
+            {"id": 1, "title": "Doc 1", "content_raw": "machine learning and AI", "_score": 0.5},
+            {"id": 2, "title": "Doc 2", "content_raw": "machine learning", "_score": 0.5},
+        ]
+        result = reranker.rerank("machine learning", docs)
+        # Both match, but first might have more boost due to "AI" not matching query
+        # Actually both have same 2 words, should be similar
+        assert len(result) == 2
+
+    def test_rerank_with_position_bonus(self):
+        """測試位置加成（關鍵詞出現在開頭）。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        docs = [
+            {"id": 1, "title": "Doc", "content_raw": "Python is a programming language...", "_score": 0.5},
+            {"id": 2, "title": "Doc", "content_raw": "A long text about programming with Python at the end...", "_score": 0.5},
+        ]
+        # Pad the second doc's content to make Python appear later
+        long_content = "A" * 500 + " Python"
+        docs[1]["content_raw"] = long_content
+        result = reranker.rerank("Python", docs)
+        # Doc 1 should rank higher because Python appears earlier
+        assert result[0]["id"] == 1
+
+    def test_rerank_with_freshness_field(self):
+        """測試已有 freshness 字段。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        docs = [
+            {"id": 1, "title": "Doc", "content_raw": "test", "_score": 0.5, "freshness": 0.9},
+        ]
+        result = reranker.rerank("test", docs)
+        assert len(result) == 1
+        assert "_rerank_score" in result[0]
+
+    def test_rerank_with_graph_distance(self):
+        """測試有圖譜距離的加成。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        docs = [
+            {"id": 1, "title": "Doc", "content_raw": "test", "_score": 0.5, "_graph_distance": 0},
+        ]
+        result = reranker.rerank("test", docs)
+        assert len(result) == 1
+        assert "_rerank_score" in result[0]
+
+    def test_rerank_with_trust_field(self):
+        """測試信任度加成。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        docs = [
+            {"id": 1, "title": "Doc", "content_raw": "test", "_score": 0.5, "trust": 0.9},
+        ]
+        result = reranker.rerank("test", docs)
+        assert len(result) == 1
+        assert "_rerank_score" in result[0]
+
+    def test_rerank_with_distance_field(self):
+        """測試有向量距離字段時的相似度加成。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        docs = [
+            {"id": 1, "title": "Doc", "content_raw": "test", "_score": 0.5, "_distance": 0.2},
+        ]
+        result = reranker.rerank("test", docs)
+        assert len(result) == 1
+        assert "_rerank_score" in result[0]
+
+    def test_rerank_preserves_original_score(self):
+        """測試保存原始分數。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        docs = [
+            {"id": 1, "title": "Test", "content_raw": "test content", "_score": 0.42},
+        ]
+        result = reranker.rerank("test", docs)
+        assert result[0]["_original_score"] == 0.42
+
+    def test_rerank_top_k_parameter(self):
+        """測試 top_k 參數。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        docs = [
+            {"id": 1, "title": "Doc 1", "content_raw": "test", "_score": 0.5},
+            {"id": 2, "title": "Doc 2", "content_raw": "test", "_score": 0.6},
+            {"id": 3, "title": "Doc 3", "content_raw": "test", "_score": 0.7},
+        ]
+        result = reranker.rerank("test", docs, top_k=2)
+        assert len(result) == 2
+
+    def test_rerank_top_k_none_returns_all(self):
+        """測試 top_k 為 None 時返回全部。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        docs = [
+            {"id": 1, "title": "Doc 1", "content_raw": "test", "_score": 0.5},
+            {"id": 2, "title": "Doc 2", "content_raw": "test", "_score": 0.6},
+        ]
+        result = reranker.rerank("test", docs, top_k=None)
+        assert len(result) == 2
+
+    def test_rerank_available_property(self):
+        """測試 available 屬性。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        assert reranker.available is True
+
+    def test_rerank_with_single_term_penalty(self):
+        """測試只有單詞匹配時的懲罰（當 query 有多個詞時）。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        docs = [
+            {"id": 1, "title": "Python", "content_raw": "Python content only one match", "_score": 0.5},
+            {"id": 2, "title": "Java", "content_raw": "machine learning ai deep learning", "_score": 0.5},
+        ]
+        # Query with multiple terms
+        result = reranker.rerank("machine learning Python", docs)
+        assert len(result) == 2
+        # Doc with more matches should rank higher
+
+
+# ============================================================================
+# VaultSearch Property Caching Tests
+# ============================================================================
+
+class TestVaultSearchPropertiesCaching:
+    """測試 VaultSearch 屬性的快取行為。"""
+
+    def test_has_embeddings_disabled(self, tmp_path):
+        """測試 enable_vector_search=False 時返回 False。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, enable_vector_search=False)
+            assert search.has_embeddings is False
+        finally:
+            db.close()
+
+    def test_has_embeddings_with_provider(self, tmp_path):
+        """測試有 embed_provider 但沒有 vec table 時。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            # Mock an embed provider
+            search = VaultSearch(db, embed_provider=object())
+            # Without vec table, has_embeddings depends on db._vec_available
+            result = search.has_embeddings
+            assert isinstance(result, bool)
+        finally:
+            db.close()
+
+    def test_has_reranker_disabled(self, tmp_path):
+        """測試 enable_rerank=False 時返回 False。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, enable_rerank=False)
+            assert search.has_reranker is False
+        finally:
+            db.close()
+
+    def test_has_reranker_enabled(self, tmp_path):
+        """測試 enable_rerank=True 時有輕量 reranker。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, enable_rerank=True)
+            assert search.has_reranker is True
+            # Test caching - second call should return cached value
+            assert search.has_reranker is True
+        finally:
+            db.close()
+
+    def test_has_cross_encoder_disabled(self, tmp_path):
+        """測試 enable_cross_encoder=False 時返回 False。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, enable_cross_encoder=False)
+            assert search.has_cross_encoder is False
+        finally:
+            db.close()
+
+    def test_has_llm_disabled(self, tmp_path):
+        """測試 enable_llm_enhancement=False 時返回 False。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, enable_llm_enhancement=False)
+            assert search.has_llm is False
+        finally:
+            db.close()
+
+    def test_has_reranker_strategy_none(self, tmp_path):
+        """測試 rerank_strategy='none' 時返回 False。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, rerank_strategy="none")
+            assert search.has_reranker is False
+        finally:
+            db.close()
+
+    def test_has_reranker_strategy_lightweight(self, tmp_path):
+        """測試 rerank_strategy='lightweight' 時返回 True。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, rerank_strategy="lightweight")
+            assert search.has_reranker is True
+        finally:
+            db.close()
+
+
+# ============================================================================
+# More Validation Edge Case Tests
+# ============================================================================
+
+class TestParamValidationEdgeCases:
+    """參數驗證更多邊界情況。"""
+
+    def test_zero_keyword_weight_allowed(self, tmp_path):
+        """測試 keyword_weight 為 0 是有效的。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, keyword_weight=0.0)
+            assert search._keyword_weight == 0.0
+        finally:
+            db.close()
+
+    def test_zero_vector_weight_allowed(self, tmp_path):
+        """測試 vector_weight 為 0 是有效的。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, vector_weight=0.0)
+            assert search._vector_weight == 0.0
+        finally:
+            db.close()
+
+    def test_decay_at_zero_allowed(self, tmp_path):
+        """測試 decay 參數為 0 是有效的。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(
+                db,
+                query_expansion_synonym_decay=0.0,
+                query_expansion_question_decay=0.0,
+                query_expansion_abbr_decay=0.0,
+                query_expansion_keyword_decay=0.0,
+            )
+            assert search._query_expansion_synonym_decay == 0.0
+        finally:
+            db.close()
+
+    def test_decay_at_one_allowed(self, tmp_path):
+        """測試 decay 參數為 1 是有效的。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(
+                db,
+                query_expansion_synonym_decay=1.0,
+                query_expansion_question_decay=1.0,
+                query_expansion_abbr_decay=1.0,
+                query_expansion_keyword_decay=1.0,
+            )
+            assert search._query_expansion_synonym_decay == 1.0
+        finally:
+            db.close()
+
+    def test_invalid_abbr_decay_above_one_raises(self, tmp_path):
+        """測試 abbr_decay 大於 1 引發異常。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            with pytest.raises(ValueError, match="abbr_decay"):
+                VaultSearch(db, query_expansion_abbr_decay=1.5)
+        finally:
+            db.close()
+
+    def test_invalid_keyword_decay_below_zero_raises(self, tmp_path):
+        """測試 keyword_decay 小於 0 引發異常。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            with pytest.raises(ValueError, match="keyword_decay"):
+                VaultSearch(db, query_expansion_keyword_decay=-0.1)
+        finally:
+            db.close()
+
+    def test_invalid_question_decay_raises(self, tmp_path):
+        """測試 question_decay 無效引發異常。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            with pytest.raises(ValueError, match="question_decay"):
+                VaultSearch(db, query_expansion_question_decay=2.0)
+        finally:
+            db.close()
+
+
+# ============================================================================
+# Info Method Extended Tests
+# ============================================================================
+
+class TestInfoMethodExtended:
+    """info() 方法更多測試。"""
+
+    def test_info_returns_dict(self, tmp_path):
+        """測試 info() 返回字典。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            info = search.info()
+            assert isinstance(info, dict)
+        finally:
+            db.close()
+
+    def test_info_has_basic_layer(self, tmp_path):
+        """測試基礎層資訊。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            info = search.info()
+            assert "基礎層" in info
+            assert "basic" in info
+            assert info["基礎層"]["keyword_search"] is True
+        finally:
+            db.close()
+
+    def test_info_query_expansion_disabled(self, tmp_path):
+        """測試禁用查詢擴展時的 info。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, enable_query_expansion=False)
+            info = search.info()
+            assert info["基礎層"]["query_expansion"] is False
+        finally:
+            db.close()
+
+    def test_info_config_layer(self, tmp_path):
+        """測試配置層資訊。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(
+                db,
+                embed_provider=None,
+                keyword_weight=0.7,
+                vector_weight=0.3,
+            )
+            info = search.info()
+            assert "配置" in info
+            assert "config" in info
+            assert info["配置"]["關鍵詞權重"] == 0.7
+            assert info["config"]["keyword_weight"] == 0.7
+        finally:
+            db.close()
+
+    def test_info_rerank_strategy_config(self, tmp_path):
+        """測試 rerank 策略配置。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, rerank_strategy="lightweight")
+            info = search.info()
+            assert info["配置"]["rerank_strategy"] == "lightweight"
+        finally:
+            db.close()
+
+    def test_info_cross_encoder_disabled(self, tmp_path):
+        """測試 cross encoder 禁用時的 info。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, enable_cross_encoder=False)
+            info = search.info()
+            assert "高階層" in info
+            assert info["高階層"]["cross_encoder_rerank"] is False
+        finally:
+            db.close()
+
+    def test_info_llm_query_rewrite_disabled(self, tmp_path):
+        """測試 LLM 查詢改寫禁用時的 info。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, enable_llm_query_rewrite=False)
+            info = search.info()
+            assert "旗艦層" in info
+            assert info["旗艦層"]["llm_query_rewrite"] is False
+        finally:
+            db.close()
+
+    def test_info_default_mode_keyword(self, tmp_path):
+        """測試沒有嵌入時預設模式為 keyword。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            info = search.info()
+            assert info["配置"]["default_mode"] == "keyword"
         finally:
             db.close()

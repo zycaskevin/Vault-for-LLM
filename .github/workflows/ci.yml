@@ -299,6 +299,11 @@ jobs:
               'dist', 'build', '__pycache__', '.pytest_cache', '.ruff_cache',
               '.mypy_cache', 'htmlcov', 'vault_for_llm.egg-info',
           }
+          # Files that intentionally contain fake secrets for testing privacy scan
+          excluded_files = {
+              'tests/test_privacy_extended.py',
+              'tests/test_privacy.py',
+          }
           included_roots = [
               Path('vault'), Path('scripts'), Path('tests'), Path('docs'), Path('raw'),
               Path('benchmarks'), Path('.github/workflows'),
@@ -316,7 +321,9 @@ jobs:
           }
 
           def should_skip(path: Path) -> bool:
-              return any(part in excluded_dirs for part in path.parts)
+              if any(part in excluded_dirs for part in path.parts):
+                  return True
+              return str(path) in excluded_files
 
           candidates = []
           for root in included_roots:

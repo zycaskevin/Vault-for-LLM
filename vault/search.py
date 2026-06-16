@@ -869,14 +869,21 @@ class VaultSearch:
                 _add_expansion(f"{topic} 原因", question_decay)
 
         # 2. 同義詞替換擴展
+        import re
         original_terms = self._tokenize(query)
         for term in original_terms:
             term_lower = term.lower()
             if term_lower in self._SYNONYM_MAP:
                 synonyms = self._SYNONYM_MAP[term_lower]
                 for syn in synonyms[:2]:  # 每個詞最多取2個同義詞
-                    expanded = query.lower().replace(term_lower, syn)
-                    if expanded != query.lower():
+                    # 英文詞使用單詞邊界匹配，避免子串誤替換（如 "ai" 誤替換 "brain"）
+                    if re.match(r'^[a-zA-Z]+$', term_lower):
+                        pattern = re.compile(r'\b' + re.escape(term_lower) + r'\b', re.IGNORECASE)
+                        expanded = pattern.sub(syn, query)
+                    else:
+                        # 中文/混合詞直接替換（中文沒有空格分隔，子串匹配是可接受的）
+                        expanded = query.lower().replace(term_lower, syn)
+                    if expanded.lower() != query.lower():
                         _add_expansion(expanded, synonym_decay)
 
         # 3. 簡寫/全稱擴展（中英對照，同時支援繁簡體）
@@ -897,10 +904,26 @@ class VaultSearch:
 
         # 同時對原始文本和標準化文本進行匹配
         for abbr, full in abbr_map.items():
-            if abbr in q_lower:
-                _add_expansion(q_lower.replace(abbr, full), abbr_decay)
-            if full in q_lower:
-                _add_expansion(q_lower.replace(full, abbr), abbr_decay)
+            # 英文簡寫使用單詞邊界匹配，避免子串誤替換
+            if re.match(r'^[a-zA-Z]+$', abbr):
+                pattern = re.compile(r'\b' + re.escape(abbr) + r'\b', re.IGNORECASE)
+                if pattern.search(q_lower):
+                    expanded = pattern.sub(full, q_lower)
+                    _add_expansion(expanded, abbr_decay)
+            else:
+                if abbr in q_lower:
+                    _add_expansion(q_lower.replace(abbr, full), abbr_decay)
+
+            # 全稱轉簡寫（中文全稱直接替換，英文全稱用邊界匹配）
+            if re.match(r'^[a-zA-Z\s]+$', full):
+                full_pattern = re.compile(r'\b' + re.escape(full) + r'\b', re.IGNORECASE)
+                if full_pattern.search(q_lower):
+                    expanded = full_pattern.sub(abbr, q_lower)
+                    _add_expansion(expanded, abbr_decay)
+            else:
+                if full in q_lower:
+                    _add_expansion(q_lower.replace(full, abbr), abbr_decay)
+
             # 也檢查標準化（簡體）版本
             full_norm = self._normalize_chinese(full)
             if full_norm != full and full_norm in q_norm:
@@ -997,7 +1020,9 @@ class VaultSearch:
             )
 
             # 使用者輸入用 XML 標籤包裹，明確邊界
-            user_input_block = f"<user_query>\n{query}\n</user_query>"
+            # 注意：已對使用者輸入進行 XML 轉義，防止注入繞道
+            escaped_query = query.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            user_input_block = f"<user_query>\n{escaped_query}\n</user_query>"
 
             # 根據策略構建提示詞
             strategy = self._llm_query_rewrite_strategy
@@ -1236,6 +1261,13 @@ class VaultSearch:
         if len(query) > MAX_QUERY_LENGTH:
             query = query[:MAX_QUERY_LENGTH]
 
+        # ── 安全防線：limit 最大值保護 ──
+        MAX_LIMIT = 500
+        if limit > MAX_LIMIT:
+            limit = MAX_LIMIT
+        if limit <= 0:
+            limit = 1
+
         # LLM 查詢改寫：在查詢擴展之前進行
         if use_llm_rewrite and self._enable_llm_query_rewrite and self.has_llm:
             query = self._rewrite_query_with_llm(query)
@@ -1366,7 +1398,7 @@ class VaultSearch:
         # 圖譜擴展
         if graph_expand > 0 and self._graph is not None:
             results = self._apply_graph_expand(
-                results, graph_expand, limit, min_trust, layer
+                results, graph_expand, limit, min_trust, layer, category
             )
 
         # Reranker
@@ -2164,12 +2196,13 @@ class VaultSearch:
         limit: int,
         min_trust: float = 0.0,
         layer: Optional[str] = None,
+        category: Optional[str] = None,
     ) -> list[dict]:
         """
         對搜尋結果應用圖譜擴展。
         沿著圖譜邊找相鄰知識，合併到搜尋結果中。
 
-        注意：圖譜擴展會嚴格遵守 min_trust 和 layer 限制，
+        注意：圖譜擴展會嚴格遵守 min_trust、layer 和 category 限制，
         不會返回超出權限範圍的內容。
         """
         if not results or self._graph is None:
@@ -2186,10 +2219,12 @@ class VaultSearch:
                 if n["id"] not in seen_ids:
                     k = self.db.get_knowledge(n["id"])
                     if k:
-                        # 權限檢查：確保擴展出的內容符合分層和信任級別
+                        # 權限檢查：確保擴展出的內容符合分層、信任級別和分類
                         if k.get("trust", 0) < min_trust:
                             continue
                         if layer and k.get("layer") != layer:
+                            continue
+                        if category and k.get("category") != category:
                             continue
                         seen_ids.add(n["id"])
                         d = dict(k)

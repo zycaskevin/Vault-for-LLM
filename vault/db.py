@@ -615,6 +615,10 @@ class VaultDB:
 
     @staticmethod
     def _quote_fts_token(token: str) -> str:
+        # 防範超長 token 導致 FTS5 解析問題
+        if len(token) > 100:
+            token = token[:100]
+        # 雙引號包裹 + 轉義雙引號，確保作為字面量處理
         return '"' + token.replace('"', '""') + '"'
 
     def search_fts_keyword(
@@ -627,7 +631,7 @@ class VaultDB:
     ) -> list[dict]:
         """Keyword search using optional FTS5 + BM25. Raises if unavailable/bad query."""
         if not self._fts_available:
-            raise RuntimeError("SQLite FTS5 is unavailable")
+            raise RuntimeError("全文搜尋功能未啟用")
         match_query = " OR ".join(self._quote_fts_token(term) for term in terms if term)
         if not match_query:
             return []
@@ -856,7 +860,7 @@ class VaultDB:
     def add_embedding(self, knowledge_id: int, embedding: list[float]):
         """插入向量到 vec0 表。"""
         if not self._vec_available:
-            raise RuntimeError("sqlite-vec 未安裝，無法使用向量功能")
+            raise RuntimeError("向量功能未啟用")
         import struct
         emb_bytes = struct.pack(f"{len(embedding)}f", *embedding)
         self.conn.execute(
@@ -875,7 +879,7 @@ class VaultDB:
     ) -> list[dict]:
         """向量語意搜尋，回傳知識列表。"""
         if not self._vec_available:
-            raise RuntimeError("sqlite-vec 未安裝，無法使用向量搜尋")
+            raise RuntimeError("向量搜尋功能未啟用")
 
         import struct
         emb_bytes = struct.pack(f"{len(query_embedding)}f", *query_embedding)

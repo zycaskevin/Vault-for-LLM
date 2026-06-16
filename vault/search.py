@@ -1196,7 +1196,8 @@ class VaultSearch:
     def _is_fts_fallback_error(exc: Exception) -> bool:
         """Return True when FTS5 keyword search should fall back to LIKE."""
         if isinstance(exc, RuntimeError):
-            return "fts5" in str(exc).lower()
+            msg = str(exc).lower()
+            return "fts5" in msg or "全文搜尋" in msg
         if not isinstance(exc, sqlite3.OperationalError):
             return False
         msg = str(exc).lower()

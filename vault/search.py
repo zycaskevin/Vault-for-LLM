@@ -27,6 +27,8 @@ from .semantic import (
 )
 
 DEFAULT_KEYWORD_MIN_SCORE = 0.34
+MAX_LIMIT = 500
+MAX_GRAPH_EXPAND_DEPTH = 5
 
 
 def _normalize_text(value: str) -> str:
@@ -1268,11 +1270,16 @@ class VaultSearch:
             query = query[:MAX_QUERY_LENGTH]
 
         # ── 安全防線：limit 最大值保護 ──
-        MAX_LIMIT = 500
         if limit > MAX_LIMIT:
             limit = MAX_LIMIT
         if limit <= 0:
             limit = 1
+
+        # ── 安全防線：圖譜擴展深度上限 ──
+        if graph_expand > MAX_GRAPH_EXPAND_DEPTH:
+            graph_expand = MAX_GRAPH_EXPAND_DEPTH
+        if graph_expand < 0:
+            graph_expand = 0
 
         # 空查詢直接返回空結果
         if not query or not query.strip():
@@ -1728,6 +1735,8 @@ class VaultSearch:
             use_bm25_score: 若為 True，使用 BM25 分數作為基礎分數（經過正規化），
                            這會比簡單的匹配率更準確。預設 False 以保持向後兼容。
         """
+        if limit > MAX_LIMIT:
+            limit = MAX_LIMIT
         terms = self._tokenize(query)
         if not terms:
             return []
@@ -1778,6 +1787,10 @@ class VaultSearch:
         min_score: float = DEFAULT_KEYWORD_MIN_SCORE,
     ) -> list[dict]:
         """LIKE keyword fallback used when FTS5 is unavailable or yields no hits."""
+        # 空查詢直接返回空結果
+        if not terms:
+            return []
+
         # 建構 WHERE 條件
         conditions = []
         params: list = [min_trust]
@@ -1836,6 +1849,8 @@ class VaultSearch:
                   向量模式的分數為餘弦相似度轉換為 0-1 範圍，
                   與 keyword 模式的匹配率分數含義不同，使用時請注意。
         """
+        if limit > MAX_LIMIT:
+            limit = MAX_LIMIT
         embed = self._get_embed()
         if embed is None or not self.db._vec_available:
             # 降級到關鍵字
@@ -1931,6 +1946,8 @@ class VaultSearch:
         Missing providers or missing semantic-index tables are treated as an empty
         explicit semantic result. Provider safety violations intentionally raise.
         """
+        if limit > MAX_LIMIT:
+            limit = MAX_LIMIT
         provider = self._semantic_provider(
             require_semantic=require_semantic,
             allow_hash=allow_hash,
@@ -2020,6 +2037,8 @@ class VaultSearch:
         支援動態權重調整：根據查詢匹配質量自動調整 keyword/vector 權重。
         支援交叉驗證加分：同時出現在關鍵詞和向量結果中的文檔獲得額外加分。
         """
+        if limit > MAX_LIMIT:
+            limit = MAX_LIMIT
         k = 60  # RRF constant
         kw_w = keyword_weight if keyword_weight is not None else self._keyword_weight
         vec_w = vector_weight if vector_weight is not None else self._vector_weight

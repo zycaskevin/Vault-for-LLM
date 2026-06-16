@@ -1050,6 +1050,12 @@ class VaultDB:
         layer: 分層過濾
         category: 分類過濾
         """
+        MAX_DEPTH = 10
+        if max_depth > MAX_DEPTH:
+            max_depth = MAX_DEPTH
+        if max_depth < 0:
+            max_depth = 0
+
         visited = {node_id}
         frontier = {node_id}
         results = []

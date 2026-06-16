@@ -323,10 +323,13 @@ def create_embedding_provider(
         # 3. 降級到 sentence-transformers
         if importlib.util.find_spec("sentence_transformers") is not None:
             return SentenceTransformerProvider()
-        # 4. 最後降級：hash 嵌入（純 Python，無依賴，用於測試/輕量場景）
-        print("⚠️  未找到任何嵌入 provider，降級使用 hash 嵌入（僅供測試，質量較低）", file=sys.stderr)
-        from vault.semantic import DeterministicHashEmbeddingProvider
-        return DeterministicHashEmbeddingProvider(dim=384)
+        raise RuntimeError(
+            "找不到任何嵌入 provider！請安裝以下之一：\n"
+            "  pip install onnxruntime optimum  (推薦，最輕量)\n"
+            "  或啟動 Ollama\n"
+            "  或 pip install sentence-transformers  (需要 PyTorch 2GB+)\n"
+            "  或使用 provider=\"hash\" 進行測試（非語義嵌入）"
+        )
 
     elif provider == "onnx":
         return ONNXEmbeddingProvider(model_key=model_key, cache_dir=cache_dir)

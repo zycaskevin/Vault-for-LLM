@@ -257,6 +257,8 @@ class TestCmdDedupNoDuplicates:
         db.connect()
         db.add_knowledge(title="Unique 1", content_raw="Content one", content_aaak="c1")
         db.add_knowledge(title="Unique 2", content_raw="Content two", content_aaak="c2")
+        # Use hash embedding provider for CI compatibility
+        db.set_config("embedding_provider", "hash")
         db.close()
         
         monkeypatch.chdir(project_dir)

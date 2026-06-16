@@ -47,6 +47,9 @@ def temp_vault_project(tmp_path):
         trust=0.7,
     )
     
+    # Use hash embedding provider for tests (works without external dependencies)
+    db.set_config("embedding_provider", "hash")
+    
     db.close()
     
     # Create raw/ directory for cmd_add tests

@@ -39,6 +39,9 @@ def initialized_project(tmp_path):
             trust=0.5 + i * 0.1,
         )
     
+    # Use hash embedding provider for tests (works without external dependencies)
+    db.set_config("embedding_provider", "hash")
+    
     db.close()
     
     # Create required dirs

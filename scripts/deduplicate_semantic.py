@@ -59,7 +59,7 @@ def flatten(vec):
     return result
 
 
-def find_duplicates(db_path=DB_PATH, threshold=0.85):
+def find_duplicates(db_path=DB_PATH, threshold=0.85, embed_provider=None):
     """找出語意重複的知識條目"""
     db = VaultDB(db_path)
     db.connect()
@@ -76,7 +76,15 @@ def find_duplicates(db_path=DB_PATH, threshold=0.85):
     print(f"📚 載入 {len(rows)} 條知識")
 
     # 建立嵌入
-    embedder = create_embedding_provider()
+    if embed_provider is None:
+        # 先嘗試從數據庫讀取 provider 設定
+        try:
+            provider_name = db.get_config("embedding_provider", "auto")
+        except Exception:
+            provider_name = "auto"
+        embedder = create_embedding_provider(provider=provider_name)
+    else:
+        embedder = embed_provider
     embed_dim = embedder.dim  # 動態取得維度，避免硬編碼
     texts = [r[2] if r[2] else r[1] for r in rows]
 

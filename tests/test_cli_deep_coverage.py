@@ -722,14 +722,28 @@ class TestCmdSemanticMore:
         args.db_path = None
         args.persist_cache = False
         args.knowledge_id = None
-        args.allow_hash = False
+        args.allow_hash = True
+        args.hash_dim = 32
         args.pretty = False
+        args.mode = "auto"
+        args.limit = 0
+        args.semantic_vector_kind = "claim"
+        args.older_than_days = 30
+        args.max_rows = 1000
+        args.no_persist_cache = False
+        args.rebuild = False
+        args.smoke = False
+        args.repeat = 1
+        args.interval = 60
+        args.qa_file = None
+        args.output = None
+        args.provider_id = None
+        args.dimension = None
         
-        # This will fail because no embedding provider, but it should cover code paths
-        try:
-            cmd_semantic(args)
-        except Exception:
-            pass  # Expected to fail without embedding provider
+        # Should succeed with hash provider
+        cmd_semantic(args)
+        captured = capsys.readouterr()
+        assert captured.out != "" or captured.err != ""
 
 
 class TestGraphWithEntities:

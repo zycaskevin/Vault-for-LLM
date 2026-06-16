@@ -42,7 +42,9 @@ def _load_entity_rules(project_dir: Optional[Path] = None) -> dict:
     """
     candidates = []
     if project_dir:
-        candidates.append(Path(project_dir) / "entity_rules.yaml")
+        # 規範化路徑，消除 ../ 等路徑遍歷元件
+        safe_project_dir = Path(project_dir).resolve()
+        candidates.append(safe_project_dir / "entity_rules.yaml")
     # templates/ directory in repo root
     candidates.append(Path(__file__).parent.parent / "templates" / "entity_rules.yaml")
     # repo root（backward compat）

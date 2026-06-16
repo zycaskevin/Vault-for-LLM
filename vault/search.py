@@ -285,6 +285,7 @@ class CrossEncoderReranker:
     _cached_model_name = None
     _cached_tokenizer = None
     _backend = None  # "sentence_transformers" or "onnxruntime"
+    _init_complete = False  # 初始化完成標誌，用於雙重檢查鎖定的安全判斷
     # 快取鎖，保護快取的並發存取
     _cache_lock = threading.Lock()
 
@@ -304,6 +305,7 @@ class CrossEncoderReranker:
         執行緒安全。
         """
         with CrossEncoderReranker._cache_lock:
+            CrossEncoderReranker._init_complete = False  # 最先重置
             CrossEncoderReranker._cached_model = None
             CrossEncoderReranker._cached_model_name = None
             CrossEncoderReranker._cached_tokenizer = None
@@ -316,7 +318,8 @@ class CrossEncoderReranker:
             from sentence_transformers import CrossEncoder as STCrossEncoder
 
             # 先在鎖外檢查（雙重檢查鎖定模式）
-            if (CrossEncoderReranker._cached_model is not None and
+            # 使用 _init_complete 標誌確保所有快取變數都已完全設定
+            if (CrossEncoderReranker._init_complete and
                 CrossEncoderReranker._cached_model_name == self._model_name and
                 CrossEncoderReranker._backend == "sentence_transformers"):
                 self._model = CrossEncoderReranker._cached_model
@@ -325,7 +328,7 @@ class CrossEncoderReranker:
 
             with CrossEncoderReranker._cache_lock:
                 # 獲得鎖後再次檢查（雙重檢查鎖定）
-                if (CrossEncoderReranker._cached_model is not None and
+                if (CrossEncoderReranker._init_complete and
                     CrossEncoderReranker._cached_model_name == self._model_name and
                     CrossEncoderReranker._backend == "sentence_transformers"):
                     self._model = CrossEncoderReranker._cached_model
@@ -337,6 +340,7 @@ class CrossEncoderReranker:
                 CrossEncoderReranker._cached_model = self._model
                 CrossEncoderReranker._cached_model_name = self._model_name
                 CrossEncoderReranker._backend = "sentence_transformers"
+                CrossEncoderReranker._init_complete = True  # 最後設定，表示初始化完成
                 return
         except (ImportError, Exception):
             pass
@@ -347,7 +351,8 @@ class CrossEncoderReranker:
             from tokenizers import Tokenizer
 
             # 先在鎖外檢查（雙重檢查鎖定模式）
-            if (CrossEncoderReranker._cached_model is not None and
+            # 使用 _init_complete 標誌確保所有快取變數都已完全設定
+            if (CrossEncoderReranker._init_complete and
                 CrossEncoderReranker._cached_model_name == self._model_name and
                 CrossEncoderReranker._backend == "onnxruntime"):
                 self._model = CrossEncoderReranker._cached_model
@@ -357,7 +362,7 @@ class CrossEncoderReranker:
 
             with CrossEncoderReranker._cache_lock:
                 # 獲得鎖後再次檢查（雙重檢查鎖定）
-                if (CrossEncoderReranker._cached_model is not None and
+                if (CrossEncoderReranker._init_complete and
                     CrossEncoderReranker._cached_model_name == self._model_name and
                     CrossEncoderReranker._backend == "onnxruntime"):
                     self._model = CrossEncoderReranker._cached_model
@@ -380,6 +385,7 @@ class CrossEncoderReranker:
                     CrossEncoderReranker._cached_tokenizer = self._tokenizer
                     CrossEncoderReranker._cached_model_name = self._model_name
                     CrossEncoderReranker._backend = "onnxruntime"
+                    CrossEncoderReranker._init_complete = True  # 最後設定，表示初始化完成
                     return
         except (ImportError, Exception):
             pass
@@ -2325,17 +2331,30 @@ class VaultSearch:
         for m in re.finditer(r'[a-zA-Z]{2,}', query):
             tokens.append((m.start(), m.group()))
         # 匹配中文連續片段
+        chinese_segs = []
         for m in re.finditer(r'[\u4e00-\u9fff]+', query):
-            seg = m.group()
-            seg_start = m.start()
-            if len(seg) <= 2:
-                tokens.append((seg_start, seg))
-            else:
-                # 保留原詞 + 雙字滑動窗口
-                tokens.append((seg_start, seg))  # 原詞
-                for i in range(len(seg) - 1):
-                    # 雙字詞按起始位置排序
-                    tokens.append((seg_start + i, seg[i:i+2]))
+            chinese_segs.append((m.start(), m.group()))
+
+        # 優先級：原詞 > 雙字滑窗
+        # 先添加所有原詞，確保主要語義單元不丟失
+        for seg_start, seg in chinese_segs:
+            tokens.append((seg_start, seg))  # 原詞優先
+
+        # 安全閥：最多返回 100 個 token
+        MAX_TOKENS = 100
+        # 計算剩餘配額用於雙字滑窗
+        remaining_quota = MAX_TOKENS - len(tokens)
+
+        # 如果還有配額，再添加雙字滑窗
+        if remaining_quota > 0:
+            bigram_tokens = []
+            for seg_start, seg in chinese_segs:
+                if len(seg) > 2:
+                    for i in range(len(seg) - 1):
+                        bigram_tokens.append((seg_start + i, seg[i:i+2]))
+            # 按位置排序，只取前 N 個
+            bigram_tokens.sort(key=lambda x: x[0])
+            tokens.extend(bigram_tokens[:remaining_quota])
 
         # 如果沒有提取到任何 token（例如只有單個中文字或單個英文字母）
         if not tokens:

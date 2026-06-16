@@ -10,6 +10,7 @@ Vault-for-LLM — 搜尋模組。
 import re
 import math
 import sqlite3
+import threading
 from typing import Optional, List
 
 from .db import VaultDB
@@ -208,30 +209,39 @@ class LightweightReranker:
     @staticmethod
     def _extract_terms(query: str) -> list[str]:
         """提取查詢中的關鍵詞（與搜尋模塊一致的分詞策略）。"""
-        # 英文單詞
-        english = re.findall(r'[a-zA-Z]{2,}', query)
+        # 按原始順序提取所有 token（英文單詞 + 中文連續片段）
+        tokens = []
 
-        # 提取所有連續中文字符串，做滑動窗口切分
-        chinese_segments = re.findall(r'[\u4e00-\u9fff]+', query)
-        chinese = []
-        for seg in chinese_segments:
+        # 匹配英文單詞（2+ 字母）
+        for m in re.finditer(r'[a-zA-Z]{2,}', query):
+            tokens.append((m.start(), m.group()))
+
+        # 匹配中文連續片段，做滑動窗口切分
+        for m in re.finditer(r'[\u4e00-\u9fff]+', query):
+            seg = m.group()
+            seg_start = m.start()
             if len(seg) <= 2:
-                chinese.append(seg)
+                tokens.append((seg_start, seg))
             else:
                 # 保留原詞 + 雙字滑動窗口
-                chinese.append(seg)
+                tokens.append((seg_start, seg))  # 原詞
                 for i in range(len(seg) - 1):
-                    chinese.append(seg[i:i+2])
+                    tokens.append((seg_start + i, seg[i:i+2]))
 
-        if not chinese and not english:
+        # 如果沒有提取到任何 token
+        if not tokens:
             chars = re.findall(r'[\u4e00-\u9fff]', query)
-            chinese = chars
+            if chars:
+                return [c.lower() for c in chars]
+            return [query.lower()]
 
-        terms = english + chinese
-        # 去重，保留順序
+        # 按在原文中的位置排序，保持詞序
+        tokens.sort(key=lambda x: x[0])
+
+        # 去重，保留順序，轉小寫
         seen = set()
         unique = []
-        for t in terms:
+        for _, t in tokens:
             t_lower = t.lower()
             if t_lower not in seen:
                 seen.add(t_lower)
@@ -248,6 +258,9 @@ class CrossEncoderReranker:
     - onnxruntime（輕量級，使用預轉換的 ONNX 模型）
 
     模型快取：只在第一次呼叫時載入，後續重複使用。
+
+    執行緒安全：類別層級的快取操作已通過 threading.Lock 保護，
+    支援多執行緒環境下的安全存取。
     """
 
     # 類別層級的模型快取，避免多個實例重複載入
@@ -255,6 +268,8 @@ class CrossEncoderReranker:
     _cached_model_name = None
     _cached_tokenizer = None
     _backend = None  # "sentence_transformers" or "onnxruntime"
+    # 快取鎖，保護快取的並發存取
+    _cache_lock = threading.Lock()
 
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         self._model_name = model_name
@@ -263,24 +278,49 @@ class CrossEncoderReranker:
         self._tokenizer = None
         self._try_init()
 
+    @staticmethod
+    def clear_cache() -> None:
+        """
+        手動清除 Cross-Encoder 模型快取。
+
+        釋放快取的模型和分詞器，下次建立實例時會重新載入。
+        執行緒安全。
+        """
+        with CrossEncoderReranker._cache_lock:
+            CrossEncoderReranker._cached_model = None
+            CrossEncoderReranker._cached_model_name = None
+            CrossEncoderReranker._cached_tokenizer = None
+            CrossEncoderReranker._backend = None
+
     def _try_init(self) -> None:
         """嘗試初始化 Cross-Encoder 模型。"""
         # 優先使用 sentence-transformers
         try:
             from sentence_transformers import CrossEncoder as STCrossEncoder
-            if CrossEncoderReranker._cached_model is not None and \
-               CrossEncoderReranker._cached_model_name == self._model_name and \
-               CrossEncoderReranker._backend == "sentence_transformers":
+
+            # 先在鎖外檢查（雙重檢查鎖定模式）
+            if (CrossEncoderReranker._cached_model is not None and
+                CrossEncoderReranker._cached_model_name == self._model_name and
+                CrossEncoderReranker._backend == "sentence_transformers"):
                 self._model = CrossEncoderReranker._cached_model
                 self._available = True
                 return
 
-            self._model = STCrossEncoder(self._model_name)
-            self._available = True
-            CrossEncoderReranker._cached_model = self._model
-            CrossEncoderReranker._cached_model_name = self._model_name
-            CrossEncoderReranker._backend = "sentence_transformers"
-            return
+            with CrossEncoderReranker._cache_lock:
+                # 獲得鎖後再次檢查（雙重檢查鎖定）
+                if (CrossEncoderReranker._cached_model is not None and
+                    CrossEncoderReranker._cached_model_name == self._model_name and
+                    CrossEncoderReranker._backend == "sentence_transformers"):
+                    self._model = CrossEncoderReranker._cached_model
+                    self._available = True
+                    return
+
+                self._model = STCrossEncoder(self._model_name)
+                self._available = True
+                CrossEncoderReranker._cached_model = self._model
+                CrossEncoderReranker._cached_model_name = self._model_name
+                CrossEncoderReranker._backend = "sentence_transformers"
+                return
         except (ImportError, Exception):
             pass
 
@@ -289,30 +329,41 @@ class CrossEncoderReranker:
             import onnxruntime as ort
             from tokenizers import Tokenizer
 
-            if CrossEncoderReranker._cached_model is not None and \
-               CrossEncoderReranker._cached_model_name == self._model_name and \
-               CrossEncoderReranker._backend == "onnxruntime":
+            # 先在鎖外檢查（雙重檢查鎖定模式）
+            if (CrossEncoderReranker._cached_model is not None and
+                CrossEncoderReranker._cached_model_name == self._model_name and
+                CrossEncoderReranker._backend == "onnxruntime"):
                 self._model = CrossEncoderReranker._cached_model
                 self._tokenizer = CrossEncoderReranker._cached_tokenizer
                 self._available = True
                 return
 
-            # 這裡使用簡化的 ONNX 模型載入邏輯
-            # 實際佈署時可指定本地模型路徑
-            import os
-            model_path = os.environ.get("VAULT_CROSS_ENCODER_PATH", "")
-            if model_path and os.path.exists(model_path):
-                self._model = ort.InferenceSession(model_path)
-                # 嘗試載入 tokenizer
-                tokenizer_path = os.path.join(os.path.dirname(model_path), "tokenizer.json")
-                if os.path.exists(tokenizer_path):
-                    self._tokenizer = Tokenizer.from_file(tokenizer_path)
-                self._available = True
-                CrossEncoderReranker._cached_model = self._model
-                CrossEncoderReranker._cached_tokenizer = self._tokenizer
-                CrossEncoderReranker._cached_model_name = self._model_name
-                CrossEncoderReranker._backend = "onnxruntime"
-                return
+            with CrossEncoderReranker._cache_lock:
+                # 獲得鎖後再次檢查（雙重檢查鎖定）
+                if (CrossEncoderReranker._cached_model is not None and
+                    CrossEncoderReranker._cached_model_name == self._model_name and
+                    CrossEncoderReranker._backend == "onnxruntime"):
+                    self._model = CrossEncoderReranker._cached_model
+                    self._tokenizer = CrossEncoderReranker._cached_tokenizer
+                    self._available = True
+                    return
+
+                # 這裡使用簡化的 ONNX 模型載入邏輯
+                # 實際佈署時可指定本地模型路徑
+                import os
+                model_path = os.environ.get("VAULT_CROSS_ENCODER_PATH", "")
+                if model_path and os.path.exists(model_path):
+                    self._model = ort.InferenceSession(model_path)
+                    # 嘗試載入 tokenizer
+                    tokenizer_path = os.path.join(os.path.dirname(model_path), "tokenizer.json")
+                    if os.path.exists(tokenizer_path):
+                        self._tokenizer = Tokenizer.from_file(tokenizer_path)
+                    self._available = True
+                    CrossEncoderReranker._cached_model = self._model
+                    CrossEncoderReranker._cached_tokenizer = self._tokenizer
+                    CrossEncoderReranker._cached_model_name = self._model_name
+                    CrossEncoderReranker._backend = "onnxruntime"
+                    return
         except (ImportError, Exception):
             pass
 
@@ -436,6 +487,15 @@ class VaultSearch:
         # 查詢擴展
         enable_query_expansion: bool = True,
         query_expansion_count: int = 5,
+        # 查詢擴展分數衰減（不同擴展類型有不同衰減率）
+        # 同義詞替換衰減最小，因為語義最接近
+        query_expansion_synonym_decay: float = 0.95,
+        # 問句變換衰減中等
+        query_expansion_question_decay: float = 0.85,
+        # 縮寫/全稱擴展衰減稍大
+        query_expansion_abbr_decay: float = 0.90,
+        # 關鍵詞提取衰減最大
+        query_expansion_keyword_decay: float = 0.75,
         # 可選能力開關（分級掛載）
         enable_vector_search: bool = True,  # 是否允許使用向量檢索
         enable_cross_encoder: bool = True,  # 是否允許使用 cross-encoder rerank
@@ -459,6 +519,11 @@ class VaultSearch:
         # 查詢擴展
         self._enable_query_expansion = enable_query_expansion
         self._query_expansion_count = query_expansion_count
+        # 查詢擴展分數衰減參數
+        self._query_expansion_synonym_decay = query_expansion_synonym_decay
+        self._query_expansion_question_decay = query_expansion_question_decay
+        self._query_expansion_abbr_decay = query_expansion_abbr_decay
+        self._query_expansion_keyword_decay = query_expansion_keyword_decay
         # 分級能力開關
         self._enable_vector_search = enable_vector_search
         self._enable_cross_encoder = enable_cross_encoder
@@ -589,7 +654,7 @@ class VaultSearch:
         except Exception:
             return None
 
-    # 同義詞詞典（用於查詢擴展）
+    # 同義詞詞典（用於查詢擴展）- 同時支援繁簡體
     _SYNONYM_MAP = {
         # 技術術語
         "ai": ["人工智能", "llm", "大語言模型", "模型"],
@@ -597,96 +662,163 @@ class VaultSearch:
         "向量": ["embedding", "嵌入", "語義"],
         "嵌入": ["向量", "embedding", "語義"],
         "搜尋": ["搜索", "檢索", "查詢"],
+        "搜索": ["搜尋", "檢索", "查詢"],
         "檢索": ["搜索", "搜尋", "查詢"],
         "數據庫": ["資料庫", "db", "數據庫"],
         "資料庫": ["數據庫", "db"],
-        "添加": ["新增", "增加", "導入", "添加"],
-        "導入": ["添加", "導入", "匯入"],
+        "添加": ["新增", "增加", "導入", "添加", "新增"],
+        "新增": ["添加", "增加", "導入", "新增"],
+        "導入": ["添加", "導入", "匯入", "导入", "导入"],
+        "匯入": ["導入", "导入"],
         "配置": ["設定", "config", "配置"],
         "設定": ["配置", "config"],
         "安裝": ["部署", "安裝", "搭建"],
         "部署": ["安裝", "搭建", "部署"],
-        "優化": ["優化", "改進", "提升", "最佳化"],
+        "優化": ["優化", "改進", "提升", "最佳化", "优化"],
+        "改进": ["優化", "優化", "提升", "最佳化", "优化"],
         "性能": ["效能", "性能", "速度"],
         "效能": ["性能", "速度", "效能"],
         # 常見問法
-        "怎麼": ["如何", "怎樣", "怎麼"],
-        "如何": ["怎麼", "怎樣", "如何"],
-        "什麼": ["什麼", "啥", "什麼是"],
-        "為什麼": ["為什麼", "原因", "為何"],
+        "怎麼": ["如何", "怎樣", "怎麼", "怎么"],
+        "怎么": ["如何", "怎样", "怎麼", "怎么"],
+        "如何": ["怎麼", "怎樣", "如何", "怎么", "怎样"],
+        "什麼": ["什麼", "啥", "什麼是", "什么"],
+        "什么": ["什麼", "啥", "什么是", "什么"],
+        "為什麼": ["為什麼", "原因", "為何", "为什么"],
+        "为什么": ["為什麼", "原因", "為何", "为什么"],
         "可以": ["能夠", "能", "可以"],
-        "怎樣": ["怎麼", "如何", "怎樣"],
+        "怎樣": ["怎麼", "如何", "怎樣", "怎么", "怎样"],
     }
 
-    def _expand_query(self, query: str) -> list[str]:
+    # 繁簡中文常見轉換映射（用於問句模式匹配）
+    _TC_SC_MAP = {
+        "什麼是": "什么是",
+        "怎么用": "怎么用",
+        "怎麼用": "怎么用",
+        "為什麼": "为什么",
+        "為何": "为何",
+        "如何": "如何",
+        "怎樣": "怎样",
+        "怎麼": "怎么",
+        "什麼": "什么",
+        "數據庫": "数据库",
+        "資料庫": "数据库",
+        "優化": "优化",
+        "性能": "性能",
+        "效能": "效能",
+        "配置": "配置",
+        "設定": "设定",
+        "安裝": "安装",
+        "部署": "部署",
+        "添加": "添加",
+        "新增": "新增",
+        "導入": "导入",
+        "匯入": "汇入",
+        "檢索": "检索",
+        "搜尋": "搜索",
+        "嵌入": "嵌入",
+        "向量": "向量",
+    }
+
+    @staticmethod
+    def _normalize_chinese(text: str) -> str:
+        """
+        將文本中的繁體中文轉換為簡體中文。
+        主要用於問句模式匹配，使 "什麼是" 和 "什么是" 都能被正確匹配。
+        """
+        result = text
+        for tc, sc in VaultSearch._TC_SC_MAP.items():
+            result = result.replace(tc, sc)
+        return result
+
+    def _expand_query(self, query: str) -> list[tuple[str, float]]:
         """
         查詢擴展：生成多種說法的查詢。
 
         使用規則式擴展（同義詞替換、問法變換、簡寫擴展），
         提升關鍵詞搜尋的召回率。
+
+        Returns:
+            list[tuple[str, float]]: 擴展查詢列表，每項為 (query, weight)
+            weight 表示該擴展查詢的可信度，用於分數衰減。
         """
         if not self._enable_query_expansion:
-            return [query]
+            return [(query, 1.0)]
 
-        expansions = [query]
+        # 使用 dict 存儲 {query: highest_weight}，保留每個查詢的最高權重
+        expansion_map: dict[str, float] = {}
+        # 原始查詢權重為 1.0
+        expansion_map[query.lower().strip()] = 1.0
+
+        def _add_expansion(exp_query: str, weight: float) -> None:
+            """添加擴展查詢，保留最高權重。"""
+            exp_norm = exp_query.strip().lower()
+            if exp_norm and len(exp_norm) > 1:
+                current = expansion_map.get(exp_norm, 0.0)
+                expansion_map[exp_norm] = max(current, weight)
 
         # 移除問號、助詞
         q = query.rstrip("？?")
         q_lower = q.lower()
 
+        # 標準化中文（繁轉簡），用於模式匹配
+        q_norm = self._normalize_chinese(q_lower)
+        question_decay = self._query_expansion_question_decay
+        synonym_decay = self._query_expansion_synonym_decay
+        abbr_decay = self._query_expansion_abbr_decay
+        keyword_decay = self._query_expansion_keyword_decay
+
         # 1. 問句模式變換
-        # 「什麼是 X」的變換
-        if "什麼是" in q_lower or "what is" in q_lower:
-            topic = q_lower.replace("什麼是", "").replace("what is ", "").strip()
+        # 「什麼是 X」的變換（同時匹配繁簡體）
+        if "什么是" in q_norm or "what is" in q_norm:
+            topic = q_norm.replace("什么是", "").replace("what is ", "").strip()
             if topic:
-                expansions.append(topic)
-                expansions.append(f"介紹 {topic}")
-                expansions.append(f"{topic} 概述")
+                _add_expansion(topic, question_decay)
+                _add_expansion(f"介紹 {topic}", question_decay)
+                _add_expansion(f"{topic} 概述", question_decay)
 
-        # 「怎麼用/如何使用」的變換
-        if any(kw in q_lower for kw in ["怎麼用", "如何使用", "how to use"]):
-            topic = q_lower
-            for kw in ["怎麼用", "如何使用", "how to use"]:
+        # 「怎麼用/如何使用」的變換（同時匹配繁簡體）
+        if any(kw in q_norm for kw in ["怎么用", "如何使用", "how to use"]):
+            topic = q_norm
+            for kw in ["怎么用", "如何使用", "how to use"]:
                 topic = topic.replace(kw, "")
             topic = topic.strip()
             if topic:
-                expansions.append(f"{topic} 使用方法")
-                expansions.append(f"使用 {topic}")
-                expansions.append(f"{topic} 教程")
+                _add_expansion(f"{topic} 使用方法", question_decay)
+                _add_expansion(f"使用 {topic}", question_decay)
+                _add_expansion(f"{topic} 教程", question_decay)
 
-        # 「怎麼做/如何實現」的變換
-        if any(kw in q_lower for kw in ["怎麼做", "如何實現", "如何做"]):
-            topic = q_lower
-            for kw in ["怎麼做", "如何實現", "怎麼做", "如何做"]:
+        # 「怎麼做/如何實現」的變換（同時匹配繁簡體）
+        if any(kw in q_norm for kw in ["怎么做", "如何实现", "如何做"]):
+            topic = q_norm
+            for kw in ["怎么做", "如何实现", "怎么做", "如何做"]:
                 topic = topic.replace(kw, "")
             topic = topic.strip()
             if topic:
-                expansions.append(f"{topic} 實現")
-                expansions.append(f"{topic} 方法")
+                _add_expansion(f"{topic} 实现", question_decay)
+                _add_expansion(f"{topic} 方法", question_decay)
 
-        # 「為什麼/原因」的變換
-        if any(kw in q_lower for kw in ["為什麼", "why", "為何"]):
-            topic = q_lower
-            for kw in ["為什麼", "why ", "為何"]:
+        # 「為什麼/原因」的變換（同時匹配繁簡體）
+        if any(kw in q_norm for kw in ["为什么", "why", "为何"]):
+            topic = q_norm
+            for kw in ["为什么", "why ", "为何"]:
                 topic = topic.replace(kw, "")
             topic = topic.strip()
             if topic:
-                expansions.append(f"{topic} 原因")
+                _add_expansion(f"{topic} 原因", question_decay)
 
         # 2. 同義詞替換擴展
-        # 對原始查詢中的每個詞，嘗試同義詞替換
         original_terms = self._tokenize(query)
         for term in original_terms:
             term_lower = term.lower()
             if term_lower in self._SYNONYM_MAP:
                 synonyms = self._SYNONYM_MAP[term_lower]
                 for syn in synonyms[:2]:  # 每個詞最多取2個同義詞
-                    # 用同義詞替換原始查詢中的詞
                     expanded = query.lower().replace(term_lower, syn)
                     if expanded != query.lower():
-                        expansions.append(expanded)
+                        _add_expansion(expanded, synonym_decay)
 
-        # 3. 簡寫/全稱擴展（中英對照）
+        # 3. 簡寫/全稱擴展（中英對照，同時支援繁簡體）
         abbr_map = {
             "ai": "人工智能",
             "llm": "大語言模型",
@@ -702,34 +834,41 @@ class VaultSearch:
             "cv": "計算機視覺",
         }
 
+        # 同時對原始文本和標準化文本進行匹配
         for abbr, full in abbr_map.items():
             if abbr in q_lower:
-                expansions.append(q_lower.replace(abbr, full))
+                _add_expansion(q_lower.replace(abbr, full), abbr_decay)
             if full in q_lower:
-                expansions.append(q_lower.replace(full, abbr))
+                _add_expansion(q_lower.replace(full, abbr), abbr_decay)
+            # 也檢查標準化（簡體）版本
+            full_norm = self._normalize_chinese(full)
+            if full_norm != full and full_norm in q_norm:
+                _add_expansion(q_norm.replace(full_norm, abbr), abbr_decay)
 
-        # 4. 關鍵詞提取（丟棄停用詞）
-        stop_words = {"的", "是", "在", "有", "和", "與", "及", "等", "也", "都", "就",
-                       "一個", "什麼", "怎麼", "如何", "為什麼", "嗎", "呢", "吧", "啊",
-                       "the", "a", "an", "is", "are", "what", "how", "why", "to", "of"}
+        # 4. 關鍵詞提取（丟棄停用詞）- 同時支援繁簡體
+        stop_words = {
+            # 繁體中文停用詞
+            "的", "是", "在", "有", "和", "與", "及", "等", "也", "都", "就",
+            "一個", "什麼", "怎麼", "如何", "為什麼", "嗎", "呢", "吧", "啊",
+            "這個", "那個", "請問",
+            # 簡體中文停用詞
+            "的", "是", "在", "有", "和", "与", "及", "等", "也", "都", "就",
+            "一个", "什么", "怎么", "如何", "为什么", "吗", "呢", "吧", "啊",
+            "这个", "那个", "请问",
+            # 英文停用詞
+            "the", "a", "an", "is", "are", "what", "how", "why", "to", "of",
+            "in", "on", "at", "for", "with", "can", "could", "would",
+        }
 
         keywords = [t for t in original_terms if len(t) > 1 and t.lower() not in stop_words]
         if len(keywords) >= 2:
-            # 把核心關鍵詞組合起來
-            expansions.append(" ".join(keywords))
+            _add_expansion(" ".join(keywords), keyword_decay)
 
-        # 去重並限制數量
-        seen = set()
-        unique = []
-        for exp in expansions:
-            exp_norm = exp.strip().lower()
-            if exp_norm and exp_norm not in seen and len(exp_norm) > 1:
-                seen.add(exp_norm)
-                unique.append(exp.strip())
-                if len(unique) >= self._query_expansion_count:
-                    break
+        # 按權重降序排列，限制數量
+        sorted_expansions = sorted(expansion_map.items(), key=lambda x: x[1], reverse=True)
+        result = sorted_expansions[:self._query_expansion_count]
 
-        return unique if unique else [query]
+        return result if result else [(query, 1.0)]
 
     def _rewrite_query_with_llm(self, query: str) -> str:
         """
@@ -934,6 +1073,12 @@ class VaultSearch:
         use_query_expansion: 是否使用查詢擴展（預設 True）
         use_llm_rewrite: 是否使用 LLM 查詢改寫（預設 False）
         """
+        # 驗證 mode 參數
+        valid_modes = {"auto", "keyword", "vector", "semantic", "hybrid"}
+        if mode not in valid_modes:
+            raise ValueError(
+                f"無效的搜尋模式: {mode!r}. 有效模式: {sorted(valid_modes)}"
+            )
         # LLM 查詢改寫：在查詢擴展之前進行
         if use_llm_rewrite and self._enable_llm_query_rewrite and self.has_llm:
             query = self._rewrite_query_with_llm(query)
@@ -942,23 +1087,23 @@ class VaultSearch:
         if use_query_expansion and self._enable_query_expansion:
             queries = self._expand_query(query)
         else:
-            queries = [query]
+            queries = [(query, 1.0)]
 
         # 執行搜尋
         all_results = []
-        for q in queries:
+        for q_text, q_weight in queries:
             if mode == "keyword":
-                results = self.search_keyword(q, limit, min_trust, layer, category, min_score=min_score)
+                results = self.search_keyword(q_text, limit, min_trust, layer, category, min_score=min_score)
             elif mode == "vector":
                 if self.has_embeddings:
-                    results = self.search_vector(q, limit * 2, min_trust, layer, category)
+                    results = self.search_vector(q_text, limit * 2, min_trust, layer, category)
                     results = results[:limit]
                 else:
-                    results = self.search_keyword(q, limit, min_trust, layer, category, min_score=min_score)
+                    results = self.search_keyword(q_text, limit, min_trust, layer, category, min_score=min_score)
             elif mode == "semantic":
                 if self.has_embeddings:
                     results = self.search_semantic(
-                        q,
+                        q_text,
                         limit,
                         min_trust,
                         layer,
@@ -968,11 +1113,11 @@ class VaultSearch:
                         allow_hash=allow_hash,
                     )
                 else:
-                    results = self.search_keyword(q, limit, min_trust, layer, category, min_score=min_score)
+                    results = self.search_keyword(q_text, limit, min_trust, layer, category, min_score=min_score)
             elif mode == "hybrid":
                 if self.has_embeddings:
                     results = self.search_hybrid(
-                        q,
+                        q_text,
                         limit,
                         min_trust,
                         layer,
@@ -982,7 +1127,7 @@ class VaultSearch:
                         min_score=min_score,
                     )
                 else:
-                    results = self.search_keyword(q, limit, min_trust, layer, category, min_score=min_score)
+                    results = self.search_keyword(q_text, limit, min_trust, layer, category, min_score=min_score)
             else:
                 # auto: safe by default: use stored semantic index only with a real semantic provider.
                 if self.has_embeddings and self._semantic_index_available(
@@ -991,7 +1136,7 @@ class VaultSearch:
                     allow_hash=allow_hash,
                 ):
                     results = self.search_hybrid(
-                        q,
+                        q_text,
                         limit,
                         min_trust,
                         layer,
@@ -1003,18 +1148,17 @@ class VaultSearch:
                 elif self.has_embeddings:
                     embed = self._get_embed()
                     if embed is not None and bool(getattr(embed, "is_semantic", True)):
-                        results = self.search_hybrid(q, limit, min_trust, layer, category, min_score=min_score)
+                        results = self.search_hybrid(q_text, limit, min_trust, layer, category, min_score=min_score)
                     else:
-                        results = self.search_keyword(q, limit, min_trust, layer, category, min_score=min_score)
+                        results = self.search_keyword(q_text, limit, min_trust, layer, category, min_score=min_score)
                 else:
-                    results = self.search_keyword(q, limit, min_trust, layer, category, min_score=min_score)
+                    results = self.search_keyword(q_text, limit, min_trust, layer, category, min_score=min_score)
 
-            # 如果是多查詢，稍微衰減非首查詢的分數
-            if len(queries) > 1 and queries.index(q) > 0:
-                decay = 0.9 ** queries.index(q)
+            # 根據擴展查詢的權重衰減分數
+            if q_weight < 1.0:
                 for r in results:
-                    r["_score"] = r.get("_score", 0) * decay
-                    r["_expanded_query"] = q
+                    r["_score"] = r.get("_score", 0) * q_weight
+                    r["_expanded_query"] = q_text
 
             all_results.extend(results)
 
@@ -1806,24 +1950,47 @@ class VaultSearch:
     @staticmethod
     def _tokenize(query: str) -> list[str]:
         """
-        簡單分詞：英文按空格，中文按字元。
-        過濾掉太短的詞。
+        簡單分詞：英文按單詞，中文按詞語。
+        保持原始文本的詞語順序，過濾掉太短的詞。
         """
-        # 英文單詞
-        english = re.findall(r"[a-zA-Z]{2,}", query)
-        # 中文詞（2-4字元的連續中文字）
-        chinese = re.findall(r"[\u4e00-\u9fff]{2,4}", query)
-        # 如果中文只有單字，也拆開
-        if not chinese:
-            chars = re.findall(r"[\u4e00-\u9fff]", query)
-            chinese = [c for c in chars if len(c) == 1]
+        # 按順序提取所有 token（英文單詞 + 中文連續片段）
+        # 使用 finditer 保持原始出現順序
+        tokens = []
+        # 匹配英文單詞（2+ 字母）
+        for m in re.finditer(r'[a-zA-Z]{2,}', query):
+            tokens.append((m.start(), m.group()))
+        # 匹配中文連續片段
+        for m in re.finditer(r'[\u4e00-\u9fff]+', query):
+            seg = m.group()
+            seg_start = m.start()
+            if len(seg) <= 2:
+                tokens.append((seg_start, seg))
+            else:
+                # 保留原詞 + 雙字滑動窗口
+                tokens.append((seg_start, seg))  # 原詞
+                for i in range(len(seg) - 1):
+                    # 雙字詞按起始位置排序
+                    tokens.append((seg_start + i, seg[i:i+2]))
 
-        terms = english + chinese
-        # 去重，保留順序
+        # 如果沒有提取到任何 token（例如只有單個中文字或單個英文字母）
+        if not tokens:
+            # 嘗試提取單個中文字
+            chars = re.findall(r'[\u4e00-\u9fff]', query)
+            if chars:
+                return chars
+            # 否則返回原始查詢
+            return [query] if query else [""]
+
+        # 按在原文中的位置排序，保持詞序
+        tokens.sort(key=lambda x: x[0])
+
+        # 提取詞語，去重（保留首次出現的順序）
         seen = set()
         unique = []
-        for t in terms:
-            if t.lower() not in seen:
-                seen.add(t.lower())
+        for _, t in tokens:
+            t_lower = t.lower()
+            if t_lower not in seen:
+                seen.add(t_lower)
                 unique.append(t)
+
         return unique if unique else [query]

@@ -246,15 +246,15 @@ class TestSearchModes:
         finally:
             db.close()
 
-    def test_search_unknown_mode_falls_back(self, tmp_path):
+    def test_search_invalid_mode_raises_value_error(self, tmp_path):
         db = VaultDB(str(tmp_path / "test.db"))
         db.connect()
         try:
             db.add_knowledge(title="Fallback Test", content_raw="mode fallback")
             search = VaultSearch(db, embed_provider=None)
-            # Unknown mode should not crash
-            results = search.search("Fallback", mode="invalid_mode", use_rerank=False)
-            assert isinstance(results, list)
+            # Invalid mode should raise ValueError
+            with pytest.raises(ValueError, match="無效的搜尋模式"):
+                search.search("Fallback", mode="invalid_mode", use_rerank=False)
         finally:
             db.close()
 
@@ -570,5 +570,373 @@ class TestSearchEdgeCases:
             assert len(results) >= 1
         finally:
             db.close()
+
+
+class TestQueryExpansion:
+    """測試查詢擴展功能。"""
+
+    def test_expand_query_disabled(self, tmp_path):
+        """測試停用查詢擴展時只返回原始查詢。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, enable_query_expansion=False)
+            result = search._expand_query("什麼是 AI")
+            assert len(result) == 1
+            assert result[0][0] == "什麼是 AI"
+            assert result[0][1] == 1.0
+        finally:
+            db.close()
+
+    def test_expand_query_question_pattern_what_is(self, tmp_path):
+        """測試「什麼是 X」問句模式變換。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, query_expansion_count=10)
+            results = search._expand_query("什麼是 AI")
+            # 第一個應該是原始查詢
+            assert results[0][1] == 1.0
+            # 應該包含問句變換結果
+            queries = [r[0] for r in results]
+            assert any("ai" in q for q in queries)
+            assert any("介紹" in q for q in queries)
+            assert any("概述" in q for q in queries)
+        finally:
+            db.close()
+
+    def test_expand_query_simplified_chinese_what_is(self, tmp_path):
+        """測試簡體中文「什么是 X」模式匹配。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, query_expansion_count=10)
+            results = search._expand_query("什么是 AI")
+            queries = [r[0] for r in results]
+            # 簡體中文應該也能匹配到問句模式
+            assert any("ai" in q for q in queries)
+            assert any("介紹" in q for q in queries)
+        finally:
+            db.close()
+
+    def test_expand_query_synonyms(self, tmp_path):
+        """測試同義詞替換擴展。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, query_expansion_count=10)
+            results = search._expand_query("AI 搜尋")
+            queries = [r[0] for r in results]
+            # 應該有同義詞替換結果
+            assert any("搜索" in q for q in queries)
+            # 同義詞的權重應該是 0.95
+            for q, w in results:
+                if "搜索" in q and q != "ai 搜尋":
+                    assert w == search._query_expansion_synonym_decay
+                    break
+        finally:
+            db.close()
+
+    def test_expand_query_abbreviation(self, tmp_path):
+        """測試縮寫/全稱擴展。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, query_expansion_count=10)
+            results = search._expand_query("AI 技術")
+            queries = [r[0] for r in results]
+            # 應該有全稱擴展結果
+            assert any("人工智能" in q for q in queries)
+        finally:
+            db.close()
+
+    def test_expand_query_keyword_extraction(self, tmp_path):
+        """測試關鍵詞提取。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, query_expansion_count=10)
+            results = search._expand_query("什麼是 AI 技術的應用")
+            queries = [r[0] for r in results]
+            # 應該有關鍵詞提取結果
+            # 關鍵詞提取的權重應該是 keyword_decay
+            for q, w in results:
+                if w == search._query_expansion_keyword_decay:
+                    assert " " in q  # 多個關鍵詞用空格連接
+                    break
+        finally:
+            db.close()
+
+    def test_expand_query_decay_weights(self, tmp_path):
+        """測試不同擴展類型有不同的衰減權重。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, query_expansion_count=20)
+            # 構造一個會觸發多種擴展的查詢
+            results = search._expand_query("什麼是 AI 搜尋技術")
+            
+            # 原始查詢權重應為 1.0
+            assert results[0][1] == 1.0
+            
+            # 收集所有權重值
+            weights = {w for _, w in results}
+            
+            # 應該有多種不同的權重
+            assert len(weights) >= 2
+            
+            # 同義詞衰減應該大於關鍵詞衰減（同義詞更可靠）
+            assert search._query_expansion_synonym_decay > search._query_expansion_keyword_decay
+        finally:
+            db.close()
+
+    def test_expansion_count_limit(self, tmp_path):
+        """測試擴展數量限制。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, query_expansion_count=3)
+            results = search._expand_query("什麼是 AI 搜尋技術怎麼用")
+            assert len(results) <= 3
+        finally:
+            db.close()
+
+
+class TestLightweightReranker:
+    """測試輕量級重排序器。"""
+
+    def test_rerank_title_matching(self, tmp_path):
+        """測試標題匹配加成。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        
+        documents = [
+            {"_score": 0.5, "title": "Python 教程", "content_raw": "這是 Python 編程語言的教程"},
+            {"_score": 0.5, "title": "Java 教程", "content_raw": "這是 Java 編程語言的教程"},
+        ]
+        # 查詢 "Python" 應該讓第一個文檔排名更高
+        reranked = reranker.rerank("Python", documents)
+        assert reranked[0]["title"] == "Python 教程"
+        assert reranked[0]["_rerank_score"] > reranked[1]["_rerank_score"]
+
+    def test_rerank_empty_documents(self, tmp_path):
+        """測試空文檔列表。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        assert reranker.rerank("test", []) == []
+
+    def test_rerank_multi_term_boost(self, tmp_path):
+        """測試多詞匹配獎勵。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        
+        documents = [
+            {"_score": 0.5, "title": "Python 入門", "content_raw": "學習 Python 編程很容易"},
+            {"_score": 0.5, "title": "Java 入門", "content_raw": "學習 Java 編程"},
+        ]
+        # 同時匹配 "Python" 和 "學習" 的文檔應該排名更高
+        reranked = reranker.rerank("Python 學習", documents)
+        assert reranked[0]["title"] == "Python 入門"
+
+    def test_rerank_position_weight(self, tmp_path):
+        """測試位置權重（關鍵詞出現在開頭加分）。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        
+        documents = [
+            {"_score": 0.5, "title": "測試", "content_raw": "Python 是一種流行的編程語言，廣泛用於各種領域"},
+            {"_score": 0.5, "title": "測試", "content_raw": "這是一篇關於編程的文章，其中提到了 Python 語言"},
+        ]
+        # 第一個文檔中 Python 出現在開頭，應該有更高的位置加成
+        reranked = reranker.rerank("Python", documents)
+        assert reranked[0]["_rerank_score"] > reranked[1]["_rerank_score"]
+
+    def test_rerank_top_k_limit(self, tmp_path):
+        """測試 top_k 限制。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        
+        documents = [
+            {"_score": 0.8, "title": "Doc 1", "content_raw": "內容 1"},
+            {"_score": 0.6, "title": "Doc 2", "content_raw": "內容 2"},
+            {"_score": 0.4, "title": "Doc 3", "content_raw": "內容 3"},
+        ]
+        reranked = reranker.rerank("內容", documents, top_k=2)
+        assert len(reranked) == 2
+
+    def test_rerank_term_frequency_saturation(self, tmp_path):
+        """測試詞頻飽和（BM25 風格）。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        
+        # 文檔 A 有 10 個 "python"，文檔 B 有 2 個 "python"
+        # 由於詞頻飽和，分數不應是線性關係
+        content_a = "python " * 10
+        content_b = "python " * 2
+        documents = [
+            {"_score": 0.5, "title": "A", "content_raw": content_a},
+            {"_score": 0.5, "title": "B", "content_raw": content_b},
+        ]
+        reranked = reranker.rerank("python", documents)
+        # A 的分數應該高於 B，但不應是 5 倍（因為飽和）
+        score_a = reranked[0]["_rerank_score"]
+        score_b = reranked[1]["_rerank_score"]
+        assert score_a > score_b
+        # 確保不是線性增長（5 倍差距會遠大於實際）
+        assert score_a < score_b * 3
+
+
+class TestInfoMethod:
+    """測試 info() 方法。"""
+
+    def test_info_returns_dict(self, tmp_path):
+        """測試 info() 返回正確結構的字典。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            info = search.info()
+            
+            assert "基礎層" in info
+            assert "進階層" in info
+            assert "高階層" in info
+            assert "配置" in info
+            
+            # 基礎層應該有這些屬性
+            assert "關鍵詞搜尋" in info["基礎層"]
+            assert "輕量級重排序" in info["基礎層"]
+            assert "查詢擴展" in info["基礎層"]
+            
+            # 配置層應該有這些屬性
+            assert "預設模式" in info["配置"]
+            assert "關鍵詞權重" in info["配置"]
+            assert "向量權重" in info["配置"]
+        finally:
+            db.close()
+
+    def test_info_query_expansion_toggle(self, tmp_path):
+        """測試查詢擴展開關在 info 中正確反映。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            # 開啟查詢擴展
+            search_enabled = VaultSearch(db, embed_provider=None, enable_query_expansion=True)
+            assert search_enabled.info()["基礎層"]["查詢擴展"] is True
+            
+            # 關閉查詢擴展
+            search_disabled = VaultSearch(db, embed_provider=None, enable_query_expansion=False)
+            assert search_disabled.info()["基礎層"]["查詢擴展"] is False
+        finally:
+            db.close()
+
+    def test_info_rerank_config(self, tmp_path):
+        """測試 rerank 配置在 info 中正確反映。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, rerank_strategy="lightweight")
+            info = search.info()
+            assert info["配置"]["Rerank 策略"] == "lightweight"
+            assert info["配置"]["Rerank 開關"] is True
+        finally:
+            db.close()
+
+
+class TestInvalidMode:
+    """測試無效模式參數校驗。"""
+
+    def test_invalid_mode_raises_value_error(self, tmp_path):
+        """測試無效模式拋出 ValueError。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            with pytest.raises(ValueError):
+                search.search("test", mode="invalid")
+        finally:
+            db.close()
+
+    def test_error_message_contains_valid_modes(self, tmp_path):
+        """測試錯誤消息包含有效模式列表。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            with pytest.raises(ValueError, match="auto"):
+                search.search("test", mode="bad_mode")
+        finally:
+            db.close()
+
+    def test_valid_modes_do_not_raise(self, tmp_path):
+        """測試有效模式不會引發異常。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Test", content_raw="test content")
+            search = VaultSearch(db, embed_provider=None)
+            
+            for mode in ["auto", "keyword", "vector", "semantic", "hybrid"]:
+                results = search.search("test", mode=mode, use_rerank=False)
+                assert isinstance(results, list)
+        finally:
+            db.close()
+
+
+class TestTokenizeWordOrder:
+    """測試分詞詞序問題修復。"""
+
+    def test_mixed_chinese_english_order(self, tmp_path):
+        """測試中英文混合時保持原始詞序。"""
+        result = VaultSearch._tokenize("什麼是 AI")
+        # 第一個 token 應該是中文（什麼是），而不是英文 AI
+        first_token = result[0].lower()
+        # 驗證第一個 token 是中文開頭
+        assert "\u4ec0" in first_token or "\u4ec0\u9ebc" in first_token  # 什麼
+
+    def test_mixed_english_chinese_order(self, tmp_path):
+        """測試英文在前中文在後時保持正確順序。"""
+        result = VaultSearch._tokenize("AI 是什麼")
+        # 第一個 token 應該是英文 AI
+        assert result[0].lower() == "ai"
+
+    def test_pure_chinese_order(self, tmp_path):
+        """測試純中文分詞順序。"""
+        result = VaultSearch._tokenize("這是測試文本")
+        # 第一個應該是最長的中文片段
+        assert len(result) > 0
+
+    def test_pure_english_order(self, tmp_path):
+        """測試純英文分詞順序。"""
+        result = VaultSearch._tokenize("hello world test")
+        assert result[0].lower() == "hello"
+        assert result[1].lower() == "world"
+
+    def test_lighweight_reranker_extract_terms_order(self, tmp_path):
+        """測試 LightweightReranker 的 _extract_terms 也保持詞序。"""
+        from vault.search import LightweightReranker
+        result = LightweightReranker._extract_terms("什麼是 AI")
+        # 第一個應該是中文
+        assert "\u4ec0" in result[0] or result[0] == "什麼是"
+
+
+class TestCrossEncoderCache:
+    """測試 Cross-Encoder 快取機制。"""
+
+    def test_clear_cache_exists(self):
+        """測試 clear_cache 靜態方法存在。"""
+        from vault.search import CrossEncoderReranker
+        assert hasattr(CrossEncoderReranker, 'clear_cache')
+        assert callable(CrossEncoderReranker.clear_cache)
+
+    def test_clear_cache_no_error(self):
+        """測試 clear_cache 不會引發異常。"""
+        from vault.search import CrossEncoderReranker
+        # 清除快取不應該引發異常
+        CrossEncoderReranker.clear_cache()
+
+    def test_cache_lock_exists(self):
+        """測試快取鎖存在。"""
+        from vault.search import CrossEncoderReranker
+        assert hasattr(CrossEncoderReranker, '_cache_lock')
 
 

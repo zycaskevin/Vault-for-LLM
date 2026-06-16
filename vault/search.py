@@ -560,6 +560,51 @@ class VaultSearch:
         self._reranker = None
         self._cross_encoder_reranker = None
 
+        # 參數驗證（P2: Issue N3）
+        self._validate_params()
+
+    def _validate_params(self) -> None:
+        """
+        驗證主要配置參數的有效性。
+
+        確保權重、數量、比例等參數在合理範圍內。
+        """
+        # 權重參數：必須 >= 0
+        if self._keyword_weight < 0:
+            raise ValueError(f"keyword_weight 必須 >= 0，當前值: {self._keyword_weight}")
+        if self._vector_weight < 0:
+            raise ValueError(f"vector_weight 必須 >= 0，當前值: {self._vector_weight}")
+
+        # 數量參數：必須 >= 0
+        if self._query_expansion_count < 0:
+            raise ValueError(f"query_expansion_count 必須 >= 0，當前值: {self._query_expansion_count}")
+
+        # 比例參數：必須在 0-1 範圍
+        decay_params = [
+            ("query_expansion_synonym_decay", self._query_expansion_synonym_decay),
+            ("query_expansion_question_decay", self._query_expansion_question_decay),
+            ("query_expansion_abbr_decay", self._query_expansion_abbr_decay),
+            ("query_expansion_keyword_decay", self._query_expansion_keyword_decay),
+        ]
+        for name, value in decay_params:
+            if not (0.0 <= value <= 1.0):
+                raise ValueError(f"{name} 必須在 0-1 範圍內，當前值: {value}")
+
+        # 驗證 rerank_strategy
+        valid_strategies = {"auto", "lightweight", "cross_encoder", "none"}
+        if self._rerank_strategy not in valid_strategies:
+            raise ValueError(
+                f"rerank_strategy 必須是 {valid_strategies} 之一，當前值: {self._rerank_strategy}"
+            )
+
+        # 驗證 llm_query_rewrite_strategy
+        valid_rewrite_strategies = {"auto", "synonym", "decompose", "keywords"}
+        if self._llm_query_rewrite_strategy not in valid_rewrite_strategies:
+            raise ValueError(
+                f"llm_query_rewrite_strategy 必須是 {valid_rewrite_strategies} 之一，"
+                f"當前值: {self._llm_query_rewrite_strategy}"
+            )
+
     @property
     def has_embeddings(self) -> bool:
         """檢查是否有向量搜尋能力（含開關檢查）。"""
@@ -1577,8 +1622,15 @@ class VaultSearch:
         layer: Optional[str] = None,
         category: Optional[str] = None,
         min_score: float | None = None,
+        use_bm25_score: bool = False,
     ) -> list[dict]:
-        """Keyword search with optional FTS5/BM25 and LIKE fallback."""
+        """
+        Keyword search with optional FTS5/BM25 and LIKE fallback.
+
+        Args:
+            use_bm25_score: 若為 True，使用 BM25 分數作為基礎分數（經過正規化），
+                           這會比簡單的匹配率更準確。預設 False 以保持向後兼容。
+        """
         terms = self._tokenize(query)
         if not terms:
             return []
@@ -1602,7 +1654,16 @@ class VaultSearch:
                 text = f"{d.get('title', '')} {d.get('content_raw', '')} {d.get('tags', '')}".lower()
                 matched = sum(1 for t in terms if t.lower() in text)
                 bm25_score = float(d.pop("_bm25", 0.0) or 0.0)
-                d["_score"] = matched / len(terms)
+
+                # 根據 use_bm25_score 參數選擇分數計算方式（P1: Issue 17）
+                if use_bm25_score and bm25_score > 0:
+                    # 使用 BM25 分數，經過正規化使其範圍在 0-1
+                    # BM25 分數通常在 0-30 左右，正規化到 0-1
+                    d["_score"] = min(1.0, bm25_score / 15.0)
+                else:
+                    # 使用簡單的匹配率（預設行為，保持向後兼容）
+                    d["_score"] = matched / len(terms)
+
                 d["_bm25"] = bm25_score
                 d["_mode"] = "keyword_fts"
             return [d for d in results if d.get("_score", 0.0) >= score_floor]
@@ -1778,7 +1839,7 @@ class VaultSearch:
             )
         except SemanticProviderError:
             raise
-        except (AttributeError, TypeError, RuntimeError):
+        except (AttributeError, TypeError, RuntimeError, ImportError, ModuleNotFoundError):
             return []
         except sqlite3.OperationalError as exc:
             if "semantic_vectors" in str(exc).lower():
@@ -1895,7 +1956,7 @@ class VaultSearch:
             second_results = []
             hybrid_mode = "keyword"
 
-        # 動態權重調整
+        # 動態權重調整（P1: Issue 8/N2 — 同時考慮關鍵詞和向量質量）
         if use_dynamic_weight and kw_results and second_results:
             # 計算關鍵詞匹配質量：最高分（0~1）
             kw_max_score = max(r.get('_score', 0) for r in kw_results) if kw_results else 0
@@ -1911,32 +1972,58 @@ class VaultSearch:
             # 質量差異越大，權重調整幅度越大
             quality_diff = kw_quality - vec_quality
             avg_quality = (kw_quality + vec_quality) / 2.0
+            quality_ratio = kw_quality / max(vec_quality, 0.01)  # 避免除以零
 
-            # 根據相對質量動態調整權重
-            # - 關鍵詞質量顯著高於向量 → 加大關鍵詞權重
-            # - 向量質量顯著高於關鍵詞 → 加大向量權重
-            # - 兩者質量相近 → 保持默認比例
             max_boost = 1.5  # 最大權重倍數
             max_reduce = 0.7  # 最小權重倍數
 
-            if abs(quality_diff) > 0.2:
-                # 有顯著質量差異，動態調整
+            # 同時考慮關鍵詞和向量結果的質量（改進：
+            # 1. 當兩者質量都很高時，平衡兩者權重，避免某一方過度主導
+            # 2. 當其中一方質量明顯較低時，顯著提高另一方權重
+            # 3. 當兩者質量都很低時，稍微偏向向量（模糊匹配更有優勢）
+
+            if kw_quality >= 0.8 and vec_quality >= 0.8:
+                # 兩者質量都很高 → 平衡權重，避免某一方過度主導
+                # 使用默認權重，稍微調整以平衡兩者
+                if abs(quality_diff) > 0.1:
+                    # 輕微調整，幅度不超過 10%
+                    if quality_diff > 0:
+                        kw_boost = 1.05
+                        vec_boost = 0.95
+                    else:
+                        kw_boost = 0.95
+                        vec_boost = 1.05
+                else:
+                    kw_boost = 1.0
+                    vec_boost = 1.0
+            elif kw_quality >= 0.5 and vec_quality < 0.3:
+                # 關鍵詞質量中等以上，向量質量很低 → 大幅提高關鍵詞權重
+                kw_boost = max_boost
+                vec_boost = max_reduce
+            elif vec_quality >= 0.5 and kw_quality < 0.3:
+                # 向量質量中等以上，關鍵詞質量很低 → 大幅提高向量權重
+                kw_boost = max_reduce
+                vec_boost = max_boost
+            elif abs(quality_diff) > 0.2:
+                # 有顯著質量差異，根據質量差動態調整
                 if quality_diff > 0:
                     # 關鍵詞質量更高
-                    kw_boost = 1.0 + quality_diff * (max_boost - 1.0) / 0.8
+                    adjustment = quality_diff * (max_boost - 1.0) / 0.8
+                    kw_boost = 1.0 + adjustment
                     vec_boost = max_reduce + (1.0 - quality_diff) * (1.0 - max_reduce) / 0.8
                 else:
                     # 向量質量更高
+                    adjustment = abs(quality_diff) * (max_boost - 1.0) / 0.8
                     kw_boost = max_reduce + (1.0 + quality_diff) * (1.0 - max_reduce) / 0.8
-                    vec_boost = 1.0 + abs(quality_diff) * (max_boost - 1.0) / 0.8
+                    vec_boost = 1.0 + adjustment
             else:
                 # 質量相近，根據整體質量微調
-                # 整體質量低時，稍微偏向量（模糊匹配更有優勢）
-                # 整體質量高時，稍微偏關鍵詞（精確匹配更可靠）
                 if avg_quality > 0.6:
+                    # 整體質量高，稍微偏關鍵詞（精確匹配更可靠）
                     kw_boost = 1.1
                     vec_boost = 0.9
                 elif avg_quality < 0.3:
+                    # 整體質量低，稍微偏向量（模糊匹配更有優勢）
                     kw_boost = 0.9
                     vec_boost = 1.1
                 else:
@@ -1950,15 +2037,19 @@ class VaultSearch:
         scores: dict[int, float] = {}
         all_items: dict[int, dict] = {}
         hit_sources: dict[int, set] = {}  # 追蹤每筆知識來自哪些搜尋模式
+        kw_rank_map: dict[int, int] = {}  # 關鍵詞結果的排名映射
+        vec_rank_map: dict[int, int] = {}  # 向量結果的排名映射
 
         for rank, item in enumerate(kw_results):
             kid = item["id"]
+            kw_rank_map[kid] = rank
             scores[kid] = scores.get(kid, 0) + kw_w * (1.0 / (k + rank + 1))
             all_items[kid] = item
             hit_sources.setdefault(kid, set()).add("keyword")
 
         for rank, item in enumerate(second_results):
             kid = item["id"]
+            vec_rank_map[kid] = rank
             scores[kid] = scores.get(kid, 0) + vec_w * (1.0 / (k + rank + 1))
             if kid not in all_items:
                 all_items[kid] = item
@@ -1966,8 +2057,18 @@ class VaultSearch:
             else:
                 # 同時命中 keyword 和 vector → 標記為 hybrid，給予交叉驗證加分
                 hit_sources.setdefault(kid, set()).add("vector")
-                # 交叉驗證獎勵：同時被兩種模式命中的結果，額外加 15% 分數
-                scores[kid] *= 1.15
+                # 交叉驗證獎勵（P2: Issue 9 — 根據排名倒數和計算加分幅度）
+                # 排名越靠前，加分越多；雙方都在前 10 名以內時加分最多
+                kw_rank = kw_rank_map.get(kid, len(kw_results))
+                vec_rank = vec_rank_map.get(kid, len(second_results))
+                # 使用倒數排名加權：排名越靠前，倒數值越大
+                reciprocal_rank_sum = (1.0 / (kw_rank + 1)) + (1.0 / (vec_rank + 1))
+                # 最大倒數和為 2.0（雙方都是第 1 名）
+                # 加分範圍：5% ~ 25%，根據排名倒數和動態調整
+                max_bonus = 0.25  # 最大 25% 加分
+                min_bonus = 0.05  # 最小 5% 加分
+                cross_val_bonus = min_bonus + (reciprocal_rank_sum / 2.0) * (max_bonus - min_bonus)
+                scores[kid] *= (1.0 + cross_val_bonus)
                 # Merge: semantic/vector span metadata wins, but keep the fused mode clear.
                 all_items[kid].update(
                     {

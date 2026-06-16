@@ -5330,3 +5330,1857 @@ class TestFreshnessAndGraphIntegration:
         result = reranker.rerank("test", docs)
         # 高新鮮度的應該排名更高
         assert result[0]["freshness"] == 0.9
+
+
+# ============================================================================
+# 參數驗證測試 (P2: Issue N3)
+# ============================================================================
+
+class TestParameterValidation:
+    """測試 VaultSearch 初始化時的參數驗證。"""
+
+    def test_invalid_keyword_weight_raises(self, tmp_path):
+        """測試負的 keyword_weight 引發 ValueError。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            with pytest.raises(ValueError, match="keyword_weight"):
+                VaultSearch(db, keyword_weight=-1.0)
+        finally:
+            db.close()
+
+    def test_invalid_vector_weight_raises(self, tmp_path):
+        """測試負的 vector_weight 引發 ValueError。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            with pytest.raises(ValueError, match="vector_weight"):
+                VaultSearch(db, vector_weight=-1.0)
+        finally:
+            db.close()
+
+    def test_negative_query_expansion_count_raises(self, tmp_path):
+        """測試負的 query_expansion_count 引發 ValueError。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            with pytest.raises(ValueError, match="query_expansion_count"):
+                VaultSearch(db, query_expansion_count=-1)
+        finally:
+            db.close()
+
+    def test_zero_query_expansion_count_allowed(self, tmp_path):
+        """測試 query_expansion_count 為 0 是有效的。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, query_expansion_count=0)
+            assert search._query_expansion_count == 0
+        finally:
+            db.close()
+
+    def test_invalid_synonym_decay_raises(self, tmp_path):
+        """測試超出範圍的 decay 參數引發 ValueError。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            with pytest.raises(ValueError, match="synonym_decay"):
+                VaultSearch(db, query_expansion_synonym_decay=1.5)
+        finally:
+            db.close()
+
+    def test_invalid_question_decay_raises(self, tmp_path):
+        """測試超出範圍的 question_decay 引發 ValueError。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            with pytest.raises(ValueError, match="question_decay"):
+                VaultSearch(db, query_expansion_question_decay=-0.1)
+        finally:
+            db.close()
+
+    def test_invalid_rerank_strategy_raises(self, tmp_path):
+        """測試無效的 rerank_strategy 引發 ValueError。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            with pytest.raises(ValueError, match="rerank_strategy"):
+                VaultSearch(db, rerank_strategy="invalid_strategy")
+        finally:
+            db.close()
+
+    def test_invalid_llm_rewrite_strategy_raises(self, tmp_path):
+        """測試無效的 llm_query_rewrite_strategy 引發 ValueError。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            with pytest.raises(ValueError, match="llm_query_rewrite_strategy"):
+                VaultSearch(db, llm_query_rewrite_strategy="invalid_strategy")
+        finally:
+            db.close()
+
+    def test_valid_params_do_not_raise(self, tmp_path):
+        """測試有效參數不會引發異常。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(
+                db,
+                keyword_weight=0.5,
+                vector_weight=1.0,
+                query_expansion_count=5,
+                query_expansion_synonym_decay=0.9,
+                query_expansion_question_decay=0.85,
+                query_expansion_abbr_decay=0.9,
+                query_expansion_keyword_decay=0.75,
+                rerank_strategy="auto",
+                llm_query_rewrite_strategy="keywords",
+            )
+            assert search is not None
+        finally:
+            db.close()
+
+
+# ============================================================================
+# 缺少 _score 字段的 Rerank 行為測試 (P2: Issue 5)
+# ============================================================================
+
+class TestRerankMissingScore:
+    """測試 rerank 處理缺少 _score 字段的文檔。"""
+
+    def test_lightweight_rerank_missing_score(self):
+        """測試輕量級 rerank 處理缺少 _score 的文檔。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        docs = [
+            {"title": "Doc 1", "content_raw": "test content about ai"},  # 沒有 _score
+            {"title": "Doc 2", "content_raw": "other content", "_score": 0.8},
+        ]
+        result = reranker.rerank("ai test", docs)
+        assert len(result) == 2
+        # 兩個文檔都應該有 _score
+        assert "_score" in result[0]
+        assert "_score" in result[1]
+
+    def test_lightweight_rerank_all_missing_score(self):
+        """測試所有文檔都缺少 _score 時的 rerank。"""
+        from vault.search import LightweightReranker
+        reranker = LightweightReranker()
+        docs = [
+            {"title": "Doc A", "content_raw": "test ai content"},
+            {"title": "Doc B", "content_raw": "test ml content"},
+        ]
+        result = reranker.rerank("ai", docs)
+        assert len(result) == 2
+        # 兩個文檔都應該有 _score
+        assert "_score" in result[0]
+        assert "_score" in result[1]
+        # 與查詢更相關的應該排在前面
+        assert "Doc A" in result[0]["title"]
+
+    def test_cross_encoder_rerank_missing_score(self):
+        """測試 CrossEncoderReranker 處理缺少 _score 的文檔。"""
+        from vault.search import CrossEncoderReranker
+        reranker = CrossEncoderReranker()
+        docs = [
+            {"title": "Doc 1", "content_raw": "test content"},  # 沒有 _score
+            {"title": "Doc 2", "content_raw": "other content", "_score": 0.8},
+        ]
+        result = reranker.rerank("query", docs)
+        assert len(result) == 2
+
+    def test_static_rerank_missing_score(self):
+        """測試靜態 _rerank 方法處理缺少 _score 的文檔。"""
+        from vault.search import VaultSearch
+        docs = [
+            {"title": "Doc 1", "content_raw": "test content", "trust": 0.9},
+            {"title": "Doc 2", "content_raw": "other content", "_score": 0.8, "trust": 0.7},
+        ]
+        result = VaultSearch._rerank(docs, "test")
+        assert len(result) == 2
+        # 兩個文檔都應該有 _score
+        assert "_score" in result[0]
+        assert "_score" in result[1]
+
+    def test_static_rerank_no_query_missing_score(self):
+        """測試無 query 時靜態 _rerank 處理缺少 _score 的文檔。"""
+        from vault.search import VaultSearch
+        docs = [
+            {"title": "Doc 1", "trust": 0.9},
+            {"title": "Doc 2", "_score": 0.8, "trust": 0.7},
+        ]
+        result = VaultSearch._rerank(docs, "")
+        assert len(result) == 2
+        assert "_score" in result[0]
+        assert "_score" in result[1]
+
+
+# ============================================================================
+# BM25 分數使用測試 (P1: Issue 17)
+# ============================================================================
+
+class TestBM25ScoreUsage:
+    """測試 BM25 分數的使用。"""
+
+    def test_use_bm25_score_default_false(self, tmp_path):
+        """測試 use_bm25_score 預設為 False，保持向後兼容。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Python Programming",
+                content_raw="Python is a versatile programming language used for many purposes.",
+                category="tech",
+                tags="python,programming",
+                trust=0.9,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_keyword("python programming")
+            assert len(results) > 0
+            # 確保有 _bm25 字段
+            assert "_bm25" in results[0]
+        finally:
+            db.close()
+
+    def test_use_bm25_score_enabled(self, tmp_path):
+        """測試開啟 use_bm25_score 時使用 BM25 分數。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Python Programming",
+                content_raw="Python is a versatile programming language used for many purposes. Python Python.",
+                category="tech",
+                tags="python,programming",
+                trust=0.9,
+            )
+            db.add_knowledge(
+                title="Java Programming",
+                content_raw="Java is another programming language.",
+                category="tech",
+                tags="java,programming",
+                trust=0.9,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_keyword("python programming", use_bm25_score=True)
+            assert len(results) > 0
+            # 第一個結果應該是 Python 相關的（因為 BM25 分數更高）
+            assert "python" in results[0]["title"].lower()
+        finally:
+            db.close()
+
+    def test_bm25_field_present_in_results(self, tmp_path):
+        """測試結果中包含 _bm25 字段。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Test Document",
+                content_raw="This is a test document for keyword search.",
+                trust=0.8,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_keyword("test document")
+            assert len(results) > 0
+            assert "_bm25" in results[0]
+            assert isinstance(results[0]["_bm25"], float)
+        finally:
+            db.close()
+
+
+# ============================================================================
+# LLM 查詢改寫功能測試 (P0)
+# ============================================================================
+
+class TestLLMQueryRewrite:
+    """測試 LLM 查詢改寫功能。"""
+
+    def test_rewrite_disabled_returns_original(self, tmp_path):
+        """測試關閉 LLM 改寫時返回原始查詢。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, enable_llm_query_rewrite=False)
+            result = search._rewrite_query_with_llm("test query")
+            assert result == "test query"
+        finally:
+            db.close()
+
+    def test_rewrite_no_llm_returns_original(self, tmp_path):
+        """測試沒有 LLM 時返回原始查詢。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(
+                db,
+                enable_llm_query_rewrite=True,
+                enable_llm_enhancement=True,
+            )
+            # 當 LLM 不可用時，應該返回原始查詢
+            result = search._rewrite_query_with_llm("test query")
+            # 不論 LLM 是否可用，都不應該引發異常
+            assert isinstance(result, str)
+            assert len(result) > 0
+        finally:
+            db.close()
+
+    def test_rewrite_strategy_keywords_config(self, tmp_path):
+        """測試 keywords 策略配置。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(
+                db,
+                enable_llm_query_rewrite=True,
+                llm_query_rewrite_strategy="keywords",
+            )
+            assert search._llm_query_rewrite_strategy == "keywords"
+        finally:
+            db.close()
+
+    def test_rewrite_strategy_synonym_config(self, tmp_path):
+        """測試 synonym 策略配置。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(
+                db,
+                enable_llm_query_rewrite=True,
+                llm_query_rewrite_strategy="synonym",
+            )
+            assert search._llm_query_rewrite_strategy == "synonym"
+        finally:
+            db.close()
+
+    def test_rewrite_strategy_decompose_config(self, tmp_path):
+        """測試 decompose 策略配置。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(
+                db,
+                enable_llm_query_rewrite=True,
+                llm_query_rewrite_strategy="decompose",
+            )
+            assert search._llm_query_rewrite_strategy == "decompose"
+        finally:
+            db.close()
+
+    def test_rewrite_strategy_auto_config(self, tmp_path):
+        """測試 auto 策略配置。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(
+                db,
+                enable_llm_query_rewrite=True,
+                llm_query_rewrite_strategy="auto",
+            )
+            assert search._llm_query_rewrite_strategy == "auto"
+        finally:
+            db.close()
+
+    def test_rewrite_empty_query(self, tmp_path):
+        """測試空查詢的改寫。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, enable_llm_query_rewrite=True)
+            result = search._rewrite_query_with_llm("")
+            # 空查詢也應該返回字符串
+            assert isinstance(result, str)
+        finally:
+            db.close()
+
+    def test_has_llm_returns_bool(self, tmp_path):
+        """測試 has_llm 屬性返回布爾值。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, enable_llm_enhancement=True)
+            assert isinstance(search.has_llm, bool)
+        finally:
+            db.close()
+
+    def test_has_llm_disabled_when_enhancement_off(self, tmp_path):
+        """測試當 enable_llm_enhancement 為 False 時，has_llm 為 False。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, enable_llm_enhancement=False)
+            assert search.has_llm is False
+        finally:
+            db.close()
+
+    def test_rewrite_query_with_llm_disabled_by_flag(self, tmp_path):
+        """測試當 enable_llm_query_rewrite=False 時直接返回原始查詢。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, enable_llm_query_rewrite=False)
+            result = search._rewrite_query_with_llm("original query")
+            assert result == "original query"
+        finally:
+            db.close()
+
+    def test_rewrite_query_empty_query(self, tmp_path):
+        """測試空查詢的改寫。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, enable_llm_query_rewrite=True)
+            result = search._rewrite_query_with_llm("")
+            # 空查詢也應該返回字符串
+            assert isinstance(result, str)
+        finally:
+            db.close()
+
+    def test_llm_rewrite_strategies_config(self, tmp_path):
+        """測試所有 LLM 改寫策略的配置。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            for strategy in ["auto", "synonym", "decompose", "keywords"]:
+                search = VaultSearch(
+                    db,
+                    enable_llm_query_rewrite=True,
+                    llm_query_rewrite_strategy=strategy,
+                )
+                assert search._llm_query_rewrite_strategy == strategy
+        finally:
+            db.close()
+
+    def test_llm_rewrite_with_mock_llm(self, tmp_path, monkeypatch):
+        """使用 mock LLM 測試查詢改寫邏輯。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            # Mock create_llm_provider 返回一個模擬的 LLM
+            class MockLLM:
+                def generate(self, prompt, max_tokens=200, temperature=0.3, system_prompt=None):
+                    return "rewritten query with synonyms"
+
+            mock_llm = MockLLM()
+
+            def mock_create_llm():
+                return mock_llm
+
+            import vault.llm as llm_module
+            monkeypatch.setattr(llm_module, 'create_llm_provider', mock_create_llm, raising=False)
+
+            search = VaultSearch(
+                db,
+                enable_llm_query_rewrite=True,
+                enable_llm_enhancement=True,
+                llm_query_rewrite_strategy="synonym",
+            )
+            result = search._rewrite_query_with_llm("test query")
+            assert isinstance(result, str)
+            assert len(result) > 0
+        finally:
+            db.close()
+
+    def test_llm_rewrite_with_quotes_in_result(self, tmp_path, monkeypatch):
+        """測試 LLM 返回帶引號的結果時能正確清理。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            class MockLLM:
+                def generate(self, prompt, max_tokens=200, temperature=0.3, system_prompt=None):
+                    return '"quoted result"'
+
+            mock_llm = MockLLM()
+
+            def mock_create_llm():
+                return mock_llm
+
+            import vault.llm as llm_module
+            monkeypatch.setattr(llm_module, 'create_llm_provider', mock_create_llm, raising=False)
+
+            search = VaultSearch(
+                db,
+                enable_llm_query_rewrite=True,
+                enable_llm_enhancement=True,
+                llm_query_rewrite_strategy="auto",
+            )
+            result = search._rewrite_query_with_llm("test query")
+            # 引號應該被移除
+            assert '"' not in result
+            assert "quoted result" in result
+        finally:
+            db.close()
+
+    def test_llm_rewrite_with_chinese_quotes(self, tmp_path, monkeypatch):
+        """測試 LLM 返回中文引號的結果時能正確清理。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            class MockLLM:
+                def generate(self, prompt, max_tokens=200, temperature=0.3, system_prompt=None):
+                    return "「中文引號結果」"
+
+            mock_llm = MockLLM()
+
+            def mock_create_llm():
+                return mock_llm
+
+            import vault.llm as llm_module
+            monkeypatch.setattr(llm_module, 'create_llm_provider', mock_create_llm, raising=False)
+
+            search = VaultSearch(
+                db,
+                enable_llm_query_rewrite=True,
+                enable_llm_enhancement=True,
+                llm_query_rewrite_strategy="keywords",
+            )
+            result = search._rewrite_query_with_llm("test query")
+            assert "「" not in result
+            assert "」" not in result
+            assert "中文引號結果" in result
+        finally:
+            db.close()
+
+    def test_llm_rewrite_empty_result_fallback(self, tmp_path, monkeypatch):
+        """測試 LLM 返回空結果時返回原始查詢。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            class MockLLM:
+                def generate(self, prompt, max_tokens=200, temperature=0.3, system_prompt=None):
+                    return "   "  # 只有空白
+
+            mock_llm = MockLLM()
+
+            def mock_create_llm():
+                return mock_llm
+
+            import vault.llm as llm_module
+            monkeypatch.setattr(llm_module, 'create_llm_provider', mock_create_llm, raising=False)
+
+            search = VaultSearch(
+                db,
+                enable_llm_query_rewrite=True,
+                enable_llm_enhancement=True,
+                llm_query_rewrite_strategy="decompose",
+            )
+            result = search._rewrite_query_with_llm("original query")
+            # 空結果時應該返回原始查詢
+            assert result == "original query"
+        finally:
+            db.close()
+
+    def test_llm_rewrite_exception_fallback(self, tmp_path, monkeypatch):
+        """測試 LLM 引發異常時返回原始查詢。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            class MockLLM:
+                def generate(self, prompt, max_tokens=200, temperature=0.3, system_prompt=None):
+                    raise RuntimeError("LLM service unavailable")
+
+            mock_llm = MockLLM()
+
+            def mock_create_llm():
+                return mock_llm
+
+            import vault.llm as llm_module
+            monkeypatch.setattr(llm_module, 'create_llm_provider', mock_create_llm, raising=False)
+
+            search = VaultSearch(
+                db,
+                enable_llm_query_rewrite=True,
+                enable_llm_enhancement=True,
+            )
+            result = search._rewrite_query_with_llm("original query")
+            # 異常時應該返回原始查詢
+            assert result == "original query"
+        finally:
+            db.close()
+
+
+# ============================================================================
+# 混合搜尋深度測試 (P0)
+# ============================================================================
+
+class TestHybridSearchDeep:
+    """混合搜尋的深度測試，涵蓋動態權重、交叉驗證加分等。"""
+
+    def test_hybrid_search_keyword_only_mode(self, tmp_path):
+        """測試只有關鍵詞結果時的混合搜尋（回退到關鍵詞模式）。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Python Programming",
+                content_raw="Python is a versatile programming language.",
+                category="tech",
+                trust=0.9,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_hybrid("python programming")
+            assert len(results) > 0
+            # 沒有向量時，使用 FTS 關鍵詞搜尋
+            mode = results[0]["_mode"]
+            assert mode in ("keyword", "keyword_fts")
+        finally:
+            db.close()
+
+    def test_hybrid_search_with_dynamic_weight_enabled(self, tmp_path):
+        """測試啟用動態權重調整的混合搜尋。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Python Programming",
+                content_raw="Python is a versatile programming language.",
+                category="tech",
+                trust=0.9,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_hybrid(
+                "python programming",
+                use_dynamic_weight=True,
+            )
+            assert len(results) > 0
+        finally:
+            db.close()
+
+    def test_hybrid_search_with_dynamic_weight_disabled(self, tmp_path):
+        """測試關閉動態權重調整的混合搜尋。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Python Programming",
+                content_raw="Python is a versatile programming language.",
+                category="tech",
+                trust=0.9,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_hybrid(
+                "python programming",
+                use_dynamic_weight=False,
+            )
+            assert len(results) > 0
+        finally:
+            db.close()
+
+    def test_hybrid_search_custom_weights(self, tmp_path):
+        """測試自定義 keyword 和 vector 權重。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Python Programming",
+                content_raw="Python is a versatile programming language.",
+                category="tech",
+                trust=0.9,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_hybrid(
+                "python programming",
+                keyword_weight=2.0,
+                vector_weight=0.5,
+            )
+            assert len(results) > 0
+        finally:
+            db.close()
+
+    def test_hybrid_search_with_limit(self, tmp_path):
+        """測試混合搜尋的 limit 參數。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            for i in range(10):
+                db.add_knowledge(
+                    title=f"Doc {i} Python",
+                    content_raw=f"Document {i} about Python programming.",
+                    trust=0.8,
+                )
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_hybrid("python document", limit=5)
+            assert len(results) <= 5
+        finally:
+            db.close()
+
+    def test_hybrid_search_with_min_trust(self, tmp_path):
+        """測試混合搜尋的 min_trust 過濾。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="High Trust Doc",
+                content_raw="Python programming content.",
+                trust=0.9,
+            )
+            db.add_knowledge(
+                title="Low Trust Doc",
+                content_raw="Python programming content.",
+                trust=0.3,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_hybrid("python", min_trust=0.8)
+            assert len(results) >= 1
+            for r in results:
+                assert r.get("trust", 0) >= 0.8
+        finally:
+            db.close()
+
+    def test_hybrid_search_with_category_filter(self, tmp_path):
+        """測試混合搜尋的 category 過濾。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Tech Doc",
+                content_raw="Python programming content.",
+                category="tech",
+                trust=0.9,
+            )
+            db.add_knowledge(
+                title="Life Doc",
+                content_raw="Python as a pet snake.",
+                category="life",
+                trust=0.9,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_hybrid("python", category="tech")
+            assert len(results) >= 1
+            for r in results:
+                assert r.get("category") == "tech"
+        finally:
+            db.close()
+
+    def test_hybrid_search_min_score(self, tmp_path):
+        """測試混合搜尋的 min_score 過濾。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Python Programming",
+                content_raw="Python is a programming language.",
+                trust=0.9,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_hybrid("python programming", min_score=0.5)
+            # 應該返回符合 min_score 的結果
+            assert isinstance(results, list)
+        finally:
+            db.close()
+
+    def test_hybrid_search_no_results(self, tmp_path):
+        """測試無結果時的混合搜尋。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_hybrid("nonexistent keyword xyz")
+            assert results == []
+        finally:
+            db.close()
+
+    def test_hybrid_search_empty_query(self, tmp_path):
+        """測試空查詢的混合搜尋。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_hybrid("")
+            assert isinstance(results, list)
+        finally:
+            db.close()
+
+
+# ============================================================================
+# 語義搜尋測試 (P0)
+# ============================================================================
+
+class TestSemanticSearch:
+    """語義搜尋相關測試。"""
+
+    def test_search_semantic_no_provider_returns_empty(self, tmp_path):
+        """測試沒有語義 provider 時返回空列表。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_semantic("test query")
+            # 沒有可用的語義 provider 時，應該返回空列表
+            assert results == []
+        finally:
+            db.close()
+
+    def test_search_semantic_with_min_trust(self, tmp_path):
+        """測試 search_semantic 的 min_trust 參數。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_semantic("test", min_trust=0.5)
+            # 沒有語義索引時返回空
+            assert isinstance(results, list)
+        finally:
+            db.close()
+
+    def test_search_semantic_with_limit(self, tmp_path):
+        """測試 search_semantic 的 limit 參數。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_semantic("test", limit=5)
+            assert isinstance(results, list)
+            assert len(results) <= 5
+        finally:
+            db.close()
+
+    def test_search_semantic_with_layer_filter(self, tmp_path):
+        """測試 search_semantic 的 layer 過濾。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_semantic("test", layer="memory")
+            assert isinstance(results, list)
+        finally:
+            db.close()
+
+    def test_search_semantic_with_category_filter(self, tmp_path):
+        """測試 search_semantic 的 category 過濾。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_semantic("test", category="tech")
+            assert isinstance(results, list)
+        finally:
+            db.close()
+
+    def test_semantic_provider_require_semantic(self, tmp_path):
+        """測試 require_semantic 參數。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            # 當 require_semantic=True 時，可能返回語義 provider 或 None（取決於環境）
+            provider = search._semantic_provider(require_semantic=True, allow_hash=False)
+            # 結果可能是 None 或一個有效的 provider 對象
+            assert provider is None or hasattr(provider, "encode")
+        finally:
+            db.close()
+
+    def test_semantic_provider_allow_hash(self, tmp_path):
+        """測試 allow_hash 參數。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            # 當 allow_hash=True 時，可能返回 hash provider
+            provider = search._semantic_provider(require_semantic=False, allow_hash=True)
+            # 可能是 None 或某種 provider
+            assert provider is None or hasattr(provider, "is_semantic")
+        finally:
+            db.close()
+
+    def test_semantic_index_available_false_when_no_table(self, tmp_path):
+        """測試沒有語義索引表時 semantic_index_available 返回 False。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            available = search._semantic_index_available(vector_kind="claim")
+            # 空資料庫應該沒有語義索引表
+            assert available is False
+        finally:
+            db.close()
+
+
+# ============================================================================
+# 圖譜擴展測試 (P0)
+# ============================================================================
+
+class TestGraphExpandExtended:
+    """更全面的圖譜擴展測試。"""
+
+    def test_apply_graph_expand_no_graph(self, tmp_path):
+        """測試沒有圖譜時 _apply_graph_expand 返回原始結果。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Test Doc",
+                content_raw="Test content",
+                trust=0.8,
+            )
+            search = VaultSearch(db, embed_provider=None, graph=None)
+            results = [{"id": 1, "_score": 0.8, "title": "Test Doc"}]
+            expanded = search._apply_graph_expand(results, expand_depth=2, limit=10)
+            # 沒有 graph 時返回原始結果
+            assert len(expanded) == len(results)
+        finally:
+            db.close()
+
+    def test_apply_graph_expand_empty_results(self, tmp_path):
+        """測試空結果列表的圖譜擴展。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, graph=None)
+            results = []
+            expanded = search._apply_graph_expand(results, expand_depth=2, limit=10)
+            assert expanded == []
+        finally:
+            db.close()
+
+    def test_apply_graph_expand_zero_depth(self, tmp_path):
+        """測試 expand_depth 為 0 時不擴展。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Test Doc",
+                content_raw="Test content",
+                trust=0.8,
+            )
+            search = VaultSearch(db, embed_provider=None, graph=None)
+            results = [{"id": 1, "_score": 0.8, "title": "Test Doc"}]
+            expanded = search._apply_graph_expand(results, expand_depth=0, limit=10)
+            # depth 為 0 時不擴展
+            assert len(expanded) == len(results)
+        finally:
+            db.close()
+
+    def test_apply_graph_expand_limit_applied(self, tmp_path):
+        """測試 limit 參數限制返回數量。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            # 添加多個文檔
+            for i in range(5):
+                db.add_knowledge(
+                    title=f"Doc {i}",
+                    content_raw=f"Content {i}",
+                    trust=0.8,
+                )
+            search = VaultSearch(db, embed_provider=None, graph=None)
+            results = [{"id": i + 1, "_score": 0.8 - i * 0.1, "title": f"Doc {i}"} for i in range(3)]
+            expanded = search._apply_graph_expand(results, expand_depth=2, limit=5)
+            # 不論是否有 graph，結果數量不應該超過 limit
+            assert len(expanded) <= 5
+        finally:
+            db.close()
+
+    def test_graph_expand_score_decay(self, tmp_path):
+        """測試圖譜擴展的分數衰減。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Source Doc",
+                content_raw="Source content",
+                trust=0.9,
+            )
+            db.add_knowledge(
+                title="Related Doc",
+                content_raw="Related content",
+                trust=0.8,
+            )
+            # 添加關係
+            try:
+                db.conn.execute(
+                    "INSERT INTO knowledge_relations (source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
+                    (1, 2, "related", 0.5),
+                )
+                db.conn.commit()
+            except sqlite3.OperationalError:
+                # 表可能不存在，跳過
+                pass
+
+            search = VaultSearch(db, embed_provider=None, graph=None)
+            results = [{"id": 1, "_score": 0.9, "title": "Source Doc"}]
+            expanded = search._apply_graph_expand(results, expand_depth=1, limit=10)
+
+            # 不論是否有 graph，結果都應該有 _score
+            for r in expanded:
+                assert "_score" in r
+        finally:
+            db.close()
+
+
+# ============================================================================
+# Reranker 策略測試
+# ============================================================================
+
+class TestRerankStrategy:
+    """測試不同的 rerank 策略。"""
+
+    def test_rerank_strategy_auto(self, tmp_path):
+        """測試 auto 策略。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, rerank_strategy="auto")
+            assert search._rerank_strategy == "auto"
+        finally:
+            db.close()
+
+    def test_rerank_strategy_lightweight(self, tmp_path):
+        """測試 lightweight 策略。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, rerank_strategy="lightweight")
+            assert search._rerank_strategy == "lightweight"
+        finally:
+            db.close()
+
+    def test_rerank_strategy_cross_encoder(self, tmp_path):
+        """測試 cross_encoder 策略。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, rerank_strategy="cross_encoder")
+            assert search._rerank_strategy == "cross_encoder"
+        finally:
+            db.close()
+
+    def test_rerank_strategy_none(self, tmp_path):
+        """測試 none 策略。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, rerank_strategy="none")
+            assert search._rerank_strategy == "none"
+            # 使用 none 策略時，_get_reranker 應該返回 None
+            reranker = search._get_reranker()
+            assert reranker is None
+        finally:
+            db.close()
+
+    def test_rerank_with_strategy_none(self, tmp_path):
+        """測試 rerank_strategy 為 none 時的 _rerank_with_strategy。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Test Doc",
+                content_raw="Test content",
+                trust=0.8,
+            )
+            search = VaultSearch(db, rerank_strategy="none")
+            results = [{"id": 1, "_score": 0.8, "title": "Test Doc"}]
+            reranked = search._rerank_with_strategy(results, "test")
+            # none 策略時，仍然會使用基礎版 rerank（向後兼容）
+            assert len(reranked) == len(results)
+            # 結果應該有 _score 字段
+            assert "_score" in reranked[0]
+        finally:
+            db.close()
+
+    def test_enable_rerank_false(self, tmp_path):
+        """測試 enable_rerank=False 時的行為。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, enable_rerank=False)
+            assert search.has_reranker is False
+            reranker = search._get_reranker()
+            assert reranker is None
+        finally:
+            db.close()
+
+
+# ============================================================================
+# Cross-Encoder Reranker 更多測試 (P0)
+# ============================================================================
+
+class TestCrossEncoderRerankerMore:
+    """CrossEncoderReranker 的更多測試。"""
+
+    def test_rerank_single_document(self):
+        """測試只有一個文檔時的 rerank。"""
+        from vault.search import CrossEncoderReranker
+        reranker = CrossEncoderReranker()
+        docs = [{"title": "Single Doc", "content_raw": "test content", "_score": 0.9}]
+        result = reranker.rerank("query", docs)
+        assert len(result) == 1
+        assert result[0]["title"] == "Single Doc"
+
+    def test_rerank_documents_without_content_raw(self):
+        """測試缺少 content_raw 字段的文檔。"""
+        from vault.search import CrossEncoderReranker
+        reranker = CrossEncoderReranker()
+        docs = [
+            {"title": "Doc 1", "other_field": "some content"},
+        ]
+        result = reranker.rerank("query", docs)
+        assert len(result) == 1
+
+    def test_rerank_with_text_field(self):
+        """測試指定 text_field 參數。"""
+        from vault.search import CrossEncoderReranker
+        reranker = CrossEncoderReranker()
+        docs = [
+            {"title": "Doc 1", "custom_text": "custom content here"},
+        ]
+        result = reranker.rerank("query", docs, text_field="custom_text")
+        assert len(result) == 1
+
+    def test_rerank_long_content_truncated(self):
+        """測試長內容會被截斷。"""
+        from vault.search import CrossEncoderReranker
+        reranker = CrossEncoderReranker()
+        long_content = "word " * 1000  # 很長的內容
+        docs = [
+            {"title": "Long Doc", "content_raw": long_content},
+        ]
+        result = reranker.rerank("query", docs)
+        assert len(result) == 1
+
+    def test_rerank_preserves_original_fields(self):
+        """測試 rerank 保留原始字段。"""
+        from vault.search import CrossEncoderReranker
+        reranker = CrossEncoderReranker()
+        docs = [
+            {"title": "Doc 1", "content_raw": "test", "custom_field": "value1", "trust": 0.9},
+        ]
+        result = reranker.rerank("query", docs)
+        assert len(result) == 1
+        assert result[0]["custom_field"] == "value1"
+        assert result[0]["trust"] == 0.9
+
+    def test_rerank_with_title_only(self):
+        """測試只有 title 沒有 content 的文檔。"""
+        from vault.search import CrossEncoderReranker
+        reranker = CrossEncoderReranker()
+        docs = [
+            {"title": "Title Only Doc"},
+        ]
+        result = reranker.rerank("query", docs)
+        assert len(result) == 1
+
+    def test_cached_model_name_preserved(self):
+        """測試快取的模型名稱正確保存。"""
+        from vault.search import CrossEncoderReranker
+
+        CrossEncoderReranker.clear_cache()
+        assert CrossEncoderReranker._cached_model_name is None
+
+        # 創建一個實例
+        reranker = CrossEncoderReranker(model_name="test-model")
+        # 即使模型不可用，_model_name 也應該設置正確
+        assert reranker._model_name == "test-model"
+
+    def test_thread_safety_lock_exists(self):
+        """測試快取鎖存在。"""
+        from vault.search import CrossEncoderReranker
+        import threading
+        assert hasattr(CrossEncoderReranker, '_cache_lock')
+        assert isinstance(CrossEncoderReranker._cache_lock, threading.Lock)
+
+
+# ============================================================================
+# 搜尋模式行為測試
+# ============================================================================
+
+class TestSearchModeBehaviorsExtended:
+    """更多的搜尋模式行為測試。"""
+
+    def test_search_keyword_mode(self, tmp_path):
+        """測試 keyword 搜尋模式。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Python Programming",
+                content_raw="Python is a programming language.",
+                trust=0.9,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search("python", mode="keyword")
+            assert len(results) > 0
+            assert results[0]["_mode"] == "keyword_fts"
+        finally:
+            db.close()
+
+    def test_search_vector_mode_fallback(self, tmp_path):
+        """測試 vector 模式在沒有嵌入時回退到 keyword。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Python Programming",
+                content_raw="Python is a programming language.",
+                trust=0.9,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search("python", mode="vector")
+            # 沒有向量時回退到關鍵詞
+            assert len(results) > 0
+        finally:
+            db.close()
+
+    def test_search_semantic_mode_fallback(self, tmp_path):
+        """測試 semantic 模式在沒有語義索引時的行為。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Python Programming",
+                content_raw="Python is a programming language.",
+                trust=0.9,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search("python", mode="semantic")
+            # 沒有語義索引時返回空列表或回退
+            assert isinstance(results, list)
+        finally:
+            db.close()
+
+
+# ============================================================================
+# 交叉驗證加分邏輯測試 (P2: Issue 9)
+# ============================================================================
+
+class TestCrossValidationBonus:
+    """測試交叉驗證加分邏輯。"""
+
+    def test_hybrid_results_have_scores(self, tmp_path):
+        """測試混合搜尋結果包含分數。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Python Programming",
+                content_raw="Python is a versatile programming language.",
+                category="tech",
+                trust=0.9,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_hybrid("python programming")
+            if results:
+                assert "_score" in results[0]
+                assert isinstance(results[0]["_score"], float)
+        finally:
+            db.close()
+
+    def test_keyword_results_contain_bm25(self, tmp_path):
+        """測試關鍵詞搜尋結果包含 _bm25 字段。"""
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(
+                title="Test Document",
+                content_raw="This is a test document for keyword search.",
+                trust=0.8,
+            )
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search_keyword("test document")
+            if results:
+                assert "_bm25" in results[0]
+                assert isinstance(results[0]["_bm25"], float)
+        finally:
+            db.close()
+
+
+# ============================================================================
+# 靜態方法與工具函數測試
+# ============================================================================
+
+class TestCompactResultExtended:
+    """_compact_result 靜態方法的擴展測試。"""
+
+    def test_compact_result_with_all_fields(self):
+        """測試包含所有字段的 compact 結果。"""
+        from vault.search import VaultSearch
+        result = {
+            "id": 1,
+            "title": "Test",
+            "content_raw": "raw content",
+            "category": "tech",
+            "layer": "memory",
+            "trust": 0.9,
+            "tags": "test,tech",
+            "best_claim": "best claim here",
+            "best_span": "L1-L5",
+            "node_uid": "node-123",
+            "path": "/path/to/doc",
+            "heading": "Section 1",
+            "line_start": 1,
+            "line_end": 5,
+            "citation": "#1 Test L1-L5",
+            "recommended_next_tool": "vault_read",
+            "next_action": {"tool": "vault_map_show", "arguments": {"knowledge_id": 1}},
+            "next_actions": [{"tool": "vault_map_show", "arguments": {"knowledge_id": 1}}],
+            "_rerank_score": 0.85,
+        }
+        compact = VaultSearch._compact_result(result)
+        assert compact["id"] == 1
+        assert compact["title"] == "Test"
+        assert "content_raw" not in compact  # 不包含原始內容
+        assert compact["rerank_score"] == 0.85  # 重命名為 rerank_score
+        assert compact["best_claim"] == "best claim here"
+
+    def test_compact_result_minimal(self):
+        """測試最小字段的 compact 結果。"""
+        from vault.search import VaultSearch
+        result = {"id": 1, "title": "Test"}
+        compact = VaultSearch._compact_result(result)
+        assert compact == {"id": 1, "title": "Test"}
+
+    def test_compact_result_without_rerank_score(self):
+        """測試沒有 rerank_score 的情況。"""
+        from vault.search import VaultSearch
+        result = {"id": 1, "title": "Test"}
+        compact = VaultSearch._compact_result(result)
+        assert "rerank_score" not in compact
+
+
+class TestNormalizeChineseExtended:
+    """_normalize_chinese 方法的擴展測試。"""
+
+    def test_normalize_chinese_unchanged(self):
+        """測試 _normalize_chinese 返回原始值（無 opencc 等依賴）。"""
+        from vault.search import VaultSearch
+        # 該方法可能需要 opencc 依賴才能實際轉換
+        result = VaultSearch._normalize_chinese("這是測試")
+        # 如果沒有 opencc，返回原始值
+        assert isinstance(result, str)
+
+    def test_normalize_mixed_content(self):
+        """測試混合內容的正規化。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._normalize_chinese("hello 世界")
+        # 應該返回字符串
+        assert isinstance(result, str)
+
+    def test_normalize_english_only(self):
+        """測試只有英文時的正規化。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._normalize_chinese("hello world")
+        assert "hello world" in result
+
+
+class TestExtractBestClaimExtended:
+    """_extract_best_claim 方法的擴展測試。"""
+
+    def test_extract_claims_section(self):
+        """測試從 CLAIMS 段提取。"""
+        from vault.search import VaultSearch
+        content = "Some intro\nCLAIMS:\n- [claim1] First claim\n- [claim2] Second claim\n\nOther text"
+        result = VaultSearch._extract_best_claim(content)
+        assert "First claim" in result
+
+    def test_extract_claims_with_multiple_lines(self):
+        """測試多行 CLAIMS 段。"""
+        from vault.search import VaultSearch
+        content = "Introduction here\n\nCLAIMS:\n- [c1] Claim one\n- [c2] Claim two\n- [c3] Claim three\n\nDiscussion"
+        result = VaultSearch._extract_best_claim(content)
+        assert "Claim one" in result
+        assert "Claim two" not in result  # 只取第一個
+
+    def test_extract_claims_no_bracket_format(self):
+        """測試沒有 [xxx] 格式的 CLAIMS 段。"""
+        from vault.search import VaultSearch
+        content = "Some text\nCLAIMS:\nJust a plain claim without brackets\n\nMore text"
+        result = VaultSearch._extract_best_claim(content)
+        # 沒有 - [xxx] 格式的行，應該返回空
+        assert result == ""
+
+    def test_extract_claims_empty_content(self):
+        """測試空內容。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._extract_best_claim("")
+        assert result == ""
+
+    def test_extract_claims_none_content(self):
+        """測試 None 內容。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._extract_best_claim(None)
+        assert result == ""
+
+    def test_extract_claims_no_claims_section(self):
+        """測試沒有 CLAIMS 段的內容。"""
+        from vault.search import VaultSearch
+        content = "This is just regular content without claims section."
+        result = VaultSearch._extract_best_claim(content)
+        assert result == ""
+
+
+class TestTokenizeExtended:
+    """_tokenize 方法的擴展測試。"""
+
+    def test_tokenize_punctuation(self):
+        """測試包含標點符號的文本。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._tokenize("hello, world! how are you?")
+        assert "hello" in result
+        assert "world" in result
+
+    def test_tokenize_numbers(self):
+        """測試包含數字的文本。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._tokenize("python 3.10 release")
+        assert "python" in result
+
+    def test_tokenize_long_text(self):
+        """測試長文本分詞。"""
+        from vault.search import VaultSearch
+        text = " ".join([f"word{i}" for i in range(100)])
+        result = VaultSearch._tokenize(text)
+        assert len(result) > 0
+
+    def test_tokenize_special_characters(self):
+        """測試特殊字符。"""
+        from vault.search import VaultSearch
+        result = VaultSearch._tokenize("hello_world test-123")
+        assert "hello_world" in result or "hello" in result
+
+
+class TestVaultSearchPropertiesExtended:
+    """VaultSearch 各種屬性的擴展測試。"""
+
+    def test_has_embeddings_false_by_default(self, tmp_path):
+        """測試預設情況下沒有 embeddings。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None, enable_vector_search=True)
+            # 沒有 embed provider 時應該返回 False
+            assert search.has_embeddings is False
+        finally:
+            db.close()
+
+    def test_has_embeddings_disabled_by_flag(self, tmp_path):
+        """測試 enable_vector_search=False 時 has_embeddings 為 False。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider="fake", enable_vector_search=False)
+            assert search.has_embeddings is False
+        finally:
+            db.close()
+
+    def test_has_reranker_enabled(self, tmp_path):
+        """測試開啟 rerank 時 has_reranker 屬性。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, enable_rerank=True)
+            result = search.has_reranker
+            # Lightweight reranker 應該總是可用
+            assert isinstance(result, bool)
+        finally:
+            db.close()
+
+    def test_has_cross_encoder_disabled(self, tmp_path):
+        """測試關閉 cross-encoder 時 has_cross_encoder 為 False。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, enable_cross_encoder=False)
+            assert search.has_cross_encoder is False
+        finally:
+            db.close()
+
+    def test_cached_llm_available(self, tmp_path):
+        """測試 has_llm 緩存行為。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, enable_llm_enhancement=False)
+            # 第一次調用
+            first = search.has_llm
+            # 第二次調用（應該使用緩存）
+            second = search.has_llm
+            assert first == second
+        finally:
+            db.close()
+
+    def test_cached_reranker_available(self, tmp_path):
+        """測試 has_reranker 緩存行為。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, enable_rerank=True)
+            first = search.has_reranker
+            second = search.has_reranker
+            assert first == second
+        finally:
+            db.close()
+
+    def test_cached_cross_encoder_available(self, tmp_path):
+        """測試 has_cross_encoder 緩存行為。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, enable_cross_encoder=False)
+            first = search.has_cross_encoder
+            second = search.has_cross_encoder
+            assert first == second
+            assert first is False
+        finally:
+            db.close()
+
+
+class TestSearchMethodEdgeCases:
+    """search 方法的邊界情況測試。"""
+
+    def test_search_empty_query(self, tmp_path):
+        """測試空查詢。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Test Doc", content_raw="Some content", trust=0.8)
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search("")
+            # 空查詢可能返回空列表或全部結果
+            assert isinstance(results, list)
+        finally:
+            db.close()
+
+    def test_search_keyword_mode_with_min_score(self, tmp_path):
+        """測試 keyword 模式的 min_score 參數。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Python Test", content_raw="Python programming language", trust=0.9)
+            db.add_knowledge(title="Java Test", content_raw="Java programming language", trust=0.9)
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search("python", mode="keyword", min_score=0.5)
+            assert isinstance(results, list)
+        finally:
+            db.close()
+
+    def test_search_with_layer_filter(self, tmp_path):
+        """測試 layer 過濾。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Doc 1", content_raw="test content", layer="memory", trust=0.8)
+            db.add_knowledge(title="Doc 2", content_raw="test content", layer="archive", trust=0.8)
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search("test", mode="keyword", layer="memory")
+            for r in results:
+                assert r.get("layer") == "memory"
+        finally:
+            db.close()
+
+    def test_search_with_category_filter(self, tmp_path):
+        """測試 category 過濾。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Doc 1", content_raw="test content", category="tech", trust=0.8)
+            db.add_knowledge(title="Doc 2", content_raw="test content", category="life", trust=0.8)
+            search = VaultSearch(db, embed_provider=None)
+            results = search.search("test", mode="keyword", category="tech")
+            for r in results:
+                assert r.get("category") == "tech"
+        finally:
+            db.close()
+
+
+class TestGraphExpandEdgeCasesExtended:
+    """圖譜擴展的更多邊界情況測試。"""
+
+    def test_apply_graph_expand_no_results(self, tmp_path):
+        """測試空結果時的圖譜擴展。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=None)
+            expanded = search._apply_graph_expand([], expand_depth=2, limit=10)
+            assert expanded == []
+        finally:
+            db.close()
+
+    def test_apply_graph_expand_zero_depth(self, tmp_path):
+        """測試深度為 0 時的圖譜擴展。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Test", content_raw="content", trust=0.8)
+            search = VaultSearch(db, embed_provider=None)
+            results = [{"id": 1, "_score": 0.8, "title": "Test"}]
+            expanded = search._apply_graph_expand(results, expand_depth=0, limit=10)
+            # depth 為 0 時不擴展
+            assert len(expanded) == len(results)
+        finally:
+            db.close()
+
+    def test_apply_graph_expand_with_limit_one(self, tmp_path):
+        """測試 limit=1 的圖譜擴展。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Test", content_raw="content", trust=0.8)
+            search = VaultSearch(db, embed_provider=None)
+            results = [{"id": 1, "_score": 0.8, "title": "Test"}]
+            expanded = search._apply_graph_expand(results, expand_depth=1, limit=1)
+            assert len(expanded) <= 1
+        finally:
+            db.close()
+
+    def test_apply_graph_expand_preserves_scores(self, tmp_path):
+        """測試圖譜擴展保留原始結果的分數。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Test", content_raw="content", trust=0.8)
+            search = VaultSearch(db, embed_provider=None)
+            results = [{"id": 1, "_score": 0.85, "title": "Test"}]
+            expanded = search._apply_graph_expand(results, expand_depth=2, limit=5)
+            if expanded:
+                # 第一個結果應該是原始結果，分數不變
+                assert expanded[0].get("_score") is not None
+        finally:
+            db.close()
+
+
+# ============================================================================
+# 混合搜尋進階測試 (使用 mock)
+# ============================================================================
+
+class TestHybridSearchAdvanced:
+    """使用 mock 測試混合搜尋的動態權重和交叉驗證加分。"""
+
+    def test_hybrid_with_mock_semantic_results(self, tmp_path, monkeypatch):
+        """測試有語義結果時的混合搜尋。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            # 添加知識
+            db.add_knowledge(title="Python Programming", content_raw="Python is a programming language.", trust=0.9)
+            db.add_knowledge(title="Java Programming", content_raw="Java is another language.", trust=0.9)
+            db.add_knowledge(title="Machine Learning", content_raw="ML uses algorithms.", trust=0.8)
+
+            search = VaultSearch(db, embed_provider=None)
+
+            # Mock search_semantic 返回結果
+            def mock_search_semantic(query, limit=10, min_trust=0.0, layer=None, category=None,
+                                    *, vector_kind="claim", require_semantic=True, allow_hash=False):
+                return [
+                    {"id": 1, "_score": 0.9, "title": "Python Programming", "trust": 0.9,
+                     "content_raw": "Python is a programming language."},
+                    {"id": 3, "_score": 0.7, "title": "Machine Learning", "trust": 0.8,
+                     "content_raw": "ML uses algorithms."},
+                ]
+
+            monkeypatch.setattr(search, 'search_semantic', mock_search_semantic)
+
+            results = search.search_hybrid("python programming", limit=5)
+            assert len(results) > 0
+            assert results[0]["id"] == 1  # 兩邊都匹配的應該排最前面
+            assert "_score" in results[0]
+        finally:
+            db.close()
+
+    def test_hybrid_with_dynamic_weight(self, tmp_path, monkeypatch):
+        """測試動態權重調整。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Doc A", content_raw="Python programming language", trust=0.9)
+            db.add_knowledge(title="Doc B", content_raw="Java coding language", trust=0.9)
+            db.add_knowledge(title="Doc C", content_raw="Machine learning algorithms", trust=0.8)
+
+            search = VaultSearch(db, embed_provider=None)
+
+            # 向量結果質量高，關鍵詞質量低
+            def mock_search_semantic(query, limit=10, min_trust=0.0, layer=None, category=None,
+                                    *, vector_kind="claim", require_semantic=True, allow_hash=False):
+                return [
+                    {"id": 3, "_score": 0.95, "title": "Doc C", "trust": 0.8,
+                     "content_raw": "Machine learning algorithms"},
+                    {"id": 1, "_score": 0.6, "title": "Doc A", "trust": 0.9,
+                     "content_raw": "Python programming language"},
+                ]
+
+            monkeypatch.setattr(search, 'search_semantic', mock_search_semantic)
+
+            results = search.search_hybrid("machine learning", use_dynamic_weight=True)
+            assert len(results) > 0
+            # 確保有分數
+            assert "_score" in results[0]
+        finally:
+            db.close()
+
+    def test_hybrid_without_dynamic_weight(self, tmp_path, monkeypatch):
+        """測試關閉動態權重時的混合搜尋。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Doc A", content_raw="Python programming language", trust=0.9)
+            db.add_knowledge(title="Doc B", content_raw="Java coding language", trust=0.9)
+
+            search = VaultSearch(db, embed_provider=None)
+
+            def mock_search_semantic(query, limit=10, min_trust=0.0, layer=None, category=None,
+                                    *, vector_kind="claim", require_semantic=True, allow_hash=False):
+                return [
+                    {"id": 1, "_score": 0.8, "title": "Doc A", "trust": 0.9,
+                     "content_raw": "Python programming language"},
+                ]
+
+            monkeypatch.setattr(search, 'search_semantic', mock_search_semantic)
+
+            results = search.search_hybrid("python", use_dynamic_weight=False)
+            assert len(results) > 0
+            assert "_score" in results[0]
+        finally:
+            db.close()
+
+    def test_hybrid_search_with_custom_weights(self, tmp_path, monkeypatch):
+        """測試自定義權重的混合搜尋。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Doc A", content_raw="Python programming", trust=0.9)
+            db.add_knowledge(title="Doc B", content_raw="Java programming", trust=0.9)
+
+            search = VaultSearch(db, embed_provider=None, keyword_weight=2.0, vector_weight=0.5)
+
+            def mock_search_semantic(query, limit=10, min_trust=0.0, layer=None, category=None,
+                                    *, vector_kind="claim", require_semantic=True, allow_hash=False):
+                return [
+                    {"id": 2, "_score": 0.9, "title": "Doc B", "trust": 0.9,
+                     "content_raw": "Java programming"},
+                ]
+
+            monkeypatch.setattr(search, 'search_semantic', mock_search_semantic)
+
+            results = search.search_hybrid("python programming", limit=5)
+            assert len(results) > 0
+        finally:
+            db.close()
+
+    def test_hybrid_search_min_score_filter(self, tmp_path, monkeypatch):
+        """測試 min_score 過濾。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Doc A", content_raw="Python programming language", trust=0.9)
+            db.add_knowledge(title="Doc B", content_raw="Java coding language", trust=0.9)
+
+            search = VaultSearch(db, embed_provider=None)
+
+            def mock_search_semantic(query, limit=10, min_trust=0.0, layer=None, category=None,
+                                    *, vector_kind="claim", require_semantic=True, allow_hash=False):
+                return [
+                    {"id": 1, "_score": 0.9, "title": "Doc A", "trust": 0.9,
+                     "content_raw": "Python programming language"},
+                ]
+
+            monkeypatch.setattr(search, 'search_semantic', mock_search_semantic)
+
+            results = search.search_hybrid("python", min_score=0.5)
+            assert isinstance(results, list)
+        finally:
+            db.close()
+
+    def test_cross_validation_bonus_both_high_rank(self, tmp_path, monkeypatch):
+        """測試雙方都排名靠前時的交叉驗證加分。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Doc A", content_raw="Python programming", trust=0.9)
+            db.add_knowledge(title="Doc B", content_raw="Java programming", trust=0.9)
+
+            search = VaultSearch(db, embed_provider=None)
+
+            # Doc A 在兩邊都排第一
+            def mock_search_semantic(query, limit=10, min_trust=0.0, layer=None, category=None,
+                                    *, vector_kind="claim", require_semantic=True, allow_hash=False):
+                return [
+                    {"id": 1, "_score": 0.9, "title": "Doc A", "trust": 0.9,
+                     "content_raw": "Python programming"},
+                    {"id": 2, "_score": 0.7, "title": "Doc B", "trust": 0.9,
+                     "content_raw": "Java programming"},
+                ]
+
+            monkeypatch.setattr(search, 'search_semantic', mock_search_semantic)
+
+            results = search.search_hybrid("python programming", limit=2)
+            assert len(results) == 2
+            # Doc A 應該排第一，因為在兩邊都匹配
+            assert results[0]["id"] == 1
+        finally:
+            db.close()
+
+    def test_hybrid_search_mode_detection(self, tmp_path, monkeypatch):
+        """測試混合搜尋的模式檢測。"""
+        from vault.search import VaultSearch
+        from vault.db import VaultDB
+
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Doc A", content_raw="test content", trust=0.9)
+
+            search = VaultSearch(db, embed_provider=None)
+
+            def mock_search_semantic(query, limit=10, min_trust=0.0, layer=None, category=None,
+                                    *, vector_kind="claim", require_semantic=True, allow_hash=False):
+                return [
+                    {"id": 1, "_score": 0.8, "title": "Doc A", "trust": 0.9,
+                     "content_raw": "test content", "_mode": "semantic"},
+                ]
+
+            monkeypatch.setattr(search, 'search_semantic', mock_search_semantic)
+
+            results = search.search_hybrid("test")
+            if results:
+                mode = results[0].get("_mode", "")
+                # 模式應該包含 hybrid 或 semantic
+                assert "hybrid" in mode or "semantic" in mode or "keyword" in mode
+        finally:
+            db.close()

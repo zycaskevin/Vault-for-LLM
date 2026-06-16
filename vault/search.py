@@ -1245,6 +1245,12 @@ class VaultSearch:
         use_rerank: 是否使用 reranker 重排序（預設 True）
         use_query_expansion: 是否使用查詢擴展（預設 True）
         use_llm_rewrite: 是否使用 LLM 查詢改寫（預設 False）
+        min_score: 最小分數閾值，僅返回分數 >= min_score 的結果。
+                   注意：不同模式的分數含義不同——
+                   - keyword 模式：匹配詞比例（0-1）
+                   - vector 模式：轉換後的餘弦相似度（0-1）
+                   - hybrid 模式：RRF 融合分數
+                   設置時請考慮不同模式的分數分佈差異。
         """
         # 驗證 mode 參數
         valid_modes = {"auto", "basic", "keyword", "vector", "semantic", "hybrid"}
@@ -1267,6 +1273,10 @@ class VaultSearch:
             limit = MAX_LIMIT
         if limit <= 0:
             limit = 1
+
+        # 空查詢直接返回空結果
+        if not query or not query.strip():
+            return []
 
         # LLM 查詢改寫：在查詢擴展之前進行
         if use_llm_rewrite and self._enable_llm_query_rewrite and self.has_llm:
@@ -1817,28 +1827,38 @@ class VaultSearch:
         min_trust: float = 0.0,
         layer: Optional[str] = None,
         category: Optional[str] = None,
+        min_score: float | None = None,
     ) -> list[dict]:
-        """純向量語意搜尋。"""
+        """
+        純向量語意搜尋。
+
+        min_score: 最小相似度分數（0-1），僅返回相似度 >= min_score 的結果。
+                  向量模式的分數為餘弦相似度轉換為 0-1 範圍，
+                  與 keyword 模式的匹配率分數含義不同，使用時請注意。
+        """
         embed = self._get_embed()
         if embed is None or not self.db._vec_available:
             # 降級到關鍵字
-            return self.search_keyword(query, limit, min_trust, layer, category)
+            return self.search_keyword(query, limit, min_trust, layer, category, min_score=min_score)
 
         try:
             query_vec = embed.encode(query)[0]
         except Exception as e:
             print(f"[vault-mcp] ⚠️ 嵌入失敗，降級到關鍵字: {e}")
-            return self.search_keyword(query, limit, min_trust, layer, category)
+            return self.search_keyword(query, limit, min_trust, layer, category, min_score=min_score)
 
         try:
-            results = self.db.search_vector(query_vec, limit=limit * 2, min_trust=min_trust)
+            results = self.db.search_vector(
+                query_vec, limit=limit * 2, min_trust=min_trust,
+                layer=layer, category=category
+            )
         except sqlite3.OperationalError as e:
             if self._is_vector_db_fallback_error(e):
                 print(f"[vault-mcp] ⚠️ 向量搜尋失敗，降級到關鍵字: {e}")
-                return self.search_keyword(query, limit, min_trust, layer, category)
+                return self.search_keyword(query, limit, min_trust, layer, category, min_score=min_score)
             raise
 
-        # 後過濾
+        # 後過濾（雙重保險）
         if layer:
             results = [r for r in results if r.get("layer") == layer]
         if category:
@@ -1850,6 +1870,10 @@ class VaultSearch:
             dist = r.get("_distance", 1.0) or 0.0
             r["_score"] = max(0.0, 1.0 - dist / 2)
             r["_mode"] = "vector"
+
+        # min_score 過濾
+        if min_score is not None:
+            results = [r for r in results if r.get("_score", 0.0) >= min_score]
 
         return results[:limit]
 
@@ -2214,7 +2238,10 @@ class VaultSearch:
 
         # 對每個搜尋結果，找圖譜鄰居
         for r in results:
-            neighbors = self.db.get_neighbors(r["id"], max_depth=expand_depth)
+            neighbors = self.db.get_neighbors(
+                r["id"], max_depth=expand_depth,
+                min_trust=min_trust, layer=layer, category=category
+            )
             for n in neighbors:
                 if n["id"] not in seen_ids:
                     k = self.db.get_knowledge(n["id"])
@@ -2277,8 +2304,11 @@ class VaultSearch:
             chars = re.findall(r'[\u4e00-\u9fff]', query)
             if chars:
                 return chars
+            # 空字串或純空白返回空列表
+            if not query or not query.strip():
+                return []
             # 否則返回原始查詢
-            return [query] if query else [""]
+            return [query] if query else []
 
         # 按在原文中的位置排序，保持詞序
         tokens.sort(key=lambda x: x[0])

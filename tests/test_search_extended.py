@@ -76,8 +76,8 @@ class TestTokenize:
 
     def test_tokenize_empty(self):
         result = VaultSearch._tokenize("")
-        # Falls back to returning the original query as single token
-        assert result == [""]
+        # 空字串返回空列表，避免 LIKE 萬用字元匹配所有內容
+        assert result == []
 
     def test_tokenize_single_char(self):
         result = VaultSearch._tokenize("a")
@@ -7365,11 +7365,11 @@ class TestTokenizeMoreEdgeCases:
         # First token should be hello (appears first in text)
         assert result[0].lower() == "hello"
 
-    def test_tokenize_empty_string_returns_list_with_empty(self):
-        """測試空字符串返回 ['']。"""
+    def test_tokenize_empty_string_returns_empty_list(self):
+        """測試空字符串返回空列表。"""
         from vault.search import VaultSearch
         result = VaultSearch._tokenize("")
-        assert result == [""]
+        assert result == []
 
     def test_tokenize_spaces_only(self):
         """測試只有空格的字符串。"""

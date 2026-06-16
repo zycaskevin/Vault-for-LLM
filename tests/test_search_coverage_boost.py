@@ -781,9 +781,9 @@ class TestCoverageBoostTokenize:
         assert result[2].lower() == "third"
 
     def test_tokenize_empty_string(self):
-        """測試空字符串。"""
+        """測試空字符串返回空列表。"""
         result = VaultSearch._tokenize("")
-        assert result == [""]
+        assert result == []
 
 
 class TestCoverageBoostNormalizeChinese:

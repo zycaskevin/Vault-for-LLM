@@ -870,6 +870,8 @@ class VaultDB:
         query_embedding: list[float],
         limit: int = 10,
         min_trust: float = 0.0,
+        layer: Optional[str] = None,
+        category: Optional[str] = None,
     ) -> list[dict]:
         """向量語意搜尋，回傳知識列表。"""
         if not self._vec_available:
@@ -888,8 +890,22 @@ class VaultDB:
         if not vec_rows:
             return []
 
-        # Step 2: 取得知識詳細資料
+        # Step 2: 取得知識詳細資料（帶權限過濾）
         results = []
+        # 建構 WHERE 條件
+        where_conditions = ["id=?", "trust >= ?"]
+        params: list = [0, min_trust]  # id 會在每個迭代中替換
+
+        if layer is not None:
+            where_conditions.append("layer = ?")
+            params.append(layer)
+        if category is not None:
+            where_conditions.append("category = ?")
+            params.append(category)
+
+        where_clause = " AND ".join(where_conditions)
+        sql = f"SELECT * FROM knowledge WHERE {where_clause}"
+
         for row in vec_rows:
             kid = row["knowledge_id"]
             dist = row["distance"]
@@ -898,10 +914,8 @@ class VaultDB:
                 dist = struct.unpack("f", dist)[0]
             dist = float(dist)
 
-            k_row = self.conn.execute(
-                "SELECT * FROM knowledge WHERE id=? AND trust >= ?",
-                (kid, min_trust),
-            ).fetchone()
+            params[0] = kid  # 替換成當前 knowledge_id
+            k_row = self.conn.execute(sql, params).fetchone()
             if k_row:
                 d = dict(k_row)
                 d["_distance"] = dist
@@ -1020,12 +1034,21 @@ class VaultDB:
         return [dict(r) for r in rows]
 
     def get_neighbors(
-        self, node_id: int, max_depth: int = 2, min_weight: float = 0.0
+        self,
+        node_id: int,
+        max_depth: int = 2,
+        min_weight: float = 0.0,
+        min_trust: float = 0.0,
+        layer: Optional[str] = None,
+        category: Optional[str] = None,
     ) -> list[dict]:
         """
         BFS 遍歷鄰居，回傳 (node_id, distance, path) 列表。
         max_depth: 最大跳數（預設 2）
         min_weight: 最小邊權重（過濾弱關聯）
+        min_trust: 最小信任級別過濾
+        layer: 分層過濾
+        category: 分類過濾
         """
         visited = {node_id}
         frontier = {node_id}
@@ -1053,6 +1076,36 @@ class VaultDB:
             frontier = next_frontier
             if not frontier:
                 break
+
+        # 權限過濾：如果有設定 min_trust、layer 或 category，從 knowledge 表過濾
+        if min_trust > 0.0 or layer is not None or category is not None:
+            if not results:
+                return results
+
+            # 收集所有鄰居 ID
+            neighbor_ids = [r["id"] for r in results]
+            placeholders = ",".join("?" * len(neighbor_ids))
+
+            # 建構 WHERE 條件
+            where_conditions = [f"id IN ({placeholders})", "trust >= ?"]
+            params: list = list(neighbor_ids) + [min_trust]
+
+            if layer is not None:
+                where_conditions.append("layer = ?")
+                params.append(layer)
+            if category is not None:
+                where_conditions.append("category = ?")
+                params.append(category)
+
+            where_clause = " AND ".join(where_conditions)
+            sql = f"SELECT id FROM knowledge WHERE {where_clause}"
+
+            # 查詢符合條件的節點 ID
+            valid_rows = self.conn.execute(sql, params).fetchall()
+            valid_ids = {row["id"] for row in valid_rows}
+
+            # 只保留符合條件的結果
+            results = [r for r in results if r["id"] in valid_ids]
 
         return results
 

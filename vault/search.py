@@ -34,6 +34,38 @@ def _normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", (value or "").strip().lower())
 
 
+def calc_freshness(updated_at: str) -> float:
+    """
+    計算文件新鮮度分數（0~1）。
+
+    根據更新時間計算，越新分數越高。
+    無法解析時返回 0.5。
+    """
+    from datetime import datetime, timezone
+
+    if not updated_at:
+        return 0.5
+    try:
+        dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+        days = (datetime.now(timezone.utc) - dt).days
+        return 1.0 - min(days / 365, 0.5)
+    except Exception:
+        return 0.5
+
+
+def calc_graph_depth(result: dict) -> float:
+    """
+    計算圖譜深度加成（0~0.2）。
+
+    直接匹配（距離 0）返回 0.2，
+    距離越遠加成越少，最少為 0。
+    """
+    dist = result.get("_graph_distance", 0)
+    if dist == 0:
+        return 0.2  # 直接匹配，最高加分
+    return max(0, 0.2 - (dist - 1) * 0.1)
+
+
 class LightweightReranker:
     """
     輕量級重排序器，無需額外模型。
@@ -88,24 +120,6 @@ class LightweightReranker:
         max_score = max(scores) if scores else 1.0
         min_score = min(scores) if scores else 0.0
         score_range = max_score - min_score if max_score > min_score else 1.0
-
-        from datetime import datetime, timezone
-
-        def calc_freshness(updated_at: str) -> float:
-            if not updated_at:
-                return 0.5
-            try:
-                dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
-                days = (datetime.now(timezone.utc) - dt).days
-                return 1.0 - min(days / 365, 0.5)
-            except Exception:
-                return 0.5
-
-        def calc_graph_depth(result: dict) -> float:
-            dist = result.get("_graph_distance", 0)
-            if dist == 0:
-                return 0.2  # 直接匹配，最高加分
-            return max(0, 0.2 - (dist - 1) * 0.1)
 
         scored_docs = []
         for doc in documents:
@@ -197,6 +211,7 @@ class LightweightReranker:
             final_score = norm_base * 2.0 + boost - penalty
 
             doc_copy = dict(doc)
+            doc_copy["_original_score"] = base_score  # 保存 rerank 前的原始分數
             doc_copy["_rerank_score"] = round(final_score, 4)
             doc_copy["_score"] = final_score
             # 保持 _mode 不變，向後兼容；rerank 狀態透過 _rerank_score 存在與否判斷
@@ -417,6 +432,7 @@ class CrossEncoderReranker:
         for i, doc in enumerate(documents):
             doc_copy = dict(doc)
             score = float(scores[i]) if i < len(scores) else 0.0
+            doc_copy["_original_score"] = doc.get("_score", 0.0)  # 保存 rerank 前的原始分數
             doc_copy["_cross_encoder_score"] = round(score, 4)
             doc_copy["_rerank_score"] = round(score, 4)
             doc_copy["_score"] = score  # 更新最終分數
@@ -961,42 +977,82 @@ class VaultSearch:
 
         Returns:
             dict: 包含各層級能力狀態與配置的字典
+                  同時提供中文與英文鍵名，保持向後兼容
         """
+        basic_layer = {
+            "關鍵詞搜尋": True,
+            "keyword_search": True,
+            "輕量級重排序": self._enable_rerank,
+            "lightweight_rerank": self._enable_rerank,
+            "查詢擴展": self._enable_query_expansion,
+            "query_expansion": self._enable_query_expansion,
+            "文件地圖支援": self._graph is not None,
+            "document_map_support": self._graph is not None,
+        }
+
+        advanced_layer = {
+            "向量檢索": self.has_embeddings,
+            "vector_search": self.has_embeddings,
+            "混合搜尋": self.has_embeddings,
+            "hybrid_search": self.has_embeddings,
+            "語義索引": self.has_embeddings,
+            "semantic_index": self.has_embeddings,
+        }
+
+        premium_layer = {
+            "Cross-Encoder 重排序": self.has_cross_encoder,
+            "cross_encoder_rerank": self.has_cross_encoder,
+            "Cross-Encoder 模型": self._cross_encoder_model if self.has_cross_encoder else None,
+            "cross_encoder_model": self._cross_encoder_model if self.has_cross_encoder else None,
+        }
+
+        flagship_layer = {
+            "LLM 查詢改寫": self.has_llm and self._enable_llm_query_rewrite,
+            "llm_query_rewrite": self.has_llm and self._enable_llm_query_rewrite,
+            "LLM 改寫策略": self._llm_query_rewrite_strategy,
+            "llm_rewrite_strategy": self._llm_query_rewrite_strategy,
+        }
+
+        config_layer = {
+            "預設模式": "hybrid" if self.has_embeddings else "keyword",
+            "default_mode": "hybrid" if self.has_embeddings else "keyword",
+            "關鍵詞權重": self._keyword_weight,
+            "keyword_weight": self._keyword_weight,
+            "向量權重": self._vector_weight,
+            "vector_weight": self._vector_weight,
+            "Rerank 策略": self._rerank_strategy,
+            "rerank_strategy": self._rerank_strategy,
+            "Rerank 開關": self._enable_rerank,
+            "rerank_enabled": self._enable_rerank,
+            "查詢擴展數量": self._query_expansion_count,
+            "query_expansion_count": self._query_expansion_count,
+            "查詢擴展開關": self._enable_query_expansion,
+            "query_expansion_enabled": self._enable_query_expansion,
+            "向量搜尋開關": self._enable_vector_search,
+            "vector_search_enabled": self._enable_vector_search,
+            "Cross-Encoder 開關": self._enable_cross_encoder,
+            "cross_encoder_enabled": self._enable_cross_encoder,
+            "LLM 增強開關": self._enable_llm_enhancement,
+            "llm_enhancement_enabled": self._enable_llm_enhancement,
+            "LLM 查詢改寫開關": self._enable_llm_query_rewrite,
+            "llm_query_rewrite_enabled": self._enable_llm_query_rewrite,
+            "嵌入提供者": self._embed_provider_name,
+            "embedding_provider": self._embed_provider_name,
+            "嵌入模型": self._embed_model_key,
+            "embedding_model": self._embed_model_key,
+        }
+
         caps = {
-            "基礎層": {
-                "關鍵詞搜尋": True,
-                "輕量級重排序": self._enable_rerank,
-                "查詢擴展": self._enable_query_expansion,
-                "文件地圖支援": self._graph is not None,
-            },
-            "進階層": {
-                "向量檢索": self.has_embeddings,
-                "混合搜尋": self.has_embeddings,
-                "語義索引": self.has_embeddings,
-            },
-            "高階層": {
-                "Cross-Encoder 重排序": self.has_cross_encoder,
-                "Cross-Encoder 模型": self._cross_encoder_model if self.has_cross_encoder else None,
-            },
-            "旗艦層": {
-                "LLM 查詢改寫": self.has_llm and self._enable_llm_query_rewrite,
-                "LLM 改寫策略": self._llm_query_rewrite_strategy,
-            },
-            "配置": {
-                "預設模式": "hybrid" if self.has_embeddings else "keyword",
-                "關鍵詞權重": self._keyword_weight,
-                "向量權重": self._vector_weight,
-                "Rerank 策略": self._rerank_strategy,
-                "Rerank 開關": self._enable_rerank,
-                "查詢擴展數量": self._query_expansion_count,
-                "查詢擴展開關": self._enable_query_expansion,
-                "向量搜尋開關": self._enable_vector_search,
-                "Cross-Encoder 開關": self._enable_cross_encoder,
-                "LLM 增強開關": self._enable_llm_enhancement,
-                "LLM 查詢改寫開關": self._enable_llm_query_rewrite,
-                "嵌入提供者": self._embed_provider_name,
-                "嵌入模型": self._embed_model_key,
-            }
+            "基礎層": basic_layer,
+            "basic": basic_layer,
+            "進階層": advanced_layer,
+            "advanced": advanced_layer,
+            "高階層": premium_layer,
+            "premium": premium_layer,
+            "旗艦層": flagship_layer,
+            "flagship": flagship_layer,
+            "配置": config_layer,
+            "config": config_layer,
         }
         return caps
 
@@ -1104,21 +1160,44 @@ class VaultSearch:
                 else:
                     results = self.search_keyword(q_text, limit, min_trust, layer, category, min_score=min_score)
             elif mode == "semantic":
-                if self.has_embeddings:
-                    results = self.search_semantic(
-                        q_text,
-                        limit,
-                        min_trust,
-                        layer,
-                        category,
-                        vector_kind=semantic_vector_kind,
+                # semantic mode: use stored semantic_vectors table
+                # Only try semantic search if a provider is available.
+                # Wrap in try/except to gracefully fall back to keyword if the
+                # provider fails (e.g., missing dependencies for lazy-loaded providers).
+                # SemanticProviderError is intentionally re-raised as it signals
+                # a configuration error (using hash provider with require_semantic=True).
+                try:
+                    if self._embed is not None:
+                        results = self.search_semantic(
+                            q_text,
+                            limit,
+                            min_trust,
+                            layer,
+                            category,
+                            vector_kind=semantic_vector_kind,
+                            require_semantic=not allow_hash,
+                            allow_hash=allow_hash,
+                        )
+                    else:
+                        # No embed provider configured — fall back to keyword
+                        results = self.search_keyword(q_text, limit, min_trust, layer, category, min_score=min_score)
+                except SemanticProviderError:
+                    raise
+                except Exception:
+                    # Provider failed (missing dependencies, etc.) — fall back to keyword
+                    results = self.search_keyword(q_text, limit, min_trust, layer, category, min_score=min_score)
+            elif mode == "hybrid":
+                # hybrid mode combines keyword + second source (semantic or vector)
+                # search_hybrid handles fallbacks internally, so try it if any second source might be available
+                has_second_source = (
+                    self.has_embeddings
+                    or self._semantic_index_available(
+                        semantic_vector_kind,
                         require_semantic=not allow_hash,
                         allow_hash=allow_hash,
                     )
-                else:
-                    results = self.search_keyword(q_text, limit, min_trust, layer, category, min_score=min_score)
-            elif mode == "hybrid":
-                if self.has_embeddings:
+                )
+                if has_second_source:
                     results = self.search_hybrid(
                         q_text,
                         limit,
@@ -1132,12 +1211,14 @@ class VaultSearch:
                 else:
                     results = self.search_keyword(q_text, limit, min_trust, layer, category, min_score=min_score)
             else:
-                # auto: safe by default: use stored semantic index only with a real semantic provider.
-                if self.has_embeddings and self._semantic_index_available(
+                # auto: choose the best available search strategy
+                # Priority: hybrid (with semantic) > hybrid (with vector) > keyword
+                if self._semantic_index_available(
                     semantic_vector_kind,
                     require_semantic=not allow_hash,
                     allow_hash=allow_hash,
                 ):
+                    # Has semantic index — use hybrid search for best results
                     results = self.search_hybrid(
                         q_text,
                         limit,
@@ -1149,12 +1230,19 @@ class VaultSearch:
                         min_score=min_score,
                     )
                 elif self.has_embeddings:
-                    embed = self._get_embed()
-                    if embed is not None and bool(getattr(embed, "is_semantic", True)):
-                        results = self.search_hybrid(q_text, limit, min_trust, layer, category, min_score=min_score)
-                    else:
-                        results = self.search_keyword(q_text, limit, min_trust, layer, category, min_score=min_score)
+                    # Has vector search — use hybrid with vector
+                    results = self.search_hybrid(
+                        q_text,
+                        limit,
+                        min_trust,
+                        layer,
+                        category,
+                        semantic_vector_kind=semantic_vector_kind,
+                        allow_hash=allow_hash,
+                        min_score=min_score,
+                    )
                 else:
+                    # Only keyword search available
                     results = self.search_keyword(q_text, limit, min_trust, layer, category, min_score=min_score)
 
             # 根據擴展查詢的權重衰減分數
@@ -1387,24 +1475,6 @@ class VaultSearch:
             return reranker.rerank(query, results)
 
         # 基礎版 rerank（向後兼容，無 query 時使用）
-        from datetime import datetime, timezone
-
-        def calc_freshness(updated_at: str) -> float:
-            if not updated_at:
-                return 0.5
-            try:
-                dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
-                days = (datetime.now(timezone.utc) - dt).days
-                return 1.0 - min(days / 365, 0.5)
-            except Exception:
-                return 0.5
-
-        def calc_graph_depth(result: dict) -> float:
-            dist = result.get("_graph_distance", 0)
-            if dist == 0:
-                return 0.2  # 直接匹配，最高加分
-            return max(0, 0.2 - (dist - 1) * 0.1)
-
         for r in results:
             # 基礎語意分數（歸一到 0-1）
             base_sim = r.get("_score", 0.5)
@@ -1427,7 +1497,9 @@ class VaultSearch:
                 + freshness * 0.15
             )
 
+            r["_original_score"] = r.get("_score", 0.0)  # 保存 rerank 前的原始分數
             r["_rerank_score"] = round(rerank_score, 4)
+            r["_score"] = rerank_score  # 更新最終分數，與其他 reranker 行為一致
 
         results.sort(key=lambda x: x.get("_rerank_score", 0), reverse=True)
         return results
@@ -1825,31 +1897,51 @@ class VaultSearch:
 
         # 動態權重調整
         if use_dynamic_weight and kw_results and second_results:
-            # 計算關鍵詞匹配質量：最高分、匹配詞數比例
+            # 計算關鍵詞匹配質量：最高分（0~1）
             kw_max_score = max(r.get('_score', 0) for r in kw_results) if kw_results else 0
-
-            # 計算向量匹配質量：最高分（向量分數越高越好，1.0=完全匹配）
-            vec_max_score = max(r.get('_score', 0) for r in second_results) if second_results else 0
-
-            # 關鍵詞匹配質量因子（0~1）：分數越高，質量越好
-            # 根據經驗，BM25 分數 > 0.8 為高質量，< 0.3 為低質量
+            # 關鍵詞質量因子：BM25 分數 > 0.8 為高質量，< 0.3 為低質量
             kw_quality = min(1.0, kw_max_score / 0.8) if kw_max_score > 0 else 0.0
 
-            # 動態調整權重：
-            # - 當關鍵詞質量高時，加大關鍵詞權重
-            # - 當關鍵詞質量低時，加大向量權重
-            if kw_quality > 0.6:
-                # 關鍵詞有好結果，適當提高關鍵詞權重
-                kw_boost = 1.0 + kw_quality * 1.0  # 1.0 ~ 2.0x
-                vec_boost = 1.0
-            elif kw_quality < 0.3:
-                # 關鍵詞結果很差，提高向量權重
-                kw_boost = 0.7
-                vec_boost = 1.0 + (1.0 - kw_quality) * 0.8  # 1.0 ~ 1.5x
+            # 計算向量/語義匹配質量：最高分（0~1，1.0=完全匹配）
+            vec_max_score = max(r.get('_score', 0) for r in second_results) if second_results else 0
+            # 向量質量因子：相似度 > 0.7 為高質量，< 0.3 為低質量
+            vec_quality = min(1.0, vec_max_score / 0.7) if vec_max_score > 0 else 0.0
+
+            # 計算相對質量差異，用於動態調整權重
+            # 質量差異越大，權重調整幅度越大
+            quality_diff = kw_quality - vec_quality
+            avg_quality = (kw_quality + vec_quality) / 2.0
+
+            # 根據相對質量動態調整權重
+            # - 關鍵詞質量顯著高於向量 → 加大關鍵詞權重
+            # - 向量質量顯著高於關鍵詞 → 加大向量權重
+            # - 兩者質量相近 → 保持默認比例
+            max_boost = 1.5  # 最大權重倍數
+            max_reduce = 0.7  # 最小權重倍數
+
+            if abs(quality_diff) > 0.2:
+                # 有顯著質量差異，動態調整
+                if quality_diff > 0:
+                    # 關鍵詞質量更高
+                    kw_boost = 1.0 + quality_diff * (max_boost - 1.0) / 0.8
+                    vec_boost = max_reduce + (1.0 - quality_diff) * (1.0 - max_reduce) / 0.8
+                else:
+                    # 向量質量更高
+                    kw_boost = max_reduce + (1.0 + quality_diff) * (1.0 - max_reduce) / 0.8
+                    vec_boost = 1.0 + abs(quality_diff) * (max_boost - 1.0) / 0.8
             else:
-                # 中等質量，保持默認比例
-                kw_boost = 1.0
-                vec_boost = 1.0
+                # 質量相近，根據整體質量微調
+                # 整體質量低時，稍微偏向量（模糊匹配更有優勢）
+                # 整體質量高時，稍微偏關鍵詞（精確匹配更可靠）
+                if avg_quality > 0.6:
+                    kw_boost = 1.1
+                    vec_boost = 0.9
+                elif avg_quality < 0.3:
+                    kw_boost = 0.9
+                    vec_boost = 1.1
+                else:
+                    kw_boost = 1.0
+                    vec_boost = 1.0
 
             kw_w *= kw_boost
             vec_w *= vec_boost

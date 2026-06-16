@@ -4,6 +4,17 @@ import pytest
 from unittest.mock import MagicMock
 import math
 
+try:
+    import numpy as _numpy_available
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
+
+pytestmark = pytest.mark.skipif(
+    not HAS_NUMPY,
+    reason="requires numpy"
+)
+
 
 class TestSemanticChunk:
     """Test semantic_chunk function with mocked embedding provider."""

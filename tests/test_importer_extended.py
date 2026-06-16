@@ -1,6 +1,17 @@
 """Extended tests for vault/importer.py - pure functions only"""
 import pytest
 
+try:
+    import numpy as _numpy_available
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
+
+requires_numpy = pytest.mark.skipif(
+    not HAS_NUMPY,
+    reason="requires numpy"
+)
+
 
 class TestDetectChapters:
     def test_detect_chapters_markdown_h1(self):
@@ -301,6 +312,7 @@ class TestSemanticChunk:
         assert len(result) >= 1
 
 
+@requires_numpy
 class TestSummaryGuidedChunk:
     def test_summary_guided_short_text(self):
         from vault.importer import summary_guided_chunk

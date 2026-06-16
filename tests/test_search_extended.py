@@ -6483,7 +6483,11 @@ class TestCrossEncoderRerankerMore:
         from vault.search import CrossEncoderReranker
         import threading
         assert hasattr(CrossEncoderReranker, '_cache_lock')
-        assert isinstance(CrossEncoderReranker._cache_lock, threading.Lock)
+        lock = CrossEncoderReranker._cache_lock
+        # 驗證是鎖類型（相容不同 Python 版本）
+        assert hasattr(lock, 'acquire')
+        assert hasattr(lock, 'release')
+        assert hasattr(lock, '__enter__')
 
 
 # ============================================================================

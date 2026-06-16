@@ -50,17 +50,17 @@ For a broader positioning against Mem0, Letta/MemGPT, Zep, and LangGraph memory,
 
 ---
 
-## Current source status: PR27 / 0.5.0
+## Current source status: PR28 / 0.6.0
 
-The current source tree includes the PR27 memory workflow. In plain language, Vault now behaves less like a loose notebook and more like a small library with a front desk:
+The current source tree includes the PR28 search enhancement release. Building on PR27's candidate-first memory foundation, this release adds tiered search quality improvements and benchmarking tools:
 
-- **Candidate-first memory** — autonomous agents should drop new memories at the front desk first (`vault remember` / `vault_memory_propose`). Privacy, duplicate, metadata, and quality gates inspect the note before it can be promoted.
-- **Safer recall** — keyword search has a weak-match score floor, so a query that should find nothing is less likely to return a random loosely related note. Operators can tune it with `--min-score`.
-- **Search QA with hard negatives** — fixed query sets can now include `expected_no_results: true`, so the test can catch both “forgot the right note” and “hallucinated the wrong note.”
-- **Report-first Dream curation** — `vault dream` writes reports and plans first; `apply_safe` only applies narrow metadata fixes, with backup/rollback support.
-- **Guarded semantic workflow** — optional semantic vectors, provider validation, persistent embedding cache, and deterministic hash-provider smoke tests for CI/local plumbing.
-- **Explicit DB schema status/migration** — inspect and run idempotent SQLite migrations with [`vault db status/migrate`](docs/db_migrations.md), and create/verify/restore local SQLite backups with [`vault db backup/verify-backup/restore`](docs/db_backup_restore.md).
-- **Release gates** — README command smoke, wheel smoke, version parity, secret scan, full-history privacy scan, artifact audit, and public-boundary checks.
+- **Tiered rerank architecture** — lightweight reranker for zero-dependency quality gains, with optional Cross-Encoder reranker for production-grade relevance scoring when `sentence-transformers` or `onnxruntime` is available.
+- **Search benchmark framework** — `benchmarks/search_benchmark.py` provides reproducible before/after comparison of retrieval quality (P@k, R@k, NDCG) and latency across search modes and strategies.
+- **Enhanced info() method** — `VaultSearch.info()` returns full tiered capability status and configuration details (foundation / advanced / premium / flagship layers).
+- **LLM query rewriting** — optional LLM-powered query reformulation that rewrites user queries into more retrieval-friendly forms, controlled by `enable_llm_enhancement` and `use_llm_rewrite`.
+- **Configurable rerank strategy** — choose from `auto`, `lightweight`, `cross_encoder`, or `none` to match your deployment environment and quality needs.
+
+All new features are **optional and backward-compatible**: the default install still uses keyword search with lightweight reranking. Cross-Encoder and LLM enhancements activate automatically when their dependencies are available.
 
 Semantic search is **optional by design**: the base install still works with keyword search only. If you configure a real embedding provider, use [`vault semantic ...`](docs/semantic_search.md) to rebuild vectors, warm caches, and run smoke checks. Deterministic hash embeddings require `--allow-hash` and are for CI/local tests only.
 
@@ -73,8 +73,10 @@ Older repository hygiene tools from 0.4.3 are documented in [`scripts/README.md`
 | Area | Capability |
 |---|---|
 | Knowledge storage | Markdown `raw/` files compiled into local SQLite |
-| Search | FTS5/BM25 keyword search with fallback, optional vector search, hybrid search |
+| Search | FTS5/BM25 keyword search with fallback, optional vector search, hybrid search, query expansion |
+| Reranking | lightweight zero-dependency reranker (default), optional Cross-Encoder reranker for production-grade relevance |
 | Embeddings | optional ONNX Runtime or Ollama embeddings, provider guard, durable cache workflows |
+| LLM enhancement | optional LLM-powered query rewriting for better retrieval recall |
 | Memory layers | L0 identity, L1 core facts, L2 recent context, L3 deep knowledge |
 | Knowledge graph | inferred entities/edges and graph expansion |
 | Document Map | section/claim navigation and bounded `read_range` citations ([policy and demo](docs/document_map_citation_policy.md)) |
@@ -82,6 +84,7 @@ Older repository hygiene tools from 0.4.3 are documented in [`scripts/README.md`
 | Memory curator | `vault remember`, `vault promote`, and MCP propose/promote tools for gated autonomous memory writes |
 | Dream reports | `vault dream` produces report-first memory curation summaries for stale, duplicate, weak, or poorly-described knowledge ([dream workflow](docs/dream_workflow.md)) |
 | Quality tools | lint, freshness, convergence, cross-validation, dedup, Search QA snapshots ([benchmarking guide](docs/search_qa_benchmarking.md)), semantic smoke/warm workflows |
+| Benchmarking | `benchmarks/search_benchmark.py` for reproducible before/after retrieval quality and latency comparison |
 | Repository governance | source-checkout public-boundary gate, artifact audit, and safe-only cleanup helpers ([governance guide](docs/repo_governance.md)) |
 | Optional remote sync | Supabase sync scripts for teams or remote read paths |
 | Local skill registry | experimental `vault skill` commands for sharing reusable workflows inside a local Vault; not a hosted marketplace |
@@ -96,6 +99,9 @@ These features exist today, but their maturity differs. Core local commands are 
 |---|---|---|
 | Document Map | Navigate sections/claims and read bounded source ranges with citations | usable, still evolving |
 | Search QA | Run fixed query sets and compare before/after retrieval metrics; see the [benchmarking guide](docs/search_qa_benchmarking.md) and source-checkout fixtures under `benchmarks/search_qa/` | usable for deterministic regression checks |
+| Cross-Encoder reranker | Production-grade relevance scoring for search result reranking via cross-encoder models | usable with optional deps |
+| Search benchmark framework | Reproducible before/after comparison of retrieval quality and latency across search strategies | usable |
+| LLM query rewriting | LLM-powered query reformulation for improved retrieval recall | usable with optional deps |
 | Convergence checks | Detect whether a knowledge entry has enough definition, procedure, and edge-case detail | experimental |
 | Cross-validation | Verify extracted claims across different model families | experimental / optional-model dependent |
 | Freshness + dedup | Mark stale entries and detect repeated knowledge | experimental |

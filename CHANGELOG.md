@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.6.0] — 2026-06-16
+
+### Added
+- **Cross-Encoder 重排序**（P1）：支援 Cross-Encoder 模型進行精確的相關性評分，可選依賴 sentence-transformers 或 onnxruntime，自動偵測可用性，模型快取避免重複載入。
+- **基準測試框架**（P1）：新增 `benchmarks/search_benchmark.py` 基準測試工具，可比較不同搜尋策略的效果（關鍵詞/混合/語義、有無 rerank、有無查詢擴展），指標包含精確率、召回率、NDCG、查詢延遲。
+- **完善 info() 方法**（P1）：`VaultSearch.info()` 現在返回完整的能力分級資訊與配置參數，包含基礎層、進階層、高階層、旗艦層的可用性功能。
+- **LLM 查詢改寫**（P2）：支援透過 LLM 將用戶查詢改寫為更適合檢索的形式，可選依賴 LLM provider，受 `enable_llm_enhancement` 控制，整合進 `search()` 方法。
+- **rerank_strategy 參數**：支援 `auto`、`lightweight`、`cross_encoder`、`none` 四種策略，可靈活配置重排序方式。
+- **cross_encoder_model 參數**：可指定 Cross-Encoder 模型名稱。
+- **use_llm_rewrite 參數**：搜尋時可選擇是否使用 LLM 查詢改寫。
+
+### Changed
+- `_rerank` 靜態方法保留向後兼容，實例級 rerank 邏輯透過 `_rerank_with_strategy` 方法實現，支援策略選擇。
+- `has_cross_encoder` 屬性現在會實際偵測 Cross-Encoder 模型的可用性，而非僅傳回 False。
+- `has_llm` 屬性與 LLM 查詢改寫功能整合，提供更準確的能力偵測。
+
+### Verification
+- 所有原有測試通過（1317+）。
+- Cross-Encoder 功能在有套件時自動啟用，無套件時優雅降級。
+- 基準測試腳本可正常執行並輸出比較結果。
+- LLM 查詢改寫功能在有可用 LLM provider 時正常工作。
+
 ## [0.5.0] — 2026-06-12
 
 ### Added

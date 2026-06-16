@@ -1,0 +1,706 @@
+[
+  {
+    "name": "keyword_no_rerank",
+    "num_queries": 15,
+    "precision_at_1": 0.8666666666666667,
+    "precision_at_3": 0.3777777777777777,
+    "precision_at_5": 0.2266666666666667,
+    "recall_at_1": 0.7133333333333333,
+    "recall_at_3": 0.86,
+    "recall_at_5": 0.86,
+    "ndcg_at_3": 0.8749467018740255,
+    "ndcg_at_5": 0.8649235732121292,
+    "mean_latency_ms": 1.0670297337734762,
+    "p95_latency_ms": 9.200066997436807,
+    "total_latency_ms": 16.005446006602142,
+    "results": [
+      {
+        "query": "Python 程式語言",
+        "retrieved_docs": [
+          1,
+          9
+        ],
+        "retrieved_scores": [
+          1.0,
+          0.5
+        ],
+        "latency_ms": 3.6115610055276193
+      },
+      {
+        "query": "資料庫與 SQL",
+        "retrieved_docs": [
+          2
+        ],
+        "retrieved_scores": [
+          0.5
+        ],
+        "latency_ms": 0.1350009988527745
+      },
+      {
+        "query": "機器學習和神經網路",
+        "retrieved_docs": [
+          4,
+          3
+        ],
+        "retrieved_scores": [
+          0.5,
+          0.5
+        ],
+        "latency_ms": 0.2399279983364977
+      },
+      {
+        "query": "自然語言處理 NLP",
+        "retrieved_docs": [
+          5
+        ],
+        "retrieved_scores": [
+          1.0
+        ],
+        "latency_ms": 0.5713610007660463
+      },
+      {
+        "query": "向量嵌入語義搜尋",
+        "retrieved_docs": [
+          6
+        ],
+        "retrieved_scores": [
+          1.0
+        ],
+        "latency_ms": 0.1581149990670383
+      },
+      {
+        "query": "RAG 檢索增強生成",
+        "retrieved_docs": [
+          7,
+          6
+        ],
+        "retrieved_scores": [
+          1.0,
+          1.0
+        ],
+        "latency_ms": 0.12830099876737222
+      },
+      {
+        "query": "前端網頁開發",
+        "retrieved_docs": [
+          9,
+          8,
+          12
+        ],
+        "retrieved_scores": [
+          0.5,
+          0.5,
+          0.5
+        ],
+        "latency_ms": 0.26041800447274
+      },
+      {
+        "query": "後端 API 設計",
+        "retrieved_docs": [
+          9
+        ],
+        "retrieved_scores": [
+          1.0
+        ],
+        "latency_ms": 0.6808139951317571
+      },
+      {
+        "query": "資訊安全加密技術",
+        "retrieved_docs": [
+          10
+        ],
+        "retrieved_scores": [
+          0.5
+        ],
+        "latency_ms": 0.3594650042941794
+      },
+      {
+        "query": "雲端容器 Docker",
+        "retrieved_docs": [
+          11
+        ],
+        "retrieved_scores": [
+          0.5
+        ],
+        "latency_ms": 0.09501099702902138
+      },
+      {
+        "query": "Git 版本控制軟體工程",
+        "retrieved_docs": [
+          12
+        ],
+        "retrieved_scores": [
+          1.0
+        ],
+        "latency_ms": 9.200066997436807
+      },
+      {
+        "query": "深度學習 Transformer",
+        "retrieved_docs": [
+          4
+        ],
+        "retrieved_scores": [
+          1.0
+        ],
+        "latency_ms": 0.14118100079940632
+      },
+      {
+        "query": "人工智慧的應用",
+        "retrieved_docs": [
+          3,
+          5
+        ],
+        "retrieved_scores": [
+          0.5,
+          0.5
+        ],
+        "latency_ms": 0.1892420041258447
+      },
+      {
+        "query": "如何學習程式設計",
+        "retrieved_docs": [
+          1
+        ],
+        "retrieved_scores": [
+          0.5
+        ],
+        "latency_ms": 0.13782599853584543
+      },
+      {
+        "query": "網站開發全端技術",
+        "retrieved_docs": [],
+        "retrieved_scores": [],
+        "latency_ms": 0.09715500345919281
+      }
+    ]
+  },
+  {
+    "name": "keyword_lightweight_rerank",
+    "num_queries": 15,
+    "precision_at_1": 0.9333333333333333,
+    "precision_at_3": 0.3777777777777777,
+    "precision_at_5": 0.2266666666666667,
+    "recall_at_1": 0.7799999999999999,
+    "recall_at_3": 0.86,
+    "recall_at_5": 0.86,
+    "ndcg_at_3": 0.8995513849692617,
+    "ndcg_at_5": 0.8895282563073653,
+    "mean_latency_ms": 0.33881266523773473,
+    "p95_latency_ms": 1.452373995562084,
+    "total_latency_ms": 5.082189978566021,
+    "results": [
+      {
+        "query": "Python 程式語言",
+        "retrieved_docs": [
+          1,
+          9
+        ],
+        "retrieved_scores": [
+          4.456,
+          0.5378709677419355
+        ],
+        "latency_ms": 1.452373995562084
+      },
+      {
+        "query": "資料庫與 SQL",
+        "retrieved_docs": [
+          2
+        ],
+        "retrieved_scores": [
+          2.1550000000000002
+        ],
+        "latency_ms": 0.13545100227929652
+      },
+      {
+        "query": "機器學習和神經網路",
+        "retrieved_docs": [
+          4,
+          3
+        ],
+        "retrieved_scores": [
+          2.289862254506322,
+          2.0502222222222226
+        ],
+        "latency_ms": 0.223893002839759
+      },
+      {
+        "query": "自然語言處理 NLP",
+        "retrieved_docs": [
+          5
+        ],
+        "retrieved_scores": [
+          3.4463265306122453
+        ],
+        "latency_ms": 0.1304440011153929
+      },
+      {
+        "query": "向量嵌入語義搜尋",
+        "retrieved_docs": [
+          6
+        ],
+        "retrieved_scores": [
+          3.017785714285714
+        ],
+        "latency_ms": 0.15280699881259352
+      },
+      {
+        "query": "RAG 檢索增強生成",
+        "retrieved_docs": [
+          7,
+          6
+        ],
+        "retrieved_scores": [
+          3.6989387755102037,
+          1.2152857142857143
+        ],
+        "latency_ms": 0.16887100355233997
+      },
+      {
+        "query": "前端網頁開發",
+        "retrieved_docs": [
+          8,
+          9,
+          12
+        ],
+        "retrieved_scores": [
+          2.6896666666666667,
+          1.2008817204301074,
+          0.5477894736842106
+        ],
+        "latency_ms": 0.21879599808016792
+      },
+      {
+        "query": "後端 API 設計",
+        "retrieved_docs": [
+          9
+        ],
+        "retrieved_scores": [
+          3.774
+        ],
+        "latency_ms": 0.5626379934255965
+      },
+      {
+        "query": "資訊安全加密技術",
+        "retrieved_docs": [
+          10
+        ],
+        "retrieved_scores": [
+          2.0075000000000003
+        ],
+        "latency_ms": 0.23735399736324325
+      },
+      {
+        "query": "雲端容器 Docker",
+        "retrieved_docs": [
+          11
+        ],
+        "retrieved_scores": [
+          2.128
+        ],
+        "latency_ms": 0.14566699974238873
+      },
+      {
+        "query": "Git 版本控制軟體工程",
+        "retrieved_docs": [
+          12
+        ],
+        "retrieved_scores": [
+          2.862
+        ],
+        "latency_ms": 0.2796869957819581
+      },
+      {
+        "query": "深度學習 Transformer",
+        "retrieved_docs": [
+          4
+        ],
+        "retrieved_scores": [
+          3.344857142857143
+        ],
+        "latency_ms": 0.14970299525884911
+      },
+      {
+        "query": "人工智慧的應用",
+        "retrieved_docs": [
+          3,
+          5
+        ],
+        "retrieved_scores": [
+          1.2183571428571427,
+          1.0574725274725274
+        ],
+        "latency_ms": 0.9295150011894293
+      },
+      {
+        "query": "如何學習程式設計",
+        "retrieved_docs": [
+          1
+        ],
+        "retrieved_scores": [
+          1.7165424528301887
+        ],
+        "latency_ms": 0.18091999663738534
+      },
+      {
+        "query": "網站開發全端技術",
+        "retrieved_docs": [],
+        "retrieved_scores": [],
+        "latency_ms": 0.11406999692553654
+      }
+    ]
+  },
+  {
+    "name": "keyword_query_expansion",
+    "num_queries": 15,
+    "precision_at_1": 0.8666666666666667,
+    "precision_at_3": 0.3777777777777777,
+    "precision_at_5": 0.2266666666666667,
+    "recall_at_1": 0.7133333333333333,
+    "recall_at_3": 0.86,
+    "recall_at_5": 0.86,
+    "ndcg_at_3": 0.8749467018740255,
+    "ndcg_at_5": 0.8649235732121292,
+    "mean_latency_ms": 0.4600788665508541,
+    "p95_latency_ms": 2.7577289947657846,
+    "total_latency_ms": 6.9011829982628115,
+    "results": [
+      {
+        "query": "Python 程式語言",
+        "retrieved_docs": [
+          1,
+          9
+        ],
+        "retrieved_scores": [
+          1.0,
+          0.5
+        ],
+        "latency_ms": 0.14864200056763366
+      },
+      {
+        "query": "資料庫與 SQL",
+        "retrieved_docs": [
+          2
+        ],
+        "retrieved_scores": [
+          0.5
+        ],
+        "latency_ms": 0.3845930041279644
+      },
+      {
+        "query": "機器學習和神經網路",
+        "retrieved_docs": [
+          4,
+          3
+        ],
+        "retrieved_scores": [
+          0.5,
+          0.5
+        ],
+        "latency_ms": 0.2701119956327602
+      },
+      {
+        "query": "自然語言處理 NLP",
+        "retrieved_docs": [
+          5,
+          9
+        ],
+        "retrieved_scores": [
+          1.0,
+          0.45
+        ],
+        "latency_ms": 2.7577289947657846
+      },
+      {
+        "query": "向量嵌入語義搜尋",
+        "retrieved_docs": [
+          6
+        ],
+        "retrieved_scores": [
+          1.0
+        ],
+        "latency_ms": 0.27848399622598663
+      },
+      {
+        "query": "RAG 檢索增強生成",
+        "retrieved_docs": [
+          7,
+          6
+        ],
+        "retrieved_scores": [
+          1.0,
+          1.0
+        ],
+        "latency_ms": 0.9254990000044927
+      },
+      {
+        "query": "前端網頁開發",
+        "retrieved_docs": [
+          9,
+          8,
+          12
+        ],
+        "retrieved_scores": [
+          0.5,
+          0.5,
+          0.5
+        ],
+        "latency_ms": 0.3216889963368885
+      },
+      {
+        "query": "後端 API 設計",
+        "retrieved_docs": [
+          9
+        ],
+        "retrieved_scores": [
+          1.0
+        ],
+        "latency_ms": 0.3560699988156557
+      },
+      {
+        "query": "資訊安全加密技術",
+        "retrieved_docs": [
+          10
+        ],
+        "retrieved_scores": [
+          0.5
+        ],
+        "latency_ms": 0.24587700318079442
+      },
+      {
+        "query": "雲端容器 Docker",
+        "retrieved_docs": [
+          11
+        ],
+        "retrieved_scores": [
+          0.5
+        ],
+        "latency_ms": 0.1626130033400841
+      },
+      {
+        "query": "Git 版本控制軟體工程",
+        "retrieved_docs": [
+          12
+        ],
+        "retrieved_scores": [
+          1.0
+        ],
+        "latency_ms": 0.18225199892185628
+      },
+      {
+        "query": "深度學習 Transformer",
+        "retrieved_docs": [
+          4
+        ],
+        "retrieved_scores": [
+          1.0
+        ],
+        "latency_ms": 0.1650060003157705
+      },
+      {
+        "query": "人工智慧的應用",
+        "retrieved_docs": [
+          3,
+          5
+        ],
+        "retrieved_scores": [
+          0.5,
+          0.5
+        ],
+        "latency_ms": 0.2709640029934235
+      },
+      {
+        "query": "如何學習程式設計",
+        "retrieved_docs": [
+          1
+        ],
+        "retrieved_scores": [
+          0.5
+        ],
+        "latency_ms": 0.2330170027562417
+      },
+      {
+        "query": "網站開發全端技術",
+        "retrieved_docs": [],
+        "retrieved_scores": [],
+        "latency_ms": 0.19863600027747452
+      }
+    ]
+  },
+  {
+    "name": "keyword_full",
+    "num_queries": 15,
+    "precision_at_1": 0.9333333333333333,
+    "precision_at_3": 0.3777777777777777,
+    "precision_at_5": 0.2266666666666667,
+    "recall_at_1": 0.7799999999999999,
+    "recall_at_3": 0.86,
+    "recall_at_5": 0.86,
+    "ndcg_at_3": 0.8995513849692617,
+    "ndcg_at_5": 0.8895282563073653,
+    "mean_latency_ms": 0.44026053268074367,
+    "p95_latency_ms": 1.343572002951987,
+    "total_latency_ms": 6.603907990211155,
+    "results": [
+      {
+        "query": "Python 程式語言",
+        "retrieved_docs": [
+          1,
+          9
+        ],
+        "retrieved_scores": [
+          4.456,
+          0.5378709677419355
+        ],
+        "latency_ms": 0.7819149977876805
+      },
+      {
+        "query": "資料庫與 SQL",
+        "retrieved_docs": [
+          2
+        ],
+        "retrieved_scores": [
+          2.1550000000000002
+        ],
+        "latency_ms": 1.343572002951987
+      },
+      {
+        "query": "機器學習和神經網路",
+        "retrieved_docs": [
+          4,
+          3
+        ],
+        "retrieved_scores": [
+          2.289862254506322,
+          2.0502222222222226
+        ],
+        "latency_ms": 0.3366210003150627
+      },
+      {
+        "query": "自然語言處理 NLP",
+        "retrieved_docs": [
+          5,
+          9
+        ],
+        "retrieved_scores": [
+          5.446326530612245,
+          0.6317880184331799
+        ],
+        "latency_ms": 1.010926003800705
+      },
+      {
+        "query": "向量嵌入語義搜尋",
+        "retrieved_docs": [
+          6
+        ],
+        "retrieved_scores": [
+          3.017785714285714
+        ],
+        "latency_ms": 0.2928460016846657
+      },
+      {
+        "query": "RAG 檢索增強生成",
+        "retrieved_docs": [
+          7,
+          6
+        ],
+        "retrieved_scores": [
+          3.6989387755102037,
+          1.2152857142857143
+        ],
+        "latency_ms": 0.4765799967572093
+      },
+      {
+        "query": "前端網頁開發",
+        "retrieved_docs": [
+          8,
+          9,
+          12
+        ],
+        "retrieved_scores": [
+          2.6896666666666667,
+          1.2008817204301074,
+          0.5477894736842106
+        ],
+        "latency_ms": 0.33760299993446097
+      },
+      {
+        "query": "後端 API 設計",
+        "retrieved_docs": [
+          9
+        ],
+        "retrieved_scores": [
+          3.774
+        ],
+        "latency_ms": 0.3718539956025779
+      },
+      {
+        "query": "資訊安全加密技術",
+        "retrieved_docs": [
+          10
+        ],
+        "retrieved_scores": [
+          2.0075000000000003
+        ],
+        "latency_ms": 0.2633620024425909
+      },
+      {
+        "query": "雲端容器 Docker",
+        "retrieved_docs": [
+          11
+        ],
+        "retrieved_scores": [
+          2.128
+        ],
+        "latency_ms": 0.18172099953517318
+      },
+      {
+        "query": "Git 版本控制軟體工程",
+        "retrieved_docs": [
+          12
+        ],
+        "retrieved_scores": [
+          2.862
+        ],
+        "latency_ms": 0.20504499843809754
+      },
+      {
+        "query": "深度學習 Transformer",
+        "retrieved_docs": [
+          4
+        ],
+        "retrieved_scores": [
+          3.344857142857143
+        ],
+        "latency_ms": 0.19295699894428253
+      },
+      {
+        "query": "人工智慧的應用",
+        "retrieved_docs": [
+          3,
+          5
+        ],
+        "retrieved_scores": [
+          1.2183571428571427,
+          1.0574725274725274
+        ],
+        "latency_ms": 0.300397994578816
+      },
+      {
+        "query": "如何學習程式設計",
+        "retrieved_docs": [
+          1
+        ],
+        "retrieved_scores": [
+          1.7165424528301887
+        ],
+        "latency_ms": 0.2610689989523962
+      },
+      {
+        "query": "網站開發全端技術",
+        "retrieved_docs": [],
+        "retrieved_scores": [],
+        "latency_ms": 0.2474389984854497
+      }
+    ]
+  }
+]

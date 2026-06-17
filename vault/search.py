@@ -559,6 +559,15 @@ class VaultSearch:
         # LLM 查詢改寫設定
         self._enable_llm_query_rewrite = enable_llm_query_rewrite
         self._llm_query_rewrite_strategy = llm_query_rewrite_strategy
+        # 快取設定
+        self._enable_cache = False  # 預設關閉，需要時手動開啟
+        self._cache_size = 128
+        self._cache_ttl = 60  # 快取有效期（秒）
+        # 快取存儲：{cache_key: (timestamp, results)}
+        self._cache = {}
+        # 快取命中統計
+        self._cache_hits = 0
+        self._cache_misses = 0
         # 快取已偵測的能力狀態
         self._cached_embed_available = None
         self._cached_rerank_available = None
@@ -1166,6 +1175,102 @@ class VaultSearch:
             # LLM 改寫失敗時，返回原始查詢
             return query
 
+    # ── 快取管理 ──────────────────────────────────────────
+
+    def set_cache_config(
+        self,
+        enabled: Optional[bool] = None,
+        max_size: Optional[int] = None,
+        ttl_seconds: Optional[int] = None,
+    ) -> None:
+        """
+        配置搜尋結果快取。
+
+        Args:
+            enabled: 是否啟用快取（None 表示不改變）
+            max_size: 最大快取條目數（None 表示不改變）
+            ttl_seconds: 快取有效期（秒，None 表示不改變）
+        """
+        if enabled is not None:
+            self._enable_cache = enabled
+        if max_size is not None:
+            self._cache_size = max(max_size, 1)
+            # 如果縮小了快取大小，清理多餘的條目
+            if len(self._cache) > self._cache_size:
+                self._evict_oldest(len(self._cache) - self._cache_size)
+        if ttl_seconds is not None:
+            self._cache_ttl = max(ttl_seconds, 1)
+
+    def clear_cache(self) -> None:
+        """清空所有快取。"""
+        self._cache.clear()
+        self._cache_hits = 0
+        self._cache_misses = 0
+
+    def get_cache_stats(self) -> dict:
+        """取得快取統計資訊。"""
+        total = self._cache_hits + self._cache_misses
+        hit_rate = (self._cache_hits / total * 100) if total > 0 else 0.0
+        return {
+            "enabled": self._enable_cache,
+            "size": len(self._cache),
+            "max_size": self._cache_size,
+            "ttl_seconds": self._cache_ttl,
+            "hits": self._cache_hits,
+            "misses": self._cache_misses,
+            "hit_rate_percent": round(hit_rate, 1),
+        }
+
+    def _get_cache_key(self, query: str, **kwargs) -> str:
+        """生成快取鍵值。"""
+        # 將影響結果的參數都納入鍵值
+        key_parts = [query]
+        for k in sorted(kwargs.keys()):
+            key_parts.append(f"{k}={kwargs[k]}")
+        return "|".join(key_parts)
+
+    def _get_from_cache(self, cache_key: str) -> Optional[list[dict]]:
+        """從快取取得結果，過期則返回 None。"""
+        if not self._enable_cache:
+            return None
+
+        import time
+        entry = self._cache.get(cache_key)
+        if entry is None:
+            self._cache_misses += 1
+            return None
+
+        timestamp, results = entry
+        # 檢查是否過期
+        if time.time() - timestamp > self._cache_ttl:
+            del self._cache[cache_key]
+            self._cache_misses += 1
+            return None
+
+        self._cache_hits += 1
+        # 返回深拷貝，避免外部修改影響快取
+        return [dict(r) for r in results]
+
+    def _set_to_cache(self, cache_key: str, results: list[dict]) -> None:
+        """將結果存入快取。"""
+        if not self._enable_cache:
+            return
+
+        import time
+        # 如果快取已滿，驅逐最舊的條目
+        if len(self._cache) >= self._cache_size and cache_key not in self._cache:
+            self._evict_oldest(1)
+
+        # 存儲深拷貝
+        self._cache[cache_key] = (time.time(), [dict(r) for r in results])
+
+    def _evict_oldest(self, count: int) -> None:
+        """驅逐最舊的快取條目。"""
+        # 按時間排序，刪除最舊的
+        items = sorted(self._cache.items(), key=lambda x: x[1][0])
+        for i in range(min(count, len(items))):
+            del self._cache[items[i][0]]
+
     def info(self) -> dict:
         """
         取得目前可用的搜尋能力摘要。
@@ -1351,6 +1456,29 @@ class VaultSearch:
         # ── 安全防線：空查詢 / None 檢查 ──
         if query is None or not isinstance(query, str) or not query.strip():
             return []
+
+        # 計算快取鍵（無論是否啟用快取都計算，方便後續使用）
+        cache_key = None
+        if self._enable_cache:
+            cache_key = self._get_cache_key(
+                query=query,
+                mode=mode,
+                limit=limit,
+                min_trust=min_trust,
+                layer=layer,
+                category=category,
+                graph_expand=graph_expand,
+                use_rerank=use_rerank,
+                compact=compact,
+                min_score=min_score,
+                use_query_expansion=use_query_expansion,
+                use_llm_rewrite=use_llm_rewrite,
+                normalize_scores=normalize_scores,
+                include_snippet=include_snippet,
+            )
+            cached = self._get_from_cache(cache_key)
+            if cached is not None:
+                return cached
 
         # ── 安全防線：min_score 範圍驗證 ──
         if min_score is not None:
@@ -1552,6 +1680,10 @@ class VaultSearch:
                     r["_snippet"] = self._generate_snippet(content, query)
                 else:
                     r["_snippet"] = ""
+
+        # ── 存入快取 ──
+        if cache_key is not None:
+            self._set_to_cache(cache_key, results)
 
         if compact:
             return [self._compact_result(r) for r in results]

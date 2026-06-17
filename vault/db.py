@@ -1127,6 +1127,9 @@ class VaultDB:
         if min_trust > 1:
             min_trust = 1.0
 
+        # 是否需要權限過濾
+        need_perm_check = min_trust > 0.0 or layer is not None or category is not None
+
         visited = {node_id}
         frontier = {node_id}
         # 存儲所有發現的鄰居及其屬性（id -> {distance, relation, weight}）
@@ -1134,6 +1137,9 @@ class VaultDB:
 
         for depth in range(1, max_depth + 1):
             next_frontier = set()
+            # 收集本層所有原始鄰居（未經權限檢查
+            layer_neighbors: dict[int, dict] = {}
+
             for nid in frontier:
                 if len(visited) >= MAX_VISITED:
                     break
@@ -1146,15 +1152,48 @@ class VaultDB:
                     if len(visited) >= MAX_VISITED:
                         break
                     neighbor = row["target_id"] if row["source_id"] == nid else row["source_id"]
-                    if neighbor not in visited:
-                        visited.add(neighbor)
-                        next_frontier.add(neighbor)
-                        all_neighbors[neighbor] = {
+                    if neighbor not in visited and neighbor not in layer_neighbors:
+                        layer_neighbors[neighbor] = {
                             "id": neighbor,
                             "distance": depth,
                             "relation": row["relation"],
                             "weight": row["weight"],
                         }
+
+            # 批量權限檢查（SQL 層級過濾，緩解側信道風險）
+            if need_perm_check and layer_neighbors:
+                neighbor_ids = list(layer_neighbors.keys())
+                placeholders = ",".join("?" * len(neighbor_ids))
+
+                where_conditions = [f"id IN ({placeholders})", "trust >= ?"]
+                params: list = neighbor_ids + [min_trust]
+
+                if layer is not None:
+                    where_conditions.append("layer = ?")
+                    params.append(layer)
+                if category is not None:
+                    where_conditions.append("category = ?")
+                    params.append(category)
+
+                where_clause = " AND ".join(where_conditions)
+                sql = f"SELECT id, trust, layer, category FROM knowledge WHERE {where_clause}"
+
+                valid_rows = self.conn.execute(sql, params).fetchall()
+                valid_ids = {row["id"] for row in valid_rows}
+
+                # 只保留有權限的節點
+                for nid in valid_ids:
+                    if nid not in visited:
+                        visited.add(nid)
+                        next_frontier.add(nid)
+                        all_neighbors[nid] = layer_neighbors[nid]
+            else:
+                # 不需要權限檢查，直接加入
+                for nid, info in layer_neighbors.items():
+                    if nid not in visited:
+                        visited.add(nid)
+                        next_frontier.add(nid)
+                        all_neighbors[nid] = info
 
             if len(visited) >= MAX_VISITED:
                 break
@@ -1162,35 +1201,8 @@ class VaultDB:
             if not frontier:
                 break
 
-        # 權限過濾
-        if min_trust > 0.0 or layer is not None or category is not None:
-            if not all_neighbors:
-                return []
-
-            neighbor_ids = list(all_neighbors.keys())
-            placeholders = ",".join("?" * len(neighbor_ids))
-
-            where_conditions = [f"id IN ({placeholders})", "trust >= ?"]
-            params: list = neighbor_ids + [min_trust]
-
-            if layer is not None:
-                where_conditions.append("layer = ?")
-                params.append(layer)
-            if category is not None:
-                where_conditions.append("category = ?")
-                params.append(category)
-
-            where_clause = " AND ".join(where_conditions)
-            sql = f"SELECT id FROM knowledge WHERE {where_clause} LIMIT ?"
-            params.append(MAX_NEIGHBORS)
-
-            valid_rows = self.conn.execute(sql, params).fetchall()
-            valid_ids = {row["id"] for row in valid_rows}
-
-            results = [all_neighbors[nid] for nid in valid_ids if nid in all_neighbors]
-        else:
-            results = list(all_neighbors.values())[:MAX_NEIGHBORS]
-
+        # 返回結果
+        results = list(all_neighbors.values())[:MAX_NEIGHBORS]
         return results
 
     # ── 實體操作 ────────────────────────────────────────────

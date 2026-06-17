@@ -38,6 +38,11 @@ class VaultDB:
         7: "memory_candidate_quality_status",
     }
 
+    @staticmethod
+    def _escape_like_pattern(term: str) -> str:
+        """轉義 LIKE 模式中的特殊字符，防止通配符注入。"""
+        return term.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+
     def __init__(self, db_path: str | Path = "vault.db"):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -980,11 +985,7 @@ class VaultDB:
         if query is None:
             return []
 
-        # 轉義 LIKE 特殊字符，防止通配符注入
-        def _escape_like_pattern(term: str) -> str:
-            return term.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
-
-        escaped = _escape_like_pattern(query)
+        escaped = self._escape_like_pattern(query)
         pattern = f"%{escaped}%"
 
         sql = """
@@ -1105,6 +1106,11 @@ class VaultDB:
         layer: 分層過濾
         category: 分類過濾
         """
+        # 參數驗證
+        if node_id is None or not isinstance(node_id, (int, float)):
+            return []
+        node_id = int(node_id)
+
         MAX_DEPTH = 10
         MAX_NEIGHBORS = 200  # 最大返回鄰居數量
         MAX_VISITED = 500    # 最大遍歷節點數，防止密集圖 DoS
@@ -1112,6 +1118,14 @@ class VaultDB:
             max_depth = MAX_DEPTH
         if max_depth < 0:
             max_depth = 0
+
+        # min_weight 與 min_trust 範圍保護
+        if min_weight < 0:
+            min_weight = 0.0
+        if min_trust < 0:
+            min_trust = 0.0
+        if min_trust > 1:
+            min_trust = 1.0
 
         visited = {node_id}
         frontier = {node_id}
@@ -1328,10 +1342,6 @@ class VaultDB:
         limit: int = 20,
     ) -> list[dict]:
         """搜尋技能：關鍵字 + 可選過濾。"""
-        # 轉義 LIKE 特殊字符，防止通配符注入
-        def _escape_like_pattern(term: str) -> str:
-            return term.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
-
         conditions = ["trust >= ?"]
         params: list = [min_trust]
 
@@ -1340,13 +1350,13 @@ class VaultDB:
                 "(name LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' "
                 "OR capabilities LIKE ? ESCAPE '\\' OR content_raw LIKE ? ESCAPE '\\')"
             )
-            escaped = _escape_like_pattern(query)
+            escaped = self._escape_like_pattern(query)
             pattern = f"%{escaped}%"
             params.extend([pattern, pattern, pattern, pattern])
 
         if capabilities:
             conditions.append("capabilities LIKE ? ESCAPE '\\'")
-            escaped_cap = _escape_like_pattern(capabilities)
+            escaped_cap = self._escape_like_pattern(capabilities)
             params.append(f"%{escaped_cap}%")
 
         if category:

@@ -757,8 +757,24 @@ class VaultDB:
         self.conn.commit()
         return knowledge_id
 
+    # Allowed column names for update_knowledge to prevent SQL injection
+    _SAFE_COLUMNS = frozenset({
+        "title", "content_raw", "content_hash", "category", "layer",
+        "tags", "trust", "source", "source_url", "author", "status",
+        "knowledge_id", "knowledge_title", "node_uid", "path", "heading",
+        "level", "line_start", "line_end", "summary", "token_estimate",
+        "content_preview", "updated_at", "created_at", "claim", "claim_uid",
+        "context_text", "context_file", "claim_type", "claim_category",
+        "claim_confidence", "claim_supporting_text", "is_correct", "error_text",
+        "error_type", "error_severity",
+    })
+
     def update_knowledge(self, id: int, **fields) -> bool:
         """更新知識欄位。"""
+        if not fields:
+            return False
+        # Whitelist validation to prevent SQL injection via column names
+        fields = {k: v for k, v in fields.items() if k in self._SAFE_COLUMNS}
         if not fields:
             return False
         fields["updated_at"] = datetime.now(timezone.utc).isoformat()

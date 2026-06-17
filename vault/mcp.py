@@ -823,6 +823,26 @@ TOOLS = [
                     "description": "最多回傳幾筆（預設 10）",
                     "default": 10
                 },
+                "offset": {
+                    "type": "integer",
+                    "description": "跳過前 N 筆（分頁用，預設 0）",
+                    "default": 0
+                },
+                "normalize_scores": {
+                    "type": "boolean",
+                    "description": "是否對分數進行標準化（預設 false）",
+                    "default": false
+                },
+                "include_snippet": {
+                    "type": "boolean",
+                    "description": "是否在結果中包含內容片段（預設 false）",
+                    "default": false
+                },
+                "fields": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "指定回傳欄位（如 ['id', 'title', 'best_claim']），預設全欄位"
+                },
                 "compact": {
                     "type": "boolean",
                     "description": "回傳精簡 payload（MCP 預設 true；設為 false 可取得含 content_preview 的完整輸出）",
@@ -1073,6 +1093,10 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 query=arguments.get("query", ""),
                 mode=arguments.get("mode", "auto"),
                 limit=arguments.get("limit", 10),
+                offset=arguments.get("offset", 0),
+                normalize_scores=arguments.get("normalize_scores", False),
+                include_snippet=arguments.get("include_snippet", False),
+                fields=arguments.get("fields"),
                 min_trust=0.0,
                 compact=compact,
             )

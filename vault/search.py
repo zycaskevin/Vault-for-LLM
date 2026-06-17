@@ -1524,10 +1524,6 @@ class VaultSearch:
         if graph_expand < 0:
             graph_expand = 0
 
-        # 空查詢直接返回空結果
-        if not query or not query.strip():
-            return []
-
         # LLM 查詢改寫：在查詢擴展之前進行
         if use_llm_rewrite and self._enable_llm_query_rewrite and self.has_llm:
             query = self._rewrite_query_with_llm(query)
@@ -2229,6 +2225,9 @@ class VaultSearch:
                   向量模式的分數為餘弦相似度轉換為 0-1 範圍，
                   與 keyword 模式的匹配率分數含義不同，使用時請注意。
         """
+        # 空查詢防護
+        if not query or not isinstance(query, str) or not query.strip():
+            return []
         if limit > MAX_LIMIT:
             limit = MAX_LIMIT
         embed = self._get_embed()
@@ -2326,6 +2325,9 @@ class VaultSearch:
         Missing providers or missing semantic-index tables are treated as an empty
         explicit semantic result. Provider safety violations intentionally raise.
         """
+        # 空查詢防護
+        if not query or not isinstance(query, str) or not query.strip():
+            return []
         if limit > MAX_LIMIT:
             limit = MAX_LIMIT
         provider = self._semantic_provider(
@@ -2420,6 +2422,9 @@ class VaultSearch:
         支援動態權重調整：根據查詢匹配質量自動調整 keyword/vector 權重。
         支援交叉驗證加分：同時出現在關鍵詞和向量結果中的文檔獲得額外加分。
         """
+        # 空查詢防護
+        if not query or not isinstance(query, str) or not query.strip():
+            return []
         if limit > MAX_LIMIT:
             limit = MAX_LIMIT
         k = 60  # RRF constant

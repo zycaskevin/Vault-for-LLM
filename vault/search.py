@@ -1224,13 +1224,14 @@ class VaultSearch:
         }
 
     def _get_cache_key(self, query: str, **kwargs) -> str:
-        """生成快取鍵值。使用單元分隔符避免鍵值衝突。"""
-        # 使用 ASCII 單元分隔符（\x1F）分隔，避免與查詢內容衝突
-        SEP = "\x1F"
-        key_parts = [query]
-        for k in sorted(kwargs.keys()):
-            key_parts.append(f"{k}={kwargs[k]}")
-        return SEP.join(key_parts)
+        """生成快取鍵值。使用 JSON 序列化 + MD5 哈希，徹底避免鍵值衝突。"""
+        import hashlib
+        import json
+
+        key_data = {"query": query, "params": kwargs}
+        # sort_keys=True 確保參數順序不影響鍵值
+        key_json = json.dumps(key_data, sort_keys=True, default=str)
+        return hashlib.md5(key_json.encode("utf-8")).hexdigest()
 
     def _get_from_cache(self, cache_key: str) -> Optional[list[dict]]:
         """從快取取得結果，過期則返回 None。"""

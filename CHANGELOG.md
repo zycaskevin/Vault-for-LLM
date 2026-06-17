@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.21] — 2026-06-17
+
+### Fixed
+- **混合搜尋向量維度不匹配**：`search_vector()` 在向量維度不匹配時返回空列表而非拋出異常，確保 `_do_search()` 能正確降級到關鍵詞搜尋。
+- **`_do_search()` 降級邏輯**：vector 模式下向量結果為空時，正確標記 `hybrid_mode=false` 並優雅降級到關鍵詞搜尋，避免 hybrid 模式誤判第二來源。
+- **GitHub Actions 升級**：升級 `actions/checkout` v4 → v6、`actions/setup-python` v5 → v6、`actions/upload-artifact` v4 → v6、`codecov/codecov-action` v4 → v5，解決 Node.js 20 棄用警告。
+
+### Modules Affected
+- `vault/search.py`：`VaultSearch.search_vector()`、`VaultSearch._do_search()`
+- `.github/workflows/ci.yml`：所有 action 版本升級
+
+### Impact
+- 向後相容：所有修復均不改變預期行為，僅修復異常場景的處理邏輯。
+- v0.6.20 使用者建議升級至本版本以修復混合搜尋在低維度向量下的失敗問題。
+
+---
+
 ## [0.6.20] — 2026-06-17
 
 ### Fixed

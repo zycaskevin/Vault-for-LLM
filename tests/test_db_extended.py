@@ -123,6 +123,16 @@ class TestKnowledgeCRUD:
         finally:
             db.close()
 
+    def test_update_knowledge_rejects_unknown_fields(self, tmp_path):
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            kid = db.add_knowledge(title="Test", content_raw="test")
+            with pytest.raises(ValueError, match="invalid knowledge update field"):
+                db.update_knowledge(kid, **{"title = 'Injected' --": "bad"})
+        finally:
+            db.close()
+
     def test_delete_knowledge(self, tmp_path):
         db = VaultDB(str(tmp_path / "test.db"))
         db.connect()
@@ -522,6 +532,32 @@ class TestMemoryCandidates:
         finally:
             db.close()
 
+    def test_update_memory_candidate_rejects_unknown_fields(self, tmp_path):
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_memory_candidate({
+                "id": "mem_bad_field",
+                "title": "Original",
+                "content": "original",
+                "layer": "surface",
+                "category": "general",
+                "tags": "",
+                "trust": 0.5,
+                "source": "test",
+                "source_ref": "",
+                "reason": "",
+                "status": "pending",
+                "privacy_status": "public",
+                "duplicate_status": "unique",
+                "quality_status": "pass",
+                "gate_payload_json": "{}",
+            })
+            with pytest.raises(ValueError, match="invalid memory candidate update field"):
+                db.update_memory_candidate("mem_bad_field", **{"status = 'promoted' --": "bad"})
+        finally:
+            db.close()
+
     def test_list_memory_candidates(self, tmp_path):
         db = VaultDB(str(tmp_path / "test.db"))
         db.connect()
@@ -653,6 +689,16 @@ class TestSkills:
         try:
             db.add_skill(name="empty_upd", content_raw="test")
             assert db.update_skill("empty_upd") is False
+        finally:
+            db.close()
+
+    def test_update_skill_rejects_unknown_fields(self, tmp_path):
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_skill(name="safe_skill", content_raw="test")
+            with pytest.raises(ValueError, match="invalid skill update field"):
+                db.update_skill("safe_skill", **{"description = 'x', trust": 1.0})
         finally:
             db.close()
 
@@ -880,5 +926,3 @@ class TestLintResults:
             assert results == []
         finally:
             db.close()
-
-

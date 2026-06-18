@@ -28,6 +28,57 @@ class VaultDB:
     """Vault-for-LLM 資料庫層。"""
 
     SCHEMA_VERSION = 7
+    KNOWLEDGE_UPDATE_COLUMNS = {
+        "title",
+        "layer",
+        "category",
+        "tags",
+        "trust",
+        "content_raw",
+        "content_aaak",
+        "content_hash",
+        "source",
+        "convergence_status",
+        "convergence_score",
+        "convergence_checked_at",
+        "last_verified",
+        "freshness",
+        "summary",
+        "summary_generated_at",
+        "updated_at",
+    }
+    MEMORY_CANDIDATE_UPDATE_COLUMNS = {
+        "updated_at",
+        "title",
+        "content",
+        "layer",
+        "category",
+        "tags",
+        "trust",
+        "source",
+        "source_ref",
+        "reason",
+        "status",
+        "privacy_status",
+        "duplicate_status",
+        "quality_status",
+        "gate_payload_json",
+        "promoted_knowledge_id",
+    }
+    SKILL_UPDATE_COLUMNS = {
+        "name",
+        "version",
+        "agent_source",
+        "category",
+        "capabilities",
+        "dependencies",
+        "trust",
+        "content_raw",
+        "content_hash",
+        "description",
+        "updated_at",
+        "last_synced",
+    }
     MIGRATIONS = {
         1: "initial_core_tables",
         2: "graph_and_skill_tables",
@@ -757,26 +808,13 @@ class VaultDB:
         self.conn.commit()
         return knowledge_id
 
-    # Allowed column names for update_knowledge to prevent SQL injection
-    _SAFE_COLUMNS = frozenset({
-        "title", "content_raw", "content_hash", "category", "layer",
-        "tags", "trust", "source", "source_url", "author", "status",
-        "knowledge_id", "knowledge_title", "node_uid", "path", "heading",
-        "level", "line_start", "line_end", "summary", "token_estimate",
-        "content_preview", "updated_at", "created_at", "claim", "claim_uid",
-        "context_text", "context_file", "claim_type", "claim_category",
-        "claim_confidence", "claim_supporting_text", "is_correct", "error_text",
-        "error_type", "error_severity",
-    })
-
     def update_knowledge(self, id: int, **fields) -> bool:
         """更新知識欄位。"""
         if not fields:
             return False
-        # Whitelist validation to prevent SQL injection via column names
-        fields = {k: v for k, v in fields.items() if k in self._SAFE_COLUMNS}
-        if not fields:
-            return False
+        invalid = set(fields) - self.KNOWLEDGE_UPDATE_COLUMNS
+        if invalid:
+            raise ValueError(f"invalid knowledge update field(s): {sorted(invalid)}")
         fields["updated_at"] = datetime.now(timezone.utc).isoformat()
         # 如果更新了 content_raw，自動重算 hash
         if "content_raw" in fields:
@@ -870,6 +908,9 @@ class VaultDB:
     def update_memory_candidate(self, candidate_id: str, **fields) -> bool:
         if not fields:
             return False
+        invalid = set(fields) - self.MEMORY_CANDIDATE_UPDATE_COLUMNS
+        if invalid:
+            raise ValueError(f"invalid memory candidate update field(s): {sorted(invalid)}")
         fields["updated_at"] = datetime.now(timezone.utc).isoformat()
         sets = ", ".join(f"{k}=?" for k in fields)
         vals = list(fields.values()) + [candidate_id]
@@ -1335,6 +1376,9 @@ class VaultDB:
         """更新技能欄位（以 name 為 key）。"""
         if not fields:
             return False
+        invalid = set(fields) - self.SKILL_UPDATE_COLUMNS
+        if invalid:
+            raise ValueError(f"invalid skill update field(s): {sorted(invalid)}")
         fields["updated_at"] = datetime.now(timezone.utc).isoformat()
         if "content_raw" in fields:
             fields["content_hash"] = hashlib.sha256(

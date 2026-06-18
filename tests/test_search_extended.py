@@ -323,6 +323,29 @@ class TestHybridSearchFallback:
         finally:
             db.close()
 
+    def test_search_hybrid_provider_encode_failure_falls_back_to_keyword(self, tmp_path):
+        class BrokenProvider:
+            provider_id = "test:broken"
+            is_semantic = True
+
+            @property
+            def dim(self):
+                return 384
+
+            def encode(self, texts):
+                raise OSError("embedding backend unavailable")
+
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Broken Provider Fallback", content_raw="hybrid fallback keyword path")
+            search = VaultSearch(db, embed_provider=BrokenProvider())
+            results = search.search("fallback keyword", mode="hybrid", use_rerank=False)
+            assert len(results) >= 1
+            assert results[0]["_mode"].startswith("keyword")
+        finally:
+            db.close()
+
 
 class TestReranker:
     def test_rerank_basic(self):
@@ -6114,6 +6137,26 @@ class TestSemanticSearch:
             results = search.search_semantic("test query")
             # 沒有可用的語義 provider 時，應該返回空列表
             assert results == []
+        finally:
+            db.close()
+
+    def test_search_semantic_without_index_does_not_encode_provider(self, tmp_path):
+        class ExplodingProvider:
+            provider_id = "test:exploding"
+            is_semantic = True
+
+            @property
+            def dim(self):
+                return 384
+
+            def encode(self, texts):
+                raise AssertionError("encode should not be called without stored vectors")
+
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            search = VaultSearch(db, embed_provider=ExplodingProvider())
+            assert search.search_semantic("test query") == []
         finally:
             db.close()
 

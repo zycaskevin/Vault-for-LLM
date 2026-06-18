@@ -50,9 +50,9 @@ For a broader positioning against Mem0, Letta/MemGPT, Zep, and LangGraph memory,
 
 ---
 
-## Current source status: PR28 / 0.6.0
+## Current source status: v0.6.21
 
-The current source tree includes the PR28 search enhancement release. Building on PR27's candidate-first memory foundation, this release adds tiered search quality improvements and benchmarking tools:
+The current source tree includes the v0.6.21 search reliability release. Building on the candidate-first memory workflow and PR28 search enhancements, this release focuses on keeping default local search dependable while preserving optional semantic, rerank, and benchmarking tools:
 
 - **Tiered rerank architecture** — lightweight reranker for zero-dependency quality gains, with optional Cross-Encoder reranker for production-grade relevance scoring when `sentence-transformers` or `onnxruntime` is available.
 - **Search benchmark framework** — `benchmarks/search_benchmark.py` provides reproducible before/after comparison of retrieval quality (P@k, R@k, NDCG) and latency across search modes and strategies.
@@ -149,7 +149,7 @@ In story form: the agent writes a note, the front desk checks whether it is safe
 
 ### Install from PyPI
 
-> Release note: the GitHub source tree is currently `0.5.0`, while PyPI may still show an older version until Trusted Publisher publishing is unblocked. If you need the newest 0.5.0 source features immediately, use the source install below.
+> Release note: the GitHub source tree is currently `0.6.21`. If PyPI is behind the latest GitHub release, use the source install below for the newest source features.
 
 ```bash
 python3 -m venv .venv

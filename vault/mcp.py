@@ -31,7 +31,7 @@ REMOTE_KNOWLEDGE_TABLE = "vault_knowledge"
 def _set_project_dir(project_dir: str | os.PathLike[str]) -> None:
     """Point the MCP server at a project's local SQLite vault."""
     global DB_PATH
-    project_path = Path(project_dir).expanduser().resolve()
+    project_path = Path(project_dir).expanduser().absolute()
     DB_PATH = str(project_path / "vault.db")
 
 
@@ -831,12 +831,12 @@ TOOLS = [
                 "normalize_scores": {
                     "type": "boolean",
                     "description": "是否對分數進行標準化（預設 false）",
-                    "default": false
+                    "default": False
                 },
                 "include_snippet": {
                     "type": "boolean",
                     "description": "是否在結果中包含內容片段（預設 false）",
-                    "default": false
+                    "default": False
                 },
                 "fields": {
                     "type": "array",

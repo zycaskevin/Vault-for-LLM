@@ -2473,6 +2473,23 @@ class VaultSearch:
         except Exception:
             return False
 
+    def _semantic_index_has_provider_rows(
+        self,
+        provider,
+        vector_kind: str = "claim",
+    ) -> bool:
+        """Return True only when stored semantic vectors exist for provider."""
+        try:
+            row = self.db.conn.execute(
+                """SELECT 1 FROM semantic_vectors
+                   WHERE provider_id=? AND dimension=? AND vector_kind=?
+                   LIMIT 1""",
+                (provider_id(provider), provider_dimension(provider), vector_kind),
+            ).fetchone()
+            return row is not None
+        except Exception:
+            return False
+
     def search_semantic(
         self,
         query: str,
@@ -2501,6 +2518,8 @@ class VaultSearch:
         )
         if provider is None:
             return []
+        if not self._semantic_index_has_provider_rows(provider, vector_kind):
+            return []
 
         try:
             rows = search_semantic_index(
@@ -2517,12 +2536,8 @@ class VaultSearch:
             )
         except SemanticProviderError:
             raise
-        except (AttributeError, TypeError, RuntimeError, ImportError, ModuleNotFoundError):
+        except Exception:
             return []
-        except sqlite3.OperationalError as exc:
-            if "semantic_vectors" in str(exc).lower():
-                return []
-            raise
 
         results: list[dict] = []
         seen: set[int] = set()
@@ -2605,19 +2620,27 @@ class VaultSearch:
             min_score=min_score,
         )
 
-        try:
-            semantic_results = self.search_semantic(
-                query,
-                limit=limit * 2,
-                min_trust=min_trust,
-                layer=layer,
-                category=category,
-                vector_kind=semantic_vector_kind,
-                require_semantic=not allow_hash,
-                allow_hash=allow_hash,
-            )
-        except (SemanticProviderError, RuntimeError, ImportError, ModuleNotFoundError, AttributeError):
-            semantic_results = []
+        semantic_results = []
+        if self._semantic_index_available(
+            semantic_vector_kind,
+            require_semantic=not allow_hash,
+            allow_hash=allow_hash,
+        ):
+            try:
+                semantic_results = self.search_semantic(
+                    query,
+                    limit=limit * 2,
+                    min_trust=min_trust,
+                    layer=layer,
+                    category=category,
+                    vector_kind=semantic_vector_kind,
+                    require_semantic=not allow_hash,
+                    allow_hash=allow_hash,
+                )
+            except SemanticProviderError:
+                raise
+            except Exception:
+                semantic_results = []
 
         if semantic_results:
             second_results = semantic_results

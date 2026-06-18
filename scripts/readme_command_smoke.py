@@ -73,9 +73,22 @@ def main() -> int:
         env=env,
     )
     run([python, "-m", "vault.cli", "compile", "--no-embed"], cwd=temp_dir, env=env)
-    search_output = run([python, "-m", "vault.cli", "search", "cache key", "--keyword-only"], cwd=temp_dir, env=env)
-    if "First lesson" not in search_output:
-        raise SystemExit(f"README quickstart search did not find the added note:\n{search_output}")
+    default_search_output = run([python, "-m", "vault.cli", "search", "cache key"], cwd=temp_dir, env=env)
+    if "First lesson" not in default_search_output:
+        raise SystemExit(
+            "README quickstart default search did not find the added note:\n"
+            f"{default_search_output}"
+        )
+    keyword_search_output = run(
+        [python, "-m", "vault.cli", "search", "cache key", "--keyword-only"],
+        cwd=temp_dir,
+        env=env,
+    )
+    if "First lesson" not in keyword_search_output:
+        raise SystemExit(
+            "README keyword-only search did not find the added note:\n"
+            f"{keyword_search_output}"
+        )
 
     qa_file = temp_dir / "qa.json"
     qa_file.write_text(
@@ -149,7 +162,7 @@ def main() -> int:
 
     print("✅ README documented command smoke passed")
     print(f"  temp_project: {temp_dir}")
-    print("  commands: help, init, add, compile --no-embed, search --keyword-only, search-qa run, semantic smoke, semantic cache-stats")
+    print("  commands: help, init, add, compile --no-embed, default search, search --keyword-only, search-qa run, semantic smoke, semantic cache-stats")
     return 0
 
 

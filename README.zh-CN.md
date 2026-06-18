@@ -50,9 +50,9 @@ Vault-for-LLM 不只是另一个向量数据库。它正在往 **Agent 记忆质
 
 ---
 
-## 当前源码状态：PR27 / 0.5.0
+## 当前源码状态：v0.6.21
 
-当前 source tree 已包含 PR27 的记忆 workflow。白话说，Vault 现在不像一个谁都能乱塞纸条的抽屉，更像一间有前台的小图书馆：
+当前 source tree 已包含 v0.6.21 的搜索可靠性修复，并保留 PR27 候选制记忆 workflow 与 PR28 搜索增强。白话说，Vault 现在不像一个谁都能乱塞纸条的抽屉，更像一间有前台的小图书馆：
 
 - **候选制记忆**：Agent 想记东西时，先交到前台（`vault remember` / `vault_memory_propose`），由 privacy、duplicate、metadata、quality gates 检查，再决定能不能上架。
 - **更安全的召回**：keyword search 有弱匹配门槛，应该找不到的 query 比较不会硬抓一条不相关记忆回来；可用 `--min-score` 调整。
@@ -142,7 +142,7 @@ Markdown raw/  →  vault compile  →  SQLite database  →  vault search / MCP
 
 ### 从 PyPI 安装
 
-> 发布备注：GitHub source tree 目前是 `0.5.0`，但 PyPI 可能仍停在较旧版本，直到 Trusted Publisher 发布设置修好。如果你需要最新 0.5.0 source features，请先使用下方 source install。
+> 发布备注：GitHub source tree 目前是 `0.6.21`。如果 PyPI 落后最新 GitHub release，请先使用下方 source install 获取最新 source features。
 
 ```bash
 python3 -m venv .venv

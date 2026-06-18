@@ -890,6 +890,57 @@ Content.
         assert "tag2" in entry["tags"]
         assert "tag3" in entry["tags"]
 
+    def test_compile_sanitizes_category_output_path(self, tmp_path):
+        from vault.compiler import VaultCompiler
+        from vault.db import VaultDB
+
+        raw_dir = tmp_path / "raw"
+        raw_dir.mkdir()
+        test_md = raw_dir / "escape.md"
+        test_md.write_text("""---
+title: Escape Test
+category: ../../outside
+---
+
+Content should stay inside compiled.
+""")
+
+        db = VaultDB(str(tmp_path / "vault.db"))
+        db.connect()
+
+        compiler = VaultCompiler(project_dir=str(tmp_path), db=db)
+        stats = compiler.compile()
+        db.close()
+
+        assert stats["new"] == 1
+        assert not (tmp_path / "outside").exists()
+        assert (tmp_path / "compiled" / "L3-outside" / "Escape_Test.md").exists()
+
+    def test_compile_skips_raw_symlink(self, tmp_path):
+        from vault.compiler import VaultCompiler
+        from vault.db import VaultDB
+
+        raw_dir = tmp_path / "raw"
+        raw_dir.mkdir()
+        outside = tmp_path / "outside.md"
+        outside.write_text("# Secret outside raw\n\nDo not compile me.")
+        symlink = raw_dir / "linked.md"
+        try:
+            symlink.symlink_to(outside)
+        except OSError:
+            pytest.skip("symlink not supported on this filesystem")
+
+        db = VaultDB(str(tmp_path / "vault.db"))
+        db.connect()
+
+        compiler = VaultCompiler(project_dir=str(tmp_path), db=db)
+        stats = compiler.compile()
+        rows = db.list_knowledge()
+        db.close()
+
+        assert stats["total_files"] == 0
+        assert rows == []
+
     def test_backfill_summaries(self, tmp_path, capsys):
         """Test _backfill_summaries method."""
         from vault.compiler import VaultCompiler

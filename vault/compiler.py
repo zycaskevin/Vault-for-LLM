@@ -14,6 +14,7 @@ Vault-for-LLM — 本地編譯器。
 """
 
 import hashlib
+import re
 import subprocess
 import yaml
 from datetime import datetime, timezone
@@ -44,6 +45,25 @@ def extract_frontmatter(content: str) -> tuple[dict, str]:
 
     body = "\n".join(lines[end_idx + 1:]).strip()
     return metadata, body
+
+
+def safe_path_segment(value: object, default: str = "general") -> str:
+    """Return a filesystem-safe path segment for generated artifacts."""
+    text = str(value or "").strip()
+    text = text.replace("/", "-").replace("\\", "-")
+    text = re.sub(r"[^\w.-]+", "-", text, flags=re.UNICODE)
+    text = text.strip(" .-_")
+    if not text or text in {".", ".."}:
+        return default
+    return text
+
+
+def _is_within_path(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
 
 
 def extract_claims(title: str, content: str) -> list[dict]:
@@ -384,12 +404,14 @@ class VaultCompiler:
         project_dir: str | Path = ".",
         db=None,
         embed_provider=None,
+        allow_private: bool = False,
     ):
         self.project_dir = Path(project_dir)
         self.raw_dir = self.project_dir / "raw"
         self.compiled_dir = self.project_dir / "compiled"
         self.db = db  # VaultDB，延遲初始化
         self.embed = embed_provider  # 嵌入 provider，可選
+        self.allow_private = allow_private
 
     def compile(self, dry_run: bool = False) -> dict:
         """
@@ -422,7 +444,16 @@ class VaultCompiler:
                 print(f"[compiler] ⚠️ raw/ 目錄不存在: {self.raw_dir}")
                 return stats
 
-            md_files = sorted(self.raw_dir.rglob("*.md"))
+            raw_root = self.raw_dir.resolve()
+            md_files = []
+            for candidate in sorted(self.raw_dir.rglob("*.md")):
+                if candidate.is_symlink() or not candidate.is_file():
+                    print(f"[compiler] ⚠️ 跳過非一般檔案: {candidate}")
+                    continue
+                if not _is_within_path(candidate, raw_root):
+                    print(f"[compiler] ⚠️ 跳過 raw/ 外部檔案: {candidate}")
+                    continue
+                md_files.append(candidate)
             stats["total_files"] = len(md_files)
 
             for md_file in md_files:
@@ -508,6 +539,25 @@ class VaultCompiler:
         # 計算 hash 做 change detection
         content_hash = hashlib.sha256(body.encode()).hexdigest()[:16]
         title = metadata.get("title", "") or md_file.stem.replace("-", " ").strip()
+        if not self.allow_private:
+            from .privacy import scan_privacy
+
+            privacy = scan_privacy(
+                "\n".join(
+                    [
+                        str(title),
+                        str(metadata.get("category", "")),
+                        str(metadata.get("tags", "")),
+                        str(metadata.get("source", "")),
+                        body,
+                    ]
+                )
+            )
+            if privacy.get("status") == "fail":
+                findings = ", ".join(
+                    sorted({str(item.get("type", "secret")) for item in privacy.get("findings", [])})
+                )
+                raise ValueError(f"privacy gate failed for raw file ({findings})")
 
         # 檢查是否已存在（用 source_file 或 title）
         source_file = str(md_file.relative_to(self.raw_dir))
@@ -529,7 +579,7 @@ class VaultCompiler:
             return "skipped"  # 沒變
 
         # 分類
-        category = metadata.get("category", "") or classify_content(body, metadata)
+        category = safe_path_segment(metadata.get("category", "") or classify_content(body, metadata))
         layer = assign_layer(metadata)
         tags = metadata.get("tags", "")
         if isinstance(tags, list):
@@ -659,13 +709,15 @@ class VaultCompiler:
         for row in rows:
             d = dict(row)
             layer = d.get("layer", "L3")
-            cat = d.get("category", "general")
+            cat = safe_path_segment(d.get("category", "general"))
             title = d.get("title", "untitled").replace("/", "-").replace(" ", "_")
 
             # compiled/L2-error/vllm-timeout.md
             out_dir = self.compiled_dir / f"{layer}-{cat}"
             out_dir.mkdir(parents=True, exist_ok=True)
             out_file = out_dir / f"{title}.md"
+            if not _is_within_path(out_file, self.compiled_dir):
+                raise ValueError(f"compiled output escaped compiled/: {out_file}")
 
             # 寫出 AAAK 壓縮版
             aaak = d.get("content_aaak", "") or d.get("content_raw", "")

@@ -65,6 +65,8 @@ class TestSummarizeResult:
             "citation": "Test L1-5",
             "_score": 0.95,
             "_mode": "semantic",
+            "_semantic_scanned_rows": 42,
+            "_semantic_truncated": True,
             "extra_field": "should not appear",
         }
         summary = _summarize_result(result)
@@ -77,6 +79,8 @@ class TestSummarizeResult:
         assert summary["citation"] == "Test L1-5"
         assert summary["score"] == 0.95  # renamed from _score
         assert summary["mode"] == "semantic"  # renamed from _mode
+        assert summary["_semantic_scanned_rows"] == 42
+        assert summary["_semantic_truncated"] is True
         assert "extra_field" not in summary
 
     def test_summarize_result_empty(self):
@@ -94,14 +98,22 @@ class TestAggregateCases:
             {"result_count": 5, "top1_hit": True, "topk_hit": True,
              "reciprocal_rank": 1.0, "has_map_guidance": True,
              "has_read_range_guidance": False, "citation_policy_violations": [],
+             "result_mode_violations": [],
+             "claim_hit": True, "span_hit": True, "node_hit": False,
+             "expected_claim_substrings": ["claim"], "expected_best_span": ["L1-L2"],
              "latency_ms": 100, "expected_no_results": False},
             {"result_count": 3, "top1_hit": False, "topk_hit": True,
              "reciprocal_rank": 0.5, "has_map_guidance": False,
              "has_read_range_guidance": True, "citation_policy_violations": ["v1"],
+             "result_mode_violations": ["bad_mode"],
+             "claim_hit": False, "span_hit": False, "node_hit": True,
+             "expected_claim_substrings": ["missing"], "expected_node_uid": ["node-1"],
              "latency_ms": 200, "expected_no_results": False},
             {"result_count": 0, "top1_hit": False, "topk_hit": False,
              "reciprocal_rank": 0.0, "has_map_guidance": False,
              "has_read_range_guidance": False, "citation_policy_violations": [],
+             "result_mode_violations": [],
+             "claim_hit": False, "span_hit": False, "node_hit": False,
              "latency_ms": 50, "expected_no_results": True,
              "no_result_false_positive": False},
         ]
@@ -114,6 +126,13 @@ class TestAggregateCases:
         assert agg["map_guidance_rate"] == pytest.approx(1/3)
         assert agg["read_range_guidance_rate"] == pytest.approx(1/3)
         assert agg["citation_policy_violations"] == 1
+        assert agg["result_mode_violations"] == 1
+        assert agg["claim_hit_cases"] == 1
+        assert agg["span_hit_cases"] == 1
+        assert agg["node_hit_cases"] == 1
+        assert agg["claim_hit_rate"] == pytest.approx(0.5)
+        assert agg["span_hit_rate"] == pytest.approx(1.0)
+        assert agg["node_hit_rate"] == pytest.approx(1.0)
         assert agg["mean_latency_ms"] == pytest.approx(350/3)
         assert agg["max_latency_ms"] == 200
         assert agg["min_latency_ms"] == 50
@@ -154,6 +173,51 @@ class TestHitRank:
         from vault.search_qa import _hit_rank
         case = {"expected_ids": [1]}
         assert _hit_rank(case, []) is None
+
+
+class TestResultModeViolations:
+    def test_allowed_result_modes_detects_fallback(self):
+        from vault.search_qa import _result_mode_violations
+
+        case = {"allowed_result_modes": ["semantic", "semantic_hash"]}
+        results = [{"mode": "keyword_fts"}, {"mode": "semantic"}]
+
+        violations = _result_mode_violations(case, results)
+        assert violations == ["rank_1_mode_keyword_fts_not_allowed"]
+
+    def test_require_mode_prefix_detects_fallback(self):
+        from vault.search_qa import _result_mode_violations
+
+        case = {"require_mode_prefix": "semantic"}
+        results = [{"mode": "keyword_fts"}]
+
+        violations = _result_mode_violations(case, results)
+        assert violations == ["rank_1_mode_keyword_fts_missing_prefix_semantic"]
+
+
+class TestFineGrainedHits:
+    def test_claim_span_and_node_hit_rank(self):
+        from vault.search_qa import _claim_hit_rank, _node_hit_rank, _span_hit_rank
+
+        results = [
+            {"best_claim": "Wrong claim", "best_span": "L1-L1", "node_uid": "intro"},
+            {
+                "best_claim": "The cache key must include provider id.",
+                "line_start": 7,
+                "line_end": 9,
+                "node_uid": "cache-7",
+            },
+        ]
+
+        case = {
+            "expected_claim_substrings": ["cache key", "provider id"],
+            "expected_best_span": ["L7-L9"],
+            "expected_node_uid": ["cache-7"],
+        }
+
+        assert _claim_hit_rank(case, results) == 2
+        assert _span_hit_rank(case, results) == 2
+        assert _node_hit_rank(case, results) == 2
 
 
 class TestMatchesExpected:

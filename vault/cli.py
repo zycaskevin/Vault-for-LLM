@@ -145,7 +145,12 @@ def cmd_compile(args):
 
     db = VaultDB(str(db_path))
     db.connect()
-    compiler = VaultCompiler(project_dir, db=db, embed_provider=embed)
+    compiler = VaultCompiler(
+        project_dir,
+        db=db,
+        embed_provider=embed,
+        allow_private=getattr(args, "allow_private", False),
+    )
     stats = compiler.compile(dry_run=args.dry_run)
     db.close()
 
@@ -908,6 +913,7 @@ def cmd_skill_search(args):
 def cmd_skill_pull(args):
     """從本機技能登錄下載技能到本機 skills/。"""
     from vault.db import VaultDB
+    from vault.compiler import safe_path_segment
 
     project_dir = find_project_dir()
     db = VaultDB(str(project_dir / "vault.db"))
@@ -921,7 +927,18 @@ def cmd_skill_pull(args):
 
     # 寫入 public-neutral local skill cache（預設 ~/.vault/skills/<name>/）
     skills_root = Path(os.environ.get("VAULT_SKILLS_DIR", Path.home() / ".vault" / "skills"))
-    skills_dir = skills_root / args.name
+    skill_dir_name = safe_path_segment(args.name, default="")
+    if not skill_dir_name:
+        print(f"❌ 技能名稱不可作為本機目錄: {args.name}")
+        db.close()
+        return
+    skills_dir = skills_root / skill_dir_name
+    try:
+        skills_dir.resolve().relative_to(skills_root.resolve())
+    except ValueError:
+        print(f"❌ 技能名稱不可越界寫入: {args.name}")
+        db.close()
+        return
     skills_dir.mkdir(parents=True, exist_ok=True)
 
     skill_file = skills_dir / "SKILL.md"
@@ -1788,6 +1805,7 @@ def main():
     p = sub.add_parser("compile", help="編譯 raw/ → db + compiled/")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--no-embed", action="store_true", help="跳過嵌入生成")
+    p.add_argument("--allow-private", action="store_true", help="允許含秘密模式的 raw/ 檔案進入編譯")
 
     # search — 加入 --graph-expand
     p = sub.add_parser("search", help="搜尋知識")

@@ -2561,6 +2561,8 @@ class VaultSearch:
             item["semantic_vector_kind"] = row.get("vector_kind", vector_kind)
             item["semantic_item_uid"] = row.get("item_uid")
             item["semantic_source_text"] = row.get("source_text")
+            item["_semantic_scanned_rows"] = int(row.get("_semantic_scanned_rows", 0) or 0)
+            item["_semantic_truncated"] = bool(row.get("_semantic_truncated", False))
             if row.get("line_start") and row.get("line_end"):
                 item["line_start"] = int(row["line_start"])
                 item["line_end"] = int(row["line_end"])

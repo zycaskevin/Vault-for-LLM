@@ -15,6 +15,7 @@ Vault-for-LLM — 嵌入生成模組。
 import os
 import sys
 import importlib.util
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -57,6 +58,14 @@ class EmbeddingProvider:
 
     def __init__(self, dim: int = 384):
         self._dim = dim
+        self._metrics = {
+            "encode_calls": 0,
+            "encoded_texts": 0,
+            "http_requests": 0,
+            "http_retries": 0,
+            "http_failures": 0,
+            "last_latency_ms": 0.0,
+        }
 
     def encode(self, texts: str | list[str]) -> list[list[float]]:
         raise NotImplementedError
@@ -65,6 +74,18 @@ class EmbeddingProvider:
     def dim(self) -> int:
         return self._dim
 
+    def _record_encode(self, text_count: int, started_at: float) -> None:
+        self._metrics["encode_calls"] += 1
+        self._metrics["encoded_texts"] += int(text_count)
+        self._metrics["last_latency_ms"] = round((time.perf_counter() - started_at) * 1000, 6)
+
+    def get_metrics(self) -> dict:
+        return dict(self._metrics)
+
+    def reset_metrics(self) -> None:
+        for key in self._metrics:
+            self._metrics[key] = 0.0 if key == "last_latency_ms" else 0
+
 
 class ONNXEmbeddingProvider(EmbeddingProvider):
     """用 ONNX Runtime 跑嵌入模型。不需要 PyTorch。"""
@@ -72,6 +93,7 @@ class ONNXEmbeddingProvider(EmbeddingProvider):
     is_semantic = True
 
     def __init__(self, model_key: str = "mix", cache_dir: Optional[str] = None):
+        super().__init__(dim=MODELS[model_key]["dim"])
         self.model_key = model_key
         self.model_info = MODELS[model_key]
         self.provider_id = f"onnx:{self.model_info['name']}"
@@ -138,6 +160,7 @@ class ONNXEmbeddingProvider(EmbeddingProvider):
 
     def encode(self, texts: str | list[str]) -> list[list[float]]:
         """生成嵌入向量。"""
+        started_at = time.perf_counter()
         self._load_session()
 
         if isinstance(texts, str):
@@ -172,7 +195,9 @@ class ONNXEmbeddingProvider(EmbeddingProvider):
         norms = np.linalg.norm(mean_embeddings, axis=1, keepdims=True)
         normalized = mean_embeddings / np.clip(norms, a_min=1e-9, a_max=None)
 
-        return normalized.tolist()
+        result = normalized.tolist()
+        self._record_encode(len(texts), started_at)
+        return result
 
 
 class OllamaEmbeddingProvider(EmbeddingProvider):
@@ -185,11 +210,15 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
         model: str = "nomic-embed-text",
         base_url: str = "http://localhost:11434",
         dim: int = 768,
+        max_retries: int = 1,
+        retry_backoff: float = 0.25,
     ):
+        super().__init__(dim=dim)
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.provider_id = f"ollama:{self.base_url}:{self.model}"
-        self._dim = dim
+        self.max_retries = max(0, int(max_retries))
+        self.retry_backoff = max(0.0, float(retry_backoff))
 
     @property
     def dim(self) -> int:
@@ -201,7 +230,9 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
 
     def encode(self, texts: str | list[str]) -> list[list[float]]:
         import urllib.request
+        import urllib.error
         import json as _json
+        started_at = time.perf_counter()
 
         if isinstance(texts, str):
             texts = [texts]
@@ -220,13 +251,14 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
                     headers={"Content-Type": "application/json"},
                 )
 
-                with urllib.request.urlopen(req, timeout=max(60, len(texts) * 5)) as resp:
+                with self._urlopen_with_retry(req, timeout=max(60, len(texts) * 5)) as resp:
                     data = _json.loads(resp.read())
                     # /api/embed 回傳 {"model":..., "embeddings": [[...], ...]}
                     if "embeddings" in data:
                         results = data["embeddings"]
                         if results and self._dim is None:
                             self._dim = len(results[0])
+                        self._record_encode(len(texts), started_at)
                         return results
             except (urllib.error.HTTPError, urllib.error.URLError, KeyError):
                 pass  # 降級到單條
@@ -245,7 +277,7 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
                 headers={"Content-Type": "application/json"},
             )
 
-            with urllib.request.urlopen(req, timeout=max(30, len(texts) * 5)) as resp:
+            with self._urlopen_with_retry(req, timeout=max(30, len(texts) * 5)) as resp:
                 data = _json.loads(resp.read())
                 results.append(data["embedding"])
 
@@ -253,7 +285,28 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
         if results and self._dim is None:
             self._dim = len(results[0])
 
+        self._record_encode(len(texts), started_at)
         return results
+
+    def _urlopen_with_retry(self, req, timeout: int):
+        import urllib.request
+        import urllib.error
+
+        attempts = self.max_retries + 1
+        last_exc = None
+        for attempt in range(attempts):
+            self._metrics["http_requests"] += 1
+            try:
+                return urllib.request.urlopen(req, timeout=timeout)
+            except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
+                last_exc = exc
+                if attempt >= self.max_retries:
+                    self._metrics["http_failures"] += 1
+                    raise
+                self._metrics["http_retries"] += 1
+                if self.retry_backoff:
+                    time.sleep(self.retry_backoff * (2 ** attempt))
+        raise last_exc
 
 
 class SentenceTransformerProvider(EmbeddingProvider):
@@ -262,6 +315,7 @@ class SentenceTransformerProvider(EmbeddingProvider):
     is_semantic = True
 
     def __init__(self, model_name: str = "paraphrase-multilingual-MiniLM-L12-v2"):
+        super().__init__(dim=0)
         self.model_name = model_name
         self.provider_id = f"sentence-transformers:{model_name}"
         self._model = None
@@ -274,11 +328,14 @@ class SentenceTransformerProvider(EmbeddingProvider):
             self._dim = self._model.get_sentence_embedding_dimension()
 
     def encode(self, texts: str | list[str]) -> list[list[float]]:
+        started_at = time.perf_counter()
         self._load()
         if isinstance(texts, str):
             texts = [texts]
         embeddings = self._model.encode(texts, normalize_embeddings=True)
-        return embeddings.tolist()
+        result = embeddings.tolist()
+        self._record_encode(len(texts), started_at)
+        return result
 
     @property
     def dim(self) -> int:

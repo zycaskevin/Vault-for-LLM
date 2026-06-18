@@ -65,6 +65,20 @@ class VaultDB:
         "gate_payload_json",
         "promoted_knowledge_id",
     }
+    SKILL_UPDATE_COLUMNS = {
+        "name",
+        "version",
+        "agent_source",
+        "category",
+        "capabilities",
+        "dependencies",
+        "trust",
+        "content_raw",
+        "content_hash",
+        "description",
+        "updated_at",
+        "last_synced",
+    }
     MIGRATIONS = {
         1: "initial_core_tables",
         2: "graph_and_skill_tables",
@@ -1362,6 +1376,9 @@ class VaultDB:
         """更新技能欄位（以 name 為 key）。"""
         if not fields:
             return False
+        invalid = set(fields) - self.SKILL_UPDATE_COLUMNS
+        if invalid:
+            raise ValueError(f"invalid skill update field(s): {sorted(invalid)}")
         fields["updated_at"] = datetime.now(timezone.utc).isoformat()
         if "content_raw" in fields:
             fields["content_hash"] = hashlib.sha256(

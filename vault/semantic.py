@@ -12,9 +12,12 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import math
+import struct
 from typing import Any, Protocol
 
 from .db import VaultDB
+
+SEMANTIC_MAX_SCAN_ROWS = 10000
 from .docmap import build_document_map_for_entry
 
 
@@ -27,6 +30,17 @@ class SemanticIndexStats:
     claim_vectors: int
     provider_id: str
     dimension: int
+
+
+@dataclass(frozen=True)
+class SemanticVecIndexStats:
+    """Summary of one sqlite-vec semantic shadow-index rebuild."""
+
+    indexed_vectors: int
+    provider_id: str
+    vector_kind: str
+    dimension: int
+    table_name: str
 
 
 class SemanticEmbeddingProvider(Protocol):
@@ -458,9 +472,8 @@ def search_semantic_index(
     )
     query_vec = provider.encode(query)[0]
 
-    # 安全上限：單次查詢最多處理 10000 條向量，防止 DoS
-    MAX_SCAN_ROWS = 10000
-    effective_limit = min(limit, MAX_SCAN_ROWS)
+    # 安全上限：單次查詢最多處理有限向量，防止 DoS；結果會標示是否截斷。
+    effective_limit = min(limit, SEMANTIC_MAX_SCAN_ROWS)
 
     import heapq
 
@@ -491,6 +504,9 @@ def search_semantic_index(
     batch_size = 500
 
     while True:
+        remaining = SEMANTIC_MAX_SCAN_ROWS - count
+        if remaining <= 0:
+            break
         rows = db.conn.execute(
             f"""SELECT sv.*, k.title, k.category, k.layer, k.trust,
                       n.heading, n.path
@@ -502,7 +518,7 @@ def search_semantic_index(
                 WHERE {where_clause}
                 ORDER BY sv.id
                 LIMIT ? OFFSET ?""",
-            params + [batch_size, offset],
+            params + [min(batch_size, remaining), offset],
         ).fetchall()
 
         if not rows:
@@ -526,12 +542,166 @@ def search_semantic_index(
                 heapq.heapreplace(top_results, (score, count, item))
             count += 1
 
-        if count >= MAX_SCAN_ROWS:
+        if count >= SEMANTIC_MAX_SCAN_ROWS:
             break
         offset += batch_size
 
     # 按分數降序排列
     results = [item for _, _, item in sorted(top_results, key=lambda x: x[0], reverse=True)]
+    truncated = count >= SEMANTIC_MAX_SCAN_ROWS
+    for item in results:
+        item["_semantic_scanned_rows"] = count
+        item["_semantic_truncated"] = truncated
+    return results
+
+
+def rebuild_semantic_vec_index(
+    db: VaultDB,
+    provider: SemanticEmbeddingProvider | None = None,
+    vector_kind: str = "claim",
+    *,
+    require_semantic: bool = False,
+    allow_hash: bool = True,
+) -> SemanticVecIndexStats:
+    """Build a sqlite-vec shadow index from stored semantic_vectors rows.
+
+    `semantic_vectors` remains the source of truth. This vec0 table is a
+    rebuildable acceleration layer scoped by provider, vector kind, and
+    dimension so KNN queries do not need unsupported metadata filters.
+    """
+    provider = validate_embedding_provider(
+        provider or DeterministicHashEmbeddingProvider(),
+        require_semantic=require_semantic,
+        allow_hash=allow_hash,
+    )
+    table_name = _semantic_vec_table_name(provider.provider_id, vector_kind, provider.dim)
+    _ensure_semantic_vec_table(db, table_name, provider.dim)
+    db.conn.execute(f'DELETE FROM "{table_name}"')
+
+    rows = db.conn.execute(
+        """SELECT id, vector
+             FROM semantic_vectors
+            WHERE provider_id=? AND dimension=? AND vector_kind=?
+            ORDER BY id""",
+        (provider.provider_id, provider.dim, vector_kind),
+    ).fetchall()
+    db.conn.executemany(
+        f"""INSERT INTO "{table_name}"(rowid, embedding, semantic_vector_id)
+            VALUES (?, ?, ?)""",
+        [
+            (
+                int(row["id"]),
+                _serialize_float32(json.loads(row["vector"]), provider.dim),
+                int(row["id"]),
+            )
+            for row in rows
+        ],
+    )
+    db.conn.commit()
+    return SemanticVecIndexStats(
+        indexed_vectors=len(rows),
+        provider_id=provider.provider_id,
+        vector_kind=vector_kind,
+        dimension=provider.dim,
+        table_name=table_name,
+    )
+
+
+def search_semantic_index_vec(
+    db: VaultDB,
+    query: str,
+    provider: SemanticEmbeddingProvider | None = None,
+    vector_kind: str = "claim",
+    limit: int = 10,
+    *,
+    min_trust: float = 0.0,
+    layer: str | None = None,
+    category: str | None = None,
+    require_semantic: bool = False,
+    allow_hash: bool = True,
+    candidate_limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """Search the sqlite-vec semantic shadow index and preserve citation metadata."""
+    provider = validate_embedding_provider(
+        provider or DeterministicHashEmbeddingProvider(),
+        require_semantic=require_semantic,
+        allow_hash=allow_hash,
+    )
+    table_name = _semantic_vec_table_name(provider.provider_id, vector_kind, provider.dim)
+    if not _semantic_vec_table_exists(db, table_name):
+        return []
+
+    query_vec = provider.encode(query)[0]
+    effective_limit = max(0, min(limit, SEMANTIC_MAX_SCAN_ROWS))
+    if effective_limit == 0:
+        return []
+    k = candidate_limit or min(max(effective_limit * 20, 100), SEMANTIC_MAX_SCAN_ROWS)
+
+    candidate_rows = db.conn.execute(
+        f"""SELECT semantic_vector_id, distance
+              FROM "{table_name}"
+             WHERE embedding MATCH ? AND k = ?
+             ORDER BY distance ASC""",
+        (_serialize_float32(query_vec, provider.dim), k),
+    ).fetchall()
+    if not candidate_rows:
+        return []
+
+    rank_by_id = {
+        int(row["semantic_vector_id"]): (rank, float(row["distance"]))
+        for rank, row in enumerate(candidate_rows)
+    }
+    placeholders = ",".join("?" for _ in rank_by_id)
+    where_conditions = [
+        f"sv.id IN ({placeholders})",
+        "sv.provider_id=?",
+        "sv.dimension=?",
+        "sv.vector_kind=?",
+    ]
+    params: list[Any] = list(rank_by_id) + [provider.provider_id, provider.dim, vector_kind]
+    if min_trust > 0.0:
+        where_conditions.append("k.trust >= ?")
+        params.append(min_trust)
+    if layer is not None:
+        where_conditions.append("k.layer = ?")
+        params.append(layer)
+    if category is not None:
+        where_conditions.append("k.category = ?")
+        params.append(category)
+
+    rows = db.conn.execute(
+        f"""SELECT sv.*, k.title, k.category, k.layer, k.trust,
+                  n.heading, n.path
+             FROM semantic_vectors sv
+             JOIN knowledge k ON k.id = sv.knowledge_id
+             LEFT JOIN knowledge_nodes n
+               ON n.knowledge_id = sv.knowledge_id
+              AND n.node_uid = sv.item_uid
+            WHERE {" AND ".join(where_conditions)}""",
+        params,
+    ).fetchall()
+
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        candidate_rank, distance = rank_by_id[int(row["id"])]
+        item["_score"] = round(1.0 / (1.0 + distance), 8)
+        item["_semantic_distance"] = round(distance, 8)
+        item["_semantic_vec_rank"] = candidate_rank + 1
+        item["_mode"] = "semantic_vec"
+        if item.get("line_start") and item.get("line_end"):
+            item["citation"] = (
+                f"#{item['knowledge_id']} {item['title']} "
+                f"L{item['line_start']}-L{item['line_end']}"
+            )
+        results.append(item)
+
+    results.sort(key=lambda item: int(item["_semantic_vec_rank"]))
+    results = results[:effective_limit]
+    for item in results:
+        item["_semantic_scanned_rows"] = len(candidate_rows)
+        item["_semantic_truncated"] = len(candidate_rows) >= SEMANTIC_MAX_SCAN_ROWS
+        item["_semantic_index_backend"] = "sqlite_vec"
     return results
 
 
@@ -541,6 +711,49 @@ def semantic_index_counts(db: VaultDB) -> dict[str, int]:
         "SELECT vector_kind, count(*) AS count FROM semantic_vectors GROUP BY vector_kind"
     ).fetchall()
     return {row["vector_kind"]: int(row["count"]) for row in rows}
+
+
+def _semantic_vec_table_name(provider_id_value: str, vector_kind: str, dimension: int) -> str:
+    digest = hashlib.sha256(f"{provider_id_value}\0{vector_kind}".encode()).hexdigest()[:16]
+    dim = int(dimension)
+    if dim <= 0:
+        raise ValueError("semantic vector dimension must be positive")
+    return f"semantic_vec_{digest}_d{dim}"
+
+
+def _ensure_semantic_vec_table(db: VaultDB, table_name: str, dimension: int) -> None:
+    if not getattr(db, "_vec_available", False):
+        raise RuntimeError("sqlite-vec is not available for semantic vector indexing")
+    if not table_name.startswith("semantic_vec_"):
+        raise ValueError("invalid semantic vec table name")
+    dim = int(dimension)
+    if dim <= 0:
+        raise ValueError("semantic vector dimension must be positive")
+    db.conn.execute(
+        f"""CREATE VIRTUAL TABLE IF NOT EXISTS "{table_name}"
+            USING vec0(
+                embedding float[{dim}],
+                +semantic_vector_id integer
+            )"""
+    )
+
+
+def _semantic_vec_table_exists(db: VaultDB, table_name: str) -> bool:
+    if not getattr(db, "_vec_available", False):
+        return False
+    row = db.conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _serialize_float32(vector: list[float], dimension: int) -> bytes:
+    if len(vector) != dimension:
+        raise ValueError(
+            f"semantic vector dimension mismatch: expected {dimension}, got {len(vector)}"
+        )
+    return struct.pack(f"{dimension}f", *vector)
 
 
 def _knowledge_rows(db: VaultDB, knowledge_id: int | None) -> list[Any]:

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import vault.semantic as semantic_module
 from vault.db import VaultDB
 from vault.search import VaultSearch
 from vault.semantic import (
@@ -14,7 +15,9 @@ from vault.semantic import (
     DeterministicHashEmbeddingProvider,
     SemanticProviderError,
     rebuild_semantic_index,
+    rebuild_semantic_vec_index,
     search_semantic_index,
+    search_semantic_index_vec,
     semantic_index_counts,
     validate_embedding_provider,
 )
@@ -229,6 +232,81 @@ def test_semantic_index_search_preserves_citation_metadata(tmp_path: Path):
         assert results[0]["line_end"] == 4
         assert results[0]["citation"] == "#1 Semantic Index Guide L4-L4"
         assert results[0]["_mode"] == "semantic_hash"
+    finally:
+        db.close()
+
+
+def test_semantic_index_search_marks_truncated_scan(tmp_path: Path, monkeypatch):
+    db = VaultDB(tmp_path / "vault.db").connect()
+    provider = DeterministicHashEmbeddingProvider(dim=8)
+    monkeypatch.setattr(semantic_module, "SEMANTIC_MAX_SCAN_ROWS", 2)
+    try:
+        for idx in range(3):
+            db.add_knowledge(
+                f"Doc {idx}",
+                f"# Doc {idx}\n\nClaim number {idx} is searchable.",
+                content_aaak=f"TITLE: Doc {idx}\nCLAIMS:\n- [C1] Claim number {idx} is searchable. (L2)",
+                category="search",
+                trust=0.9,
+            )
+        rebuild_semantic_index(db, provider)
+
+        results = search_semantic_index(
+            db,
+            "searchable claim",
+            provider=provider,
+            vector_kind="claim",
+            limit=2,
+        )
+
+        assert results
+        assert all(result["_semantic_scanned_rows"] == 2 for result in results)
+        assert all(result["_semantic_truncated"] is True for result in results)
+    finally:
+        db.close()
+
+
+def test_sqlite_vec_semantic_index_finds_rows_beyond_scan_cap(tmp_path: Path, monkeypatch):
+    db = VaultDB(tmp_path / "vault.db").connect()
+    provider = DeterministicHashEmbeddingProvider(dim=8)
+    if not getattr(db, "_vec_available", False):
+        db.close()
+        pytest.skip("sqlite-vec extension is not available")
+    monkeypatch.setattr(semantic_module, "SEMANTIC_MAX_SCAN_ROWS", 2)
+    try:
+        for idx in range(5):
+            text = "needle sqlite vec target" if idx == 4 else f"filler claim {idx}"
+            db.add_knowledge(
+                f"Doc {idx}",
+                f"# Doc {idx}\n\n{text}",
+                content_aaak=f"TITLE: Doc {idx}\nCLAIMS:\n- [C1] {text} (L2)",
+                category="search",
+                trust=0.9,
+            )
+        rebuild_semantic_index(db, provider)
+        stats = rebuild_semantic_vec_index(db, provider, vector_kind="claim")
+
+        scan_results = search_semantic_index(
+            db,
+            "needle sqlite vec target",
+            provider=provider,
+            vector_kind="claim",
+            limit=2,
+        )
+        vec_results = search_semantic_index_vec(
+            db,
+            "needle sqlite vec target",
+            provider=provider,
+            vector_kind="claim",
+            limit=2,
+        )
+
+        assert stats.indexed_vectors == 5
+        assert all(result["knowledge_id"] != 5 for result in scan_results)
+        assert vec_results[0]["knowledge_id"] == 5
+        assert vec_results[0]["_mode"] == "semantic_vec"
+        assert vec_results[0]["_semantic_index_backend"] == "sqlite_vec"
+        assert vec_results[0]["_semantic_vec_rank"] == 1
     finally:
         db.close()
 

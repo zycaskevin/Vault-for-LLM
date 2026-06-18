@@ -2826,6 +2826,29 @@ class TestCmdSkillPull:
         assert skills_dir.exists()
         assert (skills_dir / "pullable-skill" / "SKILL.md").exists()
 
+    def test_cmd_skill_pull_sanitizes_local_path(self, temp_vault_project, capsys, monkeypatch, tmp_path):
+        from vault.cli import cmd_skill_pull
+        from vault.db import VaultDB
+        from argparse import Namespace
+
+        monkeypatch.chdir(temp_vault_project)
+        db = VaultDB(str(temp_vault_project / "vault.db"))
+        db.connect()
+        try:
+            db.add_skill(name="../escape-skill", content_raw="# Escape\n")
+        finally:
+            db.close()
+
+        skills_dir = tmp_path / "skills"
+        monkeypatch.setenv("VAULT_SKILLS_DIR", str(skills_dir))
+
+        cmd_skill_pull(Namespace(name="../escape-skill"))
+
+        captured = capsys.readouterr()
+        assert "escape-skill" in captured.out
+        assert (skills_dir / "escape-skill" / "SKILL.md").exists()
+        assert not (tmp_path / "escape-skill").exists()
+
 
 class TestCmdDreamExtra:
     """Extra tests for cmd_dream."""
@@ -3852,4 +3875,3 @@ class TestSemanticProviderExtra:
         assert len(embeddings) == 10
         for emb in embeddings:
             assert len(emb) == 32
-

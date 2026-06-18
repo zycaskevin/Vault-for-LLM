@@ -36,6 +36,33 @@ def find_project_dir() -> Path:
     return cwd
 
 
+def _privacy_block_message(label: str, privacy: dict) -> str:
+    findings = privacy.get("findings", [])
+    kinds = ", ".join(
+        sorted(
+            {
+                str(item.get("type", "secret"))
+                for item in findings
+                if item.get("severity") == "fail"
+            }
+        )
+    )
+    return f"privacy gate blocked {label}: {kinds or 'secret-like content'}"
+
+
+def _enforce_cli_privacy(content: str, *, allow_private: bool, label: str) -> None:
+    if allow_private:
+        return
+    from vault.privacy import scan_privacy
+
+    privacy = scan_privacy(content)
+    if privacy.get("status") != "fail":
+        return
+    print(f"❌ {_privacy_block_message(label, privacy)}", file=sys.stderr)
+    print("   Use --allow-private only for explicit local/private vault ingestion.", file=sys.stderr)
+    raise SystemExit(2)
+
+
 # ── 子命令 ──────────────────────────────────────────────
 
 def cmd_init(args):
@@ -91,6 +118,12 @@ def cmd_add(args):
         print("請輸入內容（Ctrl+D 結束）:")
         content = sys.stdin.read()
 
+    _enforce_cli_privacy(
+        content,
+        allow_private=getattr(args, "allow_private", False),
+        label="vault add",
+    )
+
     with VaultDB(str(project_dir / "vault.db")) as db:
         kid = db.add_knowledge(
             title=args.title,
@@ -145,7 +178,12 @@ def cmd_compile(args):
 
     db = VaultDB(str(db_path))
     db.connect()
-    compiler = VaultCompiler(project_dir, db=db, embed_provider=embed)
+    compiler = VaultCompiler(
+        project_dir,
+        db=db,
+        embed_provider=embed,
+        allow_private=getattr(args, "allow_private", False),
+    )
     stats = compiler.compile(dry_run=args.dry_run)
     db.close()
 
@@ -719,6 +757,12 @@ def cmd_import(args):
     if not file_path.exists():
         print(f"❌ 檔案不存在: {file_path}")
         return
+    if not getattr(args, "allow_private", False):
+        _enforce_cli_privacy(
+            file_path.read_text(encoding="utf-8"),
+            allow_private=False,
+            label="vault import",
+        )
 
     # 載入嵌入
     embed = None
@@ -761,6 +805,7 @@ def cmd_import(args):
             overlap=args.overlap,
             contextualize=args.contextualize,
             ollama_model=args.ollama_model,
+            allow_private=getattr(args, "allow_private", False),
         )
 
         print("\n✅ 匯入完成！")
@@ -908,6 +953,7 @@ def cmd_skill_search(args):
 def cmd_skill_pull(args):
     """從本機技能登錄下載技能到本機 skills/。"""
     from vault.db import VaultDB
+    from vault.compiler import safe_path_segment
 
     project_dir = find_project_dir()
     db = VaultDB(str(project_dir / "vault.db"))
@@ -921,7 +967,18 @@ def cmd_skill_pull(args):
 
     # 寫入 public-neutral local skill cache（預設 ~/.vault/skills/<name>/）
     skills_root = Path(os.environ.get("VAULT_SKILLS_DIR", Path.home() / ".vault" / "skills"))
-    skills_dir = skills_root / args.name
+    skill_dir_name = safe_path_segment(args.name, default="")
+    if not skill_dir_name:
+        print(f"❌ 技能名稱不可作為本機目錄: {args.name}")
+        db.close()
+        return
+    skills_dir = skills_root / skill_dir_name
+    try:
+        skills_dir.resolve().relative_to(skills_root.resolve())
+    except ValueError:
+        print(f"❌ 技能名稱不可越界寫入: {args.name}")
+        db.close()
+        return
     skills_dir.mkdir(parents=True, exist_ok=True)
 
     skill_file = skills_dir / "SKILL.md"
@@ -1761,6 +1818,7 @@ def main():
     p.add_argument("--category", default="general")
     p.add_argument("--tags", default="")
     p.add_argument("--trust", type=float, default=0.5)
+    p.add_argument("--allow-private", action="store_true", help="允許含秘密模式的內容直接寫入本機 vault")
 
     # remember/promote — safe memory curator workflow
     p = sub.add_parser("remember", help="提出記憶候選（預設不寫入 active knowledge）")
@@ -1788,6 +1846,7 @@ def main():
     p = sub.add_parser("compile", help="編譯 raw/ → db + compiled/")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--no-embed", action="store_true", help="跳過嵌入生成")
+    p.add_argument("--allow-private", action="store_true", help="允許含秘密模式的 raw/ 檔案進入編譯")
 
     # search — 加入 --graph-expand
     p = sub.add_parser("search", help="搜尋知識")
@@ -1845,6 +1904,7 @@ def main():
     p.add_argument("--no-embed", action="store_true", help="跳過嵌入生成")
     p.add_argument("--contextualize", action="store_true", help="Contextual Retrieval：用 Ollama 生成上下文摘要（Anthropic 2024）")
     p.add_argument("--ollama-model", default="qwen3:8b", help="Ollama 模型（用於 contextualize）")
+    p.add_argument("--allow-private", action="store_true", help="允許含秘密模式的文件直接匯入本機 vault")
 
     # export — read-only export targets
     p = sub.add_parser("export", help="匯出知識（單向、唯讀）")

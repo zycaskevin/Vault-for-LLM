@@ -692,6 +692,16 @@ class TestSkills:
         finally:
             db.close()
 
+    def test_update_skill_rejects_unknown_fields(self, tmp_path):
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_skill(name="safe_skill", content_raw="test")
+            with pytest.raises(ValueError, match="invalid skill update field"):
+                db.update_skill("safe_skill", **{"description = 'x', trust": 1.0})
+        finally:
+            db.close()
+
     def test_list_skills(self, tmp_path):
         db = VaultDB(str(tmp_path / "test.db"))
         db.connect()
@@ -916,4 +926,3 @@ class TestLintResults:
             assert results == []
         finally:
             db.close()
-

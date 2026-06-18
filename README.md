@@ -415,6 +415,8 @@ Core Vault-for-LLM usage is local-only. Supabase support is for teams or remote 
 
 The local SQLite database remains the source of truth. Supabase is an optional sync/read target. Remote table names use Vault-branded defaults and can be overridden with `VAULT_SUPABASE_*_TABLE` environment variables when integrating an existing private schema.
 
+Knowledge and skill sync use a minimal-disclosure default: metadata, summaries, hashes, Document Map rows, and claims sync without full `content_raw`. Use `--include-content` only when you intentionally want full local content copied to Supabase; fail-severity privacy findings are still withheld.
+
 ```bash
 # optional integration dependency
 pip install supabase

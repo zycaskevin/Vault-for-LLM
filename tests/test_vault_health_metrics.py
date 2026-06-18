@@ -298,6 +298,44 @@ def test_sync_cli_help_exposes_health_flags():
     assert "--health" in result.stdout
     assert "--vault-health" in result.stdout
     assert "--health-sample-limit" in result.stdout
+    assert "--include-content" in result.stdout
+
+
+def test_knowledge_sync_payload_excludes_content_by_default():
+    row = (
+        1, "Title", "L3", "general", "tag", 0.8,
+        "raw body", "aaak body", "abc123", "local", "summary", "", "",
+    )
+
+    payload = sync_to_supabase._knowledge_sync_payload(row)
+
+    assert payload["content_raw"] == ""
+    assert payload["content_aaak"] == ""
+    assert payload["summary"] == "summary"
+    assert payload["content_hash"] == "abc123"
+
+
+def test_knowledge_sync_payload_include_content_blocks_privacy_fail():
+    row = (
+        1, "Title", "L3", "general", "tag", 0.8,
+        "password = supersecret123", "aaak body", "abc123", "local", "summary", "", "",
+    )
+
+    payload = sync_to_supabase._knowledge_sync_payload(row, include_content=True)
+
+    assert payload["content_raw"] == ""
+    assert payload["content_aaak"] == ""
+
+
+def test_skill_sync_payload_include_content_when_safe():
+    row = (
+        1, "skill", "1.0.0", "agent", "general", "search", "",
+        0.9, "# Skill\nSafe body.", "hash", "desc", "", "",
+    )
+
+    payload = sync_to_supabase._skill_sync_payload(row, include_content=True)
+
+    assert payload["content_raw"] == "# Skill\nSafe body."
 
 
 def test_supabase_public_defaults_and_optional_imports_are_neutral(monkeypatch):

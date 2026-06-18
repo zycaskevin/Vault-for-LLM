@@ -124,8 +124,17 @@ jobs:
           /tmp/vfl-wheel-smoke/bin/python -m pip install dist/*.whl
           cd /tmp
           /tmp/vfl-wheel-smoke/bin/vault --help
+          /tmp/vfl-wheel-smoke/bin/vault init
+          /tmp/vfl-wheel-smoke/bin/vault freshness --limit 1
+          /tmp/vfl-wheel-smoke/bin/vault dedup --dry-run --threshold 0.99
+          /tmp/vfl-wheel-smoke/bin/vault converge --limit 1
+          /tmp/vfl-wheel-smoke/bin/vault cross-validate --limit 1 --local-only
           /tmp/vfl-wheel-smoke/bin/python - <<'PY'
           import importlib.metadata as metadata
+          import scripts.convergence_check
+          import scripts.cross_validate
+          import scripts.deduplicate_semantic
+          import scripts.freshness_check
 
           print(metadata.version('vault-for-llm'))
           PY

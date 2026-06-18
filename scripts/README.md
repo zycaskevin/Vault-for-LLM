@@ -70,6 +70,7 @@ Examples:
 
 ```bash
 python scripts/sync_to_supabase.py --document-map
+python scripts/sync_to_supabase.py --include-content  # opt in to full content sync
 python scripts/sync_graph_to_supabase.py
 VAULT_DIR=/path/to/project python scripts/daily_knowledge_sync.py
 ```
@@ -78,6 +79,7 @@ VAULT_DIR=/path/to/project python scripts/daily_knowledge_sync.py
 
 - Runtime reports such as `duplicate_report.json`, `trust_report.json`, and other `*_report.json` files are ignored by git.
 - Do not run remote sync scripts unless you intentionally configured credentials and table names.
+- Knowledge and skill sync omit full `content_raw` by default; use `--include-content` only for an intentional full-content remote copy.
 - Before pushing a public branch, run the public-boundary gate against the final diff:
 
 ```bash

@@ -136,6 +136,26 @@ vault search-qa run \
 Hash vectors are test doubles. They prove command wiring, snapshot shape, and
 stored-index fusion, but they do not measure real semantic retrieval quality.
 
+Fixtures that validate semantic/vector paths can also constrain result modes
+and expected claim-level evidence:
+
+```json
+{
+  "id": "semantic-cache-key",
+  "query": "which cache key was fixed?",
+  "expected_ids": [12],
+  "require_mode_prefix": "semantic",
+  "expected_claim_substrings": ["cache key", "provider id"],
+  "expected_best_span": ["L7-L9"],
+  "expected_node_uid": ["cache-7"]
+}
+```
+
+Use `allowed_result_modes` when several modes are acceptable, for example
+`["semantic", "semantic_hash", "hybrid_semantic"]`. These fields help catch
+cases where an explicit semantic/vector QA run silently fell back to keyword
+results or returned the right document but the wrong claim/span.
+
 Example comparison output:
 
 ```text
@@ -167,6 +187,10 @@ Search QA snapshots include these aggregate metrics:
 - `map_guidance_rate` — fraction of cases whose results include `vault_map_show` guidance.
 - `read_range_guidance_rate` — fraction of cases whose results include `vault_read_range` guidance.
 - `citation_policy_violations` — count of search results that are incorrectly labeled as final citations, or that expose search-result citations without `read_range` guidance.
+- `result_mode_violations` — count of results that violate fixture-level `allowed_result_modes` or `require_mode_prefix` constraints.
+- `claim_hit_cases` / `claim_hit_rate` — cases where `best_claim` contains all `expected_claim_substrings`.
+- `span_hit_cases` / `span_hit_rate` — cases where `best_span` or line range matches `expected_best_span`.
+- `node_hit_cases` / `node_hit_rate` — cases where `node_uid` matches `expected_node_uid`.
 - `mean_latency_ms` — mean per-query retrieval latency in milliseconds for this run.
 - `p95_latency_ms` — nearest-rank p95 per-query retrieval latency in milliseconds.
 - `min_latency_ms` / `max_latency_ms` — minimum and maximum per-query retrieval latency in milliseconds.

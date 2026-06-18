@@ -51,7 +51,7 @@ vault = "vault.cli:main"
 vault-mcp = "vault.mcp:main"
 
 [tool.setuptools.packages.find]
-include = ["vault*"]
+include = ["vault*", "scripts*"]
 
 [tool.ruff]
 line-length = 100

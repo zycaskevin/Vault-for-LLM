@@ -52,6 +52,29 @@ python3 benchmarks/search_benchmark.py --output results.json
 - `memory_workflow.zh-Hant.json` - 記憶工作流程測試集
 - `semantic_hybrid.en.json` - 語義/混合搜尋測試集
 
+### `semantic_index_benchmark.py` - Semantic index backend 基準測試
+
+專門量測 stored semantic index 的 backend 差異：Python full scan/cap 與 sqlite-vec shadow index。輸出會列出延遲、掃描/候選列數、截斷狀態，以及最後一筆 needle 是否能被找到。這可作為改動前後的 before/after 對照基準。
+
+```bash
+# 快速 smoke
+python3 benchmarks/semantic_index_benchmark.py --sizes 1000 --repeats 3
+
+# 中大型 synthetic benchmark
+python3 benchmarks/semantic_index_benchmark.py --sizes 1000 10000 50000 --repeats 5 --output /tmp/semantic-index-benchmark.json
+```
+
+重要欄位：
+
+- `p50_latency_ms` / `p95_latency_ms`：同機器上的查詢延遲。
+- `backends`：每個 backend 的獨立結果，目前包含 `scan`，若 sqlite-vec 可用則包含 `sqlite_vec`。
+- `mean_scanned_rows`：`scan` 代表實際掃描 semantic vectors 數；`sqlite_vec` 代表 KNN 候選數。
+- `truncated_runs`：有多少次碰到 scan cap。
+- `hit_rate`：needle 插在最後一筆時，有沒有被 top-k 找到。
+- `index_rebuild_ms` / `indexed_vectors`：sqlite-vec shadow index 的重建成本與列數。
+
+這些數字只適合同一台機器、同一設定下比較 before/after；不要拿不同硬體或 CI runner 的絕對延遲直接比較。
+
 ## 擴展基準測試
 
 ### 添加自定義測試數據

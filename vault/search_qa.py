@@ -219,9 +219,13 @@ def _evaluate_case(
     results = [_summarize_result(result) for result in raw_results[:limit]]
 
     hit_rank = _hit_rank(case, results)
+    claim_hit_rank = _claim_hit_rank(case, results)
+    span_hit_rank = _span_hit_rank(case, results)
+    node_hit_rank = _node_hit_rank(case, results)
     has_map_guidance = any(_has_map_guidance(result) for result in results)
     has_read_range_guidance = any(_has_read_range_guidance(result) for result in results)
     violations = _citation_policy_violations(results)
+    mode_violations = _result_mode_violations(case, results)
 
     return {
         "id": str(case["id"]),
@@ -237,9 +241,16 @@ def _evaluate_case(
         "topk_hit": hit_rank is not None,
         "hit_rank": hit_rank,
         "reciprocal_rank": (1 / hit_rank) if hit_rank else 0.0,
+        "claim_hit": claim_hit_rank is not None,
+        "claim_hit_rank": claim_hit_rank,
+        "span_hit": span_hit_rank is not None,
+        "span_hit_rank": span_hit_rank,
+        "node_hit": node_hit_rank is not None,
+        "node_hit_rank": node_hit_rank,
         "has_map_guidance": has_map_guidance,
         "has_read_range_guidance": has_read_range_guidance,
         "citation_policy_violations": violations,
+        "result_mode_violations": mode_violations,
         "latency_ms": round(latency_ms, 6),
         "results": results,
     }
@@ -270,6 +281,8 @@ def _summarize_result(result: dict[str, Any]) -> dict[str, Any]:
         "next_actions",
         "_score",
         "_mode",
+        "_semantic_scanned_rows",
+        "_semantic_truncated",
     )
     summary: dict[str, Any] = {}
     for field in fields:
@@ -294,6 +307,13 @@ def _aggregate_cases(cases: list[dict[str, Any]]) -> dict[str, int | float]:
             "map_guidance_rate": 0.0,
             "read_range_guidance_rate": 0.0,
             "citation_policy_violations": 0,
+            "result_mode_violations": 0,
+            "claim_hit_cases": 0,
+            "span_hit_cases": 0,
+            "node_hit_cases": 0,
+            "claim_hit_rate": 0.0,
+            "span_hit_rate": 0.0,
+            "node_hit_rate": 0.0,
             "mean_latency_ms": 0.0,
             "p95_latency_ms": 0.0,
             "min_latency_ms": 0.0,
@@ -327,6 +347,27 @@ def _aggregate_cases(cases: list[dict[str, Any]]) -> dict[str, int | float]:
         "citation_policy_violations": sum(
             len(case["citation_policy_violations"]) for case in cases
         ),
+        "result_mode_violations": sum(
+            len(case.get("result_mode_violations", [])) for case in cases
+        ),
+        "claim_hit_cases": sum(1 for case in cases if case.get("claim_hit")),
+        "span_hit_cases": sum(1 for case in cases if case.get("span_hit")),
+        "node_hit_cases": sum(1 for case in cases if case.get("node_hit")),
+        "claim_hit_rate": _conditional_rate(
+            cases,
+            expected_key="expected_claim_substrings",
+            hit_key="claim_hit",
+        ),
+        "span_hit_rate": _conditional_rate(
+            cases,
+            expected_key="expected_best_span",
+            hit_key="span_hit",
+        ),
+        "node_hit_rate": _conditional_rate(
+            cases,
+            expected_key="expected_node_uid",
+            hit_key="node_hit",
+        ),
         "mean_latency_ms": round(sum(latencies) / total, 6),
         "p95_latency_ms": round(sorted_latencies[p95_index], 6),
         "min_latency_ms": round(min(latencies), 6),
@@ -359,6 +400,63 @@ def _matches_expected(case: dict[str, Any], result: dict[str, Any]) -> bool:
         return True
 
     return False
+
+
+def _conditional_rate(cases: list[dict[str, Any]], *, expected_key: str, hit_key: str) -> float:
+    scoped = [case for case in cases if _as_list(case.get(expected_key))]
+    if not scoped:
+        return 0.0
+    return sum(1 for case in scoped if case.get(hit_key)) / len(scoped)
+
+
+def _claim_hit_rank(case: dict[str, Any], results: list[dict[str, Any]]) -> int | None:
+    expected = [str(value).lower() for value in _as_list(case.get("expected_claim_substrings"))]
+    if not expected:
+        return None
+    for rank, result in enumerate(results, start=1):
+        claim = str(result.get("best_claim") or "").lower()
+        if all(fragment in claim for fragment in expected):
+            return rank
+    return None
+
+
+def _span_hit_rank(case: dict[str, Any], results: list[dict[str, Any]]) -> int | None:
+    expected = {str(value) for value in _as_list(case.get("expected_best_span"))}
+    if not expected:
+        return None
+    for rank, result in enumerate(results, start=1):
+        span = str(result.get("best_span") or "")
+        line_span = ""
+        if result.get("line_start") is not None and result.get("line_end") is not None:
+            line_span = f"L{result['line_start']}-L{result['line_end']}"
+        if span in expected or line_span in expected:
+            return rank
+    return None
+
+
+def _node_hit_rank(case: dict[str, Any], results: list[dict[str, Any]]) -> int | None:
+    expected = {str(value) for value in _as_list(case.get("expected_node_uid"))}
+    if not expected:
+        return None
+    for rank, result in enumerate(results, start=1):
+        if str(result.get("node_uid") or "") in expected:
+            return rank
+    return None
+
+
+def _result_mode_violations(case: dict[str, Any], results: list[dict[str, Any]]) -> list[str]:
+    allowed_modes = {str(mode) for mode in _as_list(case.get("allowed_result_modes"))}
+    required_prefix = str(case.get("require_mode_prefix") or "")
+    violations: list[str] = []
+    if not allowed_modes and not required_prefix:
+        return violations
+    for index, result in enumerate(results, start=1):
+        mode = str(result.get("mode") or "")
+        if allowed_modes and mode not in allowed_modes:
+            violations.append(f"rank_{index}_mode_{mode}_not_allowed")
+        if required_prefix and not mode.startswith(required_prefix):
+            violations.append(f"rank_{index}_mode_{mode}_missing_prefix_{required_prefix}")
+    return violations
 
 
 def _citation_policy_violations(results: list[dict[str, Any]]) -> list[str]:

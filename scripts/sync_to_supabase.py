@@ -5,8 +5,9 @@ Sync Vault-knowledge local DB → Supabase
 失敗時用 ilike 模糊匹配做 fallback。
 
 用法：
-  sync_to_supabase.py              # 同步知識表（預設）
-  sync_to_supabase.py --skills     # 同步技能表
+  sync_to_supabase.py              # 同步知識表 metadata/summary/hash（預設不含全文）
+  sync_to_supabase.py --include-content  # 明確同步 content_raw/content_aaak
+  sync_to_supabase.py --skills     # 同步技能表 metadata/hash（預設不含技能全文）
   sync_to_supabase.py --document-map  # 同步 Document Map 表
   sync_to_supabase.py --health        # 同步 Vault health metrics snapshot
 """
@@ -34,6 +35,7 @@ from vault.health import (
     VaultHealthMetrics,
     collect_vault_health_metrics,
 )
+from vault.privacy import scan_privacy
 
 DB_PATH = str(find_db_path())
 
@@ -182,7 +184,56 @@ def _upsert_vault_health_by_check_date(sb, payload: dict) -> str:
     return 'inserted'
 
 
-def sync(db_path=DB_PATH):
+def _content_allowed_for_remote(text: str) -> bool:
+    return scan_privacy(text or "").get("status") != "fail"
+
+
+def _knowledge_sync_payload(row, *, include_content: bool = False) -> dict:
+    kid, title, layer, category, tags, trust, content_raw, content_aaak, \
+        content_hash, source, summary, created_at, updated_at = row
+    content_raw = content_raw or ''
+    content_aaak = content_aaak or ''
+    include_raw = include_content and _content_allowed_for_remote(
+        "\n".join([str(title or ""), str(tags or ""), content_raw, content_aaak])
+    )
+    return {
+        'title': title,
+        'layer': _parse_layer(layer),
+        'category': category or 'general',
+        'tags': _parse_tags(tags),
+        'trust': trust or 0.5,
+        'content_raw': content_raw if include_raw else '',
+        'content_aaak': content_aaak if include_raw else '',
+        'content_hash': content_hash or '',
+        'summary': summary or '',
+        'source': source or 'local',
+        'updated_at': datetime.now().isoformat(),
+    }
+
+
+def _skill_sync_payload(row, *, include_content: bool = False) -> dict:
+    sid, name, version, agent_source, category, capabilities, dependencies, \
+        trust, content_raw, content_hash, description, created_at, updated_at = row
+    content_raw = content_raw or ''
+    include_raw = include_content and _content_allowed_for_remote(
+        "\n".join([str(name or ""), str(capabilities or ""), content_raw])
+    )
+    return {
+        'name': name,
+        'version': version or '1.0.0',
+        'agent_source': agent_source or '',
+        'category': category or 'general',
+        'capabilities': _parse_capabilities(capabilities),
+        'dependencies': _parse_capabilities(dependencies),
+        'trust': trust or 0.5,
+        'content_raw': content_raw if include_raw else '',
+        'content_hash': content_hash or '',
+        'description': description or '',
+        'updated_at': datetime.now().isoformat(),
+    }
+
+
+def sync(db_path=DB_PATH, *, include_content: bool = False):
     sb = _get_sb_client()
     if not sb:
         return
@@ -203,20 +254,7 @@ def sync(db_path=DB_PATH):
     for row in rows:
         kid, title, layer, category, tags, trust, content_raw, content_aaak, \
             content_hash, source, summary, created_at, updated_at = row
-
-        data = {
-            'title': title,
-            'layer': _parse_layer(layer),
-            'category': category or 'general',
-            'tags': _parse_tags(tags),
-            'trust': trust or 0.5,
-            'content_raw': content_raw or '',
-            'content_aaak': content_aaak or '',
-            'content_hash': content_hash or '',
-            'summary': summary or '',
-            'source': source or 'local',
-            'updated_at': datetime.now().isoformat(),
-        }
+        data = _knowledge_sync_payload(row, include_content=include_content)
 
         try:
             existing = sb.table('vault_knowledge').select('id').ilike('title', title).execute()
@@ -282,7 +320,7 @@ def sync(db_path=DB_PATH):
     print(f"   Supabase total: {len(final)}")
 
 
-def sync_skills(db_path=DB_PATH):
+def sync_skills(db_path=DB_PATH, *, include_content: bool = False):
     """
     同步技能表到 Supabase。
     Supabase 端需要先建立 vault_skills 表：
@@ -333,20 +371,7 @@ def sync_skills(db_path=DB_PATH):
     for row in rows:
         sid, name, version, agent_source, category, capabilities, dependencies, \
             trust, content_raw, content_hash, description, created_at, updated_at = row
-
-        data = {
-            'name': name,
-            'version': version or '1.0.0',
-            'agent_source': agent_source or '',
-            'category': category or 'general',
-            'capabilities': _parse_capabilities(capabilities),
-            'dependencies': _parse_capabilities(dependencies),
-            'trust': trust or 0.5,
-            'content_raw': content_raw or '',
-            'content_hash': content_hash or '',
-            'description': description or '',
-            'updated_at': datetime.now().isoformat(),
-        }
+        data = _skill_sync_payload(row, include_content=include_content)
 
         try:
             existing = sb.table('vault_skills').select('id').eq('name', name).execute()
@@ -535,6 +560,11 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Sync local DB → Supabase")
     parser.add_argument("--skills", action="store_true", help="同步技能表（而非知識表）")
+    parser.add_argument(
+        "--include-content",
+        action="store_true",
+        help="明確同步 content_raw/content_aaak；預設只同步 metadata/summary/hash",
+    )
     parser.add_argument("--document-map", action="store_true", help="同步 Document Map 表（而非知識表）")
     parser.add_argument(
         "--health",
@@ -552,10 +582,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.skills:
-        sync_skills()
+        sync_skills(include_content=args.include_content)
     if args.document_map:
         sync_document_map()
     if args.health:
         sync_vault_health(sample_limit=args.health_sample_limit)
     if not (args.skills or args.document_map or args.health):
-        sync()
+        sync(include_content=args.include_content)

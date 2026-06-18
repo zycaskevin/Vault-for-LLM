@@ -40,7 +40,7 @@ def run(cmd, desc, cwd=None, timeout=60):
     print(f"{'='*50}")
     try:
         result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True,
+            cmd, capture_output=True, text=True,
             timeout=timeout, cwd=str(cwd or PROJECT_DIR)
         )
         output = result.stdout.strip()
@@ -64,44 +64,44 @@ def main():
 
     # 1. Git pull（取最新知識）
     results['git_pull'] = run(
-        'git pull --ff-only 2>&1',
+        ["git", "pull", "--ff-only"],
         "Git pull（同步最新知識）"
     )
 
     # 2. vault compile
     results['compile'] = run(
-        'vault compile 2>&1',
+        ["vault", "compile"],
         "vault compile（raw/ → DB + compiled/）",
         timeout=120
     )
 
     # 3. 語意去重（只掃描，不自動合併）
     results['dedup'] = run(
-        'vault dedup 2>&1',
+        ["vault", "dedup"],
         "語意重複偵測"
     )
 
     # 4. Trust 動態調整
     results['trust'] = run(
-        f'python3 {SCRIPTS_DIR}/trust_adjustment.py --apply 2>&1',
+        [sys.executable, str(SCRIPTS_DIR / "trust_adjustment.py"), "--apply"],
         "Trust 動態調整"
     )
 
     # 5. 知識缺口建議
     results['suggest'] = run(
-        f'python3 {SCRIPTS_DIR}/suggest_new_knowledge.py 2>&1',
+        [sys.executable, str(SCRIPTS_DIR / "suggest_new_knowledge.py")],
         "知識缺口偵測"
     )
 
     # 6. 審核佇列摘要
     results['review'] = run(
-        f'python3 {SCRIPTS_DIR}/manual_review.py --queue 2>&1',
+        [sys.executable, str(SCRIPTS_DIR / "manual_review.py"), "--queue"],
         "待審核佇列"
     )
 
     # 7. 統計提示（vault_wakeup.py 已移除）
     results['stats_note'] = run(
-        'echo "改用 MCP vault_stats 或 vault stats 取得統計" 2>&1',
+        [sys.executable, "-c", 'print("改用 MCP vault_stats 或 vault stats 取得統計")'],
         "知識庫統計提示"
     )
 

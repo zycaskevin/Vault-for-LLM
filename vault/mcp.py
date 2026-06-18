@@ -831,12 +831,12 @@ TOOLS = [
                 "normalize_scores": {
                     "type": "boolean",
                     "description": "是否對分數進行標準化（預設 false）",
-                    "default": false
+                    "default": False
                 },
                 "include_snippet": {
                     "type": "boolean",
                     "description": "是否在結果中包含內容片段（預設 false）",
-                    "default": false
+                    "default": False
                 },
                 "fields": {
                     "type": "array",

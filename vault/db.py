@@ -759,7 +759,7 @@ class VaultDB:
 
     # Allowed column names for update_knowledge to prevent SQL injection
     _SAFE_COLUMNS = frozenset({
-        "title", "content_raw", "content_hash", "category", "layer",
+        "title", "content_raw", "content_aaak", "content_hash", "category", "layer",
         "tags", "trust", "source", "source_url", "author", "status",
         "knowledge_id", "knowledge_title", "node_uid", "path", "heading",
         "level", "line_start", "line_end", "summary", "token_estimate",

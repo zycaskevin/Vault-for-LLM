@@ -14,6 +14,34 @@ def test_mcp_memory_tools_are_advertised():
     assert {"vault_memory_propose", "vault_memory_promote", "vault_dream_run"}.issubset(names)
     add_tool = next(tool for tool in TOOLS if tool["name"] == "vault_add")
     assert "Prefer vault_memory_propose" in add_tool["description"]
+    search_tool = next(tool for tool in TOOLS if tool["name"] == "vault_search")
+    assert "semantic" in search_tool["inputSchema"]["properties"]["mode"]["enum"]
+
+
+def test_mcp_search_respects_fields_and_snippet(tmp_path):
+    _set_project_dir(tmp_path)
+    with VaultDB(tmp_path / "vault.db") as db:
+        db.add_knowledge(
+            "Python Cache Note",
+            "Python cache keys should include provider metadata for semantic search.",
+            category="search",
+        )
+
+    payload = _payload(
+        handle_tool_call(
+            "vault_search",
+            {
+                "query": "provider metadata",
+                "include_snippet": True,
+                "fields": ["id", "title", "_score", "_snippet"],
+            },
+        )
+    )
+
+    assert payload
+    assert set(payload[0]).issubset({"id", "title", "_score", "_snippet"})
+    assert payload[0]["title"] == "Python Cache Note"
+    assert "provider" in payload[0]["_snippet"].lower()
 
 
 def test_mcp_memory_propose_candidate_does_not_add_active_knowledge(tmp_path):

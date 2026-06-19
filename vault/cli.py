@@ -36,6 +36,33 @@ def find_project_dir() -> Path:
     return cwd
 
 
+def _privacy_block_message(label: str, privacy: dict) -> str:
+    findings = privacy.get("findings", [])
+    kinds = ", ".join(
+        sorted(
+            {
+                str(item.get("type", "secret"))
+                for item in findings
+                if item.get("severity") == "fail"
+            }
+        )
+    )
+    return f"privacy gate blocked {label}: {kinds or 'secret-like content'}"
+
+
+def _enforce_cli_privacy(content: str, *, allow_private: bool, label: str) -> None:
+    if allow_private:
+        return
+    from vault.privacy import scan_privacy
+
+    privacy = scan_privacy(content)
+    if privacy.get("status") != "fail":
+        return
+    print(f"❌ {_privacy_block_message(label, privacy)}", file=sys.stderr)
+    print("   Use --allow-private only for explicit local/private vault ingestion.", file=sys.stderr)
+    raise SystemExit(2)
+
+
 # ── 子命令 ──────────────────────────────────────────────
 
 def cmd_init(args):
@@ -90,6 +117,12 @@ def cmd_add(args):
         print(f"標題: {args.title}")
         print("請輸入內容（Ctrl+D 結束）:")
         content = sys.stdin.read()
+
+    _enforce_cli_privacy(
+        content,
+        allow_private=getattr(args, "allow_private", False),
+        label="vault add",
+    )
 
     with VaultDB(str(project_dir / "vault.db")) as db:
         kid = db.add_knowledge(
@@ -724,6 +757,12 @@ def cmd_import(args):
     if not file_path.exists():
         print(f"❌ 檔案不存在: {file_path}")
         return
+    if not getattr(args, "allow_private", False):
+        _enforce_cli_privacy(
+            file_path.read_text(encoding="utf-8"),
+            allow_private=False,
+            label="vault import",
+        )
 
     # 載入嵌入
     embed = None
@@ -766,6 +805,7 @@ def cmd_import(args):
             overlap=args.overlap,
             contextualize=args.contextualize,
             ollama_model=args.ollama_model,
+            allow_private=getattr(args, "allow_private", False),
         )
 
         print("\n✅ 匯入完成！")
@@ -1778,6 +1818,7 @@ def main():
     p.add_argument("--category", default="general")
     p.add_argument("--tags", default="")
     p.add_argument("--trust", type=float, default=0.5)
+    p.add_argument("--allow-private", action="store_true", help="允許含秘密模式的內容直接寫入本機 vault")
 
     # remember/promote — safe memory curator workflow
     p = sub.add_parser("remember", help="提出記憶候選（預設不寫入 active knowledge）")
@@ -1863,6 +1904,7 @@ def main():
     p.add_argument("--no-embed", action="store_true", help="跳過嵌入生成")
     p.add_argument("--contextualize", action="store_true", help="Contextual Retrieval：用 Ollama 生成上下文摘要（Anthropic 2024）")
     p.add_argument("--ollama-model", default="qwen3:8b", help="Ollama 模型（用於 contextualize）")
+    p.add_argument("--allow-private", action="store_true", help="允許含秘密模式的文件直接匯入本機 vault")
 
     # export — read-only export targets
     p = sub.add_parser("export", help="匯出知識（單向、唯讀）")

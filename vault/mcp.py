@@ -814,7 +814,7 @@ TOOLS = [
                 },
                 "mode": {
                     "type": "string",
-                    "enum": ["auto", "keyword", "vector", "hybrid"],
+                    "enum": ["auto", "keyword", "vector", "semantic", "hybrid"],
                     "description": "搜尋模式（預設 auto）",
                     "default": "auto"
                 },
@@ -1088,6 +1088,8 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
     try:
         if name == "vault_search":
             compact = bool(arguments.get("compact", True))
+            requested_fields = arguments.get("fields")
+            field_set = set(requested_fields) if isinstance(requested_fields, list) else None
             db, search = _get_search()
             results = search.search(
                 query=arguments.get("query", ""),
@@ -1096,9 +1098,9 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 offset=arguments.get("offset", 0),
                 normalize_scores=arguments.get("normalize_scores", False),
                 include_snippet=arguments.get("include_snippet", False),
-                fields=arguments.get("fields"),
+                fields=None,
                 min_trust=0.0,
-                compact=compact,
+                compact=False,
             )
             # 簡化輸出
             output = []
@@ -1119,8 +1121,14 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                         "next_action": r.get("next_action"),
                         "next_actions": r.get("next_actions"),
                         "rerank_score": r.get("rerank_score", r.get("_rerank_score")),
+                        "_score": r.get("_score"),
+                        "_original_score": r.get("_original_score"),
+                        "_snippet": r.get("_snippet"),
                     }
-                    output.append({k: v for k, v in item.items() if v is not None})
+                    item = {k: v for k, v in item.items() if v is not None}
+                    if field_set is not None:
+                        item = {k: v for k, v in item.items() if k in field_set}
+                    output.append(item)
                     continue
                 item = {
                     "id": r.get("id"),
@@ -1142,6 +1150,9 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     "next_action": r.get("next_action"),
                     "next_actions": r.get("next_actions"),
                     "rerank_score": r.get("_rerank_score"),
+                    "_score": r.get("_score"),
+                    "_original_score": r.get("_original_score"),
+                    "_snippet": r.get("_snippet"),
                 }
                 # 截斷 content_raw
                 raw = r.get("content_raw", "")
@@ -1149,6 +1160,8 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     item["content_preview"] = raw[:200] + "..."
                 else:
                     item["content_preview"] = raw
+                if field_set is not None:
+                    item = {k: v for k, v in item.items() if k in field_set}
                 output.append(item)
             db.close()
             return {"result": json.dumps(output, ensure_ascii=False, indent=2)}

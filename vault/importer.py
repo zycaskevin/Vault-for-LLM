@@ -704,6 +704,7 @@ def import_document(
     llm: Optional[LLMProvider] = None,
     ollama_model: str = "qwen3:8b",
     ollama_url: str = "http://localhost:11434",
+    allow_private: bool = False,
 ) -> list[int]:
     """
     匯入長文件，自動分塊進 DB。
@@ -722,6 +723,23 @@ def import_document(
     """
     file_path = Path(file_path)
     text = file_path.read_text(encoding="utf-8")
+    if not allow_private:
+        from .privacy import scan_privacy
+
+        privacy = scan_privacy(text)
+        if privacy.get("status") == "fail":
+            kinds = ", ".join(
+                sorted(
+                    {
+                        str(item.get("type", "secret"))
+                        for item in privacy.get("findings", [])
+                        if item.get("severity") == "fail"
+                    }
+                )
+            )
+            raise ValueError(
+                f"privacy gate blocked import: {kinds or 'secret-like content'}"
+            )
 
     if not title:
         title = file_path.stem.replace("-", " ").replace("_", " ")

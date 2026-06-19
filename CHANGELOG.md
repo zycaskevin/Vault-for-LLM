@@ -11,8 +11,8 @@
 
 #### P0: Legacy System Cleanup
 - **`pyproject.toml` package name** — Renamed from `guardrails-knowledge` to `vault-for-llm`, updated version to `0.6.21`.
-- **`INSTALL.md` outdated commands** — Replaced all legacy Guardrails CLI commands with Vault-for-LLM equivalents; preserved old commands in `OLD-GUARDRAILS-COMMENT` annotations.
-- **`SETUP.md` placeholder cleanup** — Removed all `YOUR_USERNAME` placeholders, updated package names and environment variables.
+- **README/docs command cleanup** — Replaced legacy Guardrails CLI commands with Vault-for-LLM equivalents where public setup instructions are maintained.
+- **README/docs placeholder cleanup** — Removed stale `YOUR_USERNAME` placeholders and updated package names/environment variable examples in public setup docs.
 - **`duplicate_report.json` privacy leak** — Removed from Git tracking via `git rm --cached`, added to `.gitignore`, created template file.
 
 #### Compatibility

@@ -72,6 +72,44 @@ def test_ollama_embedding_provider_retries_single_request(monkeypatch):
     assert metrics["http_failures"] == 0
 
 
+def test_ollama_embedding_provider_honors_retry_after(monkeypatch):
+    from vault.embed import OllamaEmbeddingProvider
+
+    attempts = {"count": 0}
+    sleeps = []
+
+    def fake_urlopen(req, timeout):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise urllib.error.HTTPError(
+                req.full_url,
+                429,
+                "rate limited",
+                {"Retry-After": "0.75"},
+                None,
+            )
+        return _FakeResponse({"embedding": [0.25, 0.75]})
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("time.sleep", sleeps.append)
+    provider = OllamaEmbeddingProvider(
+        dim=None,
+        max_retries=1,
+        retry_backoff=0,
+        max_retry_after=1.0,
+    )
+
+    vectors = provider.encode("alpha")
+    metrics = provider.get_metrics()
+
+    assert vectors == [[0.25, 0.75]]
+    assert sleeps == [0.75]
+    assert metrics["http_requests"] == 2
+    assert metrics["http_retries"] == 1
+    assert metrics["http_retry_after_delays"] == 1
+    assert metrics["http_failures"] == 0
+
+
 def test_embedding_provider_metrics_reset():
     from vault.embed import EmbeddingProvider
 
@@ -86,6 +124,7 @@ def test_embedding_provider_metrics_reset():
         "encoded_texts": 0,
         "http_requests": 0,
         "http_retries": 0,
+        "http_retry_after_delays": 0,
         "http_failures": 0,
         "last_latency_ms": 0.0,
     }

@@ -30,7 +30,15 @@ python3 benchmarks/search_benchmark.py --embed-provider auto
 
 # 保存結果到指定文件
 python3 benchmarks/search_benchmark.py --output results.json
+
+# 同時跑 Search QA fixture，輸出 top-k / MRR / latency 摘要
+python3 benchmarks/search_benchmark.py \
+  --embed-provider None \
+  --qa-file benchmarks/search_qa/basic.en.json \
+  --qa-modes keyword
 ```
+
+未指定 `--output` 時，結果會寫到 `/tmp/vault_search_benchmark_results.json`，避免把本機 benchmark 產物提交到 repo。
 
 **輸出範例：**
 

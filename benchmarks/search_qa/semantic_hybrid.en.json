@@ -6,12 +6,40 @@
     {
       "id": "semantic_runbook_synonym",
       "query": "troubleshooting guide for model request delay",
-      "expected_title_substrings": ["runbook"]
+      "expected_title_substrings": ["runbook"],
+      "require_mode_prefix": "semantic"
     },
     {
       "id": "hybrid_candidate_workflow",
       "query": "candidate first memory review",
-      "expected_title_substrings": ["memory"]
+      "expected_title_substrings": ["memory"],
+      "allowed_result_modes": ["hybrid", "hybrid_hash", "hybrid_semantic", "hybrid_semantic_hash"]
+    },
+    {
+      "id": "semantic_vec_lifecycle",
+      "query": "sqlite vector shadow index rebuild lifecycle",
+      "expected_title_substrings": ["semantic", "lifecycle"],
+      "expected_claim_substrings": ["sqlite-vec"],
+      "require_mode_prefix": "semantic"
+    },
+    {
+      "id": "semantic_cache_key_provider",
+      "query": "cache key provider dimension vector kind hash rerank",
+      "expected_title_substrings": ["cache", "key"],
+      "expected_claim_substrings": ["provider", "dimension"],
+      "require_mode_prefix": "semantic"
+    },
+    {
+      "id": "semantic_filtered_recall_guard",
+      "query": "metadata filters protect recall when ANN candidate window is small",
+      "expected_title_substrings": ["semantic", "lifecycle"],
+      "expected_claim_substrings": ["metadata-filtered", "recall"],
+      "require_mode_prefix": "semantic"
+    },
+    {
+      "id": "semantic_no_result_control",
+      "query": "zzzxqv yyyqwv omegaquark semantic",
+      "expected_no_results": true
     }
   ]
 }

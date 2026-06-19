@@ -26,6 +26,14 @@ build/
 .eggs/
 .pytest_cache/
 *.egg
+.coverage
+coverage.xml
+htmlcov/
+
+# Benchmark outputs
+benchmarks/benchmark_results*.json
+benchmark_results*.json
+reports/
 
 # ── 虛擬環境 ─────────────────────────────────────────────
 .venv/

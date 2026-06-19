@@ -26,6 +26,33 @@ DB_PATH = os.path.join(
 REMOTE_NODE_TABLE = "vault_knowledge_nodes"
 REMOTE_CLAIM_TABLE = "vault_knowledge_claims"
 REMOTE_KNOWLEDGE_TABLE = "vault_knowledge"
+MCP_SEARCH_MAX_LIMIT = 50
+MCP_SEARCH_MAX_OFFSET = 1000
+MCP_ALLOWED_SEARCH_FIELDS = {
+    "id",
+    "title",
+    "category",
+    "layer",
+    "trust",
+    "tags",
+    "best_claim",
+    "best_span",
+    "best_node",
+    "node_uid",
+    "path",
+    "heading",
+    "line_start",
+    "line_end",
+    "citation",
+    "recommended_next_tool",
+    "next_action",
+    "next_actions",
+    "rerank_score",
+    "_score",
+    "_original_score",
+    "_snippet",
+    "content_preview",
+}
 
 
 def _set_project_dir(project_dir: str | os.PathLike[str]) -> None:
@@ -78,6 +105,20 @@ def _get_supabase_client():
     from supabase import create_client
 
     return create_client(url, key)
+
+
+def _clamp_int(value, *, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(parsed, maximum))
+
+
+def _search_field_set(fields) -> set[str] | None:
+    if not isinstance(fields, list):
+        return None
+    return {str(field) for field in fields if str(field) in MCP_ALLOWED_SEARCH_FIELDS}
 
 
 # ── Document Map helpers ───────────────────────────────
@@ -821,12 +862,16 @@ TOOLS = [
                 "limit": {
                     "type": "integer",
                     "description": "最多回傳幾筆（預設 10）",
-                    "default": 10
+                    "default": 10,
+                    "minimum": 1,
+                    "maximum": MCP_SEARCH_MAX_LIMIT
                 },
                 "offset": {
                     "type": "integer",
                     "description": "跳過前 N 筆（分頁用，預設 0）",
-                    "default": 0
+                    "default": 0,
+                    "minimum": 0,
+                    "maximum": MCP_SEARCH_MAX_OFFSET
                 },
                 "normalize_scores": {
                     "type": "boolean",
@@ -1088,14 +1133,25 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
     try:
         if name == "vault_search":
             compact = bool(arguments.get("compact", True))
-            requested_fields = arguments.get("fields")
-            field_set = set(requested_fields) if isinstance(requested_fields, list) else None
+            field_set = _search_field_set(arguments.get("fields"))
+            limit = _clamp_int(
+                arguments.get("limit", 10),
+                default=10,
+                minimum=1,
+                maximum=MCP_SEARCH_MAX_LIMIT,
+            )
+            offset = _clamp_int(
+                arguments.get("offset", 0),
+                default=0,
+                minimum=0,
+                maximum=MCP_SEARCH_MAX_OFFSET,
+            )
             db, search = _get_search()
             results = search.search(
                 query=arguments.get("query", ""),
                 mode=arguments.get("mode", "auto"),
-                limit=arguments.get("limit", 10),
-                offset=arguments.get("offset", 0),
+                limit=limit,
+                offset=offset,
                 normalize_scores=arguments.get("normalize_scores", False),
                 include_snippet=arguments.get("include_snippet", False),
                 fields=None,

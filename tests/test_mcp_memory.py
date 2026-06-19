@@ -44,6 +44,44 @@ def test_mcp_search_respects_fields_and_snippet(tmp_path):
     assert "provider" in payload[0]["_snippet"].lower()
 
 
+def test_mcp_search_clamps_limit_offset_and_field_allowlist(tmp_path):
+    _set_project_dir(tmp_path)
+    with VaultDB(tmp_path / "vault.db") as db:
+        for index in range(60):
+            db.add_knowledge(
+                f"Clamp Note {index:02d}",
+                "MCP search clamp regression note.",
+                category="search",
+            )
+
+    payload = _payload(
+        handle_tool_call(
+            "vault_search",
+            {
+                "query": "clamp regression",
+                "limit": 5000,
+                "offset": -20,
+                "fields": ["id", "title", "content_raw", "__class__"],
+            },
+        )
+    )
+
+    assert len(payload) == 50
+    assert set(payload[0]).issubset({"id", "title"})
+
+    invalid_only = _payload(
+        handle_tool_call(
+            "vault_search",
+            {
+                "query": "clamp regression",
+                "fields": ["content_raw", "__class__"],
+            },
+        )
+    )
+    assert invalid_only
+    assert invalid_only[0] == {}
+
+
 def test_mcp_memory_propose_candidate_does_not_add_active_knowledge(tmp_path):
     _set_project_dir(tmp_path)
     result = handle_tool_call(

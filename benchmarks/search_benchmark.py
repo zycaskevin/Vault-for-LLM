@@ -13,6 +13,7 @@ Vault-for-LLM 搜尋效能基準測試工具。
 from __future__ import annotations
 
 import json
+import math
 import time
 import argparse
 from dataclasses import dataclass, field, asdict
@@ -24,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from vault.db import VaultDB
 from vault.search import VaultSearch
+from vault.search_qa import evaluate_search_qa
 
 
 # ── 測試數據生成 ──────────────────────────────────────
@@ -100,6 +102,52 @@ SAMPLE_DOCUMENTS = [
         "content": "軟體工程是將工程化方法應用於軟體開發的學科，包括需求分析、設計、實現、測試和維護。Git 是最流行的版本控制系統。",
         "category": "engineering",
         "tags": ["software engineering", "git", "version control", "devops"],
+    },
+    {
+        "title": "Tool-gated Reading Guide",
+        "content": (
+            "Tool-gated reading keeps agents from reading whole documents. "
+            "Agents should inspect a document map first, then use read_range for evidence."
+        ),
+        "category": "technique",
+        "tags": ["search", "map", "read_range", "citation"],
+    },
+    {
+        "title": "Citation Policy Boundary",
+        "content": (
+            "Search citations are navigation hints only. Final answer citations must come "
+            "from bounded read_range output."
+        ),
+        "category": "decision",
+        "tags": ["citation", "policy", "read_range"],
+    },
+    {
+        "title": "Semantic Vector Lifecycle Runbook",
+        "content": (
+            "Semantic rebuild refreshes stored vectors and sqlite-vec shadow indexes. "
+            "Unfiltered semantic searches can use sqlite-vec, while metadata-filtered "
+            "queries keep a scan path to protect recall."
+        ),
+        "category": "search",
+        "tags": ["semantic", "sqlite-vec", "runbook", "recall"],
+    },
+    {
+        "title": "Candidate-first Memory Workflow",
+        "content": (
+            "Autonomous agents should propose memory candidates before promotion. "
+            "Privacy, duplicate, metadata, and quality gates run before active knowledge writes."
+        ),
+        "category": "memory",
+        "tags": ["memory", "candidate", "privacy", "metadata"],
+    },
+    {
+        "title": "Provider Cache Key Design",
+        "content": (
+            "Semantic cache keys include provider id, dimension, vector kind, hash mode, "
+            "and rerank strategy so different embedding modes do not collide."
+        ),
+        "category": "search",
+        "tags": ["cache", "provider", "semantic", "rerank"],
     },
 ]
 
@@ -447,14 +495,20 @@ def save_results(all_metrics: List[BenchmarkMetrics], output_path: Path) -> None
     print(f"\n結果已保存到: {output_path}")
 
 
+def print_search_qa_summary(snapshot: dict, *, label: str) -> None:
+    aggregate = snapshot["aggregate"]
+    print(f"\nSearch QA fixture: {label}")
+    print(f"- total_cases: {aggregate['total_cases']}")
+    print(f"- top1_hits: {aggregate['top1_hits']}")
+    print(f"- topk_hits: {aggregate['topk_hits']}")
+    print(f"- mean_reciprocal_rank: {aggregate['mean_reciprocal_rank']:.3f}")
+    print(f"- mean_latency_ms: {aggregate['mean_latency_ms']:.3f}")
+    print(f"- p95_latency_ms: {aggregate['p95_latency_ms']:.3f}")
+
+
 # ── 主程序 ────────────────────────────────────────────
 
 def main():
-    import math
-    # 因為 math 在模組層級可能未定義，這裡確保導入
-    global math
-    import math
-
     parser = argparse.ArgumentParser(description="Vault-for-LLM 搜尋基準測試")
     parser.add_argument(
         "--db-path",
@@ -466,13 +520,25 @@ def main():
         "--output",
         type=str,
         default=None,
-        help="結果輸出文件路徑（JSON）",
+        help="結果輸出文件路徑（JSON）；未指定時寫到 /tmp，避免污染 repo",
     )
     parser.add_argument(
         "--embed-provider",
         type=str,
         default="auto",
         help="嵌入模型提供者（auto/None）",
+    )
+    parser.add_argument(
+        "--qa-file",
+        type=str,
+        default=None,
+        help="額外執行 Search QA fixture（例如 benchmarks/search_qa/basic.en.json）",
+    )
+    parser.add_argument(
+        "--qa-modes",
+        type=str,
+        default="keyword",
+        help="Search QA fixture 要跑的模式，逗號分隔（預設 keyword）",
     )
     args = parser.parse_args()
 
@@ -631,12 +697,32 @@ def main():
         print("=" * 60)
         print_comparison_table(all_metrics)
 
-        # 保存結果
-        if args.output:
-            save_results(all_metrics, Path(args.output))
+        qa_snapshots = []
+        if args.qa_file:
+            for qa_mode in [mode.strip() for mode in args.qa_modes.split(",") if mode.strip()]:
+                snapshot = evaluate_search_qa(
+                    db_path=db_path,
+                    qa_file=args.qa_file,
+                    mode=qa_mode,
+                    limit=5,
+                    embed_provider=embed_provider,
+                    allow_hash=False,
+                )
+                qa_snapshots.append(snapshot)
+                print_search_qa_summary(snapshot, label=f"{Path(args.qa_file).name}:{qa_mode}")
+
+        output_path = Path(args.output) if args.output else Path("/tmp/vault_search_benchmark_results.json")
+        if qa_snapshots:
+            payload = {
+                "metrics": [asdict(m) | {"results": [asdict(r) for r in m.results]} for m in all_metrics],
+                "search_qa": qa_snapshots,
+            }
+            output_path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            print(f"\n結果已保存到: {output_path}")
         else:
-            # 預設保存到 benchmarks 目錄
-            output_path = Path(__file__).parent / "benchmark_results.json"
             save_results(all_metrics, output_path)
 
     finally:

@@ -63,6 +63,7 @@ class EmbeddingProvider:
             "encoded_texts": 0,
             "http_requests": 0,
             "http_retries": 0,
+            "http_retry_after_delays": 0,
             "http_failures": 0,
             "last_latency_ms": 0.0,
         }
@@ -212,6 +213,7 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
         dim: int = 768,
         max_retries: int = 1,
         retry_backoff: float = 0.25,
+        max_retry_after: float = 5.0,
     ):
         super().__init__(dim=dim)
         self.model = model
@@ -219,6 +221,7 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
         self.provider_id = f"ollama:{self.base_url}:{self.model}"
         self.max_retries = max(0, int(max_retries))
         self.retry_backoff = max(0.0, float(retry_backoff))
+        self.max_retry_after = max(0.0, float(max_retry_after))
 
     @property
     def dim(self) -> int:
@@ -304,9 +307,36 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
                     self._metrics["http_failures"] += 1
                     raise
                 self._metrics["http_retries"] += 1
-                if self.retry_backoff:
-                    time.sleep(self.retry_backoff * (2 ** attempt))
+                delay = self._retry_delay(exc, attempt)
+                if delay > 0:
+                    time.sleep(delay)
         raise last_exc
+
+    def _retry_delay(self, exc: Exception, attempt: int) -> float:
+        retry_after = self._retry_after_seconds(exc)
+        if retry_after is not None:
+            self._metrics["http_retry_after_delays"] += 1
+            return retry_after
+        return self.retry_backoff * (2 ** attempt) if self.retry_backoff else 0.0
+
+    def _retry_after_seconds(self, exc: Exception) -> float | None:
+        import urllib.error
+
+        if not isinstance(exc, urllib.error.HTTPError):
+            return None
+        if exc.code not in {429, 503}:
+            return None
+        headers = getattr(exc, "headers", None)
+        value = headers.get("Retry-After") if headers is not None else None
+        if value is None:
+            return None
+        try:
+            seconds = float(str(value).strip())
+        except (TypeError, ValueError):
+            return None
+        if seconds <= 0:
+            return 0.0
+        return min(seconds, self.max_retry_after)
 
 
 class SentenceTransformerProvider(EmbeddingProvider):

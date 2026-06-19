@@ -65,6 +65,14 @@ vault search "query text" --mode hybrid
 - Deterministic hash vectors are test-only and require explicit `--allow-hash` (and the matching `--hash-dim` if non-default) for main semantic search.
 - Use `--semantic-vector-kind claim|node` to choose claim-level or node-level stored vectors; `claim` is the default.
 
+When sqlite-vec is available, `vault semantic rebuild` also refreshes a
+provider/kind/dimension-scoped shadow index. Unfiltered semantic searches use
+that sqlite-vec path first and fall back to the JSON scan path if the shadow
+index is missing or stale. Searches with metadata filters (`--min-trust`,
+`--layer`, or `--category`) intentionally keep the filter-aware scan path for
+now, because sqlite-vec KNN queries cannot apply those filters before candidate
+selection.
+
 ## Warm query embeddings
 
 Use warm when you have a Search QA file and want to precompute query embeddings without writing semantic vector rows:

@@ -23,6 +23,8 @@ from .semantic import (
     provider_dimension,
     provider_id,
     search_semantic_index,
+    search_semantic_index_vec,
+    semantic_vec_index_is_fresh,
     validate_embedding_provider,
 )
 
@@ -1244,6 +1246,21 @@ class VaultSearch:
         key_json = json.dumps(key_data, sort_keys=True, default=str)
         return hashlib.md5(key_json.encode("utf-8")).hexdigest()
 
+    def _embed_cache_identity(self) -> dict:
+        """Return provider identity fields that affect semantic/vector result caches."""
+        provider = self._embed
+        if provider is None:
+            return {"provider_id": "", "dimension": ""}
+        try:
+            pid = provider_id(provider)
+        except Exception:
+            pid = str(getattr(provider, "provider_id", provider.__class__.__name__))
+        try:
+            dim = provider_dimension(provider)
+        except Exception:
+            dim = str(getattr(provider, "dim", ""))
+        return {"provider_id": pid, "dimension": dim}
+
     def _get_from_cache(self, cache_key: str) -> Optional[list[dict]]:
         """從快取取得結果，過期則返回 None。"""
         if not self._enable_cache:
@@ -1594,6 +1611,10 @@ class VaultSearch:
                 include_snippet=include_snippet,
                 highlight_snippet=highlight_snippet,
                 fields=",".join(sorted(fields)) if fields else "",
+                semantic_vector_kind=semantic_vector_kind,
+                allow_hash=allow_hash,
+                embed_provider=self._embed_cache_identity(),
+                rerank_strategy=self._rerank_strategy,
             )
             cached = self._get_from_cache(cache_key)
             if cached is not None:
@@ -2522,7 +2543,14 @@ class VaultSearch:
             return []
 
         try:
-            rows = search_semantic_index(
+            use_vec_backend = (
+                min_trust <= 0.0
+                and layer is None
+                and category is None
+                and semantic_vec_index_is_fresh(self.db, provider, vector_kind)
+            )
+            search_fn = search_semantic_index_vec if use_vec_backend else search_semantic_index
+            rows = search_fn(
                 self.db,
                 query,
                 provider=provider,
@@ -2557,12 +2585,25 @@ class VaultSearch:
                 continue
 
             item["_score"] = float(row.get("_score", 0.0) or 0.0)
-            item["_mode"] = "semantic_hash" if not bool(getattr(provider, "is_semantic", True)) else "semantic"
+            if row.get("_mode") == "semantic_vec":
+                item["_mode"] = (
+                    "semantic_vec_hash"
+                    if not bool(getattr(provider, "is_semantic", True))
+                    else "semantic_vec"
+                )
+            else:
+                item["_mode"] = (
+                    "semantic_hash"
+                    if not bool(getattr(provider, "is_semantic", True))
+                    else "semantic"
+                )
             item["semantic_vector_kind"] = row.get("vector_kind", vector_kind)
             item["semantic_item_uid"] = row.get("item_uid")
             item["semantic_source_text"] = row.get("source_text")
             item["_semantic_scanned_rows"] = int(row.get("_semantic_scanned_rows", 0) or 0)
             item["_semantic_truncated"] = bool(row.get("_semantic_truncated", False))
+            if row.get("_semantic_index_backend"):
+                item["_semantic_index_backend"] = row["_semantic_index_backend"]
             if row.get("line_start") and row.get("line_end"):
                 item["line_start"] = int(row["line_start"])
                 item["line_end"] = int(row["line_end"])
@@ -2648,7 +2689,10 @@ class VaultSearch:
             second_results = semantic_results
             hybrid_mode = (
                 "hybrid_semantic_hash"
-                if any(item.get("_mode") == "semantic_hash" for item in semantic_results)
+                if any(
+                    item.get("_mode") in {"semantic_hash", "semantic_vec_hash"}
+                    for item in semantic_results
+                )
                 else "hybrid_semantic"
             )
         elif self._get_embed() is not None and self.db._vec_available:

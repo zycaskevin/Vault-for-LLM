@@ -18,6 +18,7 @@ from vault.semantic import (
     rebuild_semantic_vec_index,
     search_semantic_index,
     search_semantic_index_vec,
+    semantic_vec_index_is_fresh,
     semantic_index_counts,
     validate_embedding_provider,
 )
@@ -311,6 +312,37 @@ def test_sqlite_vec_semantic_index_finds_rows_beyond_scan_cap(tmp_path: Path, mo
         db.close()
 
 
+def test_rebuild_semantic_index_refreshes_sqlite_vec_shadow_index(tmp_path: Path):
+    db = VaultDB(tmp_path / "vault.db").connect()
+    provider = DeterministicHashEmbeddingProvider(dim=8)
+    if not getattr(db, "_vec_available", False):
+        db.close()
+        pytest.skip("sqlite-vec extension is not available")
+    try:
+        db.add_knowledge(
+            "Semantic Vec Lifecycle",
+            "# Semantic Vec Lifecycle\n\nNeedle lifecycle claim.",
+            content_aaak="TITLE: Semantic Vec Lifecycle\nCLAIMS:\n- [C1] Needle lifecycle claim. (L2)",
+            category="search",
+            trust=0.9,
+        )
+
+        rebuild_semantic_index(db, provider)
+
+        assert semantic_vec_index_is_fresh(db, provider, "claim") is True
+        vec_results = search_semantic_index_vec(
+            db,
+            "Needle lifecycle claim",
+            provider=provider,
+            vector_kind="claim",
+            limit=1,
+        )
+        assert vec_results
+        assert vec_results[0]["_semantic_index_backend"] == "sqlite_vec"
+    finally:
+        db.close()
+
+
 class BagOfWordsSemanticProvider:
     provider_id = "test-bow-semantic-v1"
     is_semantic = True
@@ -338,6 +370,25 @@ class BagOfWordsSemanticProvider:
         ]
         norm = sum(value * value for value in vectors) ** 0.5 or 1.0
         return [value / norm for value in vectors]
+
+
+class FilterWindowSemanticProvider:
+    provider_id = "test-filter-window-semantic-v1"
+    is_semantic = True
+    dim = 2
+
+    def encode(self, texts: str | list[str]) -> list[list[float]]:
+        text_list = [texts] if isinstance(texts, str) else list(texts)
+        out = []
+        for text in text_list:
+            lowered = text.lower()
+            if "query" in lowered:
+                out.append([1.0, 0.0])
+            elif "target" in lowered:
+                out.append([0.8, 0.2])
+            else:
+                out.append([0.999, 0.001])
+        return out
 
 
 def _build_main_search_semantic_db(tmp_path: Path, provider) -> VaultDB:
@@ -372,11 +423,92 @@ def test_vault_search_semantic_uses_stored_index_for_non_keyword_match(tmp_path:
         results = search.search("automobile", mode="semantic", limit=2, use_rerank=False)
 
         assert [result["title"] for result in results][:1] == ["Workshop Notes"]
-        assert results[0]["_mode"] == "semantic"
+        assert results[0]["_mode"] in {"semantic", "semantic_vec"}
         assert results[0]["semantic_vector_kind"] == "claim"
         assert results[0]["best_span"] == "L2-L2"
         assert results[0]["citation"] == "#1 Workshop Notes L2-L2"
         assert "content_raw" in results[0]
+    finally:
+        db.close()
+
+
+def test_vault_search_semantic_uses_sqlite_vec_backend_when_unfiltered(tmp_path: Path):
+    provider = BagOfWordsSemanticProvider()
+    db = _build_main_search_semantic_db(tmp_path, provider)
+    if not getattr(db, "_vec_available", False):
+        db.close()
+        pytest.skip("sqlite-vec extension is not available")
+    search = VaultSearch(db, embed_provider=provider)
+    try:
+        results = search.search_semantic("automobile garage", limit=1)
+
+        assert results
+        assert results[0]["title"] == "Workshop Notes"
+        assert results[0]["_mode"] == "semantic_vec"
+        assert results[0]["_semantic_index_backend"] == "sqlite_vec"
+    finally:
+        db.close()
+
+
+def test_vault_search_semantic_filter_falls_back_to_scan_for_recall(tmp_path: Path):
+    db = VaultDB(tmp_path / "vault.db").connect()
+    provider = FilterWindowSemanticProvider()
+    if not getattr(db, "_vec_available", False):
+        db.close()
+        pytest.skip("sqlite-vec extension is not available")
+    try:
+        for idx in range(150):
+            text = f"near filler {idx}"
+            db.add_knowledge(
+                f"Low Trust {idx}",
+                text,
+                content_aaak=f"TITLE: Low Trust {idx}\nCLAIMS:\n- [C1] {text} (L1)",
+                category="search",
+                trust=0.1,
+            )
+        db.add_knowledge(
+            "High Trust Target",
+            "target answer",
+            content_aaak="TITLE: High Trust Target\nCLAIMS:\n- [C1] target answer (L1)",
+            category="search",
+            trust=0.9,
+        )
+        rebuild_semantic_index(db, provider, require_semantic=True)
+
+        search = VaultSearch(db, embed_provider=provider)
+        results = search.search_semantic("query text", limit=1, min_trust=0.8)
+
+        assert results
+        assert results[0]["title"] == "High Trust Target"
+        assert results[0]["_mode"] == "semantic"
+        assert "_semantic_index_backend" not in results[0]
+    finally:
+        db.close()
+
+
+def test_semantic_search_cache_key_includes_vector_kind(tmp_path: Path):
+    provider = BagOfWordsSemanticProvider()
+    db = _build_main_search_semantic_db(tmp_path, provider)
+    search = VaultSearch(db, embed_provider=provider)
+    search.set_cache_config(enabled=True)
+    try:
+        claim_results = search.search(
+            "garage maintenance",
+            mode="semantic",
+            semantic_vector_kind="claim",
+            use_rerank=False,
+        )
+        node_results = search.search(
+            "garage maintenance",
+            mode="semantic",
+            semantic_vector_kind="node",
+            use_rerank=False,
+        )
+
+        assert claim_results
+        assert node_results
+        assert claim_results[0]["semantic_vector_kind"] == "claim"
+        assert node_results[0]["semantic_vector_kind"] == "node"
     finally:
         db.close()
 
@@ -412,6 +544,6 @@ def test_vault_search_semantic_rejects_hash_provider_by_default(tmp_path: Path):
 
         allowed = search.search("garage", mode="semantic", allow_hash=True, use_rerank=False)
         assert allowed
-        assert allowed[0]["_mode"] == "semantic_hash"
+        assert allowed[0]["_mode"] in {"semantic_hash", "semantic_vec_hash"}
     finally:
         db.close()

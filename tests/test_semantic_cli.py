@@ -222,7 +222,7 @@ def test_semantic_cli_allow_hash_main_search_mode_uses_stored_index(tmp_path: Pa
 
     assert result.returncode == 0, result.stderr
     assert "Semantic Workflow Guide" in result.stdout
-    assert "semantic_hash" in result.stdout
+    assert "semantic_hash" in result.stdout or "semantic_vec_hash" in result.stdout
 
 
 def test_semantic_cli_main_search_rejects_hash_without_allow_hash(tmp_path: Path):

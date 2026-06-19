@@ -439,6 +439,7 @@ def rebuild_semantic_index(
         claim_count += len(claim_items)
 
     db.conn.commit()
+    _refresh_semantic_vec_indexes(db, provider, ("node", "claim"))
     return SemanticIndexStats(
         knowledge_rows=len(rows),
         node_vectors=node_count,
@@ -630,6 +631,8 @@ def search_semantic_index_vec(
     table_name = _semantic_vec_table_name(provider.provider_id, vector_kind, provider.dim)
     if not _semantic_vec_table_exists(db, table_name):
         return []
+    if not semantic_vec_index_is_fresh(db, provider, vector_kind):
+        return []
 
     query_vec = provider.encode(query)[0]
     effective_limit = max(0, min(limit, SEMANTIC_MAX_SCAN_ROWS))
@@ -711,6 +714,44 @@ def semantic_index_counts(db: VaultDB) -> dict[str, int]:
         "SELECT vector_kind, count(*) AS count FROM semantic_vectors GROUP BY vector_kind"
     ).fetchall()
     return {row["vector_kind"]: int(row["count"]) for row in rows}
+
+
+def semantic_vec_index_is_fresh(
+    db: VaultDB,
+    provider: SemanticEmbeddingProvider,
+    vector_kind: str = "claim",
+) -> bool:
+    """Return True when the sqlite-vec shadow table mirrors semantic_vectors rows."""
+    table_name = _semantic_vec_table_name(provider.provider_id, vector_kind, provider.dim)
+    if not _semantic_vec_table_exists(db, table_name):
+        return False
+    source_count = db.conn.execute(
+        """SELECT count(*) AS count
+             FROM semantic_vectors
+            WHERE provider_id=? AND dimension=? AND vector_kind=?""",
+        (provider.provider_id, provider.dim, vector_kind),
+    ).fetchone()["count"]
+    shadow_count = db.conn.execute(f'SELECT count(*) AS count FROM "{table_name}"').fetchone()[
+        "count"
+    ]
+    return int(source_count) == int(shadow_count)
+
+
+def _refresh_semantic_vec_indexes(
+    db: VaultDB,
+    provider: SemanticEmbeddingProvider,
+    vector_kinds: tuple[str, ...],
+) -> None:
+    if not getattr(db, "_vec_available", False):
+        return
+    for vector_kind in vector_kinds:
+        try:
+            rebuild_semantic_vec_index(db, provider, vector_kind=vector_kind)
+        except Exception:
+            table_name = _semantic_vec_table_name(provider.provider_id, vector_kind, provider.dim)
+            if _semantic_vec_table_exists(db, table_name):
+                db.conn.execute(f'DELETE FROM "{table_name}"')
+                db.conn.commit()
 
 
 def _semantic_vec_table_name(provider_id_value: str, vector_kind: str, dimension: int) -> str:

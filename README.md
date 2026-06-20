@@ -50,12 +50,13 @@ For a broader positioning against Mem0, Letta/MemGPT, Zep, and LangGraph memory,
 
 ---
 
-## Current source status: v0.6.21
+## Current source status: v0.6.22
 
-The current source tree includes the v0.6.21 search reliability release. Building on the candidate-first memory workflow and PR28 search enhancements, this release focuses on keeping default local search dependable while preserving optional semantic, rerank, and benchmarking tools:
+The current source tree includes the v0.6.22 release follow-up and quality-gate release. Building on the candidate-first memory workflow and search enhancements, this release focuses on keeping default local search dependable while preserving optional semantic, rerank, MCP, and benchmarking tools:
 
 - **Tiered rerank architecture** — lightweight reranker for zero-dependency quality gains, with optional Cross-Encoder reranker for production-grade relevance scoring when `sentence-transformers` or `onnxruntime` is available.
 - **Search benchmark framework** — `benchmarks/search_benchmark.py` provides reproducible before/after comparison of retrieval quality (P@k, R@k, NDCG) and latency across search modes and strategies.
+- **CI Search QA gate** — release readiness CI runs a public fixture regression gate for top-k, MRR, no-result precision, citation-policy, and mode checks.
 - **Enhanced info() method** — `VaultSearch.info()` returns full tiered capability status and configuration details (foundation / advanced / premium / flagship layers).
 - **LLM query rewriting** — optional LLM-powered query reformulation that rewrites user queries into more retrieval-friendly forms, controlled by `enable_llm_enhancement` and `use_llm_rewrite`.
 - **Configurable rerank strategy** — choose from `auto`, `lightweight`, `cross_encoder`, or `none` to match your deployment environment and quality needs.
@@ -149,7 +150,7 @@ In story form: the agent writes a note, the front desk checks whether it is safe
 
 ### Install from PyPI
 
-> Release note: the GitHub source tree is currently `0.6.21`. If PyPI is behind the latest GitHub release, use the source install below for the newest source features.
+> Release note: the GitHub source tree is currently `0.6.22`. If PyPI is behind the latest GitHub release, use the source install below for the newest source features.
 
 ```bash
 python3 -m venv .venv

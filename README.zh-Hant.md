@@ -50,13 +50,14 @@ Vault-for-LLM 不只是另一個向量資料庫。它正在往 **Agent 記憶品
 
 ---
 
-## 目前原始碼狀態：v0.6.21
+## 目前原始碼狀態：v0.6.22
 
-目前 source tree 已包含 v0.6.21 的搜尋可靠性修復，並保留 PR27 候選制記憶 workflow 與 PR28 搜尋增強。白話說，Vault 現在不像一個誰都能亂塞紙條的抽屜，比較像一間有櫃台的小圖書館：
+目前 source tree 已包含 v0.6.22 的 release follow-up 與品質 gate，並保留候選制記憶 workflow 與搜尋增強。白話說，Vault 現在不像一個誰都能亂塞紙條的抽屜，比較像一間有櫃台的小圖書館：
 
 - **候選制記憶**：Agent 想記東西時，先交到櫃台（`vault remember` / `vault_memory_propose`），由 privacy、duplicate、metadata、quality gates 檢查，再決定能不能上架。
 - **比較安全的召回**：keyword search 有弱匹配門檻，應該找不到的 query 比較不會硬抓一筆不相關記憶回來；可用 `--min-score` 調整。
 - **Search QA hard negatives**：固定題庫可以寫 `expected_no_results: true`，同時檢查「該找到的有沒有找到」和「不該找到時有沒有亂認親」。
+- **CI Search QA gate**：release readiness CI 會跑公開 fixture，檢查 top-k、MRR、no-result precision、citation-policy 與 mode gate。
 - **Dream 先出報告再整理**：`vault dream` 先寫 report / plan；`apply_safe` 只做很小的 metadata 修正，並保留 backup/rollback 路徑。
 - **有 guardrail 的語意工作流**：可選 semantic vectors、provider validation、persistent embedding cache，以及 CI/本機用 deterministic hash smoke tests。
 - **明確的 DB schema status/migration**：用 [`vault db status/migrate`](docs/db_migrations.md) 檢查並執行 idempotent SQLite migrations。
@@ -142,7 +143,7 @@ Markdown raw/  →  vault compile  →  SQLite database  →  vault search / MCP
 
 ### 從 PyPI 安裝
 
-> 發布備註：GitHub source tree 目前是 `0.6.21`。如果 PyPI 落後最新 GitHub release，請先使用下方 source install 取得最新 source features。
+> 發布備註：GitHub source tree 目前是 `0.6.22`。如果 PyPI 落後最新 GitHub release，請先使用下方 source install 取得最新 source features。
 
 ```bash
 python3 -m venv .venv

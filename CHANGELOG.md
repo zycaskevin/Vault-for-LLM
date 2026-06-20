@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## [0.6.22] - 2026-06-20
+
+### Fixed
+
+#### Release Follow-up & Hygiene
+- Closed superseded review PRs after the #37-#40 mainline fix series.
+- Removed tracked runtime artifacts and ignored future coverage, report, and benchmark outputs.
+- Added a CI Search QA regression gate that runs the public benchmark fixture and enforces top-k, MRR, no-result, citation-policy, and result-mode thresholds.
+
+#### Search & Semantic Reliability
+- Refreshed sqlite-vec semantic shadow indexes after semantic rebuilds and guarded reads with freshness checks.
+- Routed unfiltered semantic search through sqlite-vec while preserving full-scan recall for metadata-filtered semantic queries.
+- Expanded semantic Search QA fixtures to cover mode, claim, filtered-recall, cache-key, and no-result behavior.
+
+#### MCP & Embedding Robustness
+- Hardened MCP search runtime input handling with limit/offset clamps and a response-field allowlist.
+- Honored capped `Retry-After` delays for Ollama embedding retries and exposed retry-after telemetry.
+
 ## [0.6.21] - 2026-06-18
 
 ### Fixed

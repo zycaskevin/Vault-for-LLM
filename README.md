@@ -77,6 +77,8 @@ agent-driven setup or repo changes, use:
 - [`AGENTS.md`](AGENTS.md) — concise operating rules for coding agents.
 - [`agent_manifest.json`](agent_manifest.json) — machine-readable install,
   scope, safety, runtime, and validation metadata.
+- [`docs/agent_install.md`](docs/agent_install.md) — short install runbook for
+  Hermes, Codex, Claude Code, OpenClaw, OpenCode, n8n, and other agents.
 
 Human users do not need to install everything manually. You can ask your agent:
 
@@ -106,8 +108,8 @@ everything by default:
 
 | Feature | Default | Install command | Ask when |
 |---|---|---|---|
-| `core` | yes | `python -m pip install vault-for-llm` | Always: local Markdown, SQLite, keyword search. |
-| `mcp` | yes for MCP-capable agents | `python -m pip install "vault-for-llm[mcp]"` | The runtime can connect local stdio MCP tools. |
+| `core` | yes | `python -m pip install vault-for-llm==0.6.24` | Always: local Markdown, SQLite, keyword search. |
+| `mcp` | yes for MCP-capable agents | `python -m pip install "vault-for-llm[mcp]==0.6.24"` | The runtime can connect local stdio MCP tools. |
 | `obsidian_import` | no | built into core CLI | The user already has an Obsidian vault and wants agents to search those notes through Vault. |
 | `semantic` | no | `python -m pip install "vault-for-llm[semantic]"` | The user wants embedding-backed semantic/hybrid search. |
 | `supabase` | no | `python -m pip install "vault-for-llm[supabase]"` | The user wants optional remote sync/read paths. |
@@ -449,7 +451,9 @@ For the broader command surface, see the [CLI reference](docs/cli_reference.md).
 
 ### Agent setup wizard
 
-Use `vault setup-agent` or its alias `vault install-agent` when an agent should guide the installation instead of asking a human to run every command manually:
+Use [`docs/agent_install.md`](docs/agent_install.md) plus `vault setup-agent`
+or its alias `vault install-agent` when an agent should guide the installation
+instead of asking a human to run every command manually:
 
 ```bash
 vault setup-agent

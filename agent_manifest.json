@@ -10,6 +10,7 @@
   },
   "agent_sources_of_truth": [
     "AGENTS.md",
+    "docs/agent_install.md",
     "docs/agent_integrations.md",
     "docs/mcp_memory_workflow.md",
     "integrations/openclaw/README.md"

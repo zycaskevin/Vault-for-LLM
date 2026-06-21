@@ -86,6 +86,33 @@ def test_setup_agent_cli_non_interactive(tmp_path, capsys):
     assert (project / "raw" / "obsidian" / "Note.md").exists()
 
 
+def test_setup_agent_accepts_global_project_dir_for_missing_directory(tmp_path, capsys):
+    from vault.cli import main
+
+    project = tmp_path / "missing-agent-project"
+    main(
+        [
+            "setup-agent",
+            "--non-interactive",
+            "--agent",
+            "nancy",
+            "--scope",
+            "private",
+            "--features",
+            "core,mcp",
+            "--project-dir",
+            str(project),
+            "--json",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["project_dir"] == str(project.resolve())
+    assert (project / "vault.db").exists()
+    assert (project / "raw").is_dir()
+
+
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
     from vault.agent_setup import AgentSetupConfig, run_agent_setup
 

@@ -10,6 +10,7 @@ Vault-for-LLM — CLI 入口。
   vault search "查詢"     # 搜尋知識
   vault export obsidian   # 匯出成 Obsidian vault Markdown notes
   vault list              # 列出知識
+  vault remove <id>       # 刪除知識（需要 --confirm）
   vault lint              # 健康檢查
   vault doctor            # 環境診斷
   vault stats             # 統計
@@ -342,6 +343,44 @@ def cmd_list(args):
             print()
 
     db.close()
+
+
+def cmd_remove(args):
+    """刪除知識條目。"""
+    from vault.db import VaultDB
+
+    if not args.confirm:
+        print("Refusing to remove knowledge without --confirm.")
+        print(f"Preview: vault list --limit 20 --project-dir {find_project_dir()}")
+        print(f"Delete:  vault remove {args.knowledge_id} --confirm")
+        raise SystemExit(2)
+
+    project_dir = find_project_dir()
+    db = VaultDB(str(project_dir / "vault.db"))
+    db.connect()
+    try:
+        item = db.get_knowledge(args.knowledge_id)
+        if not item:
+            payload = {"removed": False, "id": args.knowledge_id, "reason": "not_found"}
+            if args.json or args.pretty:
+                _json_print(payload, pretty=args.pretty)
+            else:
+                print(f"Knowledge ID {args.knowledge_id} not found.")
+            raise SystemExit(1)
+
+        removed = db.delete_knowledge(args.knowledge_id)
+        payload = {
+            "removed": removed,
+            "id": args.knowledge_id,
+            "title": item.get("title", ""),
+            "project_dir": str(project_dir),
+        }
+        if args.json or args.pretty:
+            _json_print(payload, pretty=args.pretty)
+        else:
+            print(f"Removed knowledge ID {args.knowledge_id}: {item.get('title', '')}")
+    finally:
+        db.close()
 
 
 def cmd_lint(args):
@@ -2048,6 +2087,17 @@ def main(argv: list[str] | None = None):
     p.add_argument("--min-trust", type=float, default=0.0)
     p.add_argument("--limit", "-n", type=int, default=50)
 
+    def add_remove_args(ap):
+        ap.add_argument("knowledge_id", type=int, help="要刪除的 knowledge ID")
+        ap.add_argument("--confirm", action="store_true", help="必要：確認刪除")
+        ap.add_argument("--json", action="store_true", help="輸出 JSON")
+        ap.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    p = sub.add_parser("remove", help="刪除知識條目（需要 --confirm）")
+    add_remove_args(p)
+    p = sub.add_parser("delete", help="remove 的別名")
+    add_remove_args(p)
+
     # lint
     p = sub.add_parser("lint", help="健康檢查")
 
@@ -2379,6 +2429,8 @@ def main(argv: list[str] | None = None):
     if explicit_project_dir:
         if args.command == "init":
             args.project_dir = explicit_project_dir
+        elif args.command in {"setup-agent", "install-agent"}:
+            args.agent_project_dir = explicit_project_dir
         else:
             os.chdir(explicit_project_dir)
 
@@ -2390,6 +2442,8 @@ def main(argv: list[str] | None = None):
         "compile": cmd_compile,
         "search": cmd_search,
         "list": cmd_list,
+        "remove": cmd_remove,
+        "delete": cmd_remove,
         "lint": cmd_lint,
         "doctor": cmd_doctor,
         "stats": cmd_stats,

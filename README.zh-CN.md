@@ -426,6 +426,7 @@ your-project/
 | `vault search "query" --graph-expand 2` | 搜索并加上图谱扩展 |
 | `vault export obsidian --vault /path/to/ObsidianVault --dry-run` | 导出单向只读 Markdown notes，方便用 Obsidian 浏览 |
 | `vault list` | 列出知识条目 |
+| `vault remove <id> --confirm` | 删除已确认 ID 的知识条目 |
 | `vault stats` | 显示 vault 统计 |
 | `vault lint` | 执行质量检查 |
 | `vault map build` | 创建/回填 Document Map |

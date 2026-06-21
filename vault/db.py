@@ -836,14 +836,23 @@ class VaultDB:
         return dict(row) if row else None
 
     def delete_knowledge(self, id: int) -> bool:
+        exists = self.get_knowledge(id) is not None
+        if not exists:
+            return False
+        self.conn.execute("DELETE FROM semantic_vectors WHERE knowledge_id=?", (id,))
+        self.conn.execute("DELETE FROM knowledge_claims WHERE knowledge_id=?", (id,))
+        self.conn.execute("DELETE FROM knowledge_nodes WHERE knowledge_id=?", (id,))
+        self.conn.execute("DELETE FROM lint_cache WHERE knowledge_id=?", (id,))
+        self.conn.execute("DELETE FROM entity_knowledge WHERE knowledge_id=?", (id,))
+        self.conn.execute("DELETE FROM edges WHERE source_id=? OR target_id=?", (id, id))
         self._delete_fts_row(id)
-        self.conn.execute("DELETE FROM knowledge WHERE id=?", (id,))
         if self._vec_available:
             self.conn.execute(
                 "DELETE FROM knowledge_vec WHERE knowledge_id=?", (id,)
             )
+        self.conn.execute("DELETE FROM knowledge WHERE id=?", (id,))
         self.conn.commit()
-        return self.conn.total_changes > 0
+        return True
 
     def list_knowledge(
         self,

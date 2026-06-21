@@ -380,19 +380,10 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
         project_dir = _ask("Vault project directory", str(default_project_dir(scope, agent=agent)))
 
     features_raw = argv_config.get("features")
-    if not features_raw:
-        features_raw = _ask(
-            "Optional features (comma-separated)",
-            "core,mcp",
-        )
-    features = normalize_features(features_raw)
-
-    if "features" not in argv_config and "headroom" not in features:
-        if _ask_yes_no(
-            "Enable optional Headroom context compression for long logs/tool output?",
-            False,
-        ):
-            features.append("headroom")
+    if features_raw:
+        features = normalize_features(features_raw)
+    else:
+        features = _ask_interactive_features()
 
     obsidian_vault = argv_config.get("obsidian_vault")
     if obsidian_vault is None:
@@ -428,6 +419,24 @@ def _ask(prompt: str, default: str) -> str:
     except EOFError:
         answer = ""
     return answer or default
+
+
+def _ask_interactive_features() -> list[str]:
+    features = ["core"]
+    if _ask_yes_no("Configure local stdio MCP tools for this agent?", True):
+        features.append("mcp")
+    if _ask_yes_no("Enable optional semantic search and embedding workflow?", False):
+        features.append("semantic")
+    if _ask_yes_no("Enable optional Supabase sync/read dependencies?", False):
+        features.append("supabase")
+    if _ask_yes_no(
+        "Enable optional Headroom context compression for long logs/tool output?",
+        False,
+    ):
+        features.append("headroom")
+    if _ask_yes_no("Install developer/benchmark dependencies?", False):
+        features.append("dev")
+    return features
 
 
 def _ask_yes_no(prompt: str, default: bool) -> bool:

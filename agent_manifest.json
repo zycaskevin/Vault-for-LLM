@@ -47,8 +47,11 @@
   },
   "common_install_architecture": [
     "choose projectDir",
-    "choose optional features",
+    "ask whether local stdio MCP should be configured",
+    "ask whether optional semantic search and embedding dependencies should be installed",
+    "ask whether optional Supabase sync/read dependencies should be installed",
     "ask whether optional Headroom context compression is needed for long logs or tool output",
+    "ask whether developer/benchmark dependencies should be installed",
     "ask whether to connect an existing Obsidian vault",
     "install vault",
     "configure CLI or stdio MCP",
@@ -56,7 +59,7 @@
     "ask whether to schedule automatic Obsidian sync",
     "verify search/read/propose"
   ],
-  "agent_install_prompt": "Install Vault-for-LLM for this project. Read AGENTS.md and agent_manifest.json, ask whether the vault should be shared or private, ask which optional features to enable, ask whether an existing Obsidian vault should be imported, ask whether optional Headroom context compression is needed for long tool output, configure CLI/MCP, run the first Obsidian dry-run/import if requested, ask whether automatic sync should be scheduled, and run a search/read/propose smoke test.",
+  "agent_install_prompt": "Install Vault-for-LLM for this project. Read AGENTS.md and agent_manifest.json, ask whether the vault should be shared or private, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, and dev/benchmark dependencies, ask whether an existing Obsidian vault should be imported, configure CLI/MCP, run the first Obsidian dry-run/import if requested, ask whether automatic sync should be scheduled, and run a search/read/propose smoke test.",
   "agent_setup_wizard": {
     "cli": "vault setup-agent",
     "alias": "vault install-agent",

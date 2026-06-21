@@ -131,7 +131,7 @@ def test_setup_agent_headroom_is_optional_next_step(tmp_path):
     assert any("original vault_read_range" in step for step in result["next_steps"])
 
 
-def test_interactive_setup_asks_headroom_when_features_not_preselected(tmp_path, monkeypatch):
+def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch):
     from vault.agent_setup import interactive_setup
 
     answers = iter(
@@ -139,9 +139,12 @@ def test_interactive_setup_asks_headroom_when_features_not_preselected(tmp_path,
             "nancy",
             "private",
             str(tmp_path / "agent-project"),
-            "",
-            "yes",
-            "",
+            "yes",  # MCP
+            "yes",  # semantic
+            "yes",  # Supabase
+            "yes",  # Headroom
+            "no",  # dev
+            "",  # Obsidian
         ]
     )
     prompts: list[str] = []
@@ -153,5 +156,8 @@ def test_interactive_setup_asks_headroom_when_features_not_preselected(tmp_path,
     monkeypatch.setattr("builtins.input", fake_input)
     config = interactive_setup({})
 
-    assert config.features == ["core", "mcp", "headroom"]
+    assert config.features == ["core", "mcp", "semantic", "supabase", "headroom"]
+    assert any("stdio MCP" in prompt for prompt in prompts)
+    assert any("semantic search" in prompt for prompt in prompts)
+    assert any("Supabase sync" in prompt for prompt in prompts)
     assert any("Headroom context compression" in prompt for prompt in prompts)

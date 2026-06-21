@@ -10,7 +10,7 @@ install path below keeps Vault local-first and governed.
 ## One-Sentence Prompt
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.24, ask which database scope and optional features I want, ask whether I have an existing Obsidian vault to import, ask whether optional Headroom context compression is needed for long tool output, run vault setup-agent, and finish with a search/read/propose smoke test.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.24, ask which database scope I want, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, and dev/benchmark dependencies, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
 ```
 
 ## What To Ask First
@@ -22,8 +22,13 @@ Ask these before installing extras or writing memory:
 3. Should MCP be enabled for this agent runtime?
 4. Do you already have an Obsidian vault to import?
 5. If Obsidian is connected, should ongoing sync be scheduled with cron, LaunchAgent, or n8n?
-6. Do you want semantic search or Supabase sync? Do not enable either silently.
-7. Do you want optional Headroom context compression for long logs, tool output, or large retrieved context? Keep the default as no unless the user has context-window or token pressure.
+6. Do you want optional semantic search and embedding workflow dependencies?
+7. Do you want optional Supabase sync/read dependencies for remote or cross-host memory?
+8. Do you want optional Headroom context compression for long logs, tool output, or large retrieved context?
+9. Do you want developer/benchmark dependencies for source work or release validation?
+
+Keep MCP defaulting to yes for MCP-capable runtimes. Keep semantic, Supabase,
+Headroom, and dev dependencies defaulting to no unless the user confirms.
 
 ## Scope Choices
 

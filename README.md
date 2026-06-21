@@ -262,9 +262,9 @@ For agent-driven installation, paste this into Hermes Agent, Codex, OpenCode, Cl
 ```text
 Install Vault-for-LLM for this project. Use PyPI package vault-for-llm[mcp]==0.6.24.
 Ask whether the vault database should be shared, private, domain-specific, or temporary.
-Ask which optional features to enable. Ask whether I have an existing Obsidian vault to import.
+Ask separately about MCP, semantic search, Supabase sync, Headroom context compression,
+and dev/benchmark dependencies. Ask whether I have an existing Obsidian vault to import.
 Run vault setup-agent, configure CLI/MCP, do an Obsidian dry-run before importing,
-ask whether optional Headroom context compression is needed for long tool output,
 and finish with a search/read/propose smoke test.
 ```
 
@@ -482,7 +482,7 @@ vault setup-agent \
   --obsidian-sync all
 ```
 
-The wizard asks for database scope, optional features, whether optional Headroom context compression is needed, an existing Obsidian vault path, whether to run the first import, and whether to generate cron, LaunchAgent, or n8n sync templates. `headroom` is an advanced optional feature for context compression; it is not required for Vault memory governance and should stay off unless the user has long logs, large tool output, or token pressure.
+The wizard asks for database scope, project directory, MCP, semantic search, Supabase sync, Headroom context compression, developer/benchmark dependencies, an existing Obsidian vault path, whether to run the first import, and whether to generate cron, LaunchAgent, or n8n sync templates. Semantic, Supabase, Headroom, and dev dependencies default to off. `headroom` is an advanced optional feature for context compression; it is not required for Vault memory governance and should stay off unless the user has long logs, large tool output, or token pressure.
 
 ### Obsidian export
 

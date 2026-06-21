@@ -241,7 +241,8 @@ Vault-for-LLM `0.6.24` 已发布到 PyPI。
 ```text
 帮这个项目安装 Vault-for-LLM。使用 PyPI 套件 vault-for-llm[mcp]==0.6.24。
 先询问 vault database 要 shared、private、domain-specific 还是 temporary。
-询问要开哪些 optional features。询问我是否有既有 Obsidian vault 要导入。
+逐项询问 MCP、semantic search、Supabase sync、Headroom context 压缩与 dev/benchmark dependencies。
+询问我是否有既有 Obsidian vault 要导入。
 执行 vault setup-agent，设置 CLI/MCP，Obsidian 先 dry-run 再导入，
 最后跑 search/read/propose smoke test。
 ```
@@ -452,7 +453,7 @@ your-project/
 
 使用 [`docs/agent_install.md`](docs/agent_install.md) 搭配 `vault setup-agent`
 或别名 `vault install-agent`，可以让 Agent 依序询问数据库 scope、optional
-features、是否需要 Headroom context 压缩、既有 Obsidian vault 路径、是否做第一次导入，以及是否生成 cron、LaunchAgent 或 n8n 自动同步模板。
+features（MCP、semantic、Supabase、Headroom、dev）、既有 Obsidian vault 路径、是否做第一次导入，以及是否生成 cron、LaunchAgent 或 n8n 自动同步模板。
 `headroom` 是进阶可选的 context 压缩功能，不是 Vault 记忆治理的必要条件；只有在长 logs、大量 tool output 或 token 压力明确时才建议开启。
 
 ```bash

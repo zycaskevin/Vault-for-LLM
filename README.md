@@ -242,14 +242,26 @@ In story form: the agent writes a note, the front desk checks whether it is safe
 
 ### Install from PyPI
 
-> Release note: the GitHub source tree is currently `0.6.24`. If PyPI is behind the latest GitHub release, use the source install below for the newest source features.
+Vault-for-LLM `0.6.24` is published on PyPI.
+
+For agent-driven installation, paste this into Hermes Agent, Codex, OpenCode, Claude Code, OpenClaw, or another agent that can run local commands:
+
+```text
+Install Vault-for-LLM for this project. Use PyPI package vault-for-llm[mcp]==0.6.24.
+Ask whether the vault database should be shared, private, domain-specific, or temporary.
+Ask which optional features to enable. Ask whether I have an existing Obsidian vault to import.
+Run vault setup-agent, configure CLI/MCP, do an Obsidian dry-run before importing,
+and finish with a search/read/propose smoke test.
+```
+
+Manual install:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install vault-for-llm
+pip install "vault-for-llm[mcp]==0.6.24"
 
-vault doctor
+vault setup-agent
 ```
 
 ### Optional semantic search

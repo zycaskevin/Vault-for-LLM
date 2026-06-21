@@ -21,10 +21,17 @@ with the daily loop in the README and only use these commands when needed.
 | `vault add "Title" --content "..."` | Add one active knowledge entry directly |
 | `vault add "Title" --file note.md` | Add an entry from a Markdown file |
 | `vault import long-doc.md` | Import and chunk a long document |
+| `vault import obsidian --vault /path/to/ObsidianVault --dry-run` | Preview importing existing Obsidian notes into `raw/obsidian/` |
+| `vault import obsidian --vault /path/to/ObsidianVault --compile` | Import changed Obsidian notes and compile them into `vault.db` |
 | `vault export obsidian --vault /path/to/ObsidianVault --dry-run` | Export read-only Markdown notes for Obsidian browsing |
 
 Prefer `vault remember` over `vault add` for autonomous agents or unreviewed
 memory.
+
+`vault import obsidian` skips `.obsidian/`, `.trash/`, `.git/`, and
+`00-Vault-Knowledge/` by default. The generated raw notes include
+`obsidian_source_path` and `obsidian_source_hash`, so repeated imports update
+changed notes without duplicating unchanged ones.
 
 ## Search And Navigation
 
@@ -78,4 +85,3 @@ memory.
 | `vault skill search "query"` | Search local experimental skill registry entries |
 
 Run `vault <command> --help` for command-specific options.
-

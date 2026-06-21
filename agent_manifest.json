@@ -78,6 +78,19 @@
       "notes": "vault-mcp is a local stdio server. Do not expose it as an unauthenticated public network service."
     },
     {
+      "id": "obsidian_import",
+      "default": false,
+      "prompt": "Connect an existing Obsidian vault as a Markdown source for this Vault project?",
+      "when_to_install": "Use when the user already keeps project notes in Obsidian and wants agents to search them through Vault-for-LLM.",
+      "install_commands": [
+        "vault import obsidian --vault /path/to/ObsidianVault --dry-run"
+      ],
+      "post_install": [
+        "vault import obsidian --vault /path/to/ObsidianVault --compile"
+      ],
+      "notes": "The importer writes to raw/obsidian/ and skips .obsidian, .trash, .git, and 00-Vault-Knowledge by default. Schedule the same --compile command with cron, LaunchAgent, n8n, or the host agent for automatic sync."
+    },
+    {
       "id": "semantic",
       "default": false,
       "prompt": "Install semantic search and embedding workflow dependencies?",

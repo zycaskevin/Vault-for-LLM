@@ -7,6 +7,8 @@
 #### Agent Runtime Integrations
 - Added MCP tool profiles so token-sensitive agents can start `vault-mcp` with a small `core` tool surface instead of the full compatibility set.
 - Slimmed the README command surface and moved the broader command list to `docs/cli_reference.md`.
+- Added `vault import obsidian` so existing Obsidian Markdown vaults can be imported into `raw/obsidian/`, re-run idempotently, and optionally compiled into `vault.db`.
+- Documented Obsidian import/sync for README readers and agent installers, including dry-run first use, default export-folder exclusions, and cron/LaunchAgent/n8n scheduling.
 - Added an agent integration guide documenting how to use Vault-for-LLM from Hermes Agent/Nancy, OpenClaw, n8n, Codex, OpenCode, Claude Code, generic MCP-compatible agents, and shell-based automation.
 - Added an OpenClaw adapter under `integrations/openclaw/` with a portable `vault-openclaw` wrapper, OpenClaw skill instructions, plugin metadata, manual tools, install/verify scripts, and config snippets.
 - Updated README variants to make CLI/MCP portability a first-class product message instead of presenting Vault as tied to one agent runtime.

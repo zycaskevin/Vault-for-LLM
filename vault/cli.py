@@ -5,6 +5,7 @@ Vault-for-LLM — CLI 入口。
   vault init              # 初始化專案
   vault add "標題"         # 加入知識
   vault import novel.md   # 匯入長文件（自動分塊）
+  vault import obsidian   # 從既有 Obsidian vault 同步 Markdown notes
   vault compile           # 編譯 raw/ → db + compiled/
   vault search "查詢"     # 搜尋知識
   vault export obsidian   # 匯出成 Obsidian vault Markdown notes
@@ -749,12 +750,69 @@ def cmd_graph(args):
 
 
 def cmd_import(args):
-    """匯入長文件，自動分塊進 DB。"""
+    """匯入長文件，或從 Obsidian vault 同步 Markdown notes。"""
+    project_dir = find_project_dir()
+    db_path = project_dir / "vault.db"
+
+    if args.file == "obsidian":
+        from vault.import_obsidian import sync_obsidian_vault
+
+        if not getattr(args, "vault", None):
+            print("❌ vault import obsidian 需要 --vault /path/to/ObsidianVault")
+            raise SystemExit(2)
+
+        try:
+            result = sync_obsidian_vault(
+                project_dir=project_dir,
+                vault_dir=args.vault,
+                category=args.category,
+                tags=args.tags,
+                layer=args.layer,
+                trust=args.trust,
+                raw_subdir=args.obsidian_raw_subdir,
+                excludes=set(args.exclude or []),
+                dry_run=args.dry_run,
+                allow_private=getattr(args, "allow_private", False),
+            )
+        except Exception as e:
+            print(f"❌ Obsidian 匯入失敗: {e}")
+            raise SystemExit(2) from e
+
+        print("📥 Obsidian 匯入結果:")
+        print(f"  掃描: {result['scanned']}")
+        print(f"  新增: {result['added']}")
+        print(f"  更新: {result['updated']}")
+        print(f"  跳過: {result['skipped']}")
+        print(f"  忽略: {result['ignored']}")
+        if result["errors"]:
+            print(f"  錯誤: {len(result['errors'])}")
+            for error in result["errors"][:5]:
+                print(f"    - {error}")
+            if not getattr(args, "allow_private", False):
+                print("  提示: 若這是明確的本機私人 vault，可加 --allow-private。")
+        else:
+            print("  錯誤: 0")
+
+        if args.dry_run:
+            print("  模式: dry-run，未寫入 raw/，也不會 compile")
+            return
+
+        if args.compile:
+            import argparse
+
+            compile_args = argparse.Namespace(
+                dry_run=False,
+                no_embed=args.no_embed,
+                allow_private=getattr(args, "allow_private", False),
+            )
+            cmd_compile(compile_args)
+        else:
+            print("下一步：執行 vault compile，或下次同步時加 --compile。")
+        return
+
     from vault.db import VaultDB
     from vault.importer import import_document
 
-    project_dir = find_project_dir()
-    db_path = project_dir / "vault.db"
     file_path = Path(args.file)
 
     if not file_path.exists():
@@ -1895,8 +1953,8 @@ def main():
     p.add_argument("--model", choices=["zh", "en", "mix"], default="mix")
 
     # import
-    p = sub.add_parser("import", help="匯入長文件（自動分塊）")
-    p.add_argument("file", help="檔案路徑 (.md, .txt)")
+    p = sub.add_parser("import", help="匯入長文件，或從 Obsidian 同步 notes")
+    p.add_argument("file", help="檔案路徑 (.md, .txt)，或使用 obsidian 搭配 --vault")
     p.add_argument("--title", "-t", help="文件標題（預設用檔名）")
     p.add_argument("--strategy", "-s", choices=["chapter", "semantic", "summary-guided", "sliding", "proposition"], default="chapter", help="分塊策略（預設: chapter，proposition 需要 Ollama）")
     p.add_argument("--layer", choices=["L0", "L1", "L2", "L3"], default="L3")
@@ -1909,6 +1967,11 @@ def main():
     p.add_argument("--contextualize", action="store_true", help="Contextual Retrieval：用 Ollama 生成上下文摘要（Anthropic 2024）")
     p.add_argument("--ollama-model", default="qwen3:8b", help="Ollama 模型（用於 contextualize）")
     p.add_argument("--allow-private", action="store_true", help="允許含秘密模式的文件直接匯入本機 vault")
+    p.add_argument("--vault", help="Obsidian vault 目錄；僅用於 `vault import obsidian`")
+    p.add_argument("--obsidian-raw-subdir", default="obsidian", help="Obsidian notes 寫入 raw/ 下的子目錄")
+    p.add_argument("--exclude", action="append", default=[], help="Obsidian 匯入時額外忽略的目錄或檔名，可重複")
+    p.add_argument("--dry-run", action="store_true", help="Obsidian 匯入時只列出新增/更新，不寫入")
+    p.add_argument("--compile", action="store_true", help="Obsidian 匯入完成後立刻執行 vault compile")
 
     # export — read-only export targets
     p = sub.add_parser("export", help="匯出知識（單向、唯讀）")

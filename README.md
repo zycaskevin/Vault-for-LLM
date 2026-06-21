@@ -52,6 +52,24 @@ To see the positioning as local numbers rather than slogans, run the [project me
 
 ---
 
+## Works across agent systems
+
+Vault-for-LLM is not tied to one agent runtime. The shared contract is simple:
+local Markdown + SQLite, exposed through CLI and optional stdio MCP.
+
+| System | How to use Vault-for-LLM |
+|---|---|
+| Hermes Agent / Nancy | Configure `vault-mcp` for search/read/propose tools; run CLI jobs for dream reports, backups, and onboarding benchmarks. |
+| OpenClaw | Use the bundled adapter in [`integrations/openclaw/`](integrations/openclaw/) to register `vault_search`, `vault_read_range`, `vault_memory_propose`, and `vault_stats`; generic MCP also works. |
+| n8n | Call the `vault` CLI from Execute Command nodes, wrap it behind an internal HTTP service, or bridge to MCP for workflow automation. |
+| Codex | Use the CLI inside the repo/workspace; use MCP on Codex surfaces that support local MCP servers. |
+| Claude Code | Configure `vault-mcp` as a local stdio MCP server, or use CLI commands in shell-capable sessions. |
+| Any MCP-compatible agent | Run `vault-mcp --project-dir <project>` and follow `vault_search` → `vault_read_range` → answer with sources. |
+
+See [Agent Integrations](docs/agent_integrations.md) for setup patterns, OpenClaw adapter details, and runtime-specific notes.
+
+---
+
 ## Current source status: v0.6.22
 
 The current source tree includes the v0.6.22 release follow-up and quality-gate release. Building on the candidate-first memory workflow and search enhancements, this release focuses on keeping default local search dependable while preserving optional semantic, rerank, MCP, and benchmarking tools:
@@ -89,6 +107,7 @@ Older repository hygiene tools from 0.4.3 are documented in [`scripts/README.md`
 | Quality tools | lint, freshness, convergence, cross-validation, dedup, Search QA snapshots ([benchmarking guide](docs/search_qa_benchmarking.md)), semantic smoke/warm workflows |
 | Benchmarking | `benchmarks/search_benchmark.py` for reproducible before/after retrieval quality and latency comparison |
 | Repository governance | source-checkout public-boundary gate, artifact audit, and safe-only cleanup helpers ([governance guide](docs/repo_governance.md)) |
+| Agent integrations | CLI/MCP patterns for Hermes Agent, OpenClaw, n8n, Codex, Claude Code, and generic MCP-compatible agents ([integration guide](docs/agent_integrations.md)) |
 | Optional remote sync | Supabase sync scripts for teams or remote read paths |
 | Local skill registry | experimental `vault skill` commands for sharing reusable workflows inside a local Vault; not a hosted marketplace |
 

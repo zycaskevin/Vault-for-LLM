@@ -1,0 +1,15 @@
+{
+  "plugins": {
+    "entries": {
+      "vault-for-llm": {
+        "enabled": true,
+        "config": {
+          "wrapperPath": "~/.openclaw/skills/vault-for-llm/bin/vault-openclaw",
+          "autoRecall": false,
+          "autoRecallResults": 3
+        }
+      }
+    },
+    "allow": ["vault-for-llm"]
+  }
+}

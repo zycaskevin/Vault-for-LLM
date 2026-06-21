@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## [0.6.24] - 2026-06-21
+
+### Added
+
+- Added `vault setup-agent` / `vault install-agent`, an interactive and non-interactive agent installer that asks for database scope, optional features, Obsidian import, and sync-template generation.
+- Added Obsidian automatic sync templates for cron, macOS LaunchAgent, and n8n Execute Command workflows.
+- Added `vault_obsidian_import` for MCP maintenance/full profiles and the OpenClaw adapter, keeping daily `core` MCP tool schema small.
+- Added a short v0.6.24 announcement draft under `docs/announcements/`.
+
 ## [0.6.23] - 2026-06-21
 
 ### Added

@@ -52,6 +52,12 @@
     "verify search/read/propose"
   ],
   "agent_install_prompt": "Install Vault-for-LLM for this project. Read AGENTS.md and agent_manifest.json, ask whether the vault should be shared or private, ask which optional features to enable, ask whether an existing Obsidian vault should be imported, configure CLI/MCP, run the first Obsidian dry-run/import if requested, ask whether automatic sync should be scheduled, and run a search/read/propose smoke test.",
+  "agent_setup_wizard": {
+    "cli": "vault setup-agent",
+    "alias": "vault install-agent",
+    "non_interactive_example": "vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir /path/to/project --features core,mcp,obsidian_import --obsidian-vault /path/to/ObsidianVault --import-obsidian --obsidian-sync all",
+    "sync_templates": ["cron", "launchagent", "n8n"]
+  },
   "optional_features": [
     {
       "id": "core",
@@ -86,6 +92,7 @@
       "prompt": "Do you already have an Obsidian vault to import into this Vault project? If yes, provide its path.",
       "when_to_install": "Use when the user already keeps project notes in Obsidian and wants agents to search them through Vault-for-LLM.",
       "install_commands": [
+        "vault setup-agent --non-interactive --agent generic --scope private --agent-project-dir /path/to/project --features core,mcp,obsidian_import --obsidian-vault /path/to/ObsidianVault --obsidian-sync all",
         "vault import obsidian --vault /path/to/ObsidianVault --project-dir /path/to/project --dry-run"
       ],
       "post_install": [
@@ -152,7 +159,8 @@
     "mcp_tools": {
       "search": "vault_search",
       "bounded_read": "vault_read_range",
-      "candidate_memory": "vault_memory_propose"
+      "candidate_memory": "vault_memory_propose",
+      "obsidian_import": "vault_obsidian_import"
     }
   },
   "mcp_tool_profiles": {
@@ -177,6 +185,7 @@
       ],
       "maintenance": [
         "review",
+        "vault_obsidian_import",
         "vault_converge",
         "vault_freshness"
       ],
@@ -207,6 +216,12 @@
     ],
     "generic_mcp": [
       "vault-mcp --project-dir /path/to/project --tool-profile core"
+    ],
+    "setup_agent": [
+      "vault setup-agent"
+    ],
+    "setup_agent_non_interactive": [
+      "vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir /path/to/project --features core,mcp,obsidian_import --obsidian-vault /path/to/ObsidianVault --import-obsidian --obsidian-sync all"
     ]
   },
   "supported_runtimes": [

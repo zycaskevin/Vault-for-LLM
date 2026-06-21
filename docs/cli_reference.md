@@ -8,6 +8,7 @@ with the daily loop in the README and only use these commands when needed.
 | Command | Purpose |
 |---|---|
 | `vault init` | Initialize a project vault |
+| `vault setup-agent` / `vault install-agent` | Run the agent installer wizard and optional Obsidian sync template generator |
 | `vault remember "Title" --content "..." --reason "..."` | Propose candidate memory for review |
 | `vault promote <candidate_id> --confirm` | Promote reviewed candidate memory |
 | `vault compile` | Compile `raw/` into SQLite and generated artifacts |
@@ -32,6 +33,16 @@ memory.
 `00-Vault-Knowledge/` by default. The generated raw notes include
 `obsidian_source_path` and `obsidian_source_hash`, so repeated imports update
 changed notes without duplicating unchanged ones.
+
+## Agent Setup
+
+| Command | Purpose |
+|---|---|
+| `vault setup-agent` | Ask for scope, optional features, Obsidian import, sync templates, and smoke-test next steps |
+| `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,obsidian_import` | Agent-friendly scripted install |
+| `vault setup-agent --obsidian-vault ~/Documents/ObsidianVault --import-obsidian --obsidian-sync all` | Run first Obsidian import and write cron, LaunchAgent, and n8n templates |
+
+`vault install-agent` is an alias for `vault setup-agent`.
 
 ## Search And Navigation
 

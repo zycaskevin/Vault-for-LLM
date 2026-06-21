@@ -970,6 +970,24 @@ TOOLS = [
         }
     },
     {
+        "name": "vault_obsidian_import",
+        "description": "Import an existing Obsidian vault into raw/obsidian/. Run dry_run first; compile only after user confirmation.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "vault_dir": {"type": "string", "description": "Obsidian vault directory"},
+                "dry_run": {"type": "boolean", "default": True},
+                "compile": {"type": "boolean", "default": False},
+                "category": {"type": "string", "default": "obsidian"},
+                "tags": {"type": "string", "default": "obsidian"},
+                "layer": {"type": "string", "enum": ["L0", "L1", "L2", "L3"], "default": "L3"},
+                "trust": {"type": "number", "default": 0.5},
+                "allow_private": {"type": "boolean", "default": False},
+            },
+            "required": ["vault_dir"]
+        }
+    },
+    {
         "name": "vault_dream_run",
         "description": "Run deterministic dream curation. Defaults to report-only and never deletes knowledge.",
         "inputSchema": {
@@ -1154,6 +1172,7 @@ TOOL_PROFILES = {
         "vault_read_range",
         "vault_memory_propose",
         "vault_memory_promote",
+        "vault_obsidian_import",
         "vault_dream_run",
         "vault_stats",
         "vault_converge",
@@ -1372,6 +1391,44 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 )
             finally:
                 db.close()
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
+
+        elif name == "vault_obsidian_import":
+            from vault.agent_setup import compile_project
+            from vault.import_obsidian import sync_obsidian_vault
+
+            project_dir = Path(DB_PATH).resolve().parent
+            dry_run = bool(arguments.get("dry_run", True))
+            payload = {
+                "project_dir": str(project_dir),
+                "vault_dir": arguments.get("vault_dir", ""),
+                "dry_run": dry_run,
+                "import": sync_obsidian_vault(
+                    project_dir=project_dir,
+                    vault_dir=arguments.get("vault_dir", ""),
+                    category=arguments.get("category", "obsidian"),
+                    tags=arguments.get("tags", "obsidian"),
+                    layer=arguments.get("layer", "L3"),
+                    trust=float(arguments.get("trust", 0.5)),
+                    dry_run=dry_run,
+                    allow_private=bool(arguments.get("allow_private", False)),
+                ),
+            }
+            if bool(arguments.get("compile", False)) and not dry_run:
+                payload["compile"] = compile_project(
+                    project_dir,
+                    allow_private=bool(arguments.get("allow_private", False)),
+                )
+            else:
+                payload["next_action"] = {
+                    "tool": "vault_obsidian_import",
+                    "arguments": {
+                        "vault_dir": arguments.get("vault_dir", ""),
+                        "dry_run": False,
+                        "compile": True,
+                    },
+                    "instruction": "Run only after the user confirms the dry-run result.",
+                }
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 
         elif name == "vault_dream_run":

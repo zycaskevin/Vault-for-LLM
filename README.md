@@ -154,7 +154,7 @@ required dependency for local use.
 
 ## Current Source Status
 
-The current source tree is `0.6.23`. Core local search is stable, while
+The current source tree is `0.6.24`. Core local search is stable, while
 advanced semantic, rerank, sync, and benchmarking workflows remain optional.
 See [CHANGELOG.md](CHANGELOG.md) for release details.
 
@@ -242,7 +242,7 @@ In story form: the agent writes a note, the front desk checks whether it is safe
 
 ### Install from PyPI
 
-> Release note: the GitHub source tree is currently `0.6.23`. If PyPI is behind the latest GitHub release, use the source install below for the newest source features.
+> Release note: the GitHub source tree is currently `0.6.24`. If PyPI is behind the latest GitHub release, use the source install below for the newest source features.
 
 ```bash
 python3 -m venv .venv
@@ -425,6 +425,7 @@ your-project/
 | Command | Purpose |
 |---|---|
 | `vault init` | Initialize a project vault |
+| `vault setup-agent` | Run the interactive agent installer and optional Obsidian sync template generator |
 | `vault remember "Title" --content "..." --reason "..."` | Propose candidate memory for review |
 | `vault promote <candidate_id> --confirm` | Promote reviewed candidate memory |
 | `vault compile` | Compile Markdown into SQLite |
@@ -433,6 +434,26 @@ your-project/
 | `vault map read <id> --lines 10-30` | Read a bounded range for citation |
 
 For the broader command surface, see the [CLI reference](docs/cli_reference.md).
+
+### Agent setup wizard
+
+Use `vault setup-agent` or its alias `vault install-agent` when an agent should guide the installation instead of asking a human to run every command manually:
+
+```bash
+vault setup-agent
+
+vault setup-agent \
+  --non-interactive \
+  --agent codex \
+  --scope shared \
+  --agent-project-dir ~/Vaults/my-project \
+  --features core,mcp,obsidian_import \
+  --obsidian-vault ~/Documents/ObsidianVault \
+  --import-obsidian \
+  --obsidian-sync all
+```
+
+The wizard asks for database scope, optional features, an existing Obsidian vault path, whether to run the first import, and whether to generate cron, LaunchAgent, or n8n sync templates.
 
 ### Obsidian export
 

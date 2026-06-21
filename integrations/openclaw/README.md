@@ -45,6 +45,7 @@ install heavyweight or cloud-connected extras; agents should ask first.
 |---|---|
 | `core` | Local SQLite + Markdown + keyword search. Always included. |
 | `mcp` | Local stdio MCP tools for MCP-capable runtimes. |
+| `obsidian_import` | Existing Obsidian vault import; dry-run first, apply only after confirmation. |
 | `semantic` | Embedding-backed semantic/hybrid retrieval dependencies. |
 | `supabase` | Optional remote sync/read path dependencies. |
 | `dev` | Source checkout test, benchmark, and PR validation dependencies. |
@@ -57,7 +58,7 @@ bash integrations/openclaw/install.sh --scope private --non-interactive
 bash integrations/openclaw/install.sh \
   --scope shared \
   --project-dir ~/Vaults/my-project \
-  --features core,mcp,semantic \
+  --features core,mcp,obsidian_import \
   --non-interactive
 ```
 
@@ -110,6 +111,8 @@ Or call the installed wrapper directly:
 ```bash
 ~/.openclaw/skills/vault-for-llm/bin/vault-openclaw init
 ~/.openclaw/skills/vault-for-llm/bin/vault-openclaw search "what should this agent know?" --limit 5
+~/.openclaw/skills/vault-for-llm/bin/vault-openclaw obsidian-import --vault ~/Documents/ObsidianVault
+~/.openclaw/skills/vault-for-llm/bin/vault-openclaw obsidian-import --vault ~/Documents/ObsidianVault --apply --compile
 ```
 
 ## MCP

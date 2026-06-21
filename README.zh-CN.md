@@ -131,9 +131,9 @@ Vault-for-LLM 绑定的是 `project-dir`，不是某一个 Agent runtime：
 
 ---
 
-## 当前源码状态：v0.6.23
+## 当前源码状态：v0.6.24
 
-当前 source tree 已包含 v0.6.23 的 agent integration、OpenClaw adapter、Obsidian 导入同步、benchmark proof 与质量 gate，并保留候选制记忆 workflow 与搜索增强。白话说，Vault 现在不像一个谁都能乱塞纸条的抽屉，更像一间有前台的小图书馆：
+当前 source tree 已包含 v0.6.24 的 agent integration、OpenClaw adapter、Obsidian 导入同步、benchmark proof 与质量 gate，并保留候选制记忆 workflow 与搜索增强。白话说，Vault 现在不像一个谁都能乱塞纸条的抽屉，更像一间有前台的小图书馆：
 
 - **候选制记忆**：Agent 想记东西时，先交到前台（`vault remember` / `vault_memory_propose`），由 privacy、duplicate、metadata、quality gates 检查，再决定能不能上架。
 - **更安全的召回**：keyword search 有弱匹配门槛，应该找不到的 query 比较不会硬抓一条不相关记忆回来；可用 `--min-score` 调整。
@@ -225,7 +225,7 @@ Markdown raw/  →  vault compile  →  SQLite database  →  vault search / MCP
 
 ### 从 PyPI 安装
 
-> 发布备注：GitHub source tree 目前是 `0.6.23`。如果 PyPI 落后最新 GitHub release，请先使用下方 source install 获取最新 source features。
+> 发布备注：GitHub source tree 目前是 `0.6.24`。如果 PyPI 落后最新 GitHub release，请先使用下方 source install 获取最新 source features。
 
 ```bash
 python3 -m venv .venv
@@ -394,6 +394,7 @@ your-project/
 | 命令 | 用途 |
 |---|---|
 | `vault init` | 初始化项目 vault |
+| `vault setup-agent` | 启动交互式 Agent 安装精灵，并可生成 Obsidian 自动同步模板 |
 | `vault doctor` | 检查本地环境与可选依赖 |
 | `vault add "Title" --content "..."` | 新增知识条目 |
 | `vault add "Title" --file note.md` | 从 Markdown 文件新增条目 |
@@ -424,6 +425,24 @@ your-project/
 | `vault skill search "query"` | 搜索本机实验性技能登记库条目 |
 
 执行 `vault <command> --help` 可查看各命令参数。
+
+### Agent 安装精灵
+
+使用 `vault setup-agent` 或别名 `vault install-agent`，可以让 Agent 依序询问数据库 scope、optional features、既有 Obsidian vault 路径、是否做第一次导入，以及是否生成 cron、LaunchAgent 或 n8n 自动同步模板。
+
+```bash
+vault setup-agent
+
+vault setup-agent \
+  --non-interactive \
+  --agent hermes \
+  --scope shared \
+  --agent-project-dir ~/Vaults/my-project \
+  --features core,mcp,obsidian_import \
+  --obsidian-vault ~/Documents/ObsidianVault \
+  --import-obsidian \
+  --obsidian-sync all
+```
 
 ### Obsidian 导出
 

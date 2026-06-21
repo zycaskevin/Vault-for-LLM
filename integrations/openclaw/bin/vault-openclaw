@@ -20,12 +20,25 @@ from pathlib import Path
 SCRIPT_PATH = Path(__file__).resolve()
 SOURCE_ROOT = SCRIPT_PATH.parents[3] if len(SCRIPT_PATH.parents) >= 4 else Path.cwd()
 DEFAULT_PROJECT = Path.home() / ".openclaw" / "workspace" / "vault-project"
+CONFIG_PATH = SCRIPT_PATH.parents[1] / "config.json" if len(SCRIPT_PATH.parents) >= 2 else None
+
+
+def load_config() -> dict:
+    if not CONFIG_PATH or not CONFIG_PATH.exists():
+        return {}
+    try:
+        return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
 
 
 def source_repo() -> Path | None:
     explicit = os.environ.get("VAULT_OPENCLAW_REPO")
     if explicit:
         return Path(explicit).expanduser().resolve()
+    configured = load_config().get("source_repo")
+    if configured:
+        return Path(configured).expanduser().resolve()
     if (SOURCE_ROOT / "vault" / "mcp.py").exists():
         return SOURCE_ROOT
     return None
@@ -71,7 +84,8 @@ if sys.version_info < (3, 10):
 
 
 def project_dir() -> Path:
-    return Path(os.environ.get("VAULT_OPENCLAW_PROJECT_DIR", DEFAULT_PROJECT)).expanduser().resolve()
+    configured = load_config().get("project_dir") or DEFAULT_PROJECT
+    return Path(os.environ.get("VAULT_OPENCLAW_PROJECT_DIR", configured)).expanduser().resolve()
 
 
 def python_env() -> dict[str, str]:
@@ -221,6 +235,26 @@ def cmd_propose(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_obsidian_import(args: argparse.Namespace) -> int:
+    ensure_initialized()
+    vault_mcp = load_vault_mcp()
+    payload = vault_mcp.handle_tool_call(
+        "vault_obsidian_import",
+        {
+            "vault_dir": args.vault,
+            "dry_run": args.dry_run,
+            "compile": args.compile,
+            "category": args.category,
+            "tags": args.tags,
+            "layer": args.layer,
+            "trust": args.trust,
+            "allow_private": args.allow_private,
+        },
+    )
+    print_json(parse_json_result(payload))
+    return 0
+
+
 def cmd_mcp_config(_args: argparse.Namespace) -> int:
     repo = source_repo()
     env = {}
@@ -276,6 +310,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--tags", default="")
     p.add_argument("--trust", type=float, default=0.5)
     p.set_defaults(func=cmd_propose)
+
+    p = sub.add_parser("obsidian-import")
+    p.add_argument("--vault", required=True, help="Obsidian vault directory")
+    p.add_argument("--dry-run", action="store_true", default=True)
+    p.add_argument("--apply", dest="dry_run", action="store_false", help="Write changed notes into raw/obsidian")
+    p.add_argument("--compile", action="store_true", help="Compile imported notes into vault.db")
+    p.add_argument("--category", default="obsidian")
+    p.add_argument("--tags", default="obsidian")
+    p.add_argument("--layer", choices=["L0", "L1", "L2", "L3"], default="L3")
+    p.add_argument("--trust", type=float, default=0.5)
+    p.add_argument("--allow-private", action="store_true")
+    p.set_defaults(func=cmd_obsidian_import)
 
     sub.add_parser("mcp-config").set_defaults(func=cmd_mcp_config)
     return parser

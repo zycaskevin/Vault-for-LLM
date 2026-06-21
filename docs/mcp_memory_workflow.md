@@ -11,7 +11,7 @@ Use the smallest MCP tool profile that fits the session:
 | `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats` | Daily agent use with fewer tool-schema tokens |
 | `review` | Core plus `vault_memory_promote`, `vault_dream_run` | Reviewing and promoting candidate memory |
 | `remote` | Core plus `vault_remote_map_show`, `vault_remote_read_range` | Reading a Supabase-synced cross-host memory view |
-| `maintenance` | Review plus freshness/convergence checks | Scheduled or operator-led curation |
+| `maintenance` | Review plus Obsidian import and freshness/convergence checks | Scheduled or operator-led curation |
 | `full` | All tools, including compatibility `vault_add` | Backward compatibility or explicit power-user setups |
 
 ```bash
@@ -40,6 +40,31 @@ selected project directory.
 `vault_add` is still available for compatibility and controlled scripts, but it writes directly to active knowledge. It blocks obvious privacy failures and builds a Document Map when possible, but it still bypasses candidate review. For autonomous agents and unreviewed memories, use `vault_memory_propose` so the memory passes deterministic gates first.
 
 ## Tools
+
+### `vault_obsidian_import`
+
+Imports an existing Obsidian vault into `raw/obsidian/`. This tool is available
+in `maintenance` and `full`, not `core`, so daily agent sessions keep a smaller
+tool schema.
+
+Run a preview first:
+
+```json
+{
+  "vault_dir": "/path/to/ObsidianVault",
+  "dry_run": true
+}
+```
+
+After the user confirms the preview, apply and compile:
+
+```json
+{
+  "vault_dir": "/path/to/ObsidianVault",
+  "dry_run": false,
+  "compile": true
+}
+```
 
 ### `vault_memory_propose`
 

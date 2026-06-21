@@ -23,7 +23,7 @@ Options:
                           private: use OpenClaw's own isolated vault
                           temporary: use a throwaway vault for demos/tests
   --project-dir <path>    explicit Vault project directory; overrides --scope default
-  --features <csv>        optional features: core,mcp,semantic,supabase,dev
+  --features <csv>        optional features: core,mcp,obsidian_import,semantic,supabase,dev
                           default is core; core is always included
   --non-interactive       do not prompt; default scope is private
   --help                  show this help
@@ -141,9 +141,9 @@ normalize_features() {
   local feature
   for feature in "${parts[@]}"; do
     case "$feature" in
-      ""|core|mcp|semantic|supabase|dev) ;;
+      ""|core|mcp|obsidian_import|semantic|supabase|dev) ;;
       *)
-        echo "Invalid feature '${feature}' (expected core,mcp,semantic,supabase,dev)" >&2
+        echo "Invalid feature '${feature}' (expected core,mcp,obsidian_import,semantic,supabase,dev)" >&2
         exit 1
         ;;
     esac
@@ -165,6 +165,8 @@ Choose optional Vault features:
 
   core      Local SQLite + Markdown + keyword search. Always included.
   mcp       Local stdio MCP tools for MCP-capable agents.
+  obsidian_import
+            Ask for an existing Obsidian vault, dry-run first, then import on approval.
   semantic  Embedding-backed semantic/hybrid retrieval. Larger optional deps.
   supabase  Optional remote sync/read path. Requires credentials.
   dev       Source checkout tests, benchmarks, and PR validation.
@@ -202,6 +204,12 @@ EOF
                vault semantic rebuild --project-dir <projectDir> --persist-cache --pretty
 EOF
   fi
+  if has_feature obsidian_import; then
+    cat <<'EOF'
+  obsidian:    vault-openclaw obsidian-import --vault <ObsidianVault>
+               vault-openclaw obsidian-import --vault <ObsidianVault> --apply --compile
+EOF
+  fi
   if has_feature supabase; then
     cat <<'EOF'
   supabase:    python -m pip install "vault-for-llm[supabase]"
@@ -234,6 +242,24 @@ cp "${SRC_DIR}/bin/vault-openclaw" "${SKILL_DIR}/bin/vault-openclaw"
 cp "${SRC_DIR}/index.ts" "${EXT_DIR}/index.ts"
 cp "${SRC_DIR}/openclaw.plugin.json" "${EXT_DIR}/openclaw.plugin.json"
 chmod +x "${SKILL_DIR}/bin/vault-openclaw"
+python3 - "${SKILL_DIR}/config.json" "${REPO_ROOT}" "${PROJECT_DIR}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+Path(sys.argv[1]).write_text(
+    json.dumps(
+        {
+            "source_repo": sys.argv[2],
+            "project_dir": sys.argv[3],
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+PY
 
 export VAULT_OPENCLAW_REPO="${VAULT_OPENCLAW_REPO:-${REPO_ROOT}}"
 export VAULT_OPENCLAW_PROJECT_DIR="${PROJECT_DIR}"

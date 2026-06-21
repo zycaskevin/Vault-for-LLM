@@ -171,6 +171,36 @@ export default function register(api: OpenClawPluginApi) {
   });
 
   api.registerTool({
+    name: "vault_obsidian_import",
+    description:
+      "Import an existing Obsidian vault into Vault-for-LLM. Run dry_run first; only use apply+compile after user confirmation.",
+    parameters: {
+      type: "object",
+      properties: {
+        vault: { type: "string", description: "Obsidian vault directory" },
+        dry_run: { type: "boolean", description: "Preview only, default true" },
+        compile: { type: "boolean", description: "Compile imported notes after apply" },
+        category: { type: "string", description: "Imported note category" },
+        tags: { type: "string", description: "Imported note tags" },
+      },
+      required: ["vault"],
+    },
+    async execute(_toolCallId: string, params: Record<string, unknown>) {
+      try {
+        const args = ["obsidian-import", "--vault", String(params.vault || "")];
+        if (params.dry_run === false) args.push("--apply");
+        if (params.compile === true) args.push("--compile");
+        if (params.category) args.push("--category", String(params.category));
+        if (params.tags) args.push("--tags", String(params.tags));
+        const result = await runVault(cfg, args);
+        return toolText(result);
+      } catch (err) {
+        return toolError(err);
+      }
+    },
+  });
+
+  api.registerTool({
     name: "vault_stats",
     description: "Show Vault-for-LLM project memory status and counts.",
     parameters: { type: "object", properties: {} },

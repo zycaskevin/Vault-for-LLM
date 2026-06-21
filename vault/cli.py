@@ -1885,6 +1885,83 @@ def cmd_export(args):
     if len(result["paths"]) > 10:
         print(f"  ... {len(result['paths']) - 10} more")
 
+
+def cmd_setup_agent(args):
+    """Interactive/non-interactive agent setup wizard."""
+    from vault.agent_setup import (
+        AgentSetupConfig,
+        default_project_dir,
+        interactive_setup,
+        normalize_features,
+        run_agent_setup,
+    )
+
+    if getattr(args, "non_interactive", False):
+        scope = args.scope or "private"
+        project_dir = Path(args.agent_project_dir or default_project_dir(scope, agent=args.agent))
+        config = AgentSetupConfig(
+            project_dir=project_dir,
+            scope=scope,
+            agent=args.agent,
+            features=normalize_features(args.features),
+            tool_profile=args.tool_profile,
+            obsidian_vault=Path(args.obsidian_vault).expanduser() if args.obsidian_vault else None,
+            import_obsidian=bool(args.import_obsidian),
+            sync_targets=args.obsidian_sync,
+            sync_interval_minutes=args.sync_interval_minutes,
+            template_dir=Path(args.template_dir).expanduser() if args.template_dir else None,
+            allow_private=bool(args.allow_private),
+        )
+    else:
+        setup_values = {
+            "agent": args.agent,
+            "scope": args.scope,
+            "project_dir": args.agent_project_dir,
+            "features": args.features,
+            "tool_profile": args.tool_profile,
+            "obsidian_vault": args.obsidian_vault,
+            "sync_interval_minutes": args.sync_interval_minutes,
+            "template_dir": args.template_dir,
+            "allow_private": args.allow_private,
+        }
+        if args.import_obsidian:
+            setup_values["import_obsidian"] = True
+        if args.obsidian_sync != "none":
+            setup_values["sync_targets"] = args.obsidian_sync
+        config = interactive_setup(setup_values)
+
+    payload = run_agent_setup(config)
+    if args.pretty or args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    print("Agent setup complete")
+    print(f"  project_dir: {payload['project_dir']}")
+    print(f"  db_path: {payload['db_path']}")
+    print(f"  features: {', '.join(payload['features'])}")
+    if payload.get("obsidian"):
+        obsidian = payload["obsidian"]
+        dry = obsidian.get("dry_run") or {}
+        imported = obsidian.get("import") or {}
+        print(f"  obsidian_vault: {obsidian.get('vault')}")
+        if dry:
+            print(
+                "  obsidian_dry_run: "
+                f"scanned={dry.get('scanned')} added={dry.get('added')} updated={dry.get('updated')}"
+            )
+        if imported:
+            print(
+                "  obsidian_import: "
+                f"added={imported.get('added')} updated={imported.get('updated')} skipped={imported.get('skipped')}"
+            )
+    if payload.get("sync_templates"):
+        print("  sync_templates:")
+        for name, path in payload["sync_templates"].items():
+            print(f"    {name}: {path}")
+    print("Next steps:")
+    for step in payload["next_steps"]:
+        print(f"  {step}")
+
 # ── CLI 入口 ─────────────────────────────────────────────
 
 def main(argv: list[str] | None = None):
@@ -1983,6 +2060,35 @@ def main(argv: list[str] | None = None):
     # install-embedding
     p = sub.add_parser("install-embedding", help="安裝嵌入模型")
     p.add_argument("--model", choices=["zh", "en", "mix"], default="mix")
+
+    def add_agent_setup_args(ap):
+        ap.add_argument("--agent", default="generic", help="Agent/runtime 名稱，例如 hermes/openclaw/codex/n8n")
+        ap.add_argument("--scope", choices=["shared", "private", "domain", "temporary"], help="Vault 資料庫範圍")
+        ap.add_argument("--agent-project-dir", "--project", dest="agent_project_dir",
+                        help="要初始化/使用的 Vault project directory")
+        ap.add_argument("--features", default=None,
+                        help="可選功能 CSV，例如 core,mcp,obsidian_import,semantic,supabase")
+        ap.add_argument("--tool-profile", choices=["core", "review", "remote", "maintenance", "full"],
+                        default="core", help="建議的 MCP tool profile")
+        ap.add_argument("--obsidian-vault", help="既有 Obsidian vault 路徑；提供後會先 dry-run")
+        ap.add_argument("--import-obsidian", action="store_true",
+                        help="dry-run 後執行第一次 Obsidian 匯入並 compile")
+        ap.add_argument("--obsidian-sync", choices=["none", "cron", "launchagent", "n8n", "all"],
+                        default="none", help="產生後續自動同步模板")
+        ap.add_argument("--sync-interval-minutes", type=int, default=15,
+                        help="同步模板排程間隔分鐘數")
+        ap.add_argument("--template-dir", help="同步模板輸出目錄；預設 project/agent-install")
+        ap.add_argument("--allow-private", action="store_true",
+                        help="允許 Obsidian 匯入含 secret-like pattern 的本機私人資料")
+        ap.add_argument("--non-interactive", action="store_true", help="不要詢問，使用參數/defaults")
+        ap.add_argument("--json", action="store_true", help="輸出 JSON")
+        ap.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    # setup-agent / install-agent
+    p = sub.add_parser("setup-agent", help="互動式 Agent 安裝精靈")
+    add_agent_setup_args(p)
+    p = sub.add_parser("install-agent", help="setup-agent 的別名")
+    add_agent_setup_args(p)
 
     # import
     p = sub.add_parser("import", help="匯入長文件，或從 Obsidian 同步 notes")
@@ -2288,6 +2394,8 @@ def main(argv: list[str] | None = None):
         "doctor": cmd_doctor,
         "stats": cmd_stats,
         "install-embedding": cmd_install_embedding,
+        "setup-agent": cmd_setup_agent,
+        "install-agent": cmd_setup_agent,
         "import": cmd_import,
         "export": cmd_export,
         "config": cmd_config,

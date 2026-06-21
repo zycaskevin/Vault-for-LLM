@@ -4,6 +4,11 @@
 
 ### Added
 
+#### Agent Runtime Integrations
+- Added an agent integration guide documenting how to use Vault-for-LLM from Hermes Agent/Nancy, OpenClaw, n8n, Codex, Claude Code, generic MCP-compatible agents, and shell-based automation.
+- Added an OpenClaw adapter under `integrations/openclaw/` with a portable `vault-openclaw` wrapper, OpenClaw skill instructions, plugin metadata, manual tools, install/verify scripts, and config snippets.
+- Updated README variants to make CLI/MCP portability a first-class product message instead of presenting Vault as tied to one agent runtime.
+
 #### Agent Memory Benchmarking
 - Added a reproducible repository-doc agent onboarding benchmark fixture with 28 source-aware QA cases.
 - Added `scripts/build_agent_onboarding_vault.py` to build a temporary benchmark Vault from README/docs source-of-truth files instead of committing runtime databases.

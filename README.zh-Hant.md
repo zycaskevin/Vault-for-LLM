@@ -50,6 +50,24 @@ Vault-for-LLM 不只是另一個向量資料庫。它正在往 **Agent 記憶品
 
 ---
 
+## 可用在哪些 Agent 系統？
+
+Vault-for-LLM 不是綁死在某一個 Agent runtime 上。它的共通介面很簡單：
+本地 Markdown + SQLite，透過 CLI 和可選的 stdio MCP 給不同系統使用。
+
+| 系統 | 使用方式 |
+|---|---|
+| Hermes Agent / Nancy | 設定 `vault-mcp`，讓 Agent 使用 search/read/propose tools；用 CLI 跑 dream report、backup、onboarding benchmark。 |
+| OpenClaw | 使用 repo 內建的 [`integrations/openclaw/`](integrations/openclaw/) adapter，註冊 `vault_search`、`vault_read_range`、`vault_memory_propose`、`vault_stats`；也可走 generic MCP。 |
+| n8n | 在 Execute Command node 呼叫 `vault` CLI，或包成內部 HTTP service / MCP bridge，放進 workflow 自動化。 |
+| Codex | 在 repo/workspace 裡直接使用 CLI；若所用 Codex surface 支援本機 MCP，也可接 `vault-mcp`。 |
+| Claude Code | 把 `vault-mcp` 設成 local stdio MCP server，或在可跑 shell 的 session 中使用 CLI。 |
+| 任何 MCP-compatible Agent | 執行 `vault-mcp --project-dir <project>`，照 `vault_search` → `vault_read_range` → 帶來源回答的流程使用。 |
+
+更多設定範例請看 [Agent Integrations](docs/agent_integrations.md)，裡面包含 OpenClaw adapter、n8n、Codex、Claude Code 與 generic MCP 的接法。
+
+---
+
 ## 目前原始碼狀態：v0.6.22
 
 目前 source tree 已包含 v0.6.22 的 release follow-up 與品質 gate，並保留候選制記憶 workflow 與搜尋增強。白話說，Vault 現在不像一個誰都能亂塞紙條的抽屜，比較像一間有櫃台的小圖書館：
@@ -85,6 +103,7 @@ Vault-for-LLM 不只是另一個向量資料庫。它正在往 **Agent 記憶品
 | Dream 報告 | `vault dream` 產生 report-first 記憶整理摘要，找出過期、重複、不完整或 metadata 弱的知識（[Dream workflow](docs/dream_workflow.md)） |
 | 品質工具 | lint、freshness、convergence、cross-validation、dedup、Search QA snapshot、semantic smoke/warm workflow |
 | Repo 治理 | source checkout 內的公開邊界 gate、artifact audit、safe-only cleanup helper |
+| Agent 整合 | Hermes Agent、OpenClaw、n8n、Codex、Claude Code 與 generic MCP-compatible agents 的 CLI/MCP 使用方式（[整合指南](docs/agent_integrations.md)） |
 | 可選遠端同步 | Supabase sync scripts，適合團隊或遠端讀取 |
 | 本機技能登錄 | 實驗中的 `vault skill` 命令，用於在本機 Vault 內共享可重用 workflow；不是託管市場 |
 

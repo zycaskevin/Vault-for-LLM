@@ -1,0 +1,33 @@
+{
+  "id": "vault-for-llm",
+  "name": "Vault-for-LLM Project Memory",
+  "description": "Governed project memory tools backed by a local Vault-for-LLM SQLite vault.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "wrapperPath": {
+        "type": "string",
+        "default": "vault-openclaw"
+      },
+      "autoRecall": {
+        "type": "boolean",
+        "default": false
+      },
+      "autoRecallResults": {
+        "type": "number",
+        "default": 3
+      }
+    }
+  },
+  "uiHints": {
+    "wrapperPath": {
+      "label": "Vault wrapper path",
+      "placeholder": "/path/to/vault-openclaw"
+    },
+    "autoRecall": {
+      "label": "Auto recall",
+      "help": "Disabled by default. Vault is best used as governed project memory: search, bounded read, then cite."
+    }
+  }
+}

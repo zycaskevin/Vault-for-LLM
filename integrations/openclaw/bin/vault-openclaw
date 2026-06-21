@@ -1,0 +1,291 @@
+#!/usr/bin/env python3
+"""OpenClaw wrapper for Vault-for-LLM.
+
+The wrapper lets OpenClaw call Vault through a stable command even when the
+`vault` and `vault-mcp` console scripts are not on the gateway PATH. It prefers
+an adjacent source checkout when available, otherwise it imports the installed
+`vault-for-llm` package.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+SCRIPT_PATH = Path(__file__).resolve()
+SOURCE_ROOT = SCRIPT_PATH.parents[3] if len(SCRIPT_PATH.parents) >= 4 else Path.cwd()
+DEFAULT_PROJECT = Path.home() / ".openclaw" / "workspace" / "vault-project"
+
+
+def source_repo() -> Path | None:
+    explicit = os.environ.get("VAULT_OPENCLAW_REPO")
+    if explicit:
+        return Path(explicit).expanduser().resolve()
+    if (SOURCE_ROOT / "vault" / "mcp.py").exists():
+        return SOURCE_ROOT
+    return None
+
+
+def compatible_python() -> str:
+    repo = source_repo()
+    candidates = [
+        os.environ.get("VAULT_OPENCLAW_PYTHON", ""),
+        str(repo / ".venv" / "bin" / "python") if repo else "",
+        sys.executable,
+        "python3.12",
+        "python3.11",
+        "python3.10",
+        "/opt/homebrew/opt/python@3.11/bin/python3.11",
+        "/usr/local/bin/python3.11",
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            probe = subprocess.run(
+                [
+                    candidate,
+                    "-c",
+                    "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)",
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        except OSError:
+            continue
+        if probe.returncode == 0:
+            return candidate
+    return sys.executable
+
+
+if sys.version_info < (3, 10):
+    py = compatible_python()
+    if Path(py).resolve() != Path(sys.executable).resolve():
+        os.execv(py, [py, *sys.argv])
+
+
+def project_dir() -> Path:
+    return Path(os.environ.get("VAULT_OPENCLAW_PROJECT_DIR", DEFAULT_PROJECT)).expanduser().resolve()
+
+
+def python_env() -> dict[str, str]:
+    env = os.environ.copy()
+    repo = source_repo()
+    if repo:
+        env["PYTHONPATH"] = str(repo) + os.pathsep + env.get("PYTHONPATH", "")
+    return env
+
+
+def load_vault_mcp():
+    repo = source_repo()
+    if repo:
+        sys.path.insert(0, str(repo))
+    from vault import mcp as vault_mcp
+
+    vault_mcp._set_project_dir(project_dir())
+    return vault_mcp
+
+
+def parse_json_result(payload: dict) -> object:
+    text = payload.get("result", payload.get("error", ""))
+    if isinstance(text, str):
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            return text
+    return text
+
+
+def print_json(value: object) -> None:
+    print(json.dumps(value, ensure_ascii=False, indent=2))
+
+
+def ensure_initialized() -> None:
+    project = project_dir()
+    project.mkdir(parents=True, exist_ok=True)
+    if (project / "vault.db").exists():
+        return
+    subprocess.run(
+        [compatible_python(), "-m", "vault.cli", "init", str(project)],
+        cwd=str(source_repo() or project),
+        env=python_env(),
+        stdout=subprocess.DEVNULL,
+        check=True,
+    )
+
+
+def cmd_status(_args: argparse.Namespace) -> int:
+    project = project_dir()
+    db = project / "vault.db"
+    status = {
+        "source_repo": str(source_repo()) if source_repo() else None,
+        "project_dir": str(project),
+        "db_exists": db.exists(),
+        "raw_exists": (project / "raw").is_dir(),
+    }
+    if db.exists():
+        vault_mcp = load_vault_mcp()
+        status["stats"] = parse_json_result(vault_mcp.handle_tool_call("vault_stats", {}))
+    print_json(status)
+    return 0
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    ensure_initialized()
+    return cmd_status(args)
+
+
+def cmd_search(args: argparse.Namespace) -> int:
+    ensure_initialized()
+    vault_mcp = load_vault_mcp()
+    fields = [
+        "id",
+        "title",
+        "best_claim",
+        "node_uid",
+        "path",
+        "heading",
+        "line_start",
+        "line_end",
+        "citation",
+        "next_action",
+        "_score",
+    ]
+    payload = vault_mcp.handle_tool_call(
+        "vault_search",
+        {
+            "query": args.query,
+            "mode": args.mode,
+            "limit": args.limit,
+            "compact": True,
+            "include_snippet": args.include_snippet,
+            "fields": fields,
+        },
+    )
+    print_json(parse_json_result(payload))
+    return 0
+
+
+def cmd_map_show(args: argparse.Namespace) -> int:
+    ensure_initialized()
+    vault_mcp = load_vault_mcp()
+    payload = vault_mcp.handle_tool_call(
+        "vault_map_show",
+        {"knowledge_id": args.knowledge_id, "compact": args.compact},
+    )
+    print_json(parse_json_result(payload))
+    return 0
+
+
+def cmd_read_range(args: argparse.Namespace) -> int:
+    ensure_initialized()
+    vault_mcp = load_vault_mcp()
+    payload = vault_mcp.handle_tool_call(
+        "vault_read_range",
+        {
+            "knowledge_id": args.knowledge_id,
+            "node_uid": args.node_uid or "",
+            "line_start": args.line_start or 0,
+            "line_end": args.line_end or 0,
+        },
+    )
+    print_json(parse_json_result(payload))
+    return 0
+
+
+def cmd_propose(args: argparse.Namespace) -> int:
+    ensure_initialized()
+    vault_mcp = load_vault_mcp()
+    payload = vault_mcp.handle_tool_call(
+        "vault_memory_propose",
+        {
+            "title": args.title,
+            "content": args.content,
+            "reason": args.reason,
+            "source": args.source,
+            "source_ref": args.source_ref,
+            "layer": args.layer,
+            "category": args.category,
+            "tags": args.tags,
+            "trust": args.trust,
+            "mode": "candidate",
+        },
+    )
+    print_json(parse_json_result(payload))
+    return 0
+
+
+def cmd_mcp_config(_args: argparse.Namespace) -> int:
+    repo = source_repo()
+    env = {}
+    if repo:
+        env["PYTHONPATH"] = str(repo)
+    snippet = {
+        "mcpServers": {
+            "vault-for-llm": {
+                "command": compatible_python(),
+                "args": ["-m", "vault.mcp", "--project-dir", str(project_dir())],
+                "env": env,
+            }
+        }
+    }
+    print_json(snippet)
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="vault-openclaw")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    sub.add_parser("status").set_defaults(func=cmd_status)
+    sub.add_parser("init").set_defaults(func=cmd_init)
+
+    p = sub.add_parser("search")
+    p.add_argument("query")
+    p.add_argument("--mode", choices=["auto", "keyword", "vector", "semantic", "hybrid"], default="auto")
+    p.add_argument("--limit", type=int, default=5)
+    p.add_argument("--include-snippet", action="store_true")
+    p.set_defaults(func=cmd_search)
+
+    p = sub.add_parser("map-show")
+    p.add_argument("knowledge_id", type=int)
+    p.add_argument("--compact", action="store_true")
+    p.set_defaults(func=cmd_map_show)
+
+    p = sub.add_parser("read-range")
+    p.add_argument("knowledge_id", type=int)
+    p.add_argument("--node-uid", default="")
+    p.add_argument("--line-start", type=int, default=0)
+    p.add_argument("--line-end", type=int, default=0)
+    p.set_defaults(func=cmd_read_range)
+
+    p = sub.add_parser("propose")
+    p.add_argument("--title", required=True)
+    p.add_argument("--content", required=True)
+    p.add_argument("--reason", required=True)
+    p.add_argument("--source", default="openclaw")
+    p.add_argument("--source-ref", default="")
+    p.add_argument("--layer", choices=["L0", "L1", "L2", "L3"], default="L3")
+    p.add_argument("--category", default="general")
+    p.add_argument("--tags", default="")
+    p.add_argument("--trust", type=float, default=0.5)
+    p.set_defaults(func=cmd_propose)
+
+    sub.add_parser("mcp-config").set_defaults(func=cmd_mcp_config)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

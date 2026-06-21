@@ -78,8 +78,16 @@ agent-driven setup or repo changes, use:
 - [`agent_manifest.json`](agent_manifest.json) — machine-readable install,
   scope, safety, runtime, and validation metadata.
 
-Agents should read those files before choosing a database scope, configuring MCP,
-or writing memory.
+Human users do not need to install everything manually. You can ask your agent:
+
+```text
+Install Vault-for-LLM for this project. Read AGENTS.md and agent_manifest.json,
+ask me whether the vault should be shared or private, ask which optional
+features to enable, configure CLI/MCP, and run a search/read/propose smoke test.
+```
+
+Agents should read those files before choosing a database scope, configuring
+MCP, installing optional features, or writing memory.
 
 The common install architecture is the same across Hermes Agent, Codex,
 OpenCode, Claude Code, OpenClaw, and other MCP-capable agents:

@@ -48,6 +48,7 @@
     "configure CLI or stdio MCP",
     "verify search/read/propose"
   ],
+  "agent_install_prompt": "Install Vault-for-LLM for this project. Read AGENTS.md and agent_manifest.json, ask whether the vault should be shared or private, ask which optional features to enable, configure CLI/MCP, and run a search/read/propose smoke test.",
   "optional_features": [
     {
       "id": "core",

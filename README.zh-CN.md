@@ -74,6 +74,14 @@ Vault-for-LLM 不是绑死在某一个 Agent runtime 上。它的共通接口很
 - [`AGENTS.md`](AGENTS.md)：给 coding agent 的简短操作守则。
 - [`agent_manifest.json`](agent_manifest.json)：机器可读的安装、scope、安全、runtime、验证信息。
 
+人类用户不需要手动照每条命令安装。你可以直接对 Agent 说：
+
+```text
+帮这个项目安装 Vault-for-LLM。先读 AGENTS.md 和 agent_manifest.json，
+问我要 shared 还是 private vault，问我要开启哪些 optional features，
+设置 CLI/MCP，最后跑 search/read/propose smoke test。
+```
+
 Hermes Agent、Codex、OpenCode、Claude Code、OpenClaw 和其他 MCP-capable agent 可以共用同一套安装架构：
 
 ```text

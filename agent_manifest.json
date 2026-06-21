@@ -99,7 +99,7 @@
       "id": "supabase",
       "default": false,
       "prompt": "Install optional Supabase sync/read dependencies?",
-      "when_to_install": "Use when a team needs remote read paths or a synced copy of local SQLite data.",
+      "when_to_install": "Use when a team needs remote read paths, a synced copy of local SQLite data, or cross-host memory sharing for agents on different machines.",
       "install_commands": [
         "python -m pip install \"vault-for-llm[supabase]\""
       ],
@@ -108,7 +108,7 @@
         "export SUPABASE_SERVICE_ROLE_KEY=...",
         "python scripts/sync_to_supabase.py --document-map"
       ],
-      "notes": "SQLite remains the source of truth. Do not sync full content unless the user explicitly wants --include-content."
+      "notes": "SQLite remains the source of truth. Supabase can provide a shared remote read/sync layer for different hosts. Do not sync full content unless the user explicitly wants --include-content."
     },
     {
       "id": "dev",

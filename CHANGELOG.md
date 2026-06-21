@@ -12,6 +12,7 @@
 - Added `AGENTS.md` and `agent_manifest.json` so agent-driven installers can read database scope, safety, runtime, and validation rules without scraping README prose.
 - Added optional feature prompting guidance for agent installers, including core, MCP, semantic, Supabase, and dev/benchmark profiles.
 - Added `vault-for-llm[supabase]` as an optional dependency group for remote sync/read path setup.
+- Clarified README Supabase positioning for cross-host agent memory sharing while keeping local SQLite as the source of truth.
 
 #### Agent Memory Benchmarking
 - Added a README evidence snapshot for project onboarding, candidate-first memory, and external retrieval probes with explicit caveats.

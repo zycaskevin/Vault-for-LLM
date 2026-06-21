@@ -115,6 +115,8 @@ Vault-for-LLM 绑定的是 `project-dir`，不是某一个 Agent runtime：
 
 共用 vault 时，建议让 Agent 使用 `vault_memory_propose`，不要直接写入正式记忆，避免多 Agent 一起把 active memory 弄乱。
 
+如果 Agent 跑在不同主机上，本地 `project-dir` 就不能直接共用。这时可选的 Supabase sync 可以作为远程共享读取/同步层：每台主机保留自己的本地 SQLite vault，再把已批准的知识、Document Map、摘要、hash 和 metadata 同步到同一个 Supabase project。这样 Hermes 在一台机器、Codex 在另一台、n8n 在服务器上，也能读到共同的 project-memory view；但 Supabase 仍然不是本地核心功能的必要依赖。
+
 ---
 
 ## 当前源码状态：v0.6.22
@@ -465,6 +467,8 @@ MCP server 配置示例：
 Vault-for-LLM 的核心用法是本地-only。Supabase 支持是给需要团队同步或远端读取的人使用。
 
 本地 SQLite database 仍是 source of truth；Supabase 是可选的同步/远端读取目标。远端表名默认使用 Vault 品牌命名；接入既有私有 schema 时，可用 `VAULT_SUPABASE_*_TABLE` 环境变量覆盖。
+
+这对“不同主机上的 Agent 要共享记忆”特别有用。例如 Hermes Agent 在工作站、Codex 在笔记本、OpenClaw 在另一台机器、n8n 在服务器上，都可以各自保留 local Vault，同时把已确认的记忆同步到同一个 Supabase project，形成跨主机可读的共同记忆视图。
 
 知识与技能同步采用最小披露默认值：metadata、summary、hash、Document Map rows 与 claims 会同步，但不包含完整 `content_raw`。只有明确加上 `--include-content` 时才会同步全文；若 privacy scan 判定为 fail，仍不会上传全文。
 

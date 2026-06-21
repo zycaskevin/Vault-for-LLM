@@ -10,6 +10,10 @@
         "type": "string",
         "default": "vault-openclaw"
       },
+      "projectDir": {
+        "type": "string",
+        "default": "~/.openclaw/workspace/vault-project"
+      },
       "autoRecall": {
         "type": "boolean",
         "default": false
@@ -24,6 +28,10 @@
     "wrapperPath": {
       "label": "Vault wrapper path",
       "placeholder": "/path/to/vault-openclaw"
+    },
+    "projectDir": {
+      "label": "Vault project directory",
+      "help": "Agents that point at the same projectDir share the same vault.db; use separate directories for isolated agent memory."
     },
     "autoRecall": {
       "label": "Auto recall",

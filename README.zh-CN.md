@@ -61,10 +61,47 @@ Vault-for-LLM 不是绑死在某一个 Agent runtime 上。它的共通接口很
 | OpenClaw | 使用 repo 内置的 [`integrations/openclaw/`](integrations/openclaw/) adapter，注册 `vault_search`、`vault_read_range`、`vault_memory_propose`、`vault_stats`；也可走 generic MCP。 |
 | n8n | 在 Execute Command node 调用 `vault` CLI，或包装成内部 HTTP service / MCP bridge，放进 workflow 自动化。 |
 | Codex | 在 repo/workspace 里直接使用 CLI；若所用 Codex surface 支持本地 MCP，也可接 `vault-mcp`。 |
+| OpenCode | 支持 MCP 时走和 Claude Code/Codex 相同的 generic local MCP；也可在 shell-capable session 里调用 CLI。 |
 | Claude Code | 把 `vault-mcp` 设成 local stdio MCP server，或在可跑 shell 的 session 中使用 CLI。 |
 | 任何 MCP-compatible Agent | 执行 `vault-mcp --project-dir <project>`，按 `vault_search` → `vault_read_range` → 带来源回答的流程使用。 |
 
 更多设置示例请看 [Agent Integrations](docs/agent_integrations.md)，里面包含 OpenClaw adapter、n8n、Codex、Claude Code 与 generic MCP 的接法。
+
+### 给 Agent 的安装契约
+
+很多 Vault-for-LLM 的安装和 repo 修改会由 Agent 代做，不一定是人手动照 README 操作。Agent 在设置 MCP、选择数据库 scope、或写入记忆前，应先读：
+
+- [`AGENTS.md`](AGENTS.md)：给 coding agent 的简短操作守则。
+- [`agent_manifest.json`](agent_manifest.json)：机器可读的安装、scope、安全、runtime、验证信息。
+
+Hermes Agent、Codex、OpenCode、Claude Code、OpenClaw 和其他 MCP-capable agent 可以共用同一套安装架构：
+
+```text
+选 projectDir -> 安装 vault -> 设置 CLI 或 stdio MCP -> 验证 search/read/propose
+```
+
+各 runtime 的 adapter 应该保持很薄；真正稳定的契约是共同的
+`projectDir`、`vault` CLI、`vault-mcp`，以及候选制记忆流程。
+
+### 选择 Vault project scope
+
+Vault-for-LLM 绑定的是 `project-dir`，不是某一个 Agent runtime：
+
+```text
+一个 project directory = 一个 vault.db
+```
+
+如果 Hermes、OpenClaw、Codex、Claude Code、n8n 都指向同一个
+`--project-dir`，它们就共用同一份 governed project memory。指向不同文件夹时，就会使用彼此隔离的数据库。
+
+| Scope | 适合情境 | project-dir 示例 |
+|---|---|---|
+| Shared project vault | 多个可信 Agent 协作同一份已确认的项目知识 | `~/Vaults/my-project` |
+| Agent-private vault | 某个 Agent 做实验、比较吵、或不完全可信 | `~/.openclaw/workspace/vault-project` |
+| Domain/customer vault | 不同客户或业务数据需要隔离 | `~/Vaults/clinic-customer-service` |
+| Temporary vault | Demo、测试、benchmark | `/tmp/vault-benchmark-*` |
+
+共用 vault 时，建议让 Agent 使用 `vault_memory_propose`，不要直接写入正式记忆，避免多 Agent 一起把 active memory 弄乱。
 
 ---
 

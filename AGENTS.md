@@ -1,0 +1,107 @@
+# Agent Instructions For Vault-for-LLM
+
+This repository is designed to be installed, configured, and modified by agent
+runtimes as well as by humans. If you are an agent working in this repo, treat
+this file and `agent_manifest.json` as the operational source of truth.
+
+## Common Install Architecture
+
+Hermes Agent, Codex, OpenCode, Claude Code, OpenClaw, n8n, and other
+MCP-capable or shell-capable agents should use the same basic shape:
+
+```text
+choose projectDir -> install vault -> configure CLI or stdio MCP -> verify search/read/propose
+```
+
+Only add runtime-specific adapters when the host needs custom tool registration
+or UI metadata. The stable cross-agent contract is `projectDir`, the `vault`
+CLI, `vault-mcp`, and candidate-first memory writes.
+
+## First Decision: Database Scope
+
+Before installing or connecting Vault-for-LLM for a user, decide where the
+Vault project directory should live.
+
+```text
+one project directory = one vault.db
+```
+
+Use one shared project directory when trusted agents should collaborate on the
+same governed project memory. Use separate project directories when an agent,
+customer, domain, test, or benchmark must stay isolated.
+
+Recommended choices:
+
+| Scope | Use when | Example |
+|---|---|---|
+| `shared` | Hermes, OpenClaw, Codex, Claude Code, or n8n should share confirmed project knowledge. | `~/Vaults/my-project` |
+| `private` | One agent is experimenting or should not affect official memory. | `~/.openclaw/workspace/vault-project` |
+| `domain` | Customer or business data boundaries must stay separate. | `~/Vaults/clinic-customer-service` |
+| `temporary` | Demos, tests, and benchmarks. | `/tmp/vault-benchmark-*` |
+
+If the user has not specified a scope, ask whether they want a shared project
+vault or an isolated agent-private vault. For non-interactive installs, default
+to `private`.
+
+## Safe Agent Workflow
+
+For retrieval:
+
+```text
+search -> bounded read -> answer with sources
+```
+
+For new memory:
+
+```text
+propose candidate -> review -> promote only when approved
+```
+
+In shared vaults, prefer `vault_memory_propose` or `vault remember` over direct
+active writes. Do not let every runtime write unreviewed facts into the same
+active memory database.
+
+## Common Commands
+
+Local source checkout:
+
+```bash
+python -m pip install -e .
+vault init --project-dir /path/to/project
+vault compile --project-dir /path/to/project --no-embed
+vault search "release checklist" --project-dir /path/to/project --limit 5
+vault-mcp --project-dir /path/to/project
+```
+
+OpenClaw install:
+
+```bash
+bash integrations/openclaw/install.sh --scope private --non-interactive
+bash integrations/openclaw/install.sh --scope shared --project-dir ~/Vaults/my-project --non-interactive
+```
+
+## Validation Before PRs
+
+Run the narrow checks that match your change, and prefer the full test suite
+when behavior changed:
+
+```bash
+python scripts/readme_command_smoke.py
+python scripts/check_release_parity.py
+bash integrations/openclaw/verify.sh
+python -m pytest -q
+```
+
+For OpenClaw installer changes, also smoke-test `--scope private`,
+`--scope shared --project-dir <tmp>`, and missing option values.
+
+## Safety Rules
+
+- Do not commit runtime vault databases, benchmark output, report artifacts, or
+  local secrets.
+- Do not expose `vault-mcp` directly to the public internet; it is a local stdio
+  server, not an authenticated network service.
+- Do not claim benchmark percentages as universal product scores. Keep them tied
+  to the dataset, probe type, and retrieval mode that produced them.
+- Do not change package name, CLI entry points, or license text without updating
+  README variants, release parity checks, and integration docs.

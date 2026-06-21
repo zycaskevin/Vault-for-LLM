@@ -5,6 +5,7 @@
         "enabled": true,
         "config": {
           "wrapperPath": "~/.openclaw/skills/vault-for-llm/bin/vault-openclaw",
+          "projectDir": "~/.openclaw/workspace/vault-project",
           "autoRecall": false,
           "autoRecallResults": 3
         }

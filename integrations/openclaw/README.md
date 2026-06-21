@@ -29,9 +29,30 @@ The installer copies the wrapper, skill, and plugin extension into:
 
 It also prints the config entry to add to `~/.openclaw/openclaw.json`.
 
+During install, choose whether OpenClaw should use a shared Vault project or its
+own isolated database:
+
+| Scope | Meaning |
+|---|---|
+| `shared` | OpenClaw points to the same `projectDir` as Hermes, Codex, Claude Code, or n8n. |
+| `private` | OpenClaw gets its own isolated Vault project. |
+| `temporary` | OpenClaw uses a throwaway Vault for tests or demos. |
+
+Non-interactive examples:
+
+```bash
+bash integrations/openclaw/install.sh --scope private --non-interactive
+
+bash integrations/openclaw/install.sh \
+  --scope shared \
+  --project-dir ~/Vaults/my-project \
+  --non-interactive
+```
+
 ## Configure
 
-Set the wrapper path in OpenClaw:
+Set the wrapper path and project directory in OpenClaw. Agents that use the same
+`projectDir` share one `vault.db`; different `projectDir` values are isolated.
 
 ```json
 {
@@ -41,6 +62,7 @@ Set the wrapper path in OpenClaw:
         "enabled": true,
         "config": {
           "wrapperPath": "~/.openclaw/skills/vault-for-llm/bin/vault-openclaw",
+          "projectDir": "~/.openclaw/workspace/vault-project",
           "autoRecall": false,
           "autoRecallResults": 3
         }

@@ -52,6 +52,13 @@ vault-openclaw read-range 12 --line-start 20 --line-end 55
 vault-openclaw mcp-config
 ```
 
+## Database Scope
+
+OpenClaw shares memory with other agents only when they use the same Vault
+project directory. If OpenClaw should join a shared project memory, configure the
+plugin `projectDir` to the same path used by Hermes, Codex, Claude Code, or n8n.
+Use a separate `projectDir` for isolated experiments.
+
 ## Recommended Loop
 
 ```text

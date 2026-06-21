@@ -7,6 +7,7 @@ const execFileAsync = promisify(execFile);
 
 interface VaultConfig {
   wrapperPath: string;
+  projectDir: string;
   autoRecall: boolean;
   autoRecallResults: number;
 }
@@ -15,14 +16,20 @@ function parseConfig(raw: unknown): VaultConfig {
   const cfg = (raw ?? {}) as Record<string, unknown>;
   return {
     wrapperPath: (cfg.wrapperPath as string) || "vault-openclaw",
+    projectDir: (cfg.projectDir as string) || "",
     autoRecall: cfg.autoRecall === true,
     autoRecallResults: (cfg.autoRecallResults as number) || 3,
   };
 }
 
-async function runVault(wrapperPath: string, args: string[]) {
-  const { stdout } = await execFileAsync(wrapperPath, args, {
+async function runVault(cfg: VaultConfig, args: string[]) {
+  const env = { ...process.env };
+  if (cfg.projectDir) {
+    env.VAULT_OPENCLAW_PROJECT_DIR = cfg.projectDir;
+  }
+  const { stdout } = await execFileAsync(cfg.wrapperPath, args, {
     maxBuffer: 1024 * 1024 * 8,
+    env,
   });
   const text = stdout.trim();
   if (!text) return null;
@@ -54,7 +61,9 @@ function toolError(err: unknown) {
 export default function register(api: OpenClawPluginApi) {
   const cfg = parseConfig(api.pluginConfig);
 
-  api.logger.info(`vault-for-llm: registered (${cfg.wrapperPath})`);
+  api.logger.info(
+    `vault-for-llm: registered (${cfg.wrapperPath}, projectDir: ${cfg.projectDir || "wrapper default"})`,
+  );
 
   api.registerTool({
     name: "vault_search",
@@ -78,7 +87,7 @@ export default function register(api: OpenClawPluginApi) {
         const query = String(params.query || "");
         const limit = String(params.limit || 5);
         const mode = String(params.mode || "auto");
-        const result = await runVault(cfg.wrapperPath, [
+        const result = await runVault(cfg, [
           "search",
           query,
           "--limit",
@@ -113,7 +122,7 @@ export default function register(api: OpenClawPluginApi) {
         if (params.node_uid) args.push("--node-uid", String(params.node_uid));
         if (params.line_start) args.push("--line-start", String(params.line_start));
         if (params.line_end) args.push("--line-end", String(params.line_end));
-        const result = await runVault(cfg.wrapperPath, args);
+        const result = await runVault(cfg, args);
         return toolText(result);
       } catch (err) {
         return toolError(err);
@@ -153,7 +162,7 @@ export default function register(api: OpenClawPluginApi) {
         if (params.source_ref) args.push("--source-ref", String(params.source_ref));
         if (params.category) args.push("--category", String(params.category));
         if (params.tags) args.push("--tags", String(params.tags));
-        const result = await runVault(cfg.wrapperPath, args);
+        const result = await runVault(cfg, args);
         return toolText(result);
       } catch (err) {
         return toolError(err);
@@ -167,7 +176,7 @@ export default function register(api: OpenClawPluginApi) {
     parameters: { type: "object", properties: {} },
     async execute() {
       try {
-        const result = await runVault(cfg.wrapperPath, ["status"]);
+        const result = await runVault(cfg, ["status"]);
         return toolText(result);
       } catch (err) {
         return toolError(err);

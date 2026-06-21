@@ -4,6 +4,10 @@ This repository is designed to be installed, configured, and modified by agent
 runtimes as well as by humans. If you are an agent working in this repo, treat
 this file and `agent_manifest.json` as the operational source of truth.
 
+If you can run shell commands for the user, do not stop at telling them how to
+install Vault-for-LLM manually. Ask the required scope/feature questions, run the
+install/configuration steps yourself, and finish with a smoke test.
+
 ## Common Install Architecture
 
 Hermes Agent, Codex, OpenCode, Claude Code, OpenClaw, n8n, and other
@@ -16,6 +20,16 @@ choose projectDir -> choose optional features -> install vault -> configure CLI 
 Only add runtime-specific adapters when the host needs custom tool registration
 or UI metadata. The stable cross-agent contract is `projectDir`, the `vault`
 CLI, `vault-mcp`, and candidate-first memory writes.
+
+For MCP-capable agents, prefer the smallest tool profile that fits the job:
+
+```bash
+vault-mcp --project-dir /path/to/project --tool-profile core
+```
+
+`core` exposes only `vault_search`, `vault_read_range`, `vault_memory_propose`,
+and `vault_stats`. Use `review`, `remote`, `maintenance`, or `full` only when
+those extra tools are needed.
 
 ## Second Decision: Optional Features
 
@@ -106,7 +120,7 @@ python -m pip install -e .
 vault init --project-dir /path/to/project
 vault compile --project-dir /path/to/project --no-embed
 vault search "release checklist" --project-dir /path/to/project --limit 5
-vault-mcp --project-dir /path/to/project
+vault-mcp --project-dir /path/to/project --tool-profile core
 ```
 
 OpenClaw install:

@@ -74,6 +74,14 @@ Vault-for-LLM 不是绑死在某一个 Agent runtime 上。它的共通接口很
 - [`AGENTS.md`](AGENTS.md)：给 coding agent 的简短操作守则。
 - [`agent_manifest.json`](agent_manifest.json)：机器可读的安装、scope、安全、runtime、验证信息。
 
+人类用户不需要手动照每条命令安装。你可以直接对 Agent 说：
+
+```text
+帮这个项目安装 Vault-for-LLM。先读 AGENTS.md 和 agent_manifest.json，
+问我要 shared 还是 private vault，问我要开启哪些 optional features，
+设置 CLI/MCP，最后跑 search/read/propose smoke test。
+```
+
 Hermes Agent、Codex、OpenCode、Claude Code、OpenClaw 和其他 MCP-capable agent 可以共用同一套安装架构：
 
 ```text
@@ -243,7 +251,7 @@ vault config set embedding.model nomic-embed-text
 
 ```bash
 pip install "vault-for-llm[mcp]"
-vault-mcp --project-dir /path/to/your/project
+vault-mcp --project-dir /path/to/your/project --tool-profile core
 ```
 
 安全提醒：`vault-mcp` 是本机 stdio MCP server，没有内置网络认证或用户层级访问控制。只把它配置给你信任、且可以读写该 `--project-dir` 的 Agent；若要给共享或实验性 Agent 使用，建议使用独立 project directory。
@@ -433,7 +441,7 @@ vault export obsidian \
 
 ```bash
 pip install "vault-for-llm[mcp]"
-vault-mcp --project-dir /path/to/your/project
+vault-mcp --project-dir /path/to/your/project --tool-profile core
 ```
 
 安全提醒：`vault-mcp` 是本机 stdio MCP server，没有内置网络认证或用户层级访问控制。只把它配置给你信任、且可以读写该 `--project-dir` 的 Agent；若要给共享或实验性 Agent 使用，建议使用独立 project directory。
@@ -445,20 +453,23 @@ MCP server 配置示例：
   "mcpServers": {
     "vault": {
       "command": "vault-mcp",
-      "args": ["--project-dir", "/path/to/your/project"]
+      "args": ["--project-dir", "/path/to/your/project", "--tool-profile", "core"]
     }
   }
 }
 ```
 
-当前 MCP tools 包含：
+MCP 可以用 tool profiles 控制暴露给 Agent 的工具数量：
 
-- `vault_search`
-- `vault_add`
-- `vault_stats`
-- `vault_map_show`
-- `vault_read_range`
-- 若设置了可选 Supabase sync，还有 `vault_remote_map_show` / `vault_remote_read_range`
+| Profile | 适合情境 |
+|---|---|
+| `core` | 日常 Agent 使用，只暴露 `vault_search`、`vault_read_range`、`vault_memory_propose`、`vault_stats` |
+| `review` | 需要审核并 promote 候选记忆 |
+| `remote` | 需要读取 Supabase 同步的跨主机记忆视图 |
+| `maintenance` | 排程或人工整理 freshness/convergence |
+| `full` | 完整兼容模式，包含 `vault_add` 等进阶/旧工具 |
+
+`full` 仍是默认值以维持兼容；正式 Agent session 建议使用 `--tool-profile core` 以减少 tool schema token。
 
 ---
 

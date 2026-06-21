@@ -48,6 +48,7 @@
     "configure CLI or stdio MCP",
     "verify search/read/propose"
   ],
+  "agent_install_prompt": "Install Vault-for-LLM for this project. Read AGENTS.md and agent_manifest.json, ask whether the vault should be shared or private, ask which optional features to enable, configure CLI/MCP, and run a search/read/propose smoke test.",
   "optional_features": [
     {
       "id": "core",
@@ -72,7 +73,7 @@
         "python -m pip install \"vault-for-llm[mcp]\""
       ],
       "post_install": [
-        "vault-mcp --project-dir /path/to/project"
+        "vault-mcp --project-dir /path/to/project --tool-profile core"
       ],
       "notes": "vault-mcp is a local stdio server. Do not expose it as an unauthenticated public network service."
     },
@@ -137,6 +138,37 @@
       "candidate_memory": "vault_memory_propose"
     }
   },
+  "mcp_tool_profiles": {
+    "default": "full",
+    "recommended_for_agents": "core",
+    "profiles": {
+      "core": [
+        "vault_search",
+        "vault_read_range",
+        "vault_memory_propose",
+        "vault_stats"
+      ],
+      "review": [
+        "core",
+        "vault_memory_promote",
+        "vault_dream_run"
+      ],
+      "remote": [
+        "core",
+        "vault_remote_map_show",
+        "vault_remote_read_range"
+      ],
+      "maintenance": [
+        "review",
+        "vault_converge",
+        "vault_freshness"
+      ],
+      "full": [
+        "all tools, including compatibility vault_add"
+      ]
+    },
+    "notes": "full remains the default for backward compatibility; production agents should prefer core to reduce MCP tool-schema tokens. Tool profiles are visibility filters, not access-control boundaries."
+  },
   "memory_write_policy": {
     "shared_vault_default": "propose_before_promote",
     "candidate_tool": "vault_memory_propose",
@@ -157,7 +189,7 @@
       "bash integrations/openclaw/install.sh --scope shared --project-dir ~/Vaults/my-project --non-interactive"
     ],
     "generic_mcp": [
-      "vault-mcp --project-dir /path/to/project"
+      "vault-mcp --project-dir /path/to/project --tool-profile core"
     ]
   },
   "supported_runtimes": [

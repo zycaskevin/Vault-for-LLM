@@ -48,6 +48,7 @@
   "common_install_architecture": [
     "choose projectDir",
     "choose optional features",
+    "ask whether optional Headroom context compression is needed for long logs or tool output",
     "ask whether to connect an existing Obsidian vault",
     "install vault",
     "configure CLI or stdio MCP",

@@ -452,7 +452,7 @@ your-project/
 
 使用 [`docs/agent_install.md`](docs/agent_install.md) 搭配 `vault setup-agent`
 或别名 `vault install-agent`，可以让 Agent 依序询问数据库 scope、optional
-features、既有 Obsidian vault 路径、是否做第一次导入，以及是否生成 cron、LaunchAgent 或 n8n 自动同步模板。
+features、是否需要 Headroom context 压缩、既有 Obsidian vault 路径、是否做第一次导入，以及是否生成 cron、LaunchAgent 或 n8n 自动同步模板。
 `headroom` 是进阶可选的 context 压缩功能，不是 Vault 记忆治理的必要条件；只有在长 logs、大量 tool output 或 token 压力明确时才建议开启。
 
 ```bash

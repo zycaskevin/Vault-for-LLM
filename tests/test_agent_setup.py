@@ -129,3 +129,29 @@ def test_setup_agent_headroom_is_optional_next_step(tmp_path):
     assert result["features"] == ["core", "mcp", "headroom"]
     assert any("headroom-ai" in step for step in result["next_steps"])
     assert any("original vault_read_range" in step for step in result["next_steps"])
+
+
+def test_interactive_setup_asks_headroom_when_features_not_preselected(tmp_path, monkeypatch):
+    from vault.agent_setup import interactive_setup
+
+    answers = iter(
+        [
+            "nancy",
+            "private",
+            str(tmp_path / "agent-project"),
+            "",
+            "yes",
+            "",
+        ]
+    )
+    prompts: list[str] = []
+
+    def fake_input(prompt: str) -> str:
+        prompts.append(prompt)
+        return next(answers)
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    config = interactive_setup({})
+
+    assert config.features == ["core", "mcp", "headroom"]
+    assert any("Headroom context compression" in prompt for prompt in prompts)

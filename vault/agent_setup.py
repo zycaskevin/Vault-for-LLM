@@ -382,9 +382,17 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
     features_raw = argv_config.get("features")
     if not features_raw:
         features_raw = _ask(
-            "Optional features (comma-separated; headroom is advanced and off by default)",
+            "Optional features (comma-separated)",
             "core,mcp",
         )
+    features = normalize_features(features_raw)
+
+    if "features" not in argv_config and "headroom" not in features:
+        if _ask_yes_no(
+            "Enable optional Headroom context compression for long logs/tool output?",
+            False,
+        ):
+            features.append("headroom")
 
     obsidian_vault = argv_config.get("obsidian_vault")
     if obsidian_vault is None:
@@ -402,7 +410,7 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
         project_dir=Path(project_dir),
         scope=scope,
         agent=agent,
-        features=normalize_features(features_raw),
+        features=features,
         tool_profile=str(argv_config.get("tool_profile") or "core"),
         obsidian_vault=Path(obsidian_vault).expanduser() if obsidian_vault else None,
         import_obsidian=import_obsidian,

@@ -22,7 +22,8 @@ Ask these before installing extras or writing memory:
 3. Should MCP be enabled for this agent runtime?
 4. Do you already have an Obsidian vault to import?
 5. If Obsidian is connected, should ongoing sync be scheduled with cron, LaunchAgent, or n8n?
-6. Do you want semantic search, Supabase sync, or Headroom context compression? Do not enable them silently.
+6. Do you want semantic search or Supabase sync? Do not enable either silently.
+7. Do you want optional Headroom context compression for long logs, tool output, or large retrieved context? Keep the default as no unless the user has context-window or token pressure.
 
 ## Scope Choices
 

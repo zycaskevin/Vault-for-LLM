@@ -482,7 +482,7 @@ vault setup-agent \
   --obsidian-sync all
 ```
 
-The wizard asks for database scope, optional features, an existing Obsidian vault path, whether to run the first import, and whether to generate cron, LaunchAgent, or n8n sync templates. `headroom` is an advanced optional feature for context compression; it is not required for Vault memory governance and should stay off unless the user has long logs, large tool output, or token pressure.
+The wizard asks for database scope, optional features, whether optional Headroom context compression is needed, an existing Obsidian vault path, whether to run the first import, and whether to generate cron, LaunchAgent, or n8n sync templates. `headroom` is an advanced optional feature for context compression; it is not required for Vault memory governance and should stay off unless the user has long logs, large tool output, or token pressure.
 
 ### Obsidian export
 

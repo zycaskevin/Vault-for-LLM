@@ -107,7 +107,9 @@ These are proof demos, not academic benchmarks. They are meant to validate produ
 - Candidate memory should be review-gated.
 - Duplicate-title and stale-source scenarios should be caught by source-aware retrieval plus bounded reads.
 
-The next step is to run the same three patterns against real agent sessions, for example comparing:
+For exported Hermes/Codex session comparisons, use the [Agent Onboarding Benchmark](agent_onboarding_benchmark.md). It runs the same pattern against session transcripts, Search QA, and optional candidate-memory extracts.
+
+Useful comparisons include:
 
 - runtime memory alone
 - Markdown notes without Search QA

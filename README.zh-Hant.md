@@ -61,10 +61,27 @@ Vault-for-LLM 不是綁死在某一個 Agent runtime 上。它的共通介面很
 | OpenClaw | 使用 repo 內建的 [`integrations/openclaw/`](integrations/openclaw/) adapter，註冊 `vault_search`、`vault_read_range`、`vault_memory_propose`、`vault_stats`；也可走 generic MCP。 |
 | n8n | 在 Execute Command node 呼叫 `vault` CLI，或包成內部 HTTP service / MCP bridge，放進 workflow 自動化。 |
 | Codex | 在 repo/workspace 裡直接使用 CLI；若所用 Codex surface 支援本機 MCP，也可接 `vault-mcp`。 |
+| OpenCode | 支援 MCP 時走和 Claude Code/Codex 相同的 generic local MCP；也可在 shell-capable session 裡呼叫 CLI。 |
 | Claude Code | 把 `vault-mcp` 設成 local stdio MCP server，或在可跑 shell 的 session 中使用 CLI。 |
 | 任何 MCP-compatible Agent | 執行 `vault-mcp --project-dir <project>`，照 `vault_search` → `vault_read_range` → 帶來源回答的流程使用。 |
 
 更多設定範例請看 [Agent Integrations](docs/agent_integrations.md)，裡面包含 OpenClaw adapter、n8n、Codex、Claude Code 與 generic MCP 的接法。
+
+### 給 Agent 的安裝契約
+
+很多 Vault-for-LLM 的安裝和 repo 修改會由 Agent 代做，不一定是人手動照 README 操作。Agent 在設定 MCP、選資料庫 scope、或寫入記憶前，應先讀：
+
+- [`AGENTS.md`](AGENTS.md)：給 coding agent 的簡短操作守則。
+- [`agent_manifest.json`](agent_manifest.json)：機器可讀的安裝、scope、安全、runtime、驗證資訊。
+
+Hermes Agent、Codex、OpenCode、Claude Code、OpenClaw 和其他 MCP-capable agent 可以共用同一套安裝架構：
+
+```text
+選 projectDir -> 安裝 vault -> 設定 CLI 或 stdio MCP -> 驗證 search/read/propose
+```
+
+各 runtime 的 adapter 應該保持很薄；真正穩定的契約是共同的
+`projectDir`、`vault` CLI、`vault-mcp`，以及候選制記憶流程。
 
 ### 選擇 Vault project scope
 

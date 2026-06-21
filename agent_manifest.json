@@ -1,0 +1,127 @@
+{
+  "schema_version": "1.0",
+  "project": "vault-for-llm",
+  "purpose": "Local-first project memory QA layer for LLM agents.",
+  "package": {
+    "pip_name": "vault-for-llm",
+    "cli": "vault",
+    "mcp_command": "vault-mcp",
+    "license": "Apache-2.0"
+  },
+  "agent_sources_of_truth": [
+    "AGENTS.md",
+    "docs/agent_integrations.md",
+    "docs/mcp_memory_workflow.md",
+    "integrations/openclaw/README.md"
+  ],
+  "database_scope": {
+    "rule": "one project directory = one vault.db",
+    "ask_user_when_unspecified": true,
+    "non_interactive_default": "private",
+    "choices": [
+      {
+        "id": "shared",
+        "description": "Multiple trusted agents share confirmed project knowledge.",
+        "example_project_dir": "~/Vaults/my-project"
+      },
+      {
+        "id": "private",
+        "description": "One agent gets its own isolated Vault project.",
+        "example_project_dir": "~/.openclaw/workspace/vault-project"
+      },
+      {
+        "id": "domain",
+        "description": "A customer, team, or business domain gets a separate Vault project.",
+        "example_project_dir": "~/Vaults/clinic-customer-service"
+      },
+      {
+        "id": "temporary",
+        "description": "Throwaway Vault project for demos, tests, and benchmarks.",
+        "example_project_dir": "/tmp/vault-benchmark-*"
+      }
+    ]
+  },
+  "common_install_architecture": [
+    "choose projectDir",
+    "install vault",
+    "configure CLI or stdio MCP",
+    "verify search/read/propose"
+  ],
+  "retrieval_contract": {
+    "preferred_flow": [
+      "search",
+      "bounded_read",
+      "answer_with_sources"
+    ],
+    "mcp_tools": {
+      "search": "vault_search",
+      "bounded_read": "vault_read_range",
+      "candidate_memory": "vault_memory_propose"
+    }
+  },
+  "memory_write_policy": {
+    "shared_vault_default": "propose_before_promote",
+    "candidate_tool": "vault_memory_propose",
+    "cli_candidate_command": "vault remember",
+    "direct_active_writes": "avoid in shared vaults unless the user explicitly approves"
+  },
+  "install_commands": {
+    "from_source": [
+      "python -m pip install -e ."
+    ],
+    "pip": [
+      "python -m pip install vault-for-llm"
+    ],
+    "openclaw_private": [
+      "bash integrations/openclaw/install.sh --scope private --non-interactive"
+    ],
+    "openclaw_shared": [
+      "bash integrations/openclaw/install.sh --scope shared --project-dir ~/Vaults/my-project --non-interactive"
+    ],
+    "generic_mcp": [
+      "vault-mcp --project-dir /path/to/project"
+    ]
+  },
+  "supported_runtimes": [
+    {
+      "name": "Hermes Agent / Nancy",
+      "integration": "stdio MCP plus optional scheduled CLI jobs"
+    },
+    {
+      "name": "OpenClaw",
+      "integration": "bundled adapter or generic MCP"
+    },
+    {
+      "name": "n8n",
+      "integration": "CLI command node, internal HTTP wrapper, or MCP bridge"
+    },
+    {
+      "name": "Codex",
+      "integration": "CLI in workspace; MCP where supported"
+    },
+    {
+      "name": "OpenCode",
+      "integration": "generic stdio MCP where supported, or shell CLI commands"
+    },
+    {
+      "name": "Claude Code",
+      "integration": "stdio MCP server or shell CLI commands"
+    },
+    {
+      "name": "Any MCP-compatible agent",
+      "integration": "vault-mcp"
+    }
+  ],
+  "validation_commands": [
+    "python scripts/readme_command_smoke.py",
+    "python scripts/check_release_parity.py",
+    "bash integrations/openclaw/verify.sh",
+    "python -m pytest -q"
+  ],
+  "safety_rules": [
+    "Do not commit runtime vault.db files, report artifacts, benchmark outputs, or secrets.",
+    "Do not expose vault-mcp directly to the public internet.",
+    "Do not present benchmark percentages as universal scores without dataset and probe caveats.",
+    "For shared vaults, use candidate-first memory writes by default."
+  ]
+}

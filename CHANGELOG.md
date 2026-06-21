@@ -5,10 +5,11 @@
 ### Added
 
 #### Agent Runtime Integrations
-- Added an agent integration guide documenting how to use Vault-for-LLM from Hermes Agent/Nancy, OpenClaw, n8n, Codex, Claude Code, generic MCP-compatible agents, and shell-based automation.
+- Added an agent integration guide documenting how to use Vault-for-LLM from Hermes Agent/Nancy, OpenClaw, n8n, Codex, OpenCode, Claude Code, generic MCP-compatible agents, and shell-based automation.
 - Added an OpenClaw adapter under `integrations/openclaw/` with a portable `vault-openclaw` wrapper, OpenClaw skill instructions, plugin metadata, manual tools, install/verify scripts, and config snippets.
 - Updated README variants to make CLI/MCP portability a first-class product message instead of presenting Vault as tied to one agent runtime.
 - Documented shared/private/temporary Vault project scope so agent installs can choose whether to share one `vault.db` or use isolated databases.
+- Added `AGENTS.md` and `agent_manifest.json` so agent-driven installers can read database scope, safety, runtime, and validation rules without scraping README prose.
 
 #### Agent Memory Benchmarking
 - Added a README evidence snapshot for project onboarding, candidate-first memory, and external retrieval probes with explicit caveats.

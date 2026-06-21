@@ -63,10 +63,33 @@ local Markdown + SQLite, exposed through CLI and optional stdio MCP.
 | OpenClaw | Use the bundled adapter in [`integrations/openclaw/`](integrations/openclaw/) to register `vault_search`, `vault_read_range`, `vault_memory_propose`, and `vault_stats`; generic MCP also works. |
 | n8n | Call the `vault` CLI from Execute Command nodes, wrap it behind an internal HTTP service, or bridge to MCP for workflow automation. |
 | Codex | Use the CLI inside the repo/workspace; use MCP on Codex surfaces that support local MCP servers. |
+| OpenCode | Use the same generic local MCP pattern as Claude Code/Codex when MCP is available, or shell out to the CLI. |
 | Claude Code | Configure `vault-mcp` as a local stdio MCP server, or use CLI commands in shell-capable sessions. |
 | Any MCP-compatible agent | Run `vault-mcp --project-dir <project>` and follow `vault_search` → `vault_read_range` → answer with sources. |
 
 See [Agent Integrations](docs/agent_integrations.md) for setup patterns, OpenClaw adapter details, and runtime-specific notes.
+
+### Agent-facing install contract
+
+Many Vault-for-LLM installs are performed by agents rather than by humans. For
+agent-driven setup or repo changes, use:
+
+- [`AGENTS.md`](AGENTS.md) — concise operating rules for coding agents.
+- [`agent_manifest.json`](agent_manifest.json) — machine-readable install,
+  scope, safety, runtime, and validation metadata.
+
+Agents should read those files before choosing a database scope, configuring MCP,
+or writing memory.
+
+The common install architecture is the same across Hermes Agent, Codex,
+OpenCode, Claude Code, OpenClaw, and other MCP-capable agents:
+
+```text
+choose projectDir -> install vault -> configure CLI or stdio MCP -> verify search/read/propose
+```
+
+Runtime-specific adapters should stay thin. The durable contract is the shared
+`projectDir`, `vault` CLI, `vault-mcp`, and candidate-first memory policy.
 
 ### Choose the Vault project scope
 

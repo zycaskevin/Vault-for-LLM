@@ -1126,6 +1126,75 @@ TOOLS = [
     },
 ]
 
+TOOL_PROFILES = {
+    "core": [
+        "vault_search",
+        "vault_read_range",
+        "vault_memory_propose",
+        "vault_stats",
+    ],
+    "review": [
+        "vault_search",
+        "vault_read_range",
+        "vault_memory_propose",
+        "vault_memory_promote",
+        "vault_dream_run",
+        "vault_stats",
+    ],
+    "remote": [
+        "vault_search",
+        "vault_read_range",
+        "vault_memory_propose",
+        "vault_stats",
+        "vault_remote_map_show",
+        "vault_remote_read_range",
+    ],
+    "maintenance": [
+        "vault_search",
+        "vault_read_range",
+        "vault_memory_propose",
+        "vault_memory_promote",
+        "vault_dream_run",
+        "vault_stats",
+        "vault_converge",
+        "vault_freshness",
+    ],
+    "full": [tool["name"] for tool in TOOLS],
+}
+
+_ACTIVE_TOOLS = TOOLS
+
+
+def _tool_names_from_csv(value: str | None) -> list[str] | None:
+    if not value:
+        return None
+    names = [name.strip() for name in value.split(",") if name.strip()]
+    return names or None
+
+
+def _tools_for_names(names: list[str]) -> list[dict]:
+    by_name = {tool["name"]: tool for tool in TOOLS}
+    unknown = [name for name in names if name not in by_name]
+    if unknown:
+        raise ValueError(f"Unknown MCP tool(s): {', '.join(unknown)}")
+    return [by_name[name] for name in names]
+
+
+def select_tools(tool_profile: str = "full", tools: str | None = None) -> list[dict]:
+    """Return the MCP tool schemas visible to the client."""
+    custom_names = _tool_names_from_csv(tools)
+    if custom_names:
+        return _tools_for_names(custom_names)
+    if tool_profile not in TOOL_PROFILES:
+        allowed = ", ".join(sorted(TOOL_PROFILES))
+        raise ValueError(f"Unknown MCP tool profile '{tool_profile}' (expected {allowed})")
+    return _tools_for_names(TOOL_PROFILES[tool_profile])
+
+
+def _set_active_tools(tool_profile: str = "full", tools: str | None = None) -> None:
+    global _ACTIVE_TOOLS
+    _ACTIVE_TOOLS = select_tools(tool_profile, tools)
+
 
 def handle_tool_call(name: str, arguments: dict) -> dict:
     """處理 MCP tool call，回傳結果。"""
@@ -1449,7 +1518,7 @@ def run_stdio():
             response = {
                 "jsonrpc": "2.0",
                 "id": msg_id,
-                "result": {"tools": TOOLS},
+                "result": {"tools": _ACTIVE_TOOLS},
             }
             print(json.dumps(response), flush=True)
 
@@ -1497,6 +1566,20 @@ def main(argv: list[str] | None = None):
         help="Project directory containing vault.db (defaults to VAULT_PATH or package root)",
     )
     parser.add_argument(
+        "--tool-profile",
+        choices=sorted(TOOL_PROFILES),
+        default=os.environ.get("VAULT_MCP_TOOL_PROFILE", "full"),
+        help=(
+            "MCP tool visibility profile. Use 'core' to reduce agent tool-schema tokens. "
+            "Default: full for backward compatibility."
+        ),
+    )
+    parser.add_argument(
+        "--tools",
+        default=os.environ.get("VAULT_MCP_TOOLS"),
+        help="Comma-separated explicit MCP tool allowlist; overrides --tool-profile.",
+    )
+    parser.add_argument(
         "--cli",
         nargs=argparse.REMAINDER,
         help=argparse.SUPPRESS,
@@ -1505,6 +1588,11 @@ def main(argv: list[str] | None = None):
 
     if args.project_dir:
         _set_project_dir(args.project_dir)
+
+    try:
+        _set_active_tools(args.tool_profile, args.tools)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     if args.cli is not None:
         cli_args = args.cli

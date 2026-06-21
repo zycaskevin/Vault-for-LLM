@@ -137,22 +137,11 @@ required dependency for local use.
 
 ---
 
-## Current source status: v0.6.22
+## Current Source Status
 
-The current source tree includes the v0.6.22 release follow-up and quality-gate release. Building on the candidate-first memory workflow and search enhancements, this release focuses on keeping default local search dependable while preserving optional semantic, rerank, MCP, and benchmarking tools:
-
-- **Tiered rerank architecture** — lightweight reranker for zero-dependency quality gains, with optional Cross-Encoder reranker for production-grade relevance scoring when `sentence-transformers` or `onnxruntime` is available.
-- **Search benchmark framework** — `benchmarks/search_benchmark.py` provides reproducible before/after comparison of retrieval quality (P@k, R@k, NDCG) and latency across search modes and strategies.
-- **CI Search QA gate** — release readiness CI runs a public fixture regression gate for top-k, MRR, no-result precision, citation-policy, and mode checks.
-- **Enhanced info() method** — `VaultSearch.info()` returns full tiered capability status and configuration details (foundation / advanced / premium / flagship layers).
-- **LLM query rewriting** — optional LLM-powered query reformulation that rewrites user queries into more retrieval-friendly forms, controlled by `enable_llm_enhancement` and `use_llm_rewrite`.
-- **Configurable rerank strategy** — choose from `auto`, `lightweight`, `cross_encoder`, or `none` to match your deployment environment and quality needs.
-
-All new features are **optional and backward-compatible**: the default install still uses keyword search with lightweight reranking. Cross-Encoder and LLM enhancements activate automatically when their dependencies are available.
-
-Semantic search is **optional by design**: the base install still works with keyword search only. If you configure a real embedding provider, use [`vault semantic ...`](docs/semantic_search.md) to rebuild vectors, warm caches, and run smoke checks. Deterministic hash embeddings require `--allow-hash` and are for CI/local tests only.
-
-Older repository hygiene tools from 0.4.3 are documented in [`scripts/README.md`](scripts/README.md) and [`docs/repo_governance.md`](docs/repo_governance.md).
+The current source tree is `0.6.22`. Core local search is stable, while
+advanced semantic, rerank, sync, and benchmarking workflows remain optional.
+See [CHANGELOG.md](CHANGELOG.md) for release details.
 
 ---
 
@@ -268,7 +257,7 @@ vault config set embedding.model nomic-embed-text
 
 ```bash
 pip install "vault-for-llm[mcp]"
-vault-mcp --project-dir /path/to/your/project
+vault-mcp --project-dir /path/to/your/project --tool-profile core
 ```
 
 Security note: `vault-mcp` is a local stdio MCP server. It does not implement network authentication or user-level access control. Only configure it for agents you trust with read/write access to the selected `--project-dir`, and prefer a dedicated project directory for shared or experimental agents.
@@ -416,42 +405,18 @@ your-project/
 └── templates/                # starter templates
 ```
 
-## CLI reference
+## Common CLI Commands
 
 | Command | Purpose |
 |---|---|
 | `vault init` | Initialize a project vault |
-| `vault doctor` | Check local environment and optional dependencies |
-| `vault add "Title" --content "..."` | Add one knowledge entry |
-| `vault add "Title" --file note.md` | Add an entry from a Markdown file |
-| `vault import long-doc.md` | Import and chunk a long document |
-| `vault compile` | Compile `raw/` into SQLite + `compiled/` artifacts |
-| `vault search "query"` | Search the vault; use `--min-score` to tune weak-match suppression |
-| `vault search "query" --graph-expand 2` | Search with graph expansion |
-| `vault export obsidian --vault /path/to/ObsidianVault --dry-run` | Export read-only Markdown notes for Obsidian browsing |
-| `vault list` | List knowledge entries |
-| `vault stats` | Show vault statistics |
-| `vault lint` | Run quality checks |
-| `vault map build` | Build/backfill Document Map rows |
-| `vault map show <id>` | Show a knowledge entry's section map |
-| `vault map read <id> --lines 10-30` | Read a bounded source range |
-| `vault graph build` | Build the inferred knowledge graph |
-| `vault graph show` | Show graph statistics |
-| `vault converge` | Experimental convergence/self-questioning check |
-| `vault cross-validate` | Experimental cross-model validation |
-| `vault freshness` | Experimental freshness/review scheduling |
-| `vault dedup` | Detect or merge duplicate entries |
-| `vault search-qa run` / `vault search-qa compare` | Run Search QA snapshots, hard-negative checks, and before/after comparisons ([guide](docs/search_qa_benchmarking.md)) |
-| `vault db status` / `vault db migrate` | Inspect or update local SQLite schema ([guide](docs/db_migrations.md)) |
-| `vault db backup` / `vault db verify-backup` / `vault db restore` | Create, verify, and safely restore local SQLite backups ([guide](docs/db_backup_restore.md)) |
-| `vault semantic rebuild` | Rebuild semantic vector rows after configuring a real embedding provider |
-| `vault semantic warm` | Precompute QA query embeddings without writing vector rows |
-| `vault semantic smoke` | Rebuild, warm, and run a Search QA smoke snapshot in one command |
-| `vault semantic cache-stats` / `vault semantic cache-prune` | Inspect or prune the durable embedding cache |
-| `vault semantic startup` / `vault semantic daemon` | Run importable startup or bounded daemon lifecycle hooks |
-| `vault skill search "query"` | Search local experimental skill registry entries |
+| `vault remember "Title" --content "..." --reason "..."` | Propose candidate memory for review |
+| `vault promote <candidate_id> --confirm` | Promote reviewed candidate memory |
+| `vault compile` | Compile Markdown into SQLite |
+| `vault search "query"` | Search project memory |
+| `vault map read <id> --lines 10-30` | Read a bounded range for citation |
 
-Run `vault <command> --help` for command-specific options.
+For the broader command surface, see the [CLI reference](docs/cli_reference.md).
 
 ### Obsidian export
 
@@ -476,7 +441,7 @@ Install MCP extras and start the server:
 
 ```bash
 pip install "vault-for-llm[mcp]"
-vault-mcp --project-dir /path/to/your/project
+vault-mcp --project-dir /path/to/your/project --tool-profile core
 ```
 
 Security note: `vault-mcp` is a local stdio MCP server. It does not implement network authentication or user-level access control. Only configure it for agents you trust with read/write access to the selected `--project-dir`, and prefer a dedicated project directory for shared or experimental agents.
@@ -494,16 +459,33 @@ Example MCP server config:
 }
 ```
 
-Current MCP tools include:
+MCP can expose different tool profiles:
 
-- Retrieval: `vault_search`, `vault_stats`
-- Candidate-first memory: `vault_memory_propose`, `vault_memory_promote`
-- Curation: `vault_dream_run`
-- Bounded reading: `vault_map_show`, `vault_read_range`
-- Compatibility direct write: `vault_add` (prefer candidate-first tools for autonomous agents)
-- Optional remote reads: `vault_remote_map_show` / `vault_remote_read_range` when optional Supabase sync is configured
+| Profile | Tools | Use when |
+|---|---|---|
+| `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats` | Daily agent use with fewer tool-schema tokens |
+| `review` | Core plus `vault_memory_promote`, `vault_dream_run` | A trusted operator or agent reviews candidate memory |
+| `remote` | Core plus Supabase remote read tools | Agents read a synced cross-host memory view |
+| `maintenance` | Review plus freshness/convergence checks | Scheduled or operator-led curation |
+| `full` | All tools, including compatibility `vault_add` | Backward compatibility or explicit power-user setups |
 
-For agent loops, prefer `vault_search` → `vault_map_show` → `vault_read_range`. `vault_search` returns compact MCP payloads by default; pass `compact: false` only when a caller explicitly needs the fuller preview output. Final answers should cite `vault_read_range` output rather than search previews.
+`full` remains the default for backward compatibility. For production agent
+sessions, prefer `--tool-profile core` or an explicit allowlist:
+
+```bash
+vault-mcp --project-dir /path/to/project \
+  --tools vault_search,vault_read_range,vault_memory_propose,vault_stats
+```
+
+Tool profiles reduce the tools advertised through `tools/list`; they are not a
+security boundary. Run `vault-mcp` only for agents you trust with the selected
+project directory.
+
+For agent loops, prefer `vault_search` → `vault_read_range`. `vault_search`
+returns compact MCP payloads by default, including source and range hints when
+available. Use `vault_map_show` from a broader profile only when the agent needs
+section navigation before reading. Final answers should cite `vault_read_range`
+output rather than search previews.
 
 ---
 

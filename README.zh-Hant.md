@@ -243,7 +243,7 @@ vault config set embedding.model nomic-embed-text
 
 ```bash
 pip install "vault-for-llm[mcp]"
-vault-mcp --project-dir /path/to/your/project
+vault-mcp --project-dir /path/to/your/project --tool-profile core
 ```
 
 安全提醒：`vault-mcp` 是本機 stdio MCP server，沒有內建網路認證或使用者層級存取控制。只把它配置給你信任、且可以讀寫該 `--project-dir` 的 Agent；若要給共享或實驗性 Agent 使用，建議使用獨立 project directory。
@@ -433,7 +433,7 @@ vault export obsidian \
 
 ```bash
 pip install "vault-for-llm[mcp]"
-vault-mcp --project-dir /path/to/your/project
+vault-mcp --project-dir /path/to/your/project --tool-profile core
 ```
 
 安全提醒：`vault-mcp` 是本機 stdio MCP server，沒有內建網路認證或使用者層級存取控制。只把它配置給你信任、且可以讀寫該 `--project-dir` 的 Agent；若要給共享或實驗性 Agent 使用，建議使用獨立 project directory。
@@ -445,20 +445,23 @@ MCP server 設定範例：
   "mcpServers": {
     "vault": {
       "command": "vault-mcp",
-      "args": ["--project-dir", "/path/to/your/project"]
+      "args": ["--project-dir", "/path/to/your/project", "--tool-profile", "core"]
     }
   }
 }
 ```
 
-目前 MCP tools 包含：
+MCP 可以用 tool profiles 控制暴露給 Agent 的工具數量：
 
-- `vault_search`
-- `vault_add`
-- `vault_stats`
-- `vault_map_show`
-- `vault_read_range`
-- 若設定了可選 Supabase sync，還有 `vault_remote_map_show` / `vault_remote_read_range`
+| Profile | 適合情境 |
+|---|---|
+| `core` | 日常 Agent 使用，只暴露 `vault_search`、`vault_read_range`、`vault_memory_propose`、`vault_stats` |
+| `review` | 需要審核並 promote 候選記憶 |
+| `remote` | 需要讀取 Supabase 同步的跨主機記憶視圖 |
+| `maintenance` | 排程或人工整理 freshness/convergence |
+| `full` | 完整相容模式，包含 `vault_add` 等進階/舊工具 |
+
+`full` 仍是預設值以維持相容；正式 Agent session 建議使用 `--tool-profile core` 以減少 tool schema token。
 
 ---
 

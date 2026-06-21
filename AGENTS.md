@@ -17,6 +17,16 @@ Only add runtime-specific adapters when the host needs custom tool registration
 or UI metadata. The stable cross-agent contract is `projectDir`, the `vault`
 CLI, `vault-mcp`, and candidate-first memory writes.
 
+For MCP-capable agents, prefer the smallest tool profile that fits the job:
+
+```bash
+vault-mcp --project-dir /path/to/project --tool-profile core
+```
+
+`core` exposes only `vault_search`, `vault_read_range`, `vault_memory_propose`,
+and `vault_stats`. Use `review`, `remote`, `maintenance`, or `full` only when
+those extra tools are needed.
+
 ## Second Decision: Optional Features
 
 After choosing database scope, ask which optional capabilities the user wants.
@@ -106,7 +116,7 @@ python -m pip install -e .
 vault init --project-dir /path/to/project
 vault compile --project-dir /path/to/project --no-embed
 vault search "release checklist" --project-dir /path/to/project --limit 5
-vault-mcp --project-dir /path/to/project
+vault-mcp --project-dir /path/to/project --tool-profile core
 ```
 
 OpenClaw install:

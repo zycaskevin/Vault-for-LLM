@@ -32,6 +32,8 @@ Use runtime-specific adapters only for convenience. The durable contract is:
 - `vault-mcp`: works for MCP-capable agents such as Hermes Agent, Codex,
   OpenCode, Claude Code, and generic MCP hosts.
 - Candidate-first memory: shared vaults should propose memory before promotion.
+- MCP tool profiles: use `--tool-profile core` for daily agent sessions to
+  reduce tool-schema tokens.
 
 ## Optional Feature Prompts
 
@@ -82,8 +84,11 @@ Supabase is a sync/read target, not the source of truth. Ask again before using
 All integrations should follow the same memory policy:
 
 ```text
-search -> inspect/map -> bounded read -> answer with source
+search -> bounded read -> answer with source
 ```
+
+Use map/inspect tools only when the agent needs section navigation before
+choosing a bounded read range.
 
 For new memory:
 
@@ -123,7 +128,7 @@ For shared vaults, keep direct writes restricted. Agents should use
   "mcpServers": {
     "vault": {
       "command": "vault-mcp",
-      "args": ["--project-dir", "/path/to/your/project"]
+      "args": ["--project-dir", "/path/to/your/project", "--tool-profile", "core"]
     }
   }
 }
@@ -199,3 +204,8 @@ vault map read 12 --lines 20-55
 
 When the agent supports MCP, use `vault-mcp` and keep final answers grounded in
 `vault_read_range` output rather than search previews.
+
+For token-sensitive agents, use `vault-mcp --tool-profile core`. This exposes
+only `vault_search`, `vault_read_range`, `vault_memory_propose`, and
+`vault_stats`. Use `review`, `remote`, `maintenance`, or `full` only when those
+extra tools are needed.

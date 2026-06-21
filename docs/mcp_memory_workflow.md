@@ -2,6 +2,29 @@
 
 Vault-for-LLM now exposes a safer agent memory workflow over MCP. Autonomous agents should prefer candidate-first memory tools instead of writing directly to active knowledge.
 
+## Tool profiles
+
+Use the smallest MCP tool profile that fits the session:
+
+| Profile | Tools | Use when |
+|---|---|---|
+| `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats` | Daily agent use with fewer tool-schema tokens |
+| `review` | Core plus `vault_memory_promote`, `vault_dream_run` | Reviewing and promoting candidate memory |
+| `remote` | Core plus `vault_remote_map_show`, `vault_remote_read_range` | Reading a Supabase-synced cross-host memory view |
+| `maintenance` | Review plus freshness/convergence checks | Scheduled or operator-led curation |
+| `full` | All tools, including compatibility `vault_add` | Backward compatibility or explicit power-user setups |
+
+```bash
+vault-mcp --project-dir /path/to/project --tool-profile core
+```
+
+`full` remains the default for backward compatibility. Production agents should
+prefer `core` unless they need review, remote, or maintenance tools.
+
+Tool profiles reduce the tool schemas advertised to the client; they are not an
+access-control boundary. Only run `vault-mcp` for agents you trust with the
+selected project directory.
+
 ## Recommended agent flow
 
 ```text
@@ -9,8 +32,7 @@ Vault-for-LLM now exposes a safer agent memory workflow over MCP. Autonomous age
 2. human/agent review    # inspect privacy/duplicate/metadata gate result
 3. vault_memory_promote  # explicit confirm=true promotion
 4. vault_search          # find active memory later
-5. vault_map_show        # inspect document map
-6. vault_read_range      # read bounded source range and cite it
+5. vault_read_range      # read bounded source range and cite it
 ```
 
 ## Why not direct `vault_add`?
@@ -96,10 +118,13 @@ Search snippets are navigation hints only. Final answers should cite ranges retu
 Required sequence:
 
 ```text
-vault_search → vault_map_show → vault_read_range → final answer citation
+vault_search → vault_read_range → final answer citation
 ```
 
-`vault_read_range` returns a fixed citation string. Use that exact citation when relying on the range.
+`vault_search` returns compact source and range hints when available.
+`vault_read_range` returns a fixed citation string. Use that exact citation when
+relying on the range. Use `vault_map_show` from a broader profile only when the
+agent needs section navigation before choosing a range.
 
 ## Safety notes
 

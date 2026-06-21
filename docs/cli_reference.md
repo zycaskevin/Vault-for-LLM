@@ -1,0 +1,81 @@
+# CLI Reference
+
+This page lists the broader Vault-for-LLM CLI surface. Most agents should start
+with the daily loop in the README and only use these commands when needed.
+
+## Daily Workflow
+
+| Command | Purpose |
+|---|---|
+| `vault init` | Initialize a project vault |
+| `vault remember "Title" --content "..." --reason "..."` | Propose candidate memory for review |
+| `vault promote <candidate_id> --confirm` | Promote reviewed candidate memory |
+| `vault compile` | Compile `raw/` into SQLite and generated artifacts |
+| `vault search "query"` | Search the vault |
+| `vault map read <id> --lines 10-30` | Read a bounded source range for citation |
+
+## Knowledge Ingestion
+
+| Command | Purpose |
+|---|---|
+| `vault add "Title" --content "..."` | Add one active knowledge entry directly |
+| `vault add "Title" --file note.md` | Add an entry from a Markdown file |
+| `vault import long-doc.md` | Import and chunk a long document |
+| `vault export obsidian --vault /path/to/ObsidianVault --dry-run` | Export read-only Markdown notes for Obsidian browsing |
+
+Prefer `vault remember` over `vault add` for autonomous agents or unreviewed
+memory.
+
+## Search And Navigation
+
+| Command | Purpose |
+|---|---|
+| `vault search "query"` | Search the vault; use `--min-score` to tune weak-match suppression |
+| `vault search "query" --graph-expand 2` | Search with graph expansion |
+| `vault map build` | Build/backfill Document Map rows |
+| `vault map show <id>` | Show a knowledge entry's section map |
+| `vault map read <id> --lines 10-30` | Read a bounded source range |
+| `vault list` | List knowledge entries |
+| `vault stats` | Show vault statistics |
+
+## Quality And Curation
+
+| Command | Purpose |
+|---|---|
+| `vault lint` | Run quality checks |
+| `vault dream` | Produce report-first memory curation summaries |
+| `vault freshness` | Experimental freshness/review scheduling |
+| `vault dedup` | Detect or merge duplicate entries |
+| `vault converge` | Experimental convergence/self-questioning check |
+| `vault cross-validate` | Experimental cross-model validation |
+| `vault search-qa run` / `vault search-qa compare` | Run Search QA snapshots, hard-negative checks, and before/after comparisons |
+
+## Storage And Maintenance
+
+| Command | Purpose |
+|---|---|
+| `vault doctor` | Check local environment and optional dependencies |
+| `vault db status` / `vault db migrate` | Inspect or update local SQLite schema |
+| `vault db backup` / `vault db verify-backup` / `vault db restore` | Create, verify, and restore local SQLite backups |
+| `vault graph build` / `vault graph show` | Build or inspect the inferred knowledge graph |
+
+## Optional Semantic Workflow
+
+| Command | Purpose |
+|---|---|
+| `vault install-embedding` | Install a local embedding model |
+| `vault config set embedding.provider ollama` | Configure an embedding provider |
+| `vault semantic rebuild` | Rebuild semantic vector rows after configuring a real embedding provider |
+| `vault semantic warm` | Precompute QA query embeddings without writing vector rows |
+| `vault semantic smoke` | Rebuild, warm, and run a Search QA smoke snapshot |
+| `vault semantic cache-stats` / `vault semantic cache-prune` | Inspect or prune the durable embedding cache |
+| `vault semantic startup` / `vault semantic daemon` | Run startup or bounded daemon lifecycle hooks |
+
+## Experimental Local Skills
+
+| Command | Purpose |
+|---|---|
+| `vault skill search "query"` | Search local experimental skill registry entries |
+
+Run `vault <command> --help` for command-specific options.
+

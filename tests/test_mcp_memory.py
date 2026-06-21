@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from vault.db import VaultDB
 from vault.mcp import TOOLS, _set_project_dir, handle_tool_call
 
@@ -16,6 +18,37 @@ def test_mcp_memory_tools_are_advertised():
     assert "Prefer vault_memory_propose" in add_tool["description"]
     search_tool = next(tool for tool in TOOLS if tool["name"] == "vault_search")
     assert "semantic" in search_tool["inputSchema"]["properties"]["mode"]["enum"]
+
+
+def test_mcp_tool_profiles_reduce_visible_tool_schemas():
+    from vault.mcp import select_tools
+
+    core_names = [tool["name"] for tool in select_tools("core")]
+    assert core_names == [
+        "vault_search",
+        "vault_read_range",
+        "vault_memory_propose",
+        "vault_stats",
+    ]
+
+    full_names = {tool["name"] for tool in select_tools("full")}
+    assert "vault_add" in full_names
+    assert "vault_remote_read_range" in full_names
+    assert len(full_names) > len(core_names)
+
+
+def test_mcp_custom_tool_allowlist_overrides_profile():
+    from vault.mcp import select_tools
+
+    names = [tool["name"] for tool in select_tools("full", "vault_search,vault_stats")]
+    assert names == ["vault_search", "vault_stats"]
+
+
+def test_mcp_custom_tool_allowlist_rejects_unknown_tool():
+    from vault.mcp import select_tools
+
+    with pytest.raises(ValueError, match="Unknown MCP tool"):
+        select_tools("full", "vault_search,vault_nope")
 
 
 def test_mcp_search_respects_fields_and_snippet(tmp_path):

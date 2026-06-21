@@ -225,14 +225,26 @@ Markdown raw/  →  vault compile  →  SQLite database  →  vault search / MCP
 
 ### 从 PyPI 安装
 
-> 发布备注：GitHub source tree 目前是 `0.6.24`。如果 PyPI 落后最新 GitHub release，请先使用下方 source install 获取最新 source features。
+Vault-for-LLM `0.6.24` 已发布到 PyPI。
+
+如果要让 Agent 代为安装，可以直接把这段交给 Hermes Agent、Codex、OpenCode、Claude Code、OpenClaw，或其他能执行本机命令的 Agent：
+
+```text
+帮这个项目安装 Vault-for-LLM。使用 PyPI 套件 vault-for-llm[mcp]==0.6.24。
+先询问 vault database 要 shared、private、domain-specific 还是 temporary。
+询问要开哪些 optional features。询问我是否有既有 Obsidian vault 要导入。
+执行 vault setup-agent，设置 CLI/MCP，Obsidian 先 dry-run 再导入，
+最后跑 search/read/propose smoke test。
+```
+
+手动安装：
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install vault-for-llm
+pip install "vault-for-llm[mcp]==0.6.24"
 
-vault doctor
+vault setup-agent
 ```
 
 ### 可选：语义搜索

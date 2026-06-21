@@ -119,10 +119,14 @@ everything by default:
 | `obsidian_import` | no | built into core CLI | The user already has an Obsidian vault and wants agents to search those notes through Vault. |
 | `semantic` | no | `python -m pip install "vault-for-llm[semantic]"` | The user wants embedding-backed semantic/hybrid search. |
 | `supabase` | no | `python -m pip install "vault-for-llm[supabase]"` | The user wants optional remote sync/read paths. |
+| `headroom` | no | `python -m pip install headroom-ai` | The agent often reads long logs, terminal output, or large retrieved context and needs optional compression before sending content to the LLM. |
 | `dev` | no | `python -m pip install -e ".[dev]"` | Source checkout, benchmarks, PR work, or release validation. |
 
-Do not silently enable semantic or Supabase extras: they add heavier
-dependencies, model/provider setup, or remote credentials.
+Do not silently enable semantic, Supabase, or Headroom extras: semantic and
+Supabase add heavier dependencies, model/provider setup, or remote credentials;
+Headroom is useful only when context-window or token pressure is a real issue.
+If Headroom is enabled, keep citations tied to original `vault_read_range`
+output, not compressed summaries.
 
 For Obsidian, the agent should ask for the vault path, run a dry-run first,
 perform the first import only after confirmation, then ask whether to schedule
@@ -260,6 +264,7 @@ Install Vault-for-LLM for this project. Use PyPI package vault-for-llm[mcp]==0.6
 Ask whether the vault database should be shared, private, domain-specific, or temporary.
 Ask which optional features to enable. Ask whether I have an existing Obsidian vault to import.
 Run vault setup-agent, configure CLI/MCP, do an Obsidian dry-run before importing,
+ask whether optional Headroom context compression is needed for long tool output,
 and finish with a search/read/propose smoke test.
 ```
 
@@ -476,7 +481,7 @@ vault setup-agent \
   --obsidian-sync all
 ```
 
-The wizard asks for database scope, optional features, an existing Obsidian vault path, whether to run the first import, and whether to generate cron, LaunchAgent, or n8n sync templates.
+The wizard asks for database scope, optional features, an existing Obsidian vault path, whether to run the first import, and whether to generate cron, LaunchAgent, or n8n sync templates. `headroom` is an advanced optional feature for context compression; it is not required for Vault memory governance and should stay off unless the user has long logs, large tool output, or token pressure.
 
 ### Obsidian export
 

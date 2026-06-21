@@ -10,6 +10,26 @@ Use them together when an agent retrieves useful Vault context but the final
 prompt is still too large because it also includes logs, shell output, code
 search results, or other tool output.
 
+## Agent Installer Policy
+
+Agent installers should offer Headroom as an advanced optional feature, not as a
+default recommendation:
+
+```bash
+vault setup-agent \
+  --non-interactive \
+  --agent codex \
+  --scope shared \
+  --agent-project-dir /path/to/project \
+  --features core,mcp,headroom \
+  --json
+```
+
+The prompt should be framed as context compression for long logs, terminal
+output, code search results, or large retrieved context. If the user only needs
+project memory search, source citations, Obsidian import, or MCP access,
+Headroom is unnecessary.
+
 ## Recommended Layering
 
 ```text

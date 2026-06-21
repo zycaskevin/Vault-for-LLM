@@ -55,7 +55,7 @@
     "ask whether to schedule automatic Obsidian sync",
     "verify search/read/propose"
   ],
-  "agent_install_prompt": "Install Vault-for-LLM for this project. Read AGENTS.md and agent_manifest.json, ask whether the vault should be shared or private, ask which optional features to enable, ask whether an existing Obsidian vault should be imported, configure CLI/MCP, run the first Obsidian dry-run/import if requested, ask whether automatic sync should be scheduled, and run a search/read/propose smoke test.",
+  "agent_install_prompt": "Install Vault-for-LLM for this project. Read AGENTS.md and agent_manifest.json, ask whether the vault should be shared or private, ask which optional features to enable, ask whether an existing Obsidian vault should be imported, ask whether optional Headroom context compression is needed for long tool output, configure CLI/MCP, run the first Obsidian dry-run/import if requested, ask whether automatic sync should be scheduled, and run a search/read/propose smoke test.",
   "agent_setup_wizard": {
     "cli": "vault setup-agent",
     "alias": "vault install-agent",
@@ -139,6 +139,21 @@
         "python scripts/sync_to_supabase.py --document-map"
       ],
       "notes": "SQLite remains the source of truth. Supabase can provide a shared remote read/sync layer for different hosts. Do not sync full content unless the user explicitly wants --include-content."
+    },
+    {
+      "id": "headroom",
+      "default": false,
+      "prompt": "Install optional Headroom context compression for long logs, tool output, or large retrieved context?",
+      "when_to_install": "Use only when the agent has context-window or token pressure after Vault has already narrowed retrieval to relevant source ranges.",
+      "install_commands": [
+        "python -m pip install headroom-ai"
+      ],
+      "post_install": [
+        "Use Vault first: vault_search -> vault_read_range.",
+        "Use Headroom after Vault retrieval only when the selected context is still too large.",
+        "Keep final citations tied to original vault_read_range output, not compressed summaries."
+      ],
+      "notes": "Headroom is an adjacent optional compression layer, not a Vault dependency and not the source of truth for citations."
     },
     {
       "id": "dev",

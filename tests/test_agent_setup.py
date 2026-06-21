@@ -84,3 +84,21 @@ def test_setup_agent_cli_non_interactive(tmp_path, capsys):
     assert payload["obsidian"]["import"]["added"] == 1
     assert "cron" in payload["sync_templates"]
     assert (project / "raw" / "obsidian" / "Note.md").exists()
+
+
+def test_setup_agent_headroom_is_optional_next_step(tmp_path):
+    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+
+    project = tmp_path / "agent-project"
+    result = run_agent_setup(
+        AgentSetupConfig(
+            project_dir=project,
+            scope="private",
+            agent="codex",
+            features=["core", "mcp", "headroom"],
+        )
+    )
+
+    assert result["features"] == ["core", "mcp", "headroom"]
+    assert any("headroom-ai" in step for step in result["next_steps"])
+    assert any("original vault_read_range" in step for step in result["next_steps"])

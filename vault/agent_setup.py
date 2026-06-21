@@ -16,7 +16,7 @@ from vault.import_obsidian import sync_obsidian_vault
 
 
 DEFAULT_FEATURES = ["core", "mcp"]
-VALID_FEATURES = {"core", "mcp", "obsidian_import", "semantic", "supabase", "dev"}
+VALID_FEATURES = {"core", "mcp", "obsidian_import", "semantic", "supabase", "headroom", "dev"}
 VALID_SYNC_TARGETS = {"none", "cron", "launchagent", "n8n", "all"}
 
 
@@ -291,6 +291,7 @@ class AgentSetupConfig:
 def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
     project_path = ensure_project(config.project_dir)
     features = normalize_features(config.features)
+    feature_next_steps = optional_feature_next_steps(features, project_dir=project_path)
     result: dict[str, Any] = {
         "project_dir": str(project_path),
         "scope": config.scope,
@@ -304,7 +305,8 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         "next_steps": [
             f"vault search \"test query\" --project-dir {shlex.quote(str(project_path))} --limit 5",
             f"vault-mcp --project-dir {shlex.quote(str(project_path))} --tool-profile {shlex.quote(config.tool_profile)}",
-        ],
+        ]
+        + feature_next_steps,
     }
 
     if config.obsidian_vault:
@@ -340,6 +342,36 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
     return result
 
 
+def optional_feature_next_steps(features: list[str], *, project_dir: str | Path) -> list[str]:
+    project_path = Path(project_dir).expanduser()
+    steps: list[str] = []
+    if "semantic" in features:
+        steps.extend(
+            [
+                'python -m pip install "vault-for-llm[semantic]"',
+                f"vault semantic rebuild --project-dir {shlex.quote(str(project_path))} --persist-cache --pretty",
+            ]
+        )
+    if "supabase" in features:
+        steps.extend(
+            [
+                'python -m pip install "vault-for-llm[supabase]"',
+                "configure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY before running sync scripts",
+            ]
+        )
+    if "headroom" in features:
+        steps.extend(
+            [
+                "python -m pip install headroom-ai",
+                "Use Headroom after Vault retrieval when logs, tool output, or retrieved context are too large.",
+                "Keep Vault citations tied to original vault_read_range output, not compressed summaries.",
+            ]
+        )
+    if "dev" in features:
+        steps.append('python -m pip install -e ".[dev]"')
+    return steps
+
+
 def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
     agent = str(argv_config.get("agent") or _ask("Agent/runtime", "generic"))
     scope = str(argv_config.get("scope") or _ask("Vault scope (shared/private/domain/temporary)", "private"))
@@ -349,7 +381,10 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
 
     features_raw = argv_config.get("features")
     if not features_raw:
-        features_raw = _ask("Optional features (comma-separated)", "core,mcp")
+        features_raw = _ask(
+            "Optional features (comma-separated; headroom is advanced and off by default)",
+            "core,mcp",
+        )
 
     obsidian_vault = argv_config.get("obsidian_vault")
     if obsidian_vault is None:

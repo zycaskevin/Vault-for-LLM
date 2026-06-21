@@ -2067,7 +2067,7 @@ def main(argv: list[str] | None = None):
         ap.add_argument("--agent-project-dir", "--project", dest="agent_project_dir",
                         help="要初始化/使用的 Vault project directory")
         ap.add_argument("--features", default=None,
-                        help="可選功能 CSV，例如 core,mcp,obsidian_import,semantic,supabase")
+                        help="可選功能 CSV，例如 core,mcp,obsidian_import,semantic,supabase,headroom")
         ap.add_argument("--tool-profile", choices=["core", "review", "remote", "maintenance", "full"],
                         default="core", help="建議的 MCP tool profile")
         ap.add_argument("--obsidian-vault", help="既有 Obsidian vault 路徑；提供後會先 dry-run")

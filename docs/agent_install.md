@@ -10,7 +10,7 @@ install path below keeps Vault local-first and governed.
 ## One-Sentence Prompt
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.24, ask which database scope and optional features I want, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.24, ask which database scope and optional features I want, ask whether I have an existing Obsidian vault to import, ask whether optional Headroom context compression is needed for long tool output, run vault setup-agent, and finish with a search/read/propose smoke test.
 ```
 
 ## What To Ask First
@@ -22,7 +22,7 @@ Ask these before installing extras or writing memory:
 3. Should MCP be enabled for this agent runtime?
 4. Do you already have an Obsidian vault to import?
 5. If Obsidian is connected, should ongoing sync be scheduled with cron, LaunchAgent, or n8n?
-6. Do you want semantic search or Supabase sync? Do not enable either silently.
+6. Do you want semantic search, Supabase sync, or Headroom context compression? Do not enable them silently.
 
 ## Scope Choices
 
@@ -60,6 +60,30 @@ vault setup-agent \
 
 Change `--agent` to the runtime doing the work, such as `hermes`, `openclaw`,
 `claude-code`, `opencode`, `codex`, or `n8n`.
+
+## Optional Headroom Compression
+
+Headroom is not part of Vault's core memory governance. Offer it only when the
+user has long logs, large terminal output, large RAG/tool results, or clear
+context-window/token pressure:
+
+```bash
+python -m pip install headroom-ai
+
+vault setup-agent \
+  --non-interactive \
+  --agent codex \
+  --scope shared \
+  --agent-project-dir /path/to/project \
+  --features core,mcp,headroom \
+  --tool-profile core \
+  --json
+```
+
+Use Vault first to decide what to search and which bounded source range to
+read. Use Headroom after retrieval only when the selected context is still too
+large. Keep final citations tied to original `vault_read_range` output, not to
+compressed summaries.
 
 ## Optional Obsidian Import
 
@@ -148,7 +172,7 @@ vault_memory_propose -> candidate created, not directly promoted
 
 ## Safety Rules
 
-- Do not install semantic or Supabase extras without asking first.
+- Do not install semantic, Supabase, or Headroom extras without asking first.
 - Do not import Obsidian without a dry-run and user confirmation.
 - Do not promote memory automatically in a shared vault unless the user explicitly approves.
 - Do not expose local MCP over a public network.

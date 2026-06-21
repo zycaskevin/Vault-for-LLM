@@ -50,3 +50,15 @@ files with `--session-file`. Keep those exports outside git unless they have
 been explicitly scrubbed. The benchmark runner reads text-like fields from JSON
 and JSONL exports, so a Hermes transcript export can use fields such as
 `content`, `text`, `message`, `summary`, `body`, or `transcript`.
+
+## Reference results
+
+Private local exports have been used to validate the fixture without committing
+session transcripts or generated reports:
+
+| Provider export | Transcript baseline | Vault top-k | Vault source hit | Vault read-range guidance | Delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Codex local review sessions | `7/28` | `28/28` | `1.0` | `1.0` | `+0.75` |
+| Hermes/Nancy session export | `3/28` | `28/28` | `1.0` | `1.0` | `+0.892857` |
+
+For both runs, `candidate_active_delta_before_promotion` stayed `0`.

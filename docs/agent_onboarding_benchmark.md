@@ -162,3 +162,19 @@ current README/docs source of truth.
 Hermes session exports can be used the same way as Codex exports as long as they
 are saved locally as `.md`, `.txt`, `.json`, or `.jsonl`. Keep Hermes exports and
 reports outside git unless they have been scrubbed for private context.
+
+## Reference Local Runs
+
+These runs used private local transcript exports and kept generated artifacts
+under `/tmp`, outside source control. They are included as product evidence, not
+as committed fixtures.
+
+| Provider export | Transcript baseline | Vault top-k | Vault source hit | Vault read-range guidance | Delta | Candidate active delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Codex local review sessions | `7/28` (`0.25`) | `28/28` (`1.0`) | `1.0` | `1.0` | `+0.75` | `0` |
+| Hermes/Nancy session export | `3/28` (`0.1071`) | `28/28` (`1.0`) | `1.0` | `1.0` | `+0.892857` | `0` |
+
+The Hermes/Nancy run used a 161-message transcript export and produced
+`wrong_source_guard_passed: true`. The transcript and report were intentionally
+left outside the repository because real agent sessions can contain private
+work context.

@@ -151,10 +151,14 @@ This is not a benchmark of hidden Hermes or Codex memory internals. It is a prac
 
 The source-checkout fixture lives under `benchmarks/agent_onboarding/`:
 
-- `project_onboarding.repo.json` contains the onboarding questions.
+- `project_onboarding.repo.json` contains 28 onboarding questions.
 - `session_candidates.example.json` contains public-safe candidate-memory examples.
 - `benchmarks/agent_onboarding/README.md` has the short command sequence.
 
 The matching database is generated rather than committed. This avoids shipping
 runtime artifacts while still making the benchmark repeatable against the
 current README/docs source of truth.
+
+Hermes session exports can be used the same way as Codex exports as long as they
+are saved locally as `.md`, `.txt`, `.json`, or `.jsonl`. Keep Hermes exports and
+reports outside git unless they have been scrubbed for private context.

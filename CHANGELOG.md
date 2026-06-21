@@ -2,6 +2,14 @@
 
 ## [0.6.22] - 2026-06-20
 
+### Added
+
+#### Agent Memory Benchmarking
+- Added a reproducible repository-doc agent onboarding benchmark fixture with 28 source-aware QA cases.
+- Added `scripts/build_agent_onboarding_vault.py` to build a temporary benchmark Vault from README/docs source-of-truth files instead of committing runtime databases.
+- Documented how to run exported Codex/Hermes-style sessions against the governed Vault benchmark while keeping private session exports and reports outside git.
+- Validated the current local Codex-session comparison path at 28 tasks: session transcript baseline hit rate `7/28`, Vault top-k/source/read-range guidance rates `28/28`.
+
 ### Fixed
 
 #### Release Follow-up & Hygiene

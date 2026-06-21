@@ -14,6 +14,7 @@ from scripts.build_agent_onboarding_vault import REPO_DOCS, build_repo_docs_vaul
 REPO_ROOT = Path(__file__).resolve().parents[1]
 QA_FILE = REPO_ROOT / "benchmarks/agent_onboarding/project_onboarding.repo.json"
 CANDIDATE_FILE = REPO_ROOT / "benchmarks/agent_onboarding/session_candidates.example.json"
+REPO_ONBOARDING_CASE_COUNT = 28
 
 
 def test_repo_doc_onboarding_fixture_matches_generated_vault(tmp_path):
@@ -46,7 +47,7 @@ def test_repo_doc_onboarding_fixture_matches_generated_vault(tmp_path):
     )
 
     assert report["mode"] == "external_session"
-    assert report["summary"]["task_count"] == 8
+    assert report["summary"]["task_count"] == REPO_ONBOARDING_CASE_COUNT
     assert report["summary"]["vault_topk_hit_rate"] == 1.0
     assert report["summary"]["vault_source_hit_rate"] == 1.0
     assert report["summary"]["vault_read_range_guidance_rate"] == 1.0

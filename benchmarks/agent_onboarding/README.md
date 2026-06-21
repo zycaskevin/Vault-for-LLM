@@ -7,7 +7,7 @@ The fixtures intentionally do not include real Hermes, Codex, Claude, or user
 session exports. Bring those from your own machine at run time and keep reports
 outside the repository.
 
-- `project_onboarding.repo.json` - Search QA cases for the repository-doc
+- `project_onboarding.repo.json` - 28 Search QA cases for the repository-doc
   onboarding benchmark.
 - `session_candidates.example.json` - candidate-memory examples for the
   candidate-first gate check.
@@ -42,3 +42,11 @@ python scripts/agent_onboarding_benchmark.py \
 This compares what the exported session text contains against what the governed
 Vault can retrieve from project source-of-truth documents. It is not a test of
 hidden runtime memory internals.
+
+## Hermes exports
+
+Hermes exports should be passed as local `.md`, `.txt`, `.json`, or `.jsonl`
+files with `--session-file`. Keep those exports outside git unless they have
+been explicitly scrubbed. The benchmark runner reads text-like fields from JSON
+and JSONL exports, so a Hermes transcript export can use fields such as
+`content`, `text`, `message`, `summary`, `body`, or `transcript`.

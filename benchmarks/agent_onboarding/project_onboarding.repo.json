@@ -57,6 +57,146 @@
       "expected_sources": ["docs/agent_onboarding_benchmark.md"],
       "expected_title_substrings": ["Onboarding"],
       "expected_session_substrings": ["session", "qa-file", "db-path"]
+    },
+    {
+      "id": "direct_add_vs_candidate_desk",
+      "query": "direct vault_add trusted scripts safer daily path candidate desk propose inspect gates promote",
+      "expected_sources": ["README.md"],
+      "expected_title_substrings": ["README"],
+      "expected_session_substrings": ["vault_add", "candidate"]
+    },
+    {
+      "id": "dream_report_first_cleanup",
+      "query": "vault dream report first cleanup stale duplicate weak metadata apply_safe backup rollback",
+      "expected_sources": ["README.md"],
+      "expected_title_substrings": ["README"],
+      "expected_session_substrings": ["dream", "report"]
+    },
+    {
+      "id": "mcp_compact_payload_default",
+      "query": "MCP vault_search compact payload default compact false fuller preview output",
+      "expected_sources": ["README.md"],
+      "expected_title_substrings": ["README"],
+      "expected_session_substrings": ["compact", "vault_search"]
+    },
+    {
+      "id": "supabase_minimal_disclosure",
+      "query": "Supabase sync minimal disclosure metadata summaries hashes document map rows without full content_raw",
+      "expected_sources": ["README.md"],
+      "expected_title_substrings": ["README"],
+      "expected_session_substrings": ["Supabase", "content_raw"]
+    },
+    {
+      "id": "mcp_direct_add_boundary",
+      "query": "vault_add compatibility controlled scripts writes directly active knowledge bypasses candidate review",
+      "expected_sources": ["docs/mcp_memory_workflow.md"],
+      "expected_title_substrings": ["MCP Memory"],
+      "expected_session_substrings": ["vault_add", "candidate review"]
+    },
+    {
+      "id": "mcp_candidate_gate_signals",
+      "query": "privacy duplicate metadata quality gates secret-like weak metadata near duplicates before promotion",
+      "expected_sources": ["docs/mcp_memory_workflow.md"],
+      "expected_title_substrings": ["MCP Memory"],
+      "expected_session_substrings": ["privacy", "duplicate"]
+    },
+    {
+      "id": "mcp_final_answer_citation_loop",
+      "query": "vault_search vault_map_show vault_read_range final answer citation fixed citation string",
+      "expected_sources": ["docs/mcp_memory_workflow.md"],
+      "expected_title_substrings": ["MCP Memory"],
+      "expected_session_substrings": ["vault_search", "vault_read_range"]
+    },
+    {
+      "id": "document_map_missing_nodes_rebuild",
+      "query": "map show reports no document map nodes run vault map build retry vault_map_show",
+      "expected_sources": ["docs/document_map_citation_policy.md"],
+      "expected_title_substrings": ["Citation"],
+      "expected_session_substrings": ["vault map build", "vault_map_show"]
+    },
+    {
+      "id": "document_map_range_too_large",
+      "query": "vault_read_range rejects range too large split smaller ranges cite lines actually used",
+      "expected_sources": ["docs/document_map_citation_policy.md"],
+      "expected_title_substrings": ["Citation"],
+      "expected_session_substrings": ["range", "split"]
+    },
+    {
+      "id": "backup_restore_force_prebackup",
+      "query": "restore force overwrites existing target creates automatic pre-restore backup staged temporary os.replace",
+      "expected_sources": ["docs/db_backup_restore.md"],
+      "expected_title_substrings": ["Backup"],
+      "expected_session_substrings": ["pre-restore", "os.replace"]
+    },
+    {
+      "id": "backup_privacy_boundary",
+      "query": "backup files private contain same local knowledge store outside disposable working directories",
+      "expected_sources": ["docs/db_backup_restore.md"],
+      "expected_title_substrings": ["Backup"],
+      "expected_session_substrings": ["private", "vault.db"]
+    },
+    {
+      "id": "search_qa_hard_negative",
+      "query": "Search QA expected_no_results hard negative false positives no_result_precision",
+      "expected_sources": ["docs/search_qa_benchmarking.md"],
+      "expected_title_substrings": ["Search QA"],
+      "expected_session_substrings": ["expected_no_results", "hard-negative"]
+    },
+    {
+      "id": "search_qa_semantic_mode_guard",
+      "query": "semantic hybrid QA require stored semantic index allowed result modes catch silent keyword fallback",
+      "expected_sources": ["docs/search_qa_benchmarking.md"],
+      "expected_title_substrings": ["Search QA"],
+      "expected_session_substrings": ["semantic", "keyword"]
+    },
+    {
+      "id": "search_qa_regression_metrics",
+      "query": "top k mean reciprocal rank source hits read_range guidance citation policy violations result mode violations",
+      "expected_sources": ["docs/search_qa_benchmarking.md"],
+      "expected_title_substrings": ["Search QA"],
+      "expected_session_substrings": ["mean reciprocal rank", "read_range"]
+    },
+    {
+      "id": "semantic_hash_test_only",
+      "query": "allow hash deterministic hash vectors test only not semantic retrieval validate command flow JSON shape cache plumbing",
+      "expected_sources": ["docs/semantic_search.md"],
+      "expected_title_substrings": ["Semantic"],
+      "expected_session_substrings": ["allow-hash", "test-only"]
+    },
+    {
+      "id": "semantic_cache_maintenance",
+      "query": "semantic cache stats prune older than days max rows provider id dimension durable embedding cache",
+      "expected_sources": ["docs/semantic_search.md"],
+      "expected_title_substrings": ["Semantic"],
+      "expected_session_substrings": ["cache-stats", "cache-prune"]
+    },
+    {
+      "id": "semantic_startup_daemon",
+      "query": "semantic startup daemon repeat interval lifecycle startup hook bounded daemon",
+      "expected_sources": ["docs/semantic_search.md"],
+      "expected_title_substrings": ["Semantic"],
+      "expected_session_substrings": ["startup", "daemon"]
+    },
+    {
+      "id": "repo_privacy_gate_before_push",
+      "query": "public PR privacy gate do not push open public PR if gate fails delete remote branch rebuild clean public safe branch",
+      "expected_sources": ["docs/repo_governance.md"],
+      "expected_title_substrings": ["Governance"],
+      "expected_session_substrings": ["privacy", "public PR"]
+    },
+    {
+      "id": "repo_stage_by_allowlist",
+      "query": "do not use git add dot dirty repo runtime artifacts stage by allowlist",
+      "expected_sources": ["docs/repo_governance.md"],
+      "expected_title_substrings": ["Governance"],
+      "expected_session_substrings": ["git add", "allowlist"]
+    },
+    {
+      "id": "agent_onboarding_not_hidden_memory",
+      "query": "not benchmark hidden Hermes Codex memory internals practical reproducible comparison exported sessions governed Vault",
+      "expected_sources": ["docs/agent_onboarding_benchmark.md"],
+      "expected_title_substrings": ["Onboarding"],
+      "expected_session_substrings": ["hidden", "reproducible"]
     }
   ]
 }

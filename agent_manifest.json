@@ -44,11 +44,14 @@
   "common_install_architecture": [
     "choose projectDir",
     "choose optional features",
+    "ask whether to connect an existing Obsidian vault",
     "install vault",
     "configure CLI or stdio MCP",
+    "run first Obsidian dry-run/import when requested",
+    "ask whether to schedule automatic Obsidian sync",
     "verify search/read/propose"
   ],
-  "agent_install_prompt": "Install Vault-for-LLM for this project. Read AGENTS.md and agent_manifest.json, ask whether the vault should be shared or private, ask which optional features to enable, configure CLI/MCP, and run a search/read/propose smoke test.",
+  "agent_install_prompt": "Install Vault-for-LLM for this project. Read AGENTS.md and agent_manifest.json, ask whether the vault should be shared or private, ask which optional features to enable, ask whether an existing Obsidian vault should be imported, configure CLI/MCP, run the first Obsidian dry-run/import if requested, ask whether automatic sync should be scheduled, and run a search/read/propose smoke test.",
   "optional_features": [
     {
       "id": "core",
@@ -80,15 +83,16 @@
     {
       "id": "obsidian_import",
       "default": false,
-      "prompt": "Connect an existing Obsidian vault as a Markdown source for this Vault project?",
+      "prompt": "Do you already have an Obsidian vault to import into this Vault project? If yes, provide its path.",
       "when_to_install": "Use when the user already keeps project notes in Obsidian and wants agents to search them through Vault-for-LLM.",
       "install_commands": [
-        "vault import obsidian --vault /path/to/ObsidianVault --dry-run"
+        "vault import obsidian --vault /path/to/ObsidianVault --project-dir /path/to/project --dry-run"
       ],
       "post_install": [
-        "vault import obsidian --vault /path/to/ObsidianVault --compile"
+        "vault import obsidian --vault /path/to/ObsidianVault --project-dir /path/to/project --compile",
+        "Ask whether to schedule this same --compile command with cron, LaunchAgent, n8n, or the host agent for automatic sync."
       ],
-      "notes": "The importer writes to raw/obsidian/ and skips .obsidian, .trash, .git, and 00-Vault-Knowledge by default. Schedule the same --compile command with cron, LaunchAgent, n8n, or the host agent for automatic sync."
+      "notes": "The importer writes to raw/obsidian/ and skips .obsidian, .trash, .git, and 00-Vault-Knowledge by default. Always run --dry-run first, then perform the first --compile import only after the user confirms the Obsidian path."
     },
     {
       "id": "semantic",

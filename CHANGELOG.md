@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## [0.6.22] - 2026-06-20
+## [0.6.23] - 2026-06-21
 
 ### Added
 
@@ -15,6 +15,8 @@
 - Documented shared/private/temporary Vault project scope so agent installs can choose whether to share one `vault.db` or use isolated databases.
 - Added `AGENTS.md` and `agent_manifest.json` so agent-driven installers can read database scope, safety, runtime, and validation rules without scraping README prose.
 - Added optional feature prompting guidance for agent installers, including core, MCP, semantic, Supabase, and dev/benchmark profiles.
+- Added Obsidian as a first-class agent install prompt: ask for an existing vault path, run dry-run, perform the first import after confirmation, then ask whether to schedule automatic sync.
+- Added CLI-wide `--project-dir` normalization so agent installers can pass the Vault project directory before or after subcommands.
 - Added `vault-for-llm[supabase]` as an optional dependency group for remote sync/read path setup.
 - Clarified README Supabase positioning for cross-host agent memory sharing while keeping local SQLite as the source of truth.
 
@@ -28,6 +30,8 @@
 
 #### License
 - Relicensed the source tree from MIT to Apache-2.0 now that contributions are still controlled by the project maintainers, adding explicit patent-license terms for downstream agent-infrastructure users.
+
+## [0.6.22] - 2026-06-20
 
 ### Fixed
 

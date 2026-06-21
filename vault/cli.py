@@ -37,6 +37,34 @@ def find_project_dir() -> Path:
     return cwd
 
 
+def _extract_project_dir_arg(argv: list[str]) -> tuple[list[str], str | None]:
+    """Extract --project-dir from anywhere in the CLI command.
+
+    Most agents pass runtime-specific options after the subcommand, for example
+    ``vault search "query" --project-dir /path``. argparse global options only
+    work before the subcommand, so we normalize this option before parsing.
+    """
+    cleaned: list[str] = []
+    project_dir: str | None = None
+    i = 0
+    while i < len(argv):
+        item = argv[i]
+        if item == "--project-dir":
+            if i + 1 >= len(argv):
+                print("error: --project-dir requires a value", file=sys.stderr)
+                raise SystemExit(2)
+            project_dir = argv[i + 1]
+            i += 2
+            continue
+        if item.startswith("--project-dir="):
+            project_dir = item.split("=", 1)[1]
+            i += 1
+            continue
+        cleaned.append(item)
+        i += 1
+    return cleaned, project_dir
+
+
 def _privacy_block_message(label: str, privacy: dict) -> str:
     findings = privacy.get("findings", [])
     kinds = ", ".join(
@@ -1859,10 +1887,14 @@ def cmd_export(args):
 
 # ── CLI 入口 ─────────────────────────────────────────────
 
-def main():
+def main(argv: list[str] | None = None):
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    normalized_argv, explicit_project_dir = _extract_project_dir_arg(raw_argv)
+
     parser = argparse.ArgumentParser(
         prog="vault",
         description="Vault-for-LLM — local-first knowledge vault for LLM agents",
+        epilog="Global agent option: --project-dir PATH may be passed before or after the subcommand.",
     )
     sub = parser.add_subparsers(dest="command", help="子命令")
 
@@ -2236,7 +2268,13 @@ def main():
     sp.add_argument("--repeat", type=int, default=1, help="迭代次數；0=forever（只限 supervisor 管理）")
     sp.add_argument("--interval", type=float, default=60.0, help="迭代間隔秒數；測試可用 0")
 
-    args = parser.parse_args()
+    args = parser.parse_args(normalized_argv)
+
+    if explicit_project_dir:
+        if args.command == "init":
+            args.project_dir = explicit_project_dir
+        else:
+            os.chdir(explicit_project_dir)
 
     commands = {
         "init": cmd_init,

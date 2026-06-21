@@ -83,7 +83,9 @@ Human users do not need to install everything manually. You can ask your agent:
 ```text
 Install Vault-for-LLM for this project. Read AGENTS.md and agent_manifest.json,
 ask me whether the vault should be shared or private, ask which optional
-features to enable, configure CLI/MCP, and run a search/read/propose smoke test.
+features to enable, ask whether I have an existing Obsidian vault to import,
+configure CLI/MCP, run the first Obsidian import if requested, ask whether I
+want automatic Obsidian sync, and run a search/read/propose smoke test.
 ```
 
 Agents should read those files before choosing a database scope, configuring
@@ -93,7 +95,7 @@ The common install architecture is the same across Hermes Agent, Codex,
 OpenCode, Claude Code, OpenClaw, and other MCP-capable agents:
 
 ```text
-choose projectDir -> install vault -> configure CLI or stdio MCP -> verify search/read/propose
+choose projectDir -> choose optional features -> ask about Obsidian -> install vault -> configure CLI/MCP -> first import/sync check -> verify search/read/propose
 ```
 
 Runtime-specific adapters should stay thin. The durable contract is the shared
@@ -106,12 +108,17 @@ everything by default:
 |---|---|---|---|
 | `core` | yes | `python -m pip install vault-for-llm` | Always: local Markdown, SQLite, keyword search. |
 | `mcp` | yes for MCP-capable agents | `python -m pip install "vault-for-llm[mcp]"` | The runtime can connect local stdio MCP tools. |
+| `obsidian_import` | no | built into core CLI | The user already has an Obsidian vault and wants agents to search those notes through Vault. |
 | `semantic` | no | `python -m pip install "vault-for-llm[semantic]"` | The user wants embedding-backed semantic/hybrid search. |
 | `supabase` | no | `python -m pip install "vault-for-llm[supabase]"` | The user wants optional remote sync/read paths. |
 | `dev` | no | `python -m pip install -e ".[dev]"` | Source checkout, benchmarks, PR work, or release validation. |
 
 Do not silently enable semantic or Supabase extras: they add heavier
 dependencies, model/provider setup, or remote credentials.
+
+For Obsidian, the agent should ask for the vault path, run a dry-run first,
+perform the first import only after confirmation, then ask whether to schedule
+the same `vault import obsidian --compile` command for ongoing sync.
 
 ### Choose the Vault project scope
 
@@ -147,7 +154,7 @@ required dependency for local use.
 
 ## Current Source Status
 
-The current source tree is `0.6.22`. Core local search is stable, while
+The current source tree is `0.6.23`. Core local search is stable, while
 advanced semantic, rerank, sync, and benchmarking workflows remain optional.
 See [CHANGELOG.md](CHANGELOG.md) for release details.
 
@@ -235,7 +242,7 @@ In story form: the agent writes a note, the front desk checks whether it is safe
 
 ### Install from PyPI
 
-> Release note: the GitHub source tree is currently `0.6.22`. If PyPI is behind the latest GitHub release, use the source install below for the newest source features.
+> Release note: the GitHub source tree is currently `0.6.23`. If PyPI is behind the latest GitHub release, use the source install below for the newest source features.
 
 ```bash
 python3 -m venv .venv

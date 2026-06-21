@@ -42,9 +42,22 @@ Recommended prompts:
 |---|---|---|---|
 | `core` | yes | Always. Local SQLite, Markdown, keyword search. | `python -m pip install vault-for-llm` |
 | `mcp` | yes for MCP-capable agents | The runtime supports local stdio MCP. | `python -m pip install "vault-for-llm[mcp]"` |
+| `obsidian_import` | no | User has an existing Obsidian vault to import and search through Vault. | built into core CLI |
 | `semantic` | no | User wants embedding-backed semantic/hybrid retrieval. | `python -m pip install "vault-for-llm[semantic]"` |
 | `supabase` | no | User wants optional remote sync/read paths. | `python -m pip install "vault-for-llm[supabase]"` |
 | `dev` | no | You are modifying the repo, running benchmarks, or validating a PR. | `python -m pip install -e ".[dev]"` |
+
+After database scope and optional feature prompts, ask whether the user has an
+existing Obsidian vault. If yes, ask for the vault path, run a dry-run first,
+then perform the first import only after confirmation:
+
+```bash
+vault import obsidian --vault /path/to/ObsidianVault --project-dir /path/to/project --dry-run
+vault import obsidian --vault /path/to/ObsidianVault --project-dir /path/to/project --compile
+```
+
+After the first import, ask whether to schedule automatic sync with cron,
+LaunchAgent, n8n, or the host agent by re-running the same `--compile` command.
 
 For semantic installs, configure a real provider and rebuild vectors:
 
@@ -126,8 +139,8 @@ vault-mcp --project-dir /path/to/project --tool-profile core
 Existing Obsidian vault source:
 
 ```bash
-vault import obsidian --vault /path/to/ObsidianVault --dry-run
-vault import obsidian --vault /path/to/ObsidianVault --compile
+vault import obsidian --vault /path/to/ObsidianVault --project-dir /path/to/project --dry-run
+vault import obsidian --vault /path/to/ObsidianVault --project-dir /path/to/project --compile
 ```
 
 Ask before connecting Obsidian. Use `--dry-run` first, then schedule the same

@@ -10,11 +10,15 @@
 - Updated README variants to make CLI/MCP portability a first-class product message instead of presenting Vault as tied to one agent runtime.
 
 #### Agent Memory Benchmarking
+- Added a README evidence snapshot for project onboarding, candidate-first memory, and external retrieval probes with explicit caveats.
 - Added a reproducible repository-doc agent onboarding benchmark fixture with 28 source-aware QA cases.
 - Added `scripts/build_agent_onboarding_vault.py` to build a temporary benchmark Vault from README/docs source-of-truth files instead of committing runtime databases.
 - Documented how to run exported Codex/Hermes-style sessions against the governed Vault benchmark while keeping private session exports and reports outside git.
 - Validated the current local Codex-session comparison path at 28 tasks: session transcript baseline hit rate `7/28`, Vault top-k/source/read-range guidance rates `28/28`.
 - Validated a private Hermes/Nancy transcript export at 28 tasks: session transcript baseline hit rate `3/28`, Vault top-k/source/read-range guidance rates `28/28`, and candidate active delta before promotion `0`.
+
+#### License
+- Relicensed the source tree from MIT to Apache-2.0 now that contributions are still controlled by the project maintainers, adding explicit patent-license terms for downstream agent-infrastructure users.
 
 ### Fixed
 

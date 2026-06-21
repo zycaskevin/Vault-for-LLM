@@ -451,6 +451,20 @@ vault search
 
 ## 搜尋品質（Search QA 基準測試）
 
+### 證據摘要
+
+Vault-for-LLM 量測的是 retrieval 與專案記憶 QA 層，不只是筆記資料庫。這些數字是證據探針，不是任何資料量都保證相同；換成更大或不同語料時，應該用 repo 內建 benchmark 重新測。
+
+| Probe | 結果 | 注意事項 |
+|---|---:|---|
+| Repo onboarding fixture | Vault top-k/source/read-range guidance `28/28`；Codex transcript baseline `7/28`；Hermes/Nancy transcript baseline `3/28` | 28 題 source-aware project benchmark；private transcripts 不提交進 repo |
+| Candidate-first memory | promotion 前 active-memory pollution 為 `0` | candidate proposals 不會自動進正式記憶 |
+| LoCoMo hierarchical retrieval probe | official-scored categories 上 Any evidence@50 `97.7%`、All evidence@50 `90.5%` | 只代表 retrieval evidence score；不是官方 answer/judge leaderboard score |
+
+可重跑的 repo fixture 與 exported-session 對照流程請看 [Agent Onboarding Benchmark](docs/agent_onboarding_benchmark.md)。
+
+### Search QA fixture
+
 Vault-for-LLM 提供確定性的 Search QA 基準測試，用於在程式碼變動前後量測檢索品質。以下結果使用英文 fixtures（`benchmarks/search_qa/basic.en.json`），對照全新編譯的資料庫（keyword/FTS5 模式）：
 
 | 指標 | 數值 |
@@ -494,4 +508,4 @@ python -m pytest -q
 
 ## 授權
 
-MIT
+Apache-2.0

@@ -471,6 +471,24 @@ vault search
 
 ## Retrieval quality (Search QA benchmarks)
 
+### Evidence snapshot
+
+Vault-for-LLM is measured as a retrieval and project-memory QA layer, not only
+as a note database. These numbers are evidence probes, not universal guarantees;
+larger or different corpora should be re-tested with the included benchmark
+commands.
+
+| Probe | Result | Caveat |
+|---|---:|---|
+| Repo onboarding fixture | Vault top-k/source/read-range guidance `28/28`; Codex transcript baseline `7/28`; Hermes/Nancy transcript baseline `3/28` | 28-task source-aware project benchmark; private transcripts are not committed |
+| Candidate-first memory | `0` active-memory pollution before promotion | candidate proposals do not enter official memory automatically |
+| LoCoMo hierarchical retrieval probe | `97.7%` Any evidence@50 and `90.5%` All evidence@50 on official-scored categories | retrieval evidence score only; not an official answer/judge leaderboard score |
+
+See [Agent Onboarding Benchmark](docs/agent_onboarding_benchmark.md) for the
+reproducible repo fixture and exported-session comparison workflow.
+
+### Search QA fixture
+
 Vault-for-LLM ships deterministic Search QA fixtures that measure retrieval
 quality before and after code changes. Results below use the English fixture
 (`benchmarks/search_qa/basic.en.json`) against a fresh database compiled from
@@ -518,4 +536,4 @@ Some optional test paths require optional dependencies such as ONNX, MCP, or Sup
 
 ## License
 
-MIT
+Apache-2.0

@@ -44,6 +44,7 @@ python scripts/check_release_parity.py --tag v0.5.0
 | `generate_index.py` | Generate an `INDEX.md` from `raw/` and `compiled/`. | Writes output only when invoked normally; `--help` is read-only. |
 | `manual_review.py` | Inspect/approve/reject/fix local review queue items. | Mutating actions require explicit IDs. |
 | `suggest_new_knowledge.py` | Suggest possible gaps in the local knowledge base. | Read-only. |
+| `project_memory_proofs.py` | Run public-safe proof demos for agent onboarding, candidate-first review, and wrong-source bounded reads. | Writes only to temp dirs unless `--output` / `--work-dir` is provided. |
 
 Examples:
 
@@ -53,6 +54,7 @@ python scripts/deduplicate_semantic.py --threshold 0.85
 python scripts/trust_adjustment.py --min 0.8
 python scripts/auto_backlink.py --dry-run
 python scripts/generate_index.py --output INDEX.md
+python scripts/project_memory_proofs.py --output /tmp/vault-project-memory-proofs.json
 ```
 
 ## Optional remote sync helpers

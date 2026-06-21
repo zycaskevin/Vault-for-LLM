@@ -37,6 +37,8 @@ In other words: regular RAG focuses on retrieval; Vault-for-LLM focuses on wheth
 
 For a broader positioning against Mem0, Letta/MemGPT, Zep, and LangGraph memory, see the [memory system comparison](docs/memory_system_comparison.md). The short version: Vault-for-LLM optimizes for local, inspectable, candidate-first project memory with retrieval QA and bounded citations; hosted or runtime-native memory systems may be better when you need managed personalization, a full stateful-agent runtime, or enterprise temporal graph infrastructure.
 
+To see the positioning as local numbers rather than slogans, run the [project memory proof demos](docs/project_memory_proofs.md): agent onboarding recall, candidate-first review, and stale-source bounded-read checks.
+
 ---
 
 ## Core principles

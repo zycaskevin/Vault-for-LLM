@@ -10,7 +10,7 @@ install path below keeps Vault local-first and governed.
 ## One-Sentence Prompt
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.24, ask which database scope I want, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, and dev/benchmark dependencies, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.25, ask which database scope I want, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, and dev/benchmark dependencies, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
 ```
 
 ## What To Ask First
@@ -47,7 +47,7 @@ use the same project directory.
 Use the PyPI release unless the user explicitly asks for source development:
 
 ```bash
-python -m pip install "vault-for-llm[mcp]==0.6.24"
+python -m pip install "vault-for-llm[mcp]==0.6.25"
 vault setup-agent
 ```
 

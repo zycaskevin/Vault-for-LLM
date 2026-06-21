@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.6.25] - 2026-06-22
+
+### Fixed
+
+#### Agent Installer Follow-up
+
+- Made interactive `vault setup-agent` ask separate yes/no questions for MCP, semantic search, Supabase sync, Headroom context compression, and dev/benchmark dependencies instead of relying on one optional-features CSV prompt.
+- Fixed `vault setup-agent --project-dir ...` / `vault install-agent --project-dir ...` so the global project directory is used as the installer target and can be created when missing.
+- Added guarded `vault remove <id> --confirm` and `vault delete <id> --confirm` commands for deleting reviewed knowledge entries by ID.
+- Cleaned up related semantic vectors, Document Map rows, lint cache, graph links, FTS rows, and sqlite-vec rows when knowledge entries are removed.
+- Updated agent-facing README, runbook, and manifest guidance so agents explicitly ask about Supabase, semantic search, Headroom, and dev/benchmark extras before installing them.
+
 ## [0.6.24] - 2026-06-21
 
 ### Added

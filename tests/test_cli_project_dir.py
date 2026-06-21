@@ -40,3 +40,35 @@ def test_extract_project_dir_requires_value():
 
     with pytest.raises(SystemExit):
         _extract_project_dir_arg(["search", "query", "--project-dir"])
+
+
+def test_remove_requires_confirm_and_delete_alias_removes_entry(tmp_path, capsys):
+    import json
+    import pytest
+    from vault.cli import main
+
+    project = tmp_path / "agent-vault"
+    main(["init", "--project-dir", str(project)])
+    main(
+        [
+            "add",
+            "Temporary Knowledge",
+            "--content",
+            "This entry should be removable.",
+            "--project-dir",
+            str(project),
+        ]
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        main(["remove", "1", "--project-dir", str(project)])
+    assert exc.value.code == 2
+
+    main(["delete", "1", "--confirm", "--json", "--project-dir", str(project)])
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert payload["removed"] is True
+    assert payload["id"] == 1
+
+    main(["search", "Temporary Knowledge", "--project-dir", str(project), "--limit", "1"])
+    captured = capsys.readouterr()
+    assert "Temporary Knowledge" not in captured.out

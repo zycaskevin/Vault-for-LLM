@@ -458,6 +458,7 @@ your-project/
 | `vault import obsidian --vault /path/to/ObsidianVault --dry-run` | Preview importing existing Obsidian notes into `raw/obsidian/` |
 | `vault search "query"` | Search project memory |
 | `vault map read <id> --lines 10-30` | Read a bounded range for citation |
+| `vault remove <id> --confirm` | Remove a reviewed knowledge entry by ID |
 
 For the broader command surface, see the [CLI reference](docs/cli_reference.md).
 

@@ -14,6 +14,7 @@ with the daily loop in the README and only use these commands when needed.
 | `vault compile` | Compile `raw/` into SQLite and generated artifacts |
 | `vault search "query"` | Search the vault |
 | `vault map read <id> --lines 10-30` | Read a bounded source range for citation |
+| `vault remove <id> --confirm` | Remove a knowledge entry after reviewing its ID |
 
 ## Knowledge Ingestion
 
@@ -54,6 +55,7 @@ changed notes without duplicating unchanged ones.
 | `vault map show <id>` | Show a knowledge entry's section map |
 | `vault map read <id> --lines 10-30` | Read a bounded source range |
 | `vault list` | List knowledge entries |
+| `vault remove <id> --confirm` / `vault delete <id> --confirm` | Delete a knowledge entry by ID |
 | `vault stats` | Show vault statistics |
 
 ## Quality And Curation

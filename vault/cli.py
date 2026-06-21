@@ -1944,6 +1944,8 @@ def cmd_setup_agent(args):
             agent=args.agent,
             features=normalize_features(args.features),
             tool_profile=args.tool_profile,
+            install_optional_deps=bool(args.install_optional_deps),
+            install_embedding_model=args.install_embedding_model,
             obsidian_vault=Path(args.obsidian_vault).expanduser() if args.obsidian_vault else None,
             import_obsidian=bool(args.import_obsidian),
             sync_targets=args.obsidian_sync,
@@ -1958,6 +1960,8 @@ def cmd_setup_agent(args):
             "project_dir": args.agent_project_dir,
             "features": args.features,
             "tool_profile": args.tool_profile,
+            "install_optional_deps": args.install_optional_deps,
+            "install_embedding_model": args.install_embedding_model,
             "obsidian_vault": args.obsidian_vault,
             "sync_interval_minutes": args.sync_interval_minutes,
             "template_dir": args.template_dir,
@@ -2120,6 +2124,10 @@ def main(argv: list[str] | None = None):
                         help="可選功能 CSV，例如 core,mcp,obsidian_import,semantic,supabase,headroom")
         ap.add_argument("--tool-profile", choices=["core", "review", "remote", "maintenance", "full"],
                         default="core", help="建議的 MCP tool profile")
+        ap.add_argument("--install-optional-deps", action="store_true",
+                        help="立即安裝已選功能需要的 Python optional dependencies")
+        ap.add_argument("--install-embedding-model", choices=["zh", "en", "mix"],
+                        help="semantic feature 啟用時，下載並設定本地 ONNX embedding model")
         ap.add_argument("--obsidian-vault", help="既有 Obsidian vault 路徑；提供後會先 dry-run")
         ap.add_argument("--import-obsidian", action="store_true",
                         help="dry-run 後執行第一次 Obsidian 匯入並 compile")

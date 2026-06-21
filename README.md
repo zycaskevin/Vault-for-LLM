@@ -91,9 +91,11 @@ Human users do not need to install everything manually. You can ask your agent:
 ```text
 Install Vault-for-LLM for this project. Read AGENTS.md and agent_manifest.json,
 ask me whether the vault should be shared or private, ask which optional
-features to enable, ask whether I have an existing Obsidian vault to import,
-configure CLI/MCP, run the first Obsidian import if requested, ask whether I
-want automatic Obsidian sync, and run a search/read/propose smoke test.
+features to enable, ask whether to install selected optional dependencies now,
+ask whether semantic search should download a local ONNX embedding model, ask
+whether I have an existing Obsidian vault to import, configure CLI/MCP, run the
+first Obsidian import if requested, ask whether I want automatic Obsidian sync,
+and run a search/read/propose smoke test.
 ```
 
 Agents should read those files before choosing a database scope, configuring
@@ -121,6 +123,24 @@ everything by default:
 | `supabase` | no | `python -m pip install "vault-for-llm[supabase]"` | The user wants optional remote sync/read paths. |
 | `headroom` | no | `python -m pip install headroom-ai` | The agent often reads long logs, terminal output, or large retrieved context and needs optional compression before sending content to the LLM. |
 | `dev` | no | `python -m pip install -e ".[dev]"` | Source checkout, benchmarks, PR work, or release validation. |
+
+When optional features are selected, `vault setup-agent` can install the chosen
+Python dependencies for the agent. Interactive setup asks before installing.
+Non-interactive agents should pass `--install-optional-deps`; semantic setup can
+also pass `--install-embedding-model mix` to download and configure the default
+local ONNX embedding model.
+
+```bash
+vault setup-agent \
+  --non-interactive \
+  --agent codex \
+  --scope shared \
+  --agent-project-dir ~/Vaults/my-project \
+  --features core,mcp,semantic,supabase,headroom \
+  --install-optional-deps \
+  --install-embedding-model mix \
+  --json
+```
 
 Do not silently enable semantic, Supabase, or Headroom extras: semantic and
 Supabase add heavier dependencies, model/provider setup, or remote credentials;
@@ -150,6 +170,11 @@ different directories, they use isolated databases.
 | Agent-private vault | One agent is experimenting, noisy, or untrusted | `~/.openclaw/workspace/vault-project` |
 | Domain/customer vault | Data boundaries must stay separate | `~/Vaults/clinic-customer-service` |
 | Temporary vault | Demos, tests, and benchmarks | `/tmp/vault-benchmark-*` |
+
+`/tmp/...` paths are disposable test working directories. They are not the
+package install location and should not be used as long-lived shared memory.
+For real shared use, choose a stable project directory such as
+`~/Vaults/my-project` and point every trusted agent at that same path.
 
 For shared vaults, prefer `vault_memory_propose` over direct writes so multiple
 agents do not pollute active memory before review.
@@ -263,9 +288,11 @@ For agent-driven installation, paste this into Hermes Agent, Codex, OpenCode, Cl
 Install Vault-for-LLM for this project. Use PyPI package vault-for-llm[mcp]==0.6.25.
 Ask whether the vault database should be shared, private, domain-specific, or temporary.
 Ask separately about MCP, semantic search, Supabase sync, Headroom context compression,
-and dev/benchmark dependencies. Ask whether I have an existing Obsidian vault to import.
-Run vault setup-agent, configure CLI/MCP, do an Obsidian dry-run before importing,
-and finish with a search/read/propose smoke test.
+and dev/benchmark dependencies. If optional features are selected, ask whether to
+install their dependencies now. If semantic is selected, ask whether to download
+a local ONNX embedding model. Ask whether I have an existing Obsidian vault to
+import. Run vault setup-agent, configure CLI/MCP, do an Obsidian dry-run before
+importing, and finish with a search/read/propose smoke test.
 ```
 
 Manual install:
@@ -482,7 +509,7 @@ vault setup-agent \
   --obsidian-sync all
 ```
 
-The wizard asks for database scope, project directory, MCP, semantic search, Supabase sync, Headroom context compression, developer/benchmark dependencies, an existing Obsidian vault path, whether to run the first import, and whether to generate cron, LaunchAgent, or n8n sync templates. Semantic, Supabase, Headroom, and dev dependencies default to off. `headroom` is an advanced optional feature for context compression; it is not required for Vault memory governance and should stay off unless the user has long logs, large tool output, or token pressure.
+The wizard asks for database scope, project directory, MCP, semantic search, Supabase sync, Headroom context compression, developer/benchmark dependencies, whether to install selected optional dependencies now, an existing Obsidian vault path, whether to run the first import, and whether to generate cron, LaunchAgent, or n8n sync templates. Semantic, Supabase, Headroom, and dev dependencies default to off. If semantic is selected and dependency installation is confirmed, the wizard can also download and configure a local ONNX embedding model. `headroom` is an advanced optional feature for context compression; it is not required for Vault memory governance and should stay off unless the user has long logs, large tool output, or token pressure.
 
 ### Obsidian export
 

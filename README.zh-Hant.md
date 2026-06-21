@@ -394,6 +394,7 @@ your-project/
 | `vault add "Title" --content "..."` | 新增知識條目 |
 | `vault add "Title" --file note.md` | 從 Markdown 檔新增條目 |
 | `vault import long-doc.md` | 匯入並分塊長文件 |
+| `vault import obsidian --vault /path/to/ObsidianVault --dry-run` | 預覽把既有 Obsidian notes 匯入 `raw/obsidian/` |
 | `vault compile` | 編譯 `raw/` 到 SQLite + `compiled/` |
 | `vault search "query"` | 搜尋知識庫；可用 `--min-score` 調整弱匹配抑制 |
 | `vault search "query" --graph-expand 2` | 搜尋並加上圖譜擴展 |
@@ -432,6 +433,24 @@ vault export obsidian \
 ```
 
 這個匯出是刻意設計成單向、唯讀：只從 `vault.db` 讀取，將 Markdown notes 寫到 `00-Vault-Knowledge/`，包含 YAML frontmatter 與 `Vault #<id>` citation；不寫回 `raw/`、`compiled/`、SQLite，也不觸發任何 remote sync。重跑會覆蓋同一組穩定路徑，不會產生重複筆記。
+
+### Obsidian 匯入與同步
+
+如果使用者已經有很多 Obsidian 筆記，Agent 可以把這些 Markdown notes 反向匯入 Vault：
+
+```bash
+vault import obsidian \
+  --vault /path/to/ObsidianVault \
+  --dry-run
+
+vault import obsidian \
+  --vault /path/to/ObsidianVault \
+  --compile
+```
+
+匯入流程會把使用者自己寫的 notes 複製到 `raw/obsidian/`，在 frontmatter 保留原始 Obsidian 路徑與 content hash，並預設跳過 `.obsidian/`、`.trash/`、`.git/` 和 `00-Vault-Knowledge/`。這樣 Vault 自己匯出的瀏覽用筆記，不會又被吃回來當成 source。
+
+第一次接上既有 Obsidian vault 時，建議先跑 `--dry-run`。重跑是 idempotent：沒變的 note 會跳過，有變的 note 會更新同一個 raw path；只有加上 `--compile` 才會把匯入內容寫進 `vault.db`。如果要自動同步，可以用 cron、LaunchAgent、n8n 或 Agent installer 定期執行同一條命令；第一版不需要常駐 watcher。
 
 ---
 

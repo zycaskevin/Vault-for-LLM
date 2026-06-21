@@ -123,6 +123,18 @@ vault search "release checklist" --project-dir /path/to/project --limit 5
 vault-mcp --project-dir /path/to/project --tool-profile core
 ```
 
+Existing Obsidian vault source:
+
+```bash
+vault import obsidian --vault /path/to/ObsidianVault --dry-run
+vault import obsidian --vault /path/to/ObsidianVault --compile
+```
+
+Ask before connecting Obsidian. Use `--dry-run` first, then schedule the same
+`--compile` command with cron, LaunchAgent, n8n, or the host agent if the user
+wants automatic sync. The importer skips `00-Vault-Knowledge/` so Vault export
+notes do not loop back into source memory.
+
 OpenClaw install:
 
 ```bash

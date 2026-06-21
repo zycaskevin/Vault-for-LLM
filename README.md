@@ -421,6 +421,7 @@ your-project/
 | `vault remember "Title" --content "..." --reason "..."` | Propose candidate memory for review |
 | `vault promote <candidate_id> --confirm` | Promote reviewed candidate memory |
 | `vault compile` | Compile Markdown into SQLite |
+| `vault import obsidian --vault /path/to/ObsidianVault --dry-run` | Preview importing existing Obsidian notes into `raw/obsidian/` |
 | `vault search "query"` | Search project memory |
 | `vault map read <id> --lines 10-30` | Read a bounded range for citation |
 
@@ -438,6 +439,24 @@ vault export obsidian \
 ```
 
 The export is intentionally one-way and read-only: it reads from `vault.db`, writes Markdown notes under `00-Vault-Knowledge/`, includes YAML frontmatter plus `Vault #<id>` citations, and does not write back to `raw/`, `compiled/`, SQLite, or any remote sync target. Re-running the command overwrites the same stable note paths instead of creating duplicates.
+
+### Obsidian import and sync
+
+If a user already has an Obsidian vault, agents can import those Markdown notes back into Vault:
+
+```bash
+vault import obsidian \
+  --vault /path/to/ObsidianVault \
+  --dry-run
+
+vault import obsidian \
+  --vault /path/to/ObsidianVault \
+  --compile
+```
+
+The import path copies user-authored notes into `raw/obsidian/`, preserves the original Obsidian path and content hash in frontmatter, and skips `.obsidian/`, `.trash/`, `.git/`, and `00-Vault-Knowledge/` by default. This keeps Vault's own exported notes from being re-imported as source material.
+
+Use `--dry-run` first when connecting an existing vault. Re-running the import is idempotent: unchanged notes are skipped, changed notes update the same raw path, and `--compile` is the explicit step that writes the imported notes into `vault.db`. For automatic sync, schedule the same command with cron, LaunchAgent, n8n, or an agent installer; no always-on watcher is required for the first version.
 
 For citation-safe memory use, see the [Document Map citation policy](docs/document_map_citation_policy.md): search results are navigation hints, while `vault map read` returns bounded source text for final citations.
 

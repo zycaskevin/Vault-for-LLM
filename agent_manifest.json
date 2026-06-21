@@ -65,7 +65,7 @@
   "agent_setup_wizard": {
     "cli": "vault setup-agent",
     "alias": "vault install-agent",
-    "install_command": "python -m pip install \"vault-for-llm[mcp]==0.6.25\"",
+    "install_command": "python -m pip install \"vault-for-llm[mcp]==0.6.26\"",
     "non_interactive_example": "vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir /path/to/project --features core,mcp,obsidian_import --obsidian-vault /path/to/ObsidianVault --import-obsidian --obsidian-sync all",
     "non_interactive_with_optional_deps": "vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir /path/to/project --features core,mcp,semantic,supabase,headroom --install-optional-deps --install-embedding-model mix --json",
     "sync_templates": ["cron", "launchagent", "n8n"]
@@ -77,7 +77,7 @@
       "prompt": "Install the core local Markdown + SQLite + keyword search workflow?",
       "when_to_install": "Always. This is the minimal local-first Vault workflow.",
       "install_commands": [
-        "python -m pip install vault-for-llm==0.6.25"
+        "python -m pip install vault-for-llm==0.6.26"
       ],
       "post_install": [
         "vault init --project-dir /path/to/project",
@@ -91,7 +91,7 @@
       "prompt": "Configure local stdio MCP tools for this agent?",
       "when_to_install": "Use when the runtime supports MCP, such as Hermes Agent, Codex surfaces with MCP, OpenCode, Claude Code, OpenClaw generic MCP, or other MCP hosts.",
       "install_commands": [
-        "python -m pip install \"vault-for-llm[mcp]==0.6.25\""
+        "python -m pip install \"vault-for-llm[mcp]==0.6.26\""
       ],
       "post_install": [
         "vault-mcp --project-dir /path/to/project --tool-profile core"

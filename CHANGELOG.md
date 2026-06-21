@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.6.26] - 2026-06-22
+
+### Fixed
+
+#### Agent Installer Optional Dependencies
+
+- Added `vault setup-agent --install-optional-deps` so non-interactive agents can install selected optional Python dependencies instead of only receiving next-step instructions.
+- Added `vault setup-agent --install-embedding-model zh|en|mix` so semantic installs can download and configure a local ONNX embedding model during setup.
+- Updated interactive setup so it asks whether to install selected optional dependencies now, and asks whether semantic search should configure a local embedding model.
+- Updated README variants, CLI reference, agent install runbook, and `agent_manifest.json` so Hermes/Nancy, Codex, OpenClaw, Claude Code, OpenCode, n8n, and other agents can distinguish enabling a feature from actually installing its dependencies.
+- Clarified that `/tmp/...` paths are disposable test workspaces, not stable Vault install locations or long-lived shared memory paths.
+
 ## [0.6.25] - 2026-06-22
 
 ### Fixed

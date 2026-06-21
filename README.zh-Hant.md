@@ -37,6 +37,11 @@ Vault-for-LLM 不只是另一個向量資料庫。它正在往 **Agent 記憶品
 
 如果想看它和 Mem0、Letta/MemGPT、Zep、LangGraph memory 的定位差異，請看 [memory system comparison](docs/memory_system_comparison.md)。白話版：Vault-for-LLM 偏向本地、可審查、候選制的專案記憶，重視 retrieval QA 與定界引用；如果你需要託管式個人化記憶、完整 stateful-agent runtime，或企業級 temporal graph memory，其他系統可能更合適。
 
+如果想看它和 PageIndex / Headroom 這類相鄰系統的關係，請看
+[PageIndex and Headroom comparison](docs/comparisons/pageindex_headroom.md)。
+白話版：Vault 可以借鑑 PageIndex 的文件樹導航，也可以選擇性搭配
+Headroom 的 context budget，但核心仍是本地、可治理、可引用的專案記憶。
+
 ---
 
 ## 核心原則
@@ -168,6 +173,7 @@ Vault-for-LLM 綁定的是 `project-dir`，不是某一個 Agent runtime：
 | 品質工具 | lint、freshness、convergence、cross-validation、dedup、Search QA snapshot、semantic smoke/warm workflow |
 | Repo 治理 | source checkout 內的公開邊界 gate、artifact audit、safe-only cleanup helper |
 | Agent 整合 | Hermes Agent、OpenClaw、n8n、Codex、Claude Code 與 generic MCP-compatible agents 的 CLI/MCP 使用方式（[整合指南](docs/agent_integrations.md)） |
+| 未來檢索層 | Document Map 樹狀導航與 Headroom context-budget 整合設計（[tree navigation](docs/design/document_tree_navigation.md)、[Headroom notes](docs/integrations/headroom.md)） |
 | 可選遠端同步 | Supabase sync scripts，適合團隊或遠端讀取 |
 | 本機技能登錄 | 實驗中的 `vault skill` 命令，用於在本機 Vault 內共享可重用 workflow；不是託管市場 |
 

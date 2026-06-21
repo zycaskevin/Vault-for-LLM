@@ -18,6 +18,15 @@ For agent-driven installs or repo modifications, start with:
 This lets agents decide install behavior without scraping human-oriented README
 sections.
 
+Adjacent-system notes:
+
+- [`docs/comparisons/pageindex_headroom.md`](comparisons/pageindex_headroom.md):
+  how Vault should borrow from PageIndex and Headroom without becoming either.
+- [`docs/design/document_tree_navigation.md`](design/document_tree_navigation.md):
+  proposed Document Map-backed tree navigation flow.
+- [`docs/integrations/headroom.md`](integrations/headroom.md): optional
+  Headroom layering for context-budget workflows.
+
 ## Common Agent Install Architecture
 
 Most agent runtimes can share the same install shape:

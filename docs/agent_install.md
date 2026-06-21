@@ -3,6 +3,10 @@
 This page is for agents installing Vault-for-LLM for a user. Prefer this
 runbook over scraping the full README.
 
+For adjacent systems, see the [PageIndex and Headroom comparison](comparisons/pageindex_headroom.md).
+Vault may borrow document-tree navigation and context-budget ideas, but the
+install path below keeps Vault local-first and governed.
+
 ## One-Sentence Prompt
 
 ```text

@@ -12,6 +12,9 @@
     "AGENTS.md",
     "docs/agent_install.md",
     "docs/agent_integrations.md",
+    "docs/comparisons/pageindex_headroom.md",
+    "docs/design/document_tree_navigation.md",
+    "docs/integrations/headroom.md",
     "docs/mcp_memory_workflow.md",
     "integrations/openclaw/README.md"
   ],

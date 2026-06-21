@@ -37,6 +37,12 @@ In other words: regular RAG focuses on retrieval; Vault-for-LLM focuses on wheth
 
 For a broader positioning against Mem0, Letta/MemGPT, Zep, and LangGraph memory, see the [memory system comparison](docs/memory_system_comparison.md). The short version: Vault-for-LLM optimizes for local, inspectable, candidate-first project memory with retrieval QA and bounded citations; hosted or runtime-native memory systems may be better when you need managed personalization, a full stateful-agent runtime, or enterprise temporal graph infrastructure.
 
+For adjacent retrieval and context-budget systems, see the [PageIndex and
+Headroom comparison](docs/comparisons/pageindex_headroom.md). The short version:
+Vault can borrow PageIndex-style document tree navigation and Headroom-style
+context budgeting while keeping core project memory local, governed, and
+source-cited.
+
 To see the positioning as local numbers rather than slogans, run the [project memory proof demos](docs/project_memory_proofs.md): agent onboarding recall, candidate-first review, and stale-source bounded-read checks. To compare exported Hermes/Codex-style sessions against governed Vault memory, use the [agent onboarding benchmark](docs/agent_onboarding_benchmark.md).
 
 ---
@@ -181,6 +187,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release details.
 | Benchmarking | `benchmarks/search_benchmark.py` for reproducible before/after retrieval quality and latency comparison |
 | Repository governance | source-checkout public-boundary gate, artifact audit, and safe-only cleanup helpers ([governance guide](docs/repo_governance.md)) |
 | Agent integrations | CLI/MCP patterns for Hermes Agent, OpenClaw, n8n, Codex, Claude Code, and generic MCP-compatible agents ([integration guide](docs/agent_integrations.md)) |
+| Future retrieval layers | Design notes for Document Map tree navigation and optional Headroom context-budget integration ([tree navigation](docs/design/document_tree_navigation.md), [Headroom notes](docs/integrations/headroom.md)) |
 | Optional remote sync | Supabase sync scripts for teams or remote read paths |
 | Local skill registry | experimental `vault skill` commands for sharing reusable workflows inside a local Vault; not a hosted marketplace |
 

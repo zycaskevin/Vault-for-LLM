@@ -1,4 +1,5 @@
 import json
+import sys
 
 
 def test_run_agent_setup_imports_obsidian_and_writes_templates(tmp_path):
@@ -131,6 +132,85 @@ def test_setup_agent_headroom_is_optional_next_step(tmp_path):
     assert any("original vault_read_range" in step for step in result["next_steps"])
 
 
+def test_run_agent_setup_installs_selected_optional_dependencies(tmp_path, monkeypatch):
+    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+
+    calls: list[list[str]] = []
+
+    class FakeCompleted:
+        returncode = 0
+        stdout = "installed"
+        stderr = ""
+
+    def fake_run(command, capture_output, text, check):
+        calls.append(command)
+        assert capture_output is True
+        assert text is True
+        assert check is False
+        return FakeCompleted()
+
+    monkeypatch.setattr("vault.agent_setup.subprocess.run", fake_run)
+
+    result = run_agent_setup(
+        AgentSetupConfig(
+            project_dir=tmp_path / "agent-project",
+            scope="private",
+            agent="nancy",
+            features=["core", "mcp", "semantic", "supabase", "headroom"],
+            install_optional_deps=True,
+        )
+    )
+
+    joined = [" ".join(command) for command in calls]
+    assert any("vault-for-llm[mcp,semantic,supabase]" in command for command in joined)
+    assert any("headroom-ai" in command for command in joined)
+    assert result["optional_dependency_install"]["installed"] is True
+    assert not any("pip install headroom-ai" == step for step in result["next_steps"])
+
+
+def test_run_agent_setup_installs_embedding_model_when_requested(tmp_path, monkeypatch):
+    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+
+    calls: list[list[str]] = []
+
+    class FakeCompleted:
+        returncode = 0
+        stdout = "model installed"
+        stderr = ""
+
+    def fake_run(command, capture_output, text, check):
+        calls.append(command)
+        return FakeCompleted()
+
+    monkeypatch.setattr("vault.agent_setup.subprocess.run", fake_run)
+
+    project = tmp_path / "agent-project"
+    result = run_agent_setup(
+        AgentSetupConfig(
+            project_dir=project,
+            scope="private",
+            agent="nancy",
+            features=["core", "semantic"],
+            install_embedding_model="mix",
+        )
+    )
+
+    assert result["embedding_model_install"]["model"] == "mix"
+    assert calls == [
+        [
+            sys.executable,
+            "-m",
+            "vault.cli",
+            "--project-dir",
+            str(project.resolve()),
+            "install-embedding",
+            "--model",
+            "mix",
+        ]
+    ]
+    assert not any(step == "vault install-embedding --model mix" for step in result["next_steps"])
+
+
 def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch):
     from vault.agent_setup import interactive_setup
 
@@ -144,6 +224,8 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
             "yes",  # Supabase
             "yes",  # Headroom
             "no",  # dev
+            "yes",  # install optional deps
+            "no",  # install local embedding model
             "",  # Obsidian
         ]
     )
@@ -157,7 +239,11 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
     config = interactive_setup({})
 
     assert config.features == ["core", "mcp", "semantic", "supabase", "headroom"]
+    assert config.install_optional_deps is True
+    assert config.install_embedding_model is None
     assert any("stdio MCP" in prompt for prompt in prompts)
     assert any("semantic search" in prompt for prompt in prompts)
     assert any("Supabase sync" in prompt for prompt in prompts)
     assert any("Headroom context compression" in prompt for prompt in prompts)
+    assert any("optional Python dependencies" in prompt for prompt in prompts)
+    assert any("local ONNX embedding model" in prompt for prompt in prompts)

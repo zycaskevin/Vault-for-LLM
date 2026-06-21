@@ -48,10 +48,12 @@
   "common_install_architecture": [
     "choose projectDir",
     "ask whether local stdio MCP should be configured",
-    "ask whether optional semantic search and embedding dependencies should be installed",
-    "ask whether optional Supabase sync/read dependencies should be installed",
+    "ask whether optional semantic search and embedding dependencies should be enabled",
+    "ask whether optional Supabase sync/read dependencies should be enabled",
     "ask whether optional Headroom context compression is needed for long logs or tool output",
-    "ask whether developer/benchmark dependencies should be installed",
+    "ask whether developer/benchmark dependencies should be enabled",
+    "if optional features are selected, ask whether to install their Python dependencies now",
+    "if semantic search is selected, ask whether to download and configure a local ONNX embedding model",
     "ask whether to connect an existing Obsidian vault",
     "install vault",
     "configure CLI or stdio MCP",
@@ -59,12 +61,13 @@
     "ask whether to schedule automatic Obsidian sync",
     "verify search/read/propose"
   ],
-  "agent_install_prompt": "Install Vault-for-LLM for this project. Read AGENTS.md and agent_manifest.json, ask whether the vault should be shared or private, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, and dev/benchmark dependencies, ask whether an existing Obsidian vault should be imported, configure CLI/MCP, run the first Obsidian dry-run/import if requested, ask whether automatic sync should be scheduled, and run a search/read/propose smoke test.",
+  "agent_install_prompt": "Install Vault-for-LLM for this project. Read AGENTS.md and agent_manifest.json, ask whether the vault should be shared or private, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, and dev/benchmark dependencies, install selected optional dependencies when confirmed, ask whether semantic should download a local ONNX embedding model, ask whether an existing Obsidian vault should be imported, configure CLI/MCP, run the first Obsidian dry-run/import if requested, ask whether automatic sync should be scheduled, and run a search/read/propose smoke test.",
   "agent_setup_wizard": {
     "cli": "vault setup-agent",
     "alias": "vault install-agent",
     "install_command": "python -m pip install \"vault-for-llm[mcp]==0.6.25\"",
     "non_interactive_example": "vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir /path/to/project --features core,mcp,obsidian_import --obsidian-vault /path/to/ObsidianVault --import-obsidian --obsidian-sync all",
+    "non_interactive_with_optional_deps": "vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir /path/to/project --features core,mcp,semantic,supabase,headroom --install-optional-deps --install-embedding-model mix --json",
     "sync_templates": ["cron", "launchagent", "n8n"]
   },
   "optional_features": [
@@ -116,8 +119,7 @@
       "prompt": "Install semantic search and embedding workflow dependencies?",
       "when_to_install": "Use when the user wants embedding-backed semantic or hybrid retrieval and accepts larger optional dependencies.",
       "install_commands": [
-        "python -m pip install \"vault-for-llm[semantic]\"",
-        "vault install-embedding --model mix"
+        "vault setup-agent --non-interactive --agent generic --scope shared --agent-project-dir /path/to/project --features core,mcp,semantic --install-optional-deps --install-embedding-model mix --json"
       ],
       "alternative_commands": [
         "vault config set embedding.provider ollama",
@@ -135,7 +137,7 @@
       "prompt": "Install optional Supabase sync/read dependencies?",
       "when_to_install": "Use when a team needs remote read paths, a synced copy of local SQLite data, or cross-host memory sharing for agents on different machines.",
       "install_commands": [
-        "python -m pip install \"vault-for-llm[supabase]\""
+        "vault setup-agent --non-interactive --agent generic --scope shared --agent-project-dir /path/to/project --features core,mcp,supabase --install-optional-deps --json"
       ],
       "post_install": [
         "export SUPABASE_URL=...",
@@ -150,7 +152,7 @@
       "prompt": "Install optional Headroom context compression for long logs, tool output, or large retrieved context?",
       "when_to_install": "Use only when the agent has context-window or token pressure after Vault has already narrowed retrieval to relevant source ranges.",
       "install_commands": [
-        "python -m pip install headroom-ai"
+        "vault setup-agent --non-interactive --agent generic --scope shared --agent-project-dir /path/to/project --features core,mcp,headroom --install-optional-deps --json"
       ],
       "post_install": [
         "Use Vault first: vault_search -> vault_read_range.",
@@ -165,7 +167,7 @@
       "prompt": "Install developer and benchmark/test dependencies?",
       "when_to_install": "Use for source checkouts, PR work, benchmark runs, and release validation.",
       "install_commands": [
-        "python -m pip install -e \".[dev]\""
+        "vault setup-agent --non-interactive --agent generic --scope shared --agent-project-dir /path/to/project --features core,mcp,dev --install-optional-deps --json"
       ],
       "post_install": [
         "python scripts/readme_command_smoke.py",

@@ -6,11 +6,14 @@ import contextlib
 import io
 import json
 import shlex
+import subprocess
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from vault import __version__
 from vault.db import VaultDB
 from vault.import_obsidian import sync_obsidian_vault
 
@@ -18,6 +21,8 @@ from vault.import_obsidian import sync_obsidian_vault
 DEFAULT_FEATURES = ["core", "mcp"]
 VALID_FEATURES = {"core", "mcp", "obsidian_import", "semantic", "supabase", "headroom", "dev"}
 VALID_SYNC_TARGETS = {"none", "cron", "launchagent", "n8n", "all"}
+PYPI_EXTRA_FEATURES = {"mcp", "semantic", "supabase", "dev"}
+VALID_EMBEDDING_MODELS = {"zh", "en", "mix"}
 
 
 def default_project_dir(scope: str, *, agent: str = "generic") -> Path:
@@ -279,6 +284,8 @@ class AgentSetupConfig:
     agent: str = "generic"
     features: list[str] = field(default_factory=lambda: list(DEFAULT_FEATURES))
     tool_profile: str = "core"
+    install_optional_deps: bool = False
+    install_embedding_model: str | None = None
     obsidian_vault: Path | None = None
     import_obsidian: bool = False
     obsidian_dry_run_first: bool = True
@@ -291,13 +298,31 @@ class AgentSetupConfig:
 def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
     project_path = ensure_project(config.project_dir)
     features = normalize_features(config.features)
-    feature_next_steps = optional_feature_next_steps(features, project_dir=project_path)
+    optional_dependency_install = None
+    if config.install_optional_deps:
+        optional_dependency_install = install_optional_dependencies(features)
+    embedding_model_install = None
+    if config.install_embedding_model:
+        if "semantic" not in features:
+            raise ValueError("install_embedding_model requires the semantic feature")
+        embedding_model_install = install_embedding_model(
+            config.install_embedding_model,
+            project_dir=project_path,
+        )
+    feature_next_steps = optional_feature_next_steps(
+        features,
+        project_dir=project_path,
+        installed_deps=bool(config.install_optional_deps),
+        installed_embedding_model=config.install_embedding_model,
+    )
     result: dict[str, Any] = {
         "project_dir": str(project_path),
         "scope": config.scope,
         "agent": config.agent,
         "features": features,
         "tool_profile": config.tool_profile,
+        "optional_dependency_install": optional_dependency_install,
+        "embedding_model_install": embedding_model_install,
         "db_path": str(project_path / "vault.db"),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "obsidian": None,
@@ -342,33 +367,112 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
     return result
 
 
-def optional_feature_next_steps(features: list[str], *, project_dir: str | Path) -> list[str]:
+def install_optional_dependencies(features: list[str]) -> dict[str, Any]:
+    selected = normalize_features(features)
+    commands: list[list[str]] = []
+    extras = [feature for feature in ["mcp", "semantic", "supabase", "dev"] if feature in selected]
+    if extras:
+        commands.append(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                f"vault-for-llm[{','.join(extras)}]=={__version__}",
+            ]
+        )
+    if "headroom" in selected:
+        commands.append([sys.executable, "-m", "pip", "install", "headroom-ai"])
+
+    results: list[dict[str, Any]] = []
+    for command in commands:
+        completed = subprocess.run(command, capture_output=True, text=True, check=False)
+        item = {
+            "command": shell_join(command),
+            "returncode": completed.returncode,
+            "stdout_tail": completed.stdout[-2000:],
+            "stderr_tail": completed.stderr[-2000:],
+        }
+        results.append(item)
+        if completed.returncode != 0:
+            raise RuntimeError(
+                "optional dependency install failed: "
+                f"{shell_join(command)}\n{completed.stderr[-2000:]}"
+            )
+
+    return {
+        "installed": bool(commands),
+        "features": selected,
+        "commands": [shell_join(command) for command in commands],
+        "results": results,
+    }
+
+
+def install_embedding_model(model_key: str, *, project_dir: str | Path) -> dict[str, Any]:
+    model = str(model_key).strip().lower()
+    if model not in VALID_EMBEDDING_MODELS:
+        allowed = ", ".join(sorted(VALID_EMBEDDING_MODELS))
+        raise ValueError(f"unknown embedding model '{model_key}' (expected one of: {allowed})")
+
+    command = [
+        sys.executable,
+        "-m",
+        "vault.cli",
+        "--project-dir",
+        str(Path(project_dir).expanduser()),
+        "install-embedding",
+        "--model",
+        model,
+    ]
+    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    result = {
+        "model": model,
+        "command": shell_join(command),
+        "returncode": completed.returncode,
+        "stdout_tail": completed.stdout[-2000:],
+        "stderr_tail": completed.stderr[-2000:],
+    }
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "embedding model install failed: "
+            f"{shell_join(command)}\n{completed.stderr[-2000:]}"
+        )
+    return result
+
+
+def optional_feature_next_steps(
+    features: list[str],
+    *,
+    project_dir: str | Path,
+    installed_deps: bool = False,
+    installed_embedding_model: str | None = None,
+) -> list[str]:
     project_path = Path(project_dir).expanduser()
     steps: list[str] = []
     if "semantic" in features:
-        steps.extend(
-            [
-                'python -m pip install "vault-for-llm[semantic]"',
-                f"vault semantic rebuild --project-dir {shlex.quote(str(project_path))} --persist-cache --pretty",
-            ]
+        if not installed_deps:
+            steps.append('python -m pip install "vault-for-llm[semantic]"')
+        if not installed_embedding_model:
+            steps.append("vault install-embedding --model mix")
+        steps.append(
+            f"vault semantic rebuild --project-dir {shlex.quote(str(project_path))} --persist-cache --pretty"
         )
     if "supabase" in features:
-        steps.extend(
-            [
-                'python -m pip install "vault-for-llm[supabase]"',
-                "configure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY before running sync scripts",
-            ]
-        )
+        if not installed_deps:
+            steps.append('python -m pip install "vault-for-llm[supabase]"')
+        steps.append("configure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY before running sync scripts")
     if "headroom" in features:
+        if not installed_deps:
+            steps.append("python -m pip install headroom-ai")
         steps.extend(
             [
-                "python -m pip install headroom-ai",
                 "Use Headroom after Vault retrieval when logs, tool output, or retrieved context are too large.",
                 "Keep Vault citations tied to original vault_read_range output, not compressed summaries.",
             ]
         )
     if "dev" in features:
-        steps.append('python -m pip install -e ".[dev]"')
+        if not installed_deps:
+            steps.append('python -m pip install "vault-for-llm[dev]"')
     return steps
 
 
@@ -384,6 +488,15 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
         features = normalize_features(features_raw)
     else:
         features = _ask_interactive_features()
+
+    install_optional_deps = bool(argv_config.get("install_optional_deps", False))
+    if not install_optional_deps and _features_need_dependency_install(features):
+        install_optional_deps = _ask_yes_no("Install selected optional Python dependencies now?", True)
+
+    install_embedding_choice = argv_config.get("install_embedding_model")
+    if install_embedding_choice is None and install_optional_deps and "semantic" in features:
+        if _ask_yes_no("Download and configure a local ONNX embedding model now?", True):
+            install_embedding_choice = _ask("Embedding model (zh/en/mix)", "mix")
 
     obsidian_vault = argv_config.get("obsidian_vault")
     if obsidian_vault is None:
@@ -403,6 +516,8 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
         agent=agent,
         features=features,
         tool_profile=str(argv_config.get("tool_profile") or "core"),
+        install_optional_deps=install_optional_deps,
+        install_embedding_model=install_embedding_choice,
         obsidian_vault=Path(obsidian_vault).expanduser() if obsidian_vault else None,
         import_obsidian=import_obsidian,
         sync_targets=sync_targets,
@@ -437,6 +552,11 @@ def _ask_interactive_features() -> list[str]:
     if _ask_yes_no("Install developer/benchmark dependencies?", False):
         features.append("dev")
     return features
+
+
+def _features_need_dependency_install(features: list[str]) -> bool:
+    selected = set(normalize_features(features))
+    return bool((selected & PYPI_EXTRA_FEATURES) or "headroom" in selected)
 
 
 def _ask_yes_no(prompt: str, default: bool) -> bool:

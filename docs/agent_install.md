@@ -10,7 +10,7 @@ install path below keeps Vault local-first and governed.
 ## One-Sentence Prompt
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.25, ask which database scope I want, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, and dev/benchmark dependencies, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.25, ask which database scope I want, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
 ```
 
 ## What To Ask First
@@ -26,9 +26,14 @@ Ask these before installing extras or writing memory:
 7. Do you want optional Supabase sync/read dependencies for remote or cross-host memory?
 8. Do you want optional Headroom context compression for long logs, tool output, or large retrieved context?
 9. Do you want developer/benchmark dependencies for source work or release validation?
+10. If any optional feature is selected, should I install its Python dependencies now?
+11. If semantic is selected, should I download and configure a local ONNX embedding model now?
 
 Keep MCP defaulting to yes for MCP-capable runtimes. Keep semantic, Supabase,
 Headroom, and dev dependencies defaulting to no unless the user confirms.
+When the user confirms optional dependency installation, pass
+`--install-optional-deps`. For semantic local model setup, pass
+`--install-embedding-model mix` or the selected `zh`/`en`/`mix` model.
 
 ## Scope Choices
 
@@ -41,6 +46,11 @@ Headroom, and dev dependencies defaulting to no unless the user confirms.
 
 One project directory equals one `vault.db`. Agents share memory only when they
 use the same project directory.
+
+`/tmp/...` directories are disposable test workspaces, not package install
+locations and not stable shared vaults. Do not reuse a version-labelled temp
+path such as `/tmp/vault-install-test-0.6.24` as a real project memory path.
+For shared memory, choose a stable directory such as `~/Vaults/my-project`.
 
 ## Default Install
 
@@ -67,6 +77,20 @@ vault setup-agent \
 Change `--agent` to the runtime doing the work, such as `hermes`, `openclaw`,
 `claude-code`, `opencode`, `codex`, or `n8n`.
 
+To install selected optional dependencies immediately:
+
+```bash
+vault setup-agent \
+  --non-interactive \
+  --agent codex \
+  --scope shared \
+  --agent-project-dir /path/to/project \
+  --features core,mcp,semantic,supabase,headroom \
+  --install-optional-deps \
+  --install-embedding-model mix \
+  --json
+```
+
 ## Optional Headroom Compression
 
 Headroom is not part of Vault's core memory governance. Offer it only when the
@@ -83,6 +107,19 @@ vault setup-agent \
   --agent-project-dir /path/to/project \
   --features core,mcp,headroom \
   --tool-profile core \
+  --json
+```
+
+Or let the setup wizard install it after the user confirms:
+
+```bash
+vault setup-agent \
+  --non-interactive \
+  --agent codex \
+  --scope shared \
+  --agent-project-dir /path/to/project \
+  --features core,mcp,headroom \
+  --install-optional-deps \
   --json
 ```
 

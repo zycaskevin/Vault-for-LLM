@@ -41,9 +41,13 @@ changed notes without duplicating unchanged ones.
 |---|---|
 | `vault setup-agent` | Ask for scope, optional features, Obsidian import, sync templates, and smoke-test next steps |
 | `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,obsidian_import` | Agent-friendly scripted install |
+| `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,semantic,supabase,headroom --install-optional-deps --install-embedding-model mix --json` | Install selected optional dependencies and configure a local semantic model |
 | `vault setup-agent --obsidian-vault ~/Documents/ObsidianVault --import-obsidian --obsidian-sync all` | Run first Obsidian import and write cron, LaunchAgent, and n8n templates |
 
 `vault install-agent` is an alias for `vault setup-agent`.
+Interactive setup asks before installing optional dependencies. Non-interactive
+agents must pass `--install-optional-deps`; semantic model download is opt-in
+with `--install-embedding-model zh|en|mix`.
 
 ## Search And Navigation
 

@@ -10,6 +10,8 @@
 - Updated README variants to make CLI/MCP portability a first-class product message instead of presenting Vault as tied to one agent runtime.
 - Documented shared/private/temporary Vault project scope so agent installs can choose whether to share one `vault.db` or use isolated databases.
 - Added `AGENTS.md` and `agent_manifest.json` so agent-driven installers can read database scope, safety, runtime, and validation rules without scraping README prose.
+- Added optional feature prompting guidance for agent installers, including core, MCP, semantic, Supabase, and dev/benchmark profiles.
+- Added `vault-for-llm[supabase]` as an optional dependency group for remote sync/read path setup.
 
 #### Agent Memory Benchmarking
 - Added a README evidence snapshot for project onboarding, candidate-first memory, and external retrieval probes with explicit caveats.

@@ -83,6 +83,18 @@ Hermes Agent、Codex、OpenCode、Claude Code、OpenClaw 和其他 MCP-capable a
 各 runtime 的 adapter 應該保持很薄；真正穩定的契約是共同的
 `projectDir`、`vault` CLI、`vault-mcp`，以及候選制記憶流程。
 
+Agent 安裝時也應該詢問要不要開可選功能，而不是全部預設裝上：
+
+| 功能 | 預設 | 安裝指令 | 什麼時候問 |
+|---|---|---|---|
+| `core` | 是 | `python -m pip install vault-for-llm` | 永遠需要：本地 Markdown、SQLite、keyword search。 |
+| `mcp` | MCP-capable agent 建議開 | `python -m pip install "vault-for-llm[mcp]"` | runtime 可以接 local stdio MCP tools。 |
+| `semantic` | 否 | `python -m pip install "vault-for-llm[semantic]"` | 使用者想要 embedding-backed semantic/hybrid search。 |
+| `supabase` | 否 | `python -m pip install "vault-for-llm[supabase]"` | 使用者想要 optional remote sync/read path。 |
+| `dev` | 否 | `python -m pip install -e ".[dev]"` | source checkout、benchmark、PR 或 release validation。 |
+
+不要偷偷開 semantic 或 Supabase extras；它們會增加較重的依賴、模型/provider 設定，或遠端憑證。
+
 ### 選擇 Vault project scope
 
 Vault-for-LLM 綁定的是 `project-dir`，不是某一個 Agent runtime：

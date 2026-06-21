@@ -10,12 +10,48 @@ Hermes Agent, Codex, OpenCode, Claude Code, OpenClaw, n8n, and other
 MCP-capable or shell-capable agents should use the same basic shape:
 
 ```text
-choose projectDir -> install vault -> configure CLI or stdio MCP -> verify search/read/propose
+choose projectDir -> choose optional features -> install vault -> configure CLI or stdio MCP -> verify search/read/propose
 ```
 
 Only add runtime-specific adapters when the host needs custom tool registration
 or UI metadata. The stable cross-agent contract is `projectDir`, the `vault`
 CLI, `vault-mcp`, and candidate-first memory writes.
+
+## Second Decision: Optional Features
+
+After choosing database scope, ask which optional capabilities the user wants.
+Do not install heavyweight or cloud-connected extras silently.
+
+Recommended prompts:
+
+| Feature | Default | Ask when | Install command |
+|---|---|---|---|
+| `core` | yes | Always. Local SQLite, Markdown, keyword search. | `python -m pip install vault-for-llm` |
+| `mcp` | yes for MCP-capable agents | The runtime supports local stdio MCP. | `python -m pip install "vault-for-llm[mcp]"` |
+| `semantic` | no | User wants embedding-backed semantic/hybrid retrieval. | `python -m pip install "vault-for-llm[semantic]"` |
+| `supabase` | no | User wants optional remote sync/read paths. | `python -m pip install "vault-for-llm[supabase]"` |
+| `dev` | no | You are modifying the repo, running benchmarks, or validating a PR. | `python -m pip install -e ".[dev]"` |
+
+For semantic installs, configure a real provider and rebuild vectors:
+
+```bash
+vault install-embedding --model mix
+vault semantic rebuild --project-dir /path/to/project --persist-cache --pretty
+```
+
+For Ollama-backed embeddings, use:
+
+```bash
+vault config set embedding.provider ollama
+vault config set embedding.model nomic-embed-text
+```
+
+For Supabase sync, remind the user that SQLite remains the source of truth and
+full-content sync requires explicit approval:
+
+```bash
+python scripts/sync_to_supabase.py --document-map
+```
 
 ## First Decision: Database Scope
 

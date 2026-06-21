@@ -38,6 +38,17 @@ own isolated database:
 | `private` | OpenClaw gets its own isolated Vault project. |
 | `temporary` | OpenClaw uses a throwaway Vault for tests or demos. |
 
+The installer can also print an optional feature plan. It does not silently
+install heavyweight or cloud-connected extras; agents should ask first.
+
+| Feature | Meaning |
+|---|---|
+| `core` | Local SQLite + Markdown + keyword search. Always included. |
+| `mcp` | Local stdio MCP tools for MCP-capable runtimes. |
+| `semantic` | Embedding-backed semantic/hybrid retrieval dependencies. |
+| `supabase` | Optional remote sync/read path dependencies. |
+| `dev` | Source checkout test, benchmark, and PR validation dependencies. |
+
 Non-interactive examples:
 
 ```bash
@@ -46,6 +57,7 @@ bash integrations/openclaw/install.sh --scope private --non-interactive
 bash integrations/openclaw/install.sh \
   --scope shared \
   --project-dir ~/Vaults/my-project \
+  --features core,mcp,semantic \
   --non-interactive
 ```
 

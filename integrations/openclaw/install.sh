@@ -9,6 +9,7 @@ SKILL_DIR="${OPENCLAW_DIR}/skills/vault-for-llm"
 EXT_DIR="${OPENCLAW_DIR}/extensions/vault-for-llm"
 SCOPE=""
 PROJECT_DIR="${VAULT_OPENCLAW_PROJECT_DIR:-}"
+FEATURES=""
 NON_INTERACTIVE=0
 
 usage() {
@@ -22,6 +23,8 @@ Options:
                           private: use OpenClaw's own isolated vault
                           temporary: use a throwaway vault for demos/tests
   --project-dir <path>    explicit Vault project directory; overrides --scope default
+  --features <csv>        optional features: core,mcp,semantic,supabase,dev
+                          default is core; core is always included
   --non-interactive       do not prompt; default scope is private
   --help                  show this help
 EOF
@@ -45,6 +48,15 @@ while [ $# -gt 0 ]; do
         exit 1
       fi
       PROJECT_DIR="$2"
+      shift 2
+      ;;
+    --features)
+      if [ $# -lt 2 ]; then
+        echo "Missing value for --features" >&2
+        usage
+        exit 1
+      fi
+      FEATURES="$2"
       shift 2
       ;;
     --non-interactive) NON_INTERACTIVE=1; shift ;;
@@ -115,7 +127,106 @@ EOF
   fi
 }
 
+normalize_features() {
+  local raw="${1:-core}"
+  raw="${raw// /}"
+  if [ -z "$raw" ]; then
+    raw="core"
+  fi
+  if [[ ",${raw}," != *",core,"* ]]; then
+    raw="core,${raw}"
+  fi
+  IFS=',' read -r -a parts <<< "$raw"
+  local normalized=""
+  local feature
+  for feature in "${parts[@]}"; do
+    case "$feature" in
+      ""|core|mcp|semantic|supabase|dev) ;;
+      *)
+        echo "Invalid feature '${feature}' (expected core,mcp,semantic,supabase,dev)" >&2
+        exit 1
+        ;;
+    esac
+    if [ -n "$feature" ] && [[ ",${normalized}," != *",${feature},"* ]]; then
+      if [ -z "$normalized" ]; then
+        normalized="$feature"
+      else
+        normalized="${normalized},${feature}"
+      fi
+    fi
+  done
+  FEATURES="${normalized:-core}"
+}
+
+select_features() {
+  if [ -z "$FEATURES" ] && [ "$NON_INTERACTIVE" -eq 0 ] && [ -t 0 ]; then
+    cat <<'EOF'
+Choose optional Vault features:
+
+  core      Local SQLite + Markdown + keyword search. Always included.
+  mcp       Local stdio MCP tools for MCP-capable agents.
+  semantic  Embedding-backed semantic/hybrid retrieval. Larger optional deps.
+  supabase  Optional remote sync/read path. Requires credentials.
+  dev       Source checkout tests, benchmarks, and PR validation.
+
+EOF
+    printf "Features [comma-separated, default core]: "
+    read -r FEATURES
+  fi
+
+  normalize_features "${FEATURES:-core}"
+}
+
+has_feature() {
+  [[ ",${FEATURES}," == *",$1,"* ]]
+}
+
+print_feature_plan() {
+  cat <<EOF
+Selected optional features:
+  features:    ${FEATURES}
+
+Recommended install commands:
+  core:        python -m pip install vault-for-llm
+EOF
+  if has_feature mcp; then
+    cat <<'EOF'
+  mcp:         python -m pip install "vault-for-llm[mcp]"
+               vault-mcp --project-dir <projectDir>
+EOF
+  fi
+  if has_feature semantic; then
+    cat <<'EOF'
+  semantic:    python -m pip install "vault-for-llm[semantic]"
+               vault install-embedding --model mix
+               vault semantic rebuild --project-dir <projectDir> --persist-cache --pretty
+EOF
+  fi
+  if has_feature supabase; then
+    cat <<'EOF'
+  supabase:    python -m pip install "vault-for-llm[supabase]"
+               export SUPABASE_URL=...
+               export SUPABASE_SERVICE_ROLE_KEY=...
+               python scripts/sync_to_supabase.py --document-map
+EOF
+  fi
+  if has_feature dev; then
+    cat <<'EOF'
+  dev:         python -m pip install -e ".[dev]"
+               python scripts/readme_command_smoke.py
+               python -m pytest -q
+EOF
+  fi
+  cat <<'EOF'
+
+Do not enable semantic or Supabase extras silently. Ask the user first because
+they add heavier dependencies, model/provider setup, or remote credentials.
+
+EOF
+}
+
 select_project_dir
+select_features
 
 mkdir -p "${SKILL_DIR}/bin" "${EXT_DIR}"
 cp "${SRC_DIR}/SKILL.md" "${SKILL_DIR}/SKILL.md"
@@ -138,6 +249,11 @@ Vault memory scope:
 Agents that use the same projectDir share one vault.db. Use separate
 projectDir values for isolated agent memory or experiments.
 
+EOF
+
+print_feature_plan
+
+cat <<EOF
 Add or merge this into ${OPENCLAW_DIR}/openclaw.json:
 
 {

@@ -22,7 +22,7 @@ sections.
 Most agent runtimes can share the same install shape:
 
 ```text
-choose projectDir -> install vault -> configure CLI or stdio MCP -> verify search/read/propose
+choose projectDir -> choose optional features -> install vault -> configure CLI or stdio MCP -> verify search/read/propose
 ```
 
 Use runtime-specific adapters only for convenience. The durable contract is:
@@ -32,6 +32,37 @@ Use runtime-specific adapters only for convenience. The durable contract is:
 - `vault-mcp`: works for MCP-capable agents such as Hermes Agent, Codex,
   OpenCode, Claude Code, and generic MCP hosts.
 - Candidate-first memory: shared vaults should propose memory before promotion.
+
+## Optional Feature Prompts
+
+Agent installers should ask before installing optional features. Keep the
+default small and local.
+
+| Feature | Default | Install when | Install command |
+|---|---|---|---|
+| `core` | yes | Always: Markdown, SQLite, keyword search, local CLI. | `python -m pip install vault-for-llm` |
+| `mcp` | yes for MCP-capable agents | The runtime can connect local stdio MCP tools. | `python -m pip install "vault-for-llm[mcp]"` |
+| `semantic` | no | The user wants embedding-backed semantic or hybrid search. | `python -m pip install "vault-for-llm[semantic]"` |
+| `supabase` | no | The user wants optional remote sync/read paths. | `python -m pip install "vault-for-llm[supabase]"` |
+| `dev` | no | Source checkout, benchmarks, PR work, or release validation. | `python -m pip install -e ".[dev]"` |
+
+Semantic follow-up:
+
+```bash
+vault install-embedding --model mix
+vault semantic rebuild --project-dir /path/to/project --persist-cache --pretty
+```
+
+Supabase follow-up:
+
+```bash
+export SUPABASE_URL=...
+export SUPABASE_SERVICE_ROLE_KEY=...
+python scripts/sync_to_supabase.py --document-map
+```
+
+Supabase is a sync/read target, not the source of truth. Ask again before using
+`--include-content`.
 
 ## Integration Matrix
 

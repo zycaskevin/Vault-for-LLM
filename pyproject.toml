@@ -45,6 +45,9 @@ mcp = [
     "mcp>=1.0",
     "anthropic>=0.30,<1.0",
 ]
+supabase = [
+    "supabase>=2.0,<3.0",
+]
 
 [project.scripts]
 vault = "vault.cli:main"

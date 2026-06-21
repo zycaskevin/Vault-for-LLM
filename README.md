@@ -91,6 +91,20 @@ choose projectDir -> install vault -> configure CLI or stdio MCP -> verify searc
 Runtime-specific adapters should stay thin. The durable contract is the shared
 `projectDir`, `vault` CLI, `vault-mcp`, and candidate-first memory policy.
 
+Agent installers should also ask about optional capabilities instead of enabling
+everything by default:
+
+| Feature | Default | Install command | Ask when |
+|---|---|---|---|
+| `core` | yes | `python -m pip install vault-for-llm` | Always: local Markdown, SQLite, keyword search. |
+| `mcp` | yes for MCP-capable agents | `python -m pip install "vault-for-llm[mcp]"` | The runtime can connect local stdio MCP tools. |
+| `semantic` | no | `python -m pip install "vault-for-llm[semantic]"` | The user wants embedding-backed semantic/hybrid search. |
+| `supabase` | no | `python -m pip install "vault-for-llm[supabase]"` | The user wants optional remote sync/read paths. |
+| `dev` | no | `python -m pip install -e ".[dev]"` | Source checkout, benchmarks, PR work, or release validation. |
+
+Do not silently enable semantic or Supabase extras: they add heavier
+dependencies, model/provider setup, or remote credentials.
+
 ### Choose the Vault project scope
 
 Vault-for-LLM is bound to the `project-dir`, not to a specific agent runtime:
@@ -259,6 +273,15 @@ cd Vault-for-LLM
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
+```
+
+### Optional Supabase dependency
+
+Supabase sync is optional. Install its dependency only when you want a remote
+sync/read path:
+
+```bash
+pip install "vault-for-llm[supabase]"
 ```
 
 ---

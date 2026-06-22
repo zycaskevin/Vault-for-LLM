@@ -250,3 +250,64 @@ def test_cli_remember_and_promote_smoke(tmp_path):
     assert promoted["status"] == "promoted"
     assert promoted["knowledge_id"]
     assert (tmp_path / "raw" / "cli-memory.md").exists()
+
+
+def test_cli_candidates_lists_review_queue_without_full_payload(tmp_path):
+    with VaultDB(tmp_path / "vault.db") as db:
+        created = create_candidate(
+            db,
+            title="Candidate queue item",
+            content="Candidate queue item should be visible to agents before promotion.",
+            reason="Agents need a CLI-safe review queue.",
+            tags="candidate,review",
+            source="test",
+        )
+    env = {"PYTHONPATH": str(REPO_ROOT)}
+
+    listed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "vault.cli",
+            "candidates",
+            "--pretty",
+        ],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert listed.returncode == 0, listed.stderr
+    payload = json.loads(listed.stdout)
+    assert payload["count"] == 1
+    assert payload["status"] == "candidate"
+    item = payload["candidates"][0]
+    assert item["id"] == created["candidate_id"]
+    assert item["title"] == "Candidate queue item"
+    assert item["status"] == "candidate"
+    assert "content_preview" in item
+    assert "content" not in item
+    assert "gates" not in item
+
+    detailed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "vault.cli",
+            "candidates",
+            "--include-content",
+            "--include-gates",
+        ],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert detailed.returncode == 0, detailed.stderr
+    detailed_payload = json.loads(detailed.stdout)
+    detailed_item = detailed_payload["candidates"][0]
+    assert detailed_item["content"].startswith("Candidate queue item")
+    assert detailed_item["gates"]["privacy"]["status"] == "pass"

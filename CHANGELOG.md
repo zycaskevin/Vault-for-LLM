@@ -4,6 +4,11 @@
 
 ### Added
 
+- Added memory governance guidance for L0-L3, user profile/persona memory, dedicated profile/dream-forgetting agents, multi-agent sharing metadata, Supabase RLS boundaries, and Obsidian frontmatter sync.
+- Added a long-term vision document for user-owned lifelong memory across agent families, devices, robots, sync layers, and model providers.
+- Added Progressive Memory Disclosure as a design principle for keeping lifelong memory efficient, reviewable, permissioned, and source-grounded.
+- Added `setup-agent` support for `memory_agents`, generating Profile / Dream / Forgetting agent guidance without auto-promoting, scheduling, deleting, or installing models.
+- Added `vault candidates` so agents can review pending memory candidates without reading SQLite internals or dumping full raw content by default.
 - Added `vault setup-agent --language en|zh-Hant|zh-CN` so generated installer output and Supabase setup guides can match the user's language.
 - Added interactive setup language selection for manual CLI installs; non-interactive agent installs can pass `--language` and otherwise keep the default.
 - Added `vault setup-agent --supabase-setup none|simple|advanced` to generate a guided Supabase connection checklist without forcing RLS complexity into the default path.

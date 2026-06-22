@@ -35,6 +35,36 @@ Vault-for-LLM is not just another vector store. It is evolving into an **agent m
 
 In other words: regular RAG focuses on retrieval; Vault-for-LLM focuses on whether memory can be **used correctly by agents**.
 
+The roadmap is bigger than one agent runtime: Vault-for-LLM is the memory core,
+agent systems such as Hermes Agent, OpenClaw, Claude Code, Codex, n8n, robots,
+cars, or smart-home agents are the hands, and models are the compute tools. See
+the [vision document](docs/vision.md).
+
+It is also designed around the user, not only around documents. A Vault can keep
+project knowledge, but it can also support a reviewed user profile: durable work
+preferences, communication boundaries, recent context summaries, and long-term
+patterns that help agents collaborate without starting from zero every session.
+Those profile memories should stay governed: raw private interactions stay
+private, while trusted agents may share short reviewed summaries.
+
+For more automated setups, a user can run one or two dedicated memory agents:
+
+- **Profile agent** — maintains the user's stable profile, preferences, care
+  summaries, and agent-specific boundaries without exposing raw private chats.
+- **Dream / forgetting agent** — runs periodic memory cleanup, deduplicates,
+  marks stale memories, suggests promotion or archival, and helps the database
+  forget low-value or expired context.
+
+This makes Vault useful beyond today's chat agents. The same governed memory
+shape can later support embodied agents, long-running assistants, or world-model
+workflows that need user context, project state, source-grounded knowledge, and
+safe forgetting in one inspectable local-first layer.
+
+The design principle is **Progressive Memory Disclosure**: agents first see a
+small safe summary, then topic maps, search candidates, bounded source ranges,
+and only then raw or archived memory when the task and permissions justify it.
+That is how the vault can stay useful as it grows into a lifelong memory store.
+
 For a broader positioning against Mem0, Letta/MemGPT, Zep, and LangGraph memory, see the [memory system comparison](docs/memory_system_comparison.md). The short version: Vault-for-LLM optimizes for local, inspectable, candidate-first project memory with retrieval QA and bounded citations; hosted or runtime-native memory systems may be better when you need managed personalization, a full stateful-agent runtime, or enterprise temporal graph infrastructure.
 
 For adjacent retrieval and context-budget systems, see the [PageIndex and
@@ -95,6 +125,7 @@ features to enable, ask whether to install selected optional dependencies now,
 ask whether semantic search should download a local ONNX embedding model, ask
 whether I have an existing Obsidian vault to import, configure CLI/MCP, run the
 first Obsidian import if requested, ask whether I want automatic Obsidian sync,
+ask whether I want Profile / Dream / Forgetting memory-agent guidance,
 and run a search/read/propose smoke test.
 ```
 
@@ -122,6 +153,7 @@ everything by default:
 | `semantic` | no | `python -m pip install "vault-for-llm[semantic]"` | The user wants embedding-backed semantic/hybrid search. |
 | `supabase` | no | `python -m pip install "vault-for-llm[supabase]"` | The user wants optional remote sync/read paths. |
 | `headroom` | no | `python -m pip install headroom-ai` | The agent often reads long logs, terminal output, or large retrieved context and needs optional compression before sending content to the LLM. |
+| `memory_agents` | no | no extra dependency | The user wants Profile / Dream / Forgetting agent guidance with report-only and candidate-only defaults. |
 | `dev` | no | `python -m pip install -e ".[dev]"` | Source checkout, benchmarks, PR work, or release validation. |
 
 When optional features are selected, `vault setup-agent` can install the chosen
@@ -266,12 +298,24 @@ Markdown raw/  →  vault compile  →  SQLite database  →  vault search / MCP
 
 This keeps the agent prompt small while still making deeper memory available when relevant.
 
+L0-L3 describe memory depth, not permissions. For multi-agent installs, keep
+the layer model stable and use metadata such as `scope`, `sensitivity`,
+`owner_agent`, `allowed_agents`, `status`, `memory_type`, and `expires_at` to
+decide what stays private, what can be shared, and what may sync to Supabase or
+Obsidian. See [memory governance layers](docs/memory_governance.md).
+
+User profile memory should be split instead of stored as one large profile:
+minimal identity belongs in `L0`, durable work preferences in `L1`, recent
+state/care summaries in `L2` with expiry, and deep or raw private analysis in a
+private `L3` entry or separate private vault.
+
 ### Agent memory lifecycle
 
 ```text
 Conversation / task
   → propose memory candidate
   → privacy + duplicate + metadata + quality gates
+  → list / review candidate memories
   → promote reviewed memory
   → raw Markdown + SQLite active knowledge
   → search / map / read_range recall
@@ -384,11 +428,15 @@ vault remember "Memory title" \
   --content "Markdown memory content" \
   --reason "Why this is worth remembering"
 
+vault candidates --include-gates
+
 # after review
 vault promote mem_xxxxxxxxxxxx --confirm
 ```
 
-MCP-compatible agents should use `vault_memory_propose` and `vault_memory_promote`; see [MCP memory workflow](docs/mcp_memory_workflow.md).
+`vault candidates` lists the review queue without dumping full raw content by
+default. MCP-compatible agents should use `vault_memory_propose` and
+`vault_memory_promote`; see [MCP memory workflow](docs/mcp_memory_workflow.md).
 
 The gates are intentionally simple and deterministic:
 
@@ -486,6 +534,7 @@ your-project/
 | `vault init` | Initialize a project vault |
 | `vault setup-agent` | Run the interactive agent installer and optional Obsidian sync template generator |
 | `vault remember "Title" --content "..." --reason "..."` | Propose candidate memory for review |
+| `vault candidates` | List pending candidate memories |
 | `vault promote <candidate_id> --confirm` | Promote reviewed candidate memory |
 | `vault compile` | Compile Markdown into SQLite |
 | `vault import obsidian --vault /path/to/ObsidianVault --dry-run` | Preview importing existing Obsidian notes into `raw/obsidian/` |

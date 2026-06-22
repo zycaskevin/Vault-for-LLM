@@ -10,6 +10,7 @@ with the daily loop in the README and only use these commands when needed.
 | `vault init` | Initialize a project vault |
 | `vault setup-agent` / `vault install-agent` | Run the agent installer wizard and optional Obsidian sync template generator |
 | `vault remember "Title" --content "..." --reason "..."` | Propose candidate memory for review |
+| `vault candidates` | List pending candidate memories without dumping full raw content |
 | `vault promote <candidate_id> --confirm` | Promote reviewed candidate memory |
 | `vault compile` | Compile `raw/` into SQLite and generated artifacts |
 | `vault search "query"` | Search the vault |
@@ -42,6 +43,7 @@ changed notes without duplicating unchanged ones.
 | `vault setup-agent` | Ask for scope, setup language, optional features, Obsidian import, sync templates, and smoke-test next steps |
 | `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,obsidian_import` | Agent-friendly scripted install |
 | `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,semantic,supabase,headroom --language en --install-optional-deps --install-embedding-model mix --supabase-setup simple --json` | Install selected optional dependencies and configure a local semantic model |
+| `vault setup-agent --non-interactive --agent nancy --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,memory_agents --language zh-Hant --json` | Generate Profile / Dream / Forgetting agent guidance with report-only and candidate-only defaults |
 | `vault setup-agent --non-interactive --agent nancy --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase --language zh-Hant --install-optional-deps --supabase-setup simple --supabase-sync cron --json` | Generate guided Supabase setup plus daily sync templates |
 | `vault setup-agent --obsidian-vault ~/Documents/ObsidianVault --import-obsidian --obsidian-sync all` | Run first Obsidian import and write cron, LaunchAgent, and n8n templates |
 
@@ -49,6 +51,8 @@ changed notes without duplicating unchanged ones.
 Interactive setup asks before installing optional dependencies. Non-interactive
 agents must pass `--install-optional-deps`; semantic model download is opt-in
 with `--install-embedding-model zh|en|mix`.
+Memory-agent guidance is opt-in with `--features memory_agents`; it writes
+`README-memory-agents.md` and does not install a model or auto-promote memory.
 Supabase sync templates are opt-in with `--supabase-sync cron|launchagent|n8n|all`
 and use `python -m scripts.sync_to_supabase --db <project>/vault.db`.
 Manual interactive setup asks for `en`, `zh-Hant`, or `zh-CN`; non-interactive
@@ -75,6 +79,7 @@ unless the user asks for RLS or multi-agent permissions.
 |---|---|
 | `vault lint` | Run quality checks |
 | `vault dream` | Produce report-first memory curation summaries |
+| `vault candidates --include-gates` | Review candidate-memory queue and gate details before promotion |
 | `vault freshness` | Experimental freshness/review scheduling |
 | `vault dedup` | Detect or merge duplicate entries |
 | `vault converge` | Experimental convergence/self-questioning check |

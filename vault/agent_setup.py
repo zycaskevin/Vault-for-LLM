@@ -20,7 +20,16 @@ from vault.import_obsidian import sync_obsidian_vault
 
 
 DEFAULT_FEATURES = ["core", "mcp"]
-VALID_FEATURES = {"core", "mcp", "obsidian_import", "semantic", "supabase", "headroom", "dev"}
+VALID_FEATURES = {
+    "core",
+    "mcp",
+    "obsidian_import",
+    "semantic",
+    "supabase",
+    "headroom",
+    "memory_agents",
+    "dev",
+}
 VALID_SYNC_TARGETS = {"none", "cron", "launchagent", "n8n", "all"}
 VALID_SUPABASE_SETUP_MODES = {"none", "simple", "advanced"}
 VALID_SETUP_LANGUAGES = {"en", "zh-Hant", "zh-CN"}
@@ -304,6 +313,155 @@ def write_supabase_sync_templates(
     )
     written["readme"] = str(readme)
     return written
+
+
+def render_memory_agents_guide(
+    *,
+    project_dir: str | Path,
+    agent: str,
+    language: str = "en",
+) -> str:
+    project_path = Path(project_dir).expanduser()
+    safe_language = _normalize_setup_language(language)
+    if safe_language == "zh-Hant":
+        lines = [
+            "# Vault-for-LLM 記憶 Agent 設定",
+            "",
+            "這份文件給 Profile / Dream / Forgetting agent 使用。",
+            "",
+            "預設政策：",
+            "",
+            "- Profile agent 預設只產生候選記憶，不直接寫入 active memory。",
+            "- Dream agent 預設只產生 report，不直接刪除或 promote。",
+            "- Forgetting agent 預設只建議 archive、expire、merge 或降權，不自動刪除。",
+            "- 原始私密對話不同步到 shared vault 或 Supabase，除非使用者明確同意。",
+            "- 共享人格側寫只允許 reviewed summary，不共享 raw private interaction。",
+            "",
+            "建議生命週期：",
+            "",
+            "```text",
+            "capture -> candidate -> review -> active -> dream -> consolidate -> archive/expire",
+            "```",
+            "",
+            "建議 metadata：",
+            "",
+            "```yaml",
+            "scope: private | project | shared | public",
+            "sensitivity: low | medium | high | restricted",
+            f"owner_agent: {agent}",
+            "allowed_agents: []",
+            "status: candidate | reviewed | active | archived",
+            "memory_type: user_profile | care_summary | dream_report | forgetting_suggestion",
+            "expires_at: null",
+            "```",
+            "",
+            "建議執行方式：",
+            "",
+            f"- Project vault: `{project_path}`",
+            "- Profile agent：整理 L0/L1/L2 側寫候選，等待使用者或 trusted agent review。",
+            "- Dream agent：定期執行 `vault dream`，輸出整理報告。",
+            "- Forgetting agent：根據 dream report 產生 archive/expire 建議，不直接刪除。",
+        ]
+    elif safe_language == "zh-CN":
+        lines = [
+            "# Vault-for-LLM 记忆 Agent 设置",
+            "",
+            "这份文件给 Profile / Dream / Forgetting agent 使用。",
+            "",
+            "默认政策：",
+            "",
+            "- Profile agent 默认只产生候选记忆，不直接写入 active memory。",
+            "- Dream agent 默认只产生 report，不直接删除或 promote。",
+            "- Forgetting agent 默认只建议 archive、expire、merge 或降权，不自动删除。",
+            "- 原始私密对话不同步到 shared vault 或 Supabase，除非用户明确同意。",
+            "- 共享人格侧写只允许 reviewed summary，不共享 raw private interaction。",
+            "",
+            "建议生命周期：",
+            "",
+            "```text",
+            "capture -> candidate -> review -> active -> dream -> consolidate -> archive/expire",
+            "```",
+            "",
+            "建议 metadata：",
+            "",
+            "```yaml",
+            "scope: private | project | shared | public",
+            "sensitivity: low | medium | high | restricted",
+            f"owner_agent: {agent}",
+            "allowed_agents: []",
+            "status: candidate | reviewed | active | archived",
+            "memory_type: user_profile | care_summary | dream_report | forgetting_suggestion",
+            "expires_at: null",
+            "```",
+            "",
+            "建议执行方式：",
+            "",
+            f"- Project vault: `{project_path}`",
+            "- Profile agent：整理 L0/L1/L2 侧写候选，等待用户或 trusted agent review。",
+            "- Dream agent：定期执行 `vault dream`，输出整理报告。",
+            "- Forgetting agent：根据 dream report 产生 archive/expire 建议，不直接删除。",
+        ]
+    else:
+        lines = [
+            "# Vault-for-LLM Memory Agents",
+            "",
+            "Use this guide for Profile / Dream / Forgetting agents.",
+            "",
+            "Default policy:",
+            "",
+            "- Profile agents produce candidate memories; they do not write active memory directly.",
+            "- Dream agents produce reports; they do not delete or promote memory directly.",
+            "- Forgetting agents suggest archive, expiry, merge, or downgrade actions; they do not auto-delete.",
+            "- Raw private conversations do not sync to shared vaults or Supabase unless the user explicitly approves.",
+            "- Shared user profiles should be reviewed summaries, not raw private interactions.",
+            "",
+            "Recommended lifecycle:",
+            "",
+            "```text",
+            "capture -> candidate -> review -> active -> dream -> consolidate -> archive/expire",
+            "```",
+            "",
+            "Recommended metadata:",
+            "",
+            "```yaml",
+            "scope: private | project | shared | public",
+            "sensitivity: low | medium | high | restricted",
+            f"owner_agent: {agent}",
+            "allowed_agents: []",
+            "status: candidate | reviewed | active | archived",
+            "memory_type: user_profile | care_summary | dream_report | forgetting_suggestion",
+            "expires_at: null",
+            "```",
+            "",
+            "Recommended operation:",
+            "",
+            f"- Project vault: `{project_path}`",
+            "- Profile agent: propose L0/L1/L2 profile candidates for user or trusted-agent review.",
+            "- Dream agent: run `vault dream` on a schedule and write review reports.",
+            "- Forgetting agent: convert dream findings into archive/expiry suggestions, not direct deletion.",
+        ]
+    return "\n".join(lines) + "\n"
+
+
+def write_memory_agents_guide(
+    *,
+    output_dir: str | Path,
+    project_dir: str | Path,
+    agent: str,
+    language: str = "en",
+) -> dict[str, str]:
+    out = Path(output_dir).expanduser().resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / "README-memory-agents.md"
+    path.write_text(
+        render_memory_agents_guide(
+            project_dir=project_dir,
+            agent=agent,
+            language=language,
+        ),
+        encoding="utf-8",
+    )
+    return {"guide": str(path), "mode": "report_only_candidate_only"}
 
 
 def render_supabase_setup_guide(
@@ -745,6 +903,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         "sync_templates": {},
         "supabase_setup": {},
         "supabase_sync_templates": {},
+        "memory_agents": {},
         "next_steps": [
             f"vault search \"test query\" --project-dir {shlex.quote(str(project_path))} --limit 5",
             f"vault-mcp --project-dir {shlex.quote(str(project_path))} --tool-profile {shlex.quote(config.tool_profile)}",
@@ -754,6 +913,18 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
     if environment_warnings:
         result["next_steps"].append(
             "Move temporary Python virtualenvs to a stable path such as ~/.hermes/venvs/vault-for-llm/ before relying on scheduled jobs."
+        )
+
+    if "memory_agents" in features:
+        template_dir = config.template_dir or (project_path / "agent-install")
+        result["memory_agents"] = write_memory_agents_guide(
+            output_dir=template_dir,
+            project_dir=project_path,
+            agent=config.agent,
+            language=language,
+        )
+        result["next_steps"].append(
+            f"Review memory agents guide: {result['memory_agents']['guide']}"
         )
 
     if config.obsidian_vault:
@@ -942,6 +1113,14 @@ def optional_feature_next_steps(
                 "Keep Vault citations tied to original vault_read_range output, not compressed summaries.",
             ]
         )
+    if "memory_agents" in features:
+        steps.extend(
+            [
+                "Keep Profile/Dream/Forgetting agents report-only or candidate-only by default.",
+                "Use reviewed summaries for shared profile memory; keep raw private interactions local.",
+                "Use Progressive Memory Disclosure: boot summary -> active context -> topic map -> bounded read -> raw/archive only when justified.",
+            ]
+        )
     if "dev" in features:
         if not installed_deps:
             steps.append('python -m pip install "vault-for-llm[dev]"')
@@ -1038,6 +1217,8 @@ def _ask_interactive_features() -> list[str]:
         False,
     ):
         features.append("headroom")
+    if _ask_yes_no("Enable Profile/Dream/Forgetting memory-agent guidance?", False):
+        features.append("memory_agents")
     if _ask_yes_no("Install developer/benchmark dependencies?", False):
         features.append("dev")
     return features

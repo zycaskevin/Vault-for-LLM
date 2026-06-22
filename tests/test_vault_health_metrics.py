@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -335,6 +336,22 @@ def test_knowledge_sync_payload_generates_hash_when_missing():
     assert payload["content_hash"]
     assert len(payload["content_hash"]) == 64
     assert payload["content_raw"] == ""
+
+
+def test_knowledge_sync_payload_regenerates_blank_hashes():
+    row = (
+        1, "Title", "L3", "general", "tag", 0.8,
+        "raw body", "aaak body", "   ", "local", "summary",
+        "project", "low", "", "[]", "knowledge", "",
+        "", "",
+    )
+
+    payload = sync_to_supabase._knowledge_sync_payload(row)
+
+    assert payload["content_hash"] == hashlib.sha256(
+        "raw body\naaak body\nsummary\nTitle".encode("utf-8")
+    ).hexdigest()
+    assert payload["content_hash"].strip()
 
 
 def test_knowledge_sync_payload_include_content_blocks_privacy_fail():

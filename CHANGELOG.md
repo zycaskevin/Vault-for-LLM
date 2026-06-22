@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.39] - 2026-06-22
+
+### Fixed
+
+- Hardened Supabase sync payloads so blank `content_hash` values are treated as missing and replaced with a deterministic SHA256 hash before update or insert.
+- Updated agent install prompts, README examples, and `agent_manifest.json` to ask for stable long-lived project and Python virtualenv paths instead of using `/tmp`.
+- Added release notes and tests covering blank hash regeneration for Supabase NOT NULL schemas.
+
 ## [0.6.38] - 2026-06-22
 
 ### Fixed

@@ -10,7 +10,7 @@ install path below keeps Vault local-first and governed.
 ## One-Sentence Prompt
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.38, ask which database scope I want, ask for setup language when this is a manual CLI install, ask separately about MCP, semantic search, Supabase sync, Supabase remote reader templates for shell/n8n/Coze, Headroom context compression, Profile / Dream / Forgetting memory-agent guidance, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.39, ask which database scope I want, ask for a stable project directory, ask whether any Python virtualenv you create should live in a stable path such as ~/.hermes/venvs/vault-for-llm/ instead of /tmp, ask for setup language when this is a manual CLI install, ask separately about MCP, semantic search, Supabase sync, Supabase remote reader templates for shell/n8n/Coze, Headroom context compression, Profile / Dream / Forgetting memory-agent guidance, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
 ```
 
 ## What To Ask First
@@ -19,21 +19,22 @@ Ask these before installing extras or writing memory:
 
 1. Should this vault be shared, private, domain-specific, or temporary?
 2. Which project directory should hold `vault.db`?
-3. Which setup language should generated installer output use (`en`, `zh-Hant`, or `zh-CN`)?
-4. Should MCP be enabled for this agent runtime?
-5. Do you already have an Obsidian vault to import?
-6. If Obsidian is connected, should ongoing sync be scheduled with cron, LaunchAgent, or n8n?
-7. Do you want optional semantic search and embedding workflow dependencies?
-8. Do you want optional Supabase sync/read dependencies for remote or cross-host memory?
-9. If Supabase is selected, should I generate a simple setup guide, advanced RLS notes, or no guide?
-10. Do you want optional Headroom context compression for long logs, tool output, or large retrieved context?
-11. If Supabase is selected, should I generate remote reader templates for shell, n8n, Coze, or all?
-12. Do you want developer/benchmark dependencies for source work or release validation?
-13. If any optional feature is selected, should I install its Python dependencies now?
-14. If semantic is selected, should I download and configure a local ONNX embedding model now?
-15. If Supabase is selected, should I generate daily sync templates for cron, LaunchAgent, or n8n?
-16. Should user profile/persona memory stay private by default, with only reviewed summaries shared?
-17. Should Profile / Dream / Forgetting memory-agent guidance be generated?
+3. If I create or move a Python virtualenv, should it use a stable path such as `~/.hermes/venvs/vault-for-llm/` instead of `/tmp`?
+4. Which setup language should generated installer output use (`en`, `zh-Hant`, or `zh-CN`)?
+5. Should MCP be enabled for this agent runtime?
+6. Do you already have an Obsidian vault to import?
+7. If Obsidian is connected, should ongoing sync be scheduled with cron, LaunchAgent, or n8n?
+8. Do you want optional semantic search and embedding workflow dependencies?
+9. Do you want optional Supabase sync/read dependencies for remote or cross-host memory?
+10. If Supabase is selected, should I generate a simple setup guide, advanced RLS notes, or no guide?
+11. Do you want optional Headroom context compression for long logs, tool output, or large retrieved context?
+12. If Supabase is selected, should I generate remote reader templates for shell, n8n, Coze, or all?
+13. Do you want developer/benchmark dependencies for source work or release validation?
+14. If any optional feature is selected, should I install its Python dependencies now?
+15. If semantic is selected, should I download and configure a local ONNX embedding model now?
+16. If Supabase is selected, should I generate daily sync templates for cron, LaunchAgent, or n8n?
+17. Should user profile/persona memory stay private by default, with only reviewed summaries shared?
+18. Should Profile / Dream / Forgetting memory-agent guidance be generated?
 
 Keep MCP defaulting to yes for MCP-capable runtimes. Keep semantic, Supabase,
 Headroom, and dev dependencies defaulting to no unless the user confirms.
@@ -67,7 +68,7 @@ used by scheduled jobs.
 Use the PyPI release unless the user explicitly asks for source development:
 
 ```bash
-python -m pip install "vault-for-llm[mcp]==0.6.38"
+python -m pip install "vault-for-llm[mcp]==0.6.39"
 vault setup-agent
 ```
 

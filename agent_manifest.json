@@ -49,6 +49,7 @@
   },
   "common_install_architecture": [
     "choose projectDir",
+    "for long-lived agent installs, keep both vault.db and any Python virtualenv in stable paths; do not use /tmp except for temporary tests",
     "ask setup language for manual CLI installs; non-interactive agents can pass --language",
     "ask whether local stdio MCP should be configured",
     "ask whether optional semantic search and embedding dependencies should be enabled",
@@ -70,11 +71,11 @@
     "ask whether to schedule automatic Obsidian sync",
     "verify search/read/propose"
   ],
-  "agent_install_prompt": "Install Vault-for-LLM for this project. Read AGENTS.md and agent_manifest.json, ask whether the vault should be shared or private, ask setup language for manual CLI installs, ask separately about MCP, semantic search, Supabase sync, Supabase remote reader templates for shell/n8n/Coze, multi-agent roster/access matrix, live validation checklists, Headroom context compression, Profile / Dream / Forgetting memory-agent guidance, and dev/benchmark dependencies, ask whether user profile/persona memory should stay private by default with only reviewed summaries shared, install selected optional dependencies when confirmed, ask whether semantic should download a local ONNX embedding model, ask whether an existing Obsidian vault should be imported, configure CLI/MCP, run the first Obsidian dry-run/import if requested, ask whether automatic sync should be scheduled, and run a search/read/propose smoke test.",
+  "agent_install_prompt": "Install Vault-for-LLM for this project. Read AGENTS.md and agent_manifest.json, ask whether the vault should be shared or private, ask for a stable project directory, ask whether any Python virtualenv you create or move should live in a stable path such as ~/.hermes/venvs/vault-for-llm/ instead of /tmp, ask setup language for manual CLI installs, ask separately about MCP, semantic search, Supabase sync, Supabase remote reader templates for shell/n8n/Coze, multi-agent roster/access matrix, live validation checklists, Headroom context compression, Profile / Dream / Forgetting memory-agent guidance, and dev/benchmark dependencies, ask whether user profile/persona memory should stay private by default with only reviewed summaries shared, install selected optional dependencies when confirmed, ask whether semantic should download a local ONNX embedding model, ask whether an existing Obsidian vault should be imported, configure CLI/MCP, run the first Obsidian dry-run/import if requested, ask whether automatic sync should be scheduled, and run a search/read/propose smoke test.",
   "agent_setup_wizard": {
     "cli": "vault setup-agent",
     "alias": "vault install-agent",
-    "install_command": "python -m pip install \"vault-for-llm[mcp]==0.6.38\"",
+    "install_command": "python -m pip install \"vault-for-llm[mcp]==0.6.39\"",
     "non_interactive_example": "vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir /path/to/project --features core,mcp,obsidian_import --obsidian-vault /path/to/ObsidianVault --import-obsidian --obsidian-sync all",
     "non_interactive_with_optional_deps": "vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir /path/to/project --features core,mcp,semantic,supabase,headroom --language en --install-optional-deps --install-embedding-model mix --supabase-setup simple --supabase-sync cron --remote-reader all --agent-roster profile-agent:profile,work-agent:work,remote-agent:remote,n8n:automation --validation-pack all --json",
     "sync_templates": ["cron", "launchagent", "n8n"]
@@ -86,7 +87,7 @@
       "prompt": "Install the core local Markdown + SQLite + keyword search workflow?",
       "when_to_install": "Always. This is the minimal local-first Vault workflow.",
       "install_commands": [
-        "python -m pip install vault-for-llm==0.6.38"
+        "python -m pip install vault-for-llm==0.6.39"
       ],
       "post_install": [
         "vault init --project-dir /path/to/project",
@@ -100,7 +101,7 @@
       "prompt": "Configure local stdio MCP tools for this agent?",
       "when_to_install": "Use when the runtime supports MCP, such as Hermes Agent, Codex surfaces with MCP, OpenCode, Claude Code, OpenClaw generic MCP, or other MCP hosts.",
       "install_commands": [
-        "python -m pip install \"vault-for-llm[mcp]==0.6.38\""
+        "python -m pip install \"vault-for-llm[mcp]==0.6.39\""
       ],
       "post_install": [
         "vault-mcp --project-dir /path/to/project --tool-profile core"

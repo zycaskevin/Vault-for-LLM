@@ -275,7 +275,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.38" in captured.out
+    assert "vault-for-llm 0.6.39" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):

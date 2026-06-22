@@ -122,8 +122,9 @@ def _parse_capabilities(caps_str) -> list:
 
 def _nonempty_content_hash(existing_hash, *parts) -> str:
     """Return a deterministic non-empty hash for Supabase NOT NULL schemas."""
-    if existing_hash:
-        return str(existing_hash)
+    cleaned_hash = str(existing_hash or "").strip()
+    if cleaned_hash:
+        return cleaned_hash
     text = "\n".join(str(part or "") for part in parts)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 

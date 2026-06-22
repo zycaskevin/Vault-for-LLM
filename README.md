@@ -148,8 +148,8 @@ everything by default:
 
 | Feature | Default | Install command | Ask when |
 |---|---|---|---|
-| `core` | yes | `python -m pip install vault-for-llm==0.6.35` | Always: local Markdown, SQLite, keyword search. |
-| `mcp` | yes for MCP-capable agents | `python -m pip install "vault-for-llm[mcp]==0.6.35"` | The runtime can connect local stdio MCP tools. |
+| `core` | yes | `python -m pip install vault-for-llm==0.6.36` | Always: local Markdown, SQLite, keyword search. |
+| `mcp` | yes for MCP-capable agents | `python -m pip install "vault-for-llm[mcp]==0.6.36"` | The runtime can connect local stdio MCP tools. |
 | `obsidian_import` | no | built into core CLI | The user already has an Obsidian vault and wants agents to search those notes through Vault. |
 | `semantic` | no | `python -m pip install "vault-for-llm[semantic]"` | The user wants embedding-backed semantic/hybrid search. |
 | `supabase` | no | `python -m pip install "vault-for-llm[supabase]"` | The user wants optional remote sync/read paths. |
@@ -175,6 +175,7 @@ vault setup-agent \
   --install-embedding-model mix \
   --supabase-setup simple \
   --supabase-sync cron \
+  --remote-reader all \
   --json
 ```
 
@@ -230,7 +231,7 @@ required dependency for local use.
 
 ## Current Source Status
 
-The current source tree is `0.6.35`. Core local search is stable, while
+The current source tree is `0.6.36`. Core local search is stable, while
 advanced semantic, rerank, sync, and benchmarking workflows remain optional.
 See [CHANGELOG.md](CHANGELOG.md) for release details.
 
@@ -331,12 +332,12 @@ In story form: the agent writes a note, the front desk checks whether it is safe
 
 ### Install from PyPI
 
-Vault-for-LLM `0.6.35` is published on PyPI.
+Vault-for-LLM `0.6.36` is published on PyPI.
 
 For agent-driven installation, paste this into Hermes Agent, Codex, OpenCode, Claude Code, OpenClaw, or another agent that can run local commands:
 
 ```text
-Install Vault-for-LLM for this project. Use PyPI package vault-for-llm[mcp]==0.6.35.
+Install Vault-for-LLM for this project. Use PyPI package vault-for-llm[mcp]==0.6.36.
 Ask whether the vault database should be shared, private, domain-specific, or temporary.
 Ask separately about MCP, semantic search, Supabase sync, Headroom context compression,
 and dev/benchmark dependencies. If optional features are selected, ask whether to
@@ -351,7 +352,7 @@ Manual install:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.35"
+pip install "vault-for-llm[mcp]==0.6.36"
 
 vault setup-agent
 ```
@@ -567,7 +568,7 @@ vault setup-agent \
   --obsidian-sync all
 ```
 
-The wizard asks for database scope, project directory, setup language, MCP, semantic search, Supabase sync, Headroom context compression, developer/benchmark dependencies, whether to install selected optional dependencies now, an existing Obsidian vault path, whether to run the first import, and whether to generate cron, LaunchAgent, or n8n sync templates. Semantic, Supabase, Headroom, and dev dependencies default to off. If semantic is selected and dependency installation is confirmed, the wizard can also download and configure a local ONNX embedding model. `headroom` is an advanced optional feature for context compression; it is not required for Vault memory governance and should stay off unless the user has long logs, large tool output, or token pressure.
+The wizard asks for database scope, project directory, setup language, MCP, semantic search, Supabase sync, Supabase remote reader templates for shell/n8n/Coze, Headroom context compression, developer/benchmark dependencies, whether to install selected optional dependencies now, an existing Obsidian vault path, whether to run the first import, and whether to generate cron, LaunchAgent, or n8n sync templates. Semantic, Supabase, Headroom, and dev dependencies default to off. If semantic is selected and dependency installation is confirmed, the wizard can also download and configure a local ONNX embedding model. `headroom` is an advanced optional feature for context compression; it is not required for Vault memory governance and should stay off unless the user has long logs, large tool output, or token pressure.
 
 ### Obsidian export
 
@@ -688,11 +689,12 @@ pip install supabase
 python -m scripts.sync_to_supabase --db /path/to/project/vault.db --document-map --health
 
 # after applying docs/supabase_read_policy.sql, hosted readers can use CLI remote reads
+vault remote smoke --agent-id coco --query "deployment SOP" --json
 vault remote search "deployment SOP" --agent-id coco --json
 vault remote map 12 --compact --json
 vault remote read 12 --node-uid node_install --json
 
-# or let setup-agent generate daily cron, LaunchAgent, or n8n templates
+# or let setup-agent generate daily sync plus shell/n8n/Coze remote-reader templates
 vault setup-agent \
   --non-interactive \
   --agent nancy \
@@ -703,6 +705,7 @@ vault setup-agent \
   --install-optional-deps \
   --supabase-setup simple \
   --supabase-sync cron \
+  --remote-reader all \
   --json
 ```
 

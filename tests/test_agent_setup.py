@@ -98,6 +98,45 @@ def test_run_agent_setup_writes_supabase_sync_templates(tmp_path):
     assert "scripts.sync_to_supabase" in workflow["nodes"][1]["parameters"]["command"]
 
 
+def test_run_agent_setup_writes_remote_reader_templates(tmp_path):
+    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+
+    project = tmp_path / "agent-project"
+    result = run_agent_setup(
+        AgentSetupConfig(
+            project_dir=project,
+            scope="shared",
+            agent="coco",
+            features=["core", "mcp", "supabase"],
+            supabase_setup_mode="advanced",
+            remote_reader_targets="all",
+            remote_reader_query="pricing SOP",
+            template_dir=tmp_path / "templates",
+        )
+    )
+
+    templates = result["remote_reader_templates"]
+    assert {"shell", "n8n", "coze", "env_example", "readme"}.issubset(templates)
+
+    shell = (tmp_path / "templates" / "remote-reader-smoke.sh").read_text(encoding="utf-8")
+    workflow = json.loads((tmp_path / "templates" / "n8n-remote-reader.workflow.json").read_text(encoding="utf-8"))
+    coze = json.loads((tmp_path / "templates" / "coze-supabase-vault-openapi.json").read_text(encoding="utf-8"))
+    env_example = (tmp_path / "templates" / "remote-reader.env.example").read_text(encoding="utf-8")
+    readme = (tmp_path / "templates" / "README-remote-reader.md").read_text(encoding="utf-8")
+
+    assert "vault remote smoke" in shell
+    assert "--agent-id coco" in shell
+    assert "pricing SOP" in shell
+    assert workflow["nodes"][1]["name"] == "Vault Remote Search"
+    assert "vault remote search" in workflow["nodes"][1]["parameters"]["command"]
+    assert coze["paths"]["/rpc/vault_search_readable"]["post"]["operationId"] == "vaultRemoteSearch"
+    assert coze["components"]["securitySchemes"]["SupabaseApiKey"]["name"] == "apikey"
+    assert "SUPABASE_ANON_KEY" in env_example
+    assert "SUPABASE_SERVICE_ROLE_KEY=" not in env_example
+    assert "vault remote search -> vault remote map -> vault remote read" in readme
+    assert any("remote reader smoke" in step for step in result["next_steps"])
+
+
 def test_setup_agent_cli_non_interactive(tmp_path, capsys):
     from vault.cli import main
 
@@ -177,6 +216,7 @@ def test_setup_agent_help_exposes_supabase_sync_options(capsys):
     assert "--supabase-sync" in captured.out
     assert "--supabase-setup" in captured.out
     assert "--supabase-sync-interval-minutes" in captured.out
+    assert "--remote-reader" in captured.out
     assert "--language" in captured.out
 
 
@@ -341,6 +381,7 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
             "",  # Obsidian
             "simple",  # Supabase setup guide
             "none",  # Supabase sync templates
+            "n8n",  # remote reader templates
         ]
     )
     prompts: list[str] = []
@@ -365,6 +406,8 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
     assert any("optional Python dependencies" in prompt for prompt in prompts)
     assert any("local ONNX embedding model" in prompt for prompt in prompts)
     assert any("Daily Supabase sync templates" in prompt for prompt in prompts)
+    assert any("Remote reader templates" in prompt for prompt in prompts)
+    assert config.remote_reader_targets == "n8n"
 
 
 def test_run_agent_setup_can_skip_supabase_setup_guide(tmp_path):

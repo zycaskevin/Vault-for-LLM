@@ -249,6 +249,28 @@ class TestRemoteCli:
         assert read_payload["citation"] == "#7 Remote Entry L2-L2"
         assert read_payload["source"] == "remote_claims"
 
+    def test_remote_smoke_json(self, monkeypatch, capsys):
+        from vault.cli import main
+        from vault import mcp
+
+        monkeypatch.setattr(mcp, "_get_supabase_client", lambda: _RemoteClient())
+
+        main([
+            "remote",
+            "smoke",
+            "--agent-id",
+            "coco",
+            "--query",
+            "Safe",
+            "--json",
+        ])
+
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["ok"] is True
+        assert payload["check"] == "vault_search_readable"
+        assert payload["search"]["count"] == 1
+        assert payload["search"]["results"][0]["next_action"]["tool"] == "vault_remote_map_show"
+
 
 class TestJsonPrint:
     def test_json_print_basic(self, capsys):

@@ -1358,8 +1358,28 @@ def cmd_remote(args):
             line_end=line_end,
             max_lines=args.max_lines,
         )
+    elif action == "smoke":
+        search_payload = _vault_remote_search_payload(
+            query=args.query or "",
+            agent_id=args.agent_id or "",
+            include_private=bool(args.include_private),
+            max_sensitivity=args.max_sensitivity or "medium",
+            limit=args.limit,
+            compact=True,
+        )
+        payload = {
+            "ok": not bool(search_payload.get("error")),
+            "check": "vault_search_readable",
+            "agent_id": args.agent_id or "",
+            "query": args.query or "",
+            "search": search_payload,
+        }
+        if not payload["ok"]:
+            payload["next_action"] = search_payload.get("next_action") or {
+                "message": "Set SUPABASE_URL and SUPABASE_ANON_KEY, apply docs/supabase_read_policy.sql, then retry."
+            }
     else:
-        print("用法: vault remote {search|map|read}")
+        print("用法: vault remote {search|map|read|smoke}")
         return
 
     if args.json or args.pretty:
@@ -1383,6 +1403,16 @@ def cmd_remote(args):
             if next_action:
                 print(f"    next: {next_action.get('tool')} {json.dumps(next_action.get('arguments', {}), ensure_ascii=False)}")
         return
+
+    if action == "smoke":
+        if payload.get("ok"):
+            count = payload.get("search", {}).get("count", 0)
+            print(f"remote smoke: ok ({count} readable result(s))")
+            return
+        error = payload.get("search", {}).get("error", "unknown")
+        message = payload.get("search", {}).get("message", "")
+        print(f"remote smoke: failed ({error}) {message}", file=sys.stderr)
+        raise SystemExit(2)
 
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
@@ -2115,6 +2145,8 @@ def cmd_setup_agent(args):
             supabase_sync_targets=args.supabase_sync,
             supabase_setup_mode=args.supabase_setup or "simple",
             supabase_sync_interval_minutes=args.supabase_sync_interval_minutes,
+            remote_reader_targets=args.remote_reader,
+            remote_reader_query=args.remote_reader_query,
             template_dir=Path(args.template_dir).expanduser() if args.template_dir else None,
             allow_private=bool(args.allow_private),
         )
@@ -2130,7 +2162,7 @@ def cmd_setup_agent(args):
             "install_embedding_model": args.install_embedding_model,
             "obsidian_vault": args.obsidian_vault,
             "supabase_setup_mode": args.supabase_setup,
-            "supabase_sync_targets": args.supabase_sync,
+            "remote_reader_query": args.remote_reader_query,
             "sync_interval_minutes": args.sync_interval_minutes,
             "supabase_sync_interval_minutes": args.supabase_sync_interval_minutes,
             "template_dir": args.template_dir,
@@ -2140,6 +2172,10 @@ def cmd_setup_agent(args):
             setup_values["import_obsidian"] = True
         if args.obsidian_sync != "none":
             setup_values["sync_targets"] = args.obsidian_sync
+        if args.supabase_sync != "none":
+            setup_values["supabase_sync_targets"] = args.supabase_sync
+        if args.remote_reader != "none":
+            setup_values["remote_reader_targets"] = args.remote_reader
         config = interactive_setup(setup_values)
 
     payload = run_agent_setup(config)
@@ -2347,6 +2383,10 @@ def main(argv: list[str] | None = None):
                         default=None, help="產生 Supabase 連線導覽文件；非互動模式預設 simple")
         ap.add_argument("--supabase-sync-interval-minutes", type=int, default=1440,
                         help="Supabase sync LaunchAgent/n8n 排程間隔分鐘數（預設每日）")
+        ap.add_argument("--remote-reader", choices=["none", "shell", "n8n", "coze", "all"],
+                        default="none", help="產生 Supabase remote reader 範本給 shell/n8n/Coze")
+        ap.add_argument("--remote-reader-query", default="deployment SOP",
+                        help="remote reader smoke/template 使用的示範查詢")
         ap.add_argument("--template-dir", help="同步模板輸出目錄；預設 project/agent-install")
         ap.add_argument("--allow-private", action="store_true",
                         help="允許 Obsidian 匯入含 secret-like pattern 的本機私人資料")
@@ -2473,6 +2513,14 @@ def main(argv: list[str] | None = None):
     rp.add_argument("--node-uid", default="", help="Document Map node_uid；可單獨指定")
     rp.add_argument("--lines", help="行號範圍，例如 1-40")
     rp.add_argument("--max-lines", type=_positive_int, default=80, help="最大讀取行數")
+    add_remote_output_args(rp)
+
+    rp = remote_sub.add_parser("smoke", help="檢查 Supabase remote reader RPC 是否可用")
+    rp.add_argument("--query", default="deployment SOP", help="測試查詢文字")
+    rp.add_argument("--agent-id", default="", help="Agent 身份，用於 owner/allowed_agents 過濾")
+    rp.add_argument("--include-private", action="store_true", help="允許讀取此 agent 被授權的 private 記憶")
+    rp.add_argument("--max-sensitivity", choices=["low", "medium", "high", "restricted"], default="medium")
+    rp.add_argument("--limit", "-n", type=_positive_int, default=3)
     add_remote_output_args(rp)
 
     # skill — 本機跨 Agent 技能登錄（實驗性）

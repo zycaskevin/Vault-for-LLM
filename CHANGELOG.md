@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## [0.6.36] - 2026-06-22
+
+### Added
+
+- Added `vault remote smoke` to verify Supabase remote reader credentials and the `vault_search_readable` RPC before wiring hosted agents.
+- Added `vault setup-agent --remote-reader shell|n8n|coze|all` to generate shell, n8n, and Coze remote reader templates.
+- Added remote reader installer artifacts: `README-remote-reader.md`, `remote-reader-smoke.sh`, `n8n-remote-reader.workflow.json`, `coze-supabase-vault-openapi.json`, and `remote-reader.env.example`.
+- Documented the productized multi-agent setup path across README variants, agent install runbook, integration guide, Supabase setup, CLI reference, memory governance, and `agent_manifest.json`.
+
 ## [0.6.35] - 2026-06-22
 
 ### Added

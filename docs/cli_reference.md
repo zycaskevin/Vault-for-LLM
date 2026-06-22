@@ -15,6 +15,7 @@ with the daily loop in the README and only use these commands when needed.
 | `vault compile` | Compile `raw/` into SQLite and generated artifacts |
 | `vault search "query"` | Search the vault |
 | `vault map read <id> --lines 10-30` | Read a bounded source range for citation |
+| `vault remote smoke --agent-id coco --query "deployment SOP" --json` | Verify Supabase remote reader credentials and the `vault_search_readable` RPC |
 | `vault remote search "query" --agent-id coco --json` | Search the Supabase read-only memory view through `vault_search_readable` |
 | `vault remote map <id> --compact --json` | Inspect remote synced Document Map rows |
 | `vault remote read <id> --node-uid <node> --json` | Read remote bounded evidence from synced content/claims |
@@ -47,7 +48,7 @@ changed notes without duplicating unchanged ones.
 | `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,obsidian_import` | Agent-friendly scripted install |
 | `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,semantic,supabase,headroom --language en --install-optional-deps --install-embedding-model mix --supabase-setup simple --json` | Install selected optional dependencies and configure a local semantic model |
 | `vault setup-agent --non-interactive --agent nancy --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,memory_agents --language zh-Hant --json` | Generate Profile / Dream / Forgetting agent guidance with report-only and candidate-only defaults |
-| `vault setup-agent --non-interactive --agent nancy --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase --language zh-Hant --install-optional-deps --supabase-setup simple --supabase-sync cron --json` | Generate guided Supabase setup plus daily sync templates |
+| `vault setup-agent --non-interactive --agent nancy --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase --language zh-Hant --install-optional-deps --supabase-setup simple --supabase-sync cron --remote-reader all --json` | Generate guided Supabase setup, daily sync templates, and shell/n8n/Coze remote reader templates |
 | `vault setup-agent --obsidian-vault ~/Documents/ObsidianVault --import-obsidian --obsidian-sync all` | Run first Obsidian import and write cron, LaunchAgent, and n8n templates |
 
 `vault install-agent` is an alias for `vault setup-agent`.
@@ -58,6 +59,9 @@ Memory-agent guidance is opt-in with `--features memory_agents`; it writes
 `README-memory-agents.md` and does not install a model or auto-promote memory.
 Supabase sync templates are opt-in with `--supabase-sync cron|launchagent|n8n|all`
 and use `python -m scripts.sync_to_supabase --db <project>/vault.db`.
+Supabase remote reader templates are opt-in with
+`--remote-reader shell|n8n|coze|all`; validate credentials with
+`vault remote smoke --agent-id <agent> --json`.
 Manual interactive setup asks for `en`, `zh-Hant`, or `zh-CN`; non-interactive
 agent installs can pass `--language`. Supabase setup guide generation is opt-in
 with `--supabase-setup none|simple|advanced`; keep `simple` as the default path

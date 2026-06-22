@@ -141,6 +141,7 @@ vault setup-agent \
   --install-optional-deps \
   --supabase-setup simple \
   --supabase-sync cron \
+  --remote-reader all \
   --json
 ```
 
@@ -159,6 +160,18 @@ vault setup-agent \
 ```
 
 Manual interactive installs ask for the setup language. Agent/non-interactive installs should pass `--language` or use the default English output.
+
+`--remote-reader shell|n8n|coze|all` generates a reader package under
+`agent-install/` after Supabase is selected. Use it when Coze, n8n, or an agent
+on another host needs read-only access to reviewed memory summaries.
+
+After applying `docs/supabase_read_policy.sql`, verify the remote reader path:
+
+```bash
+export SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+export SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+vault remote smoke --agent-id coco --query "deployment SOP" --json
+```
 
 ## Advanced RLS
 

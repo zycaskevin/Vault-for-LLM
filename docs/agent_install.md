@@ -10,7 +10,7 @@ install path below keeps Vault local-first and governed.
 ## One-Sentence Prompt
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.35, ask which database scope I want, ask for setup language when this is a manual CLI install, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, Profile / Dream / Forgetting memory-agent guidance, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.36, ask which database scope I want, ask for setup language when this is a manual CLI install, ask separately about MCP, semantic search, Supabase sync, Supabase remote reader templates for shell/n8n/Coze, Headroom context compression, Profile / Dream / Forgetting memory-agent guidance, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
 ```
 
 ## What To Ask First
@@ -27,12 +27,13 @@ Ask these before installing extras or writing memory:
 8. Do you want optional Supabase sync/read dependencies for remote or cross-host memory?
 9. If Supabase is selected, should I generate a simple setup guide, advanced RLS notes, or no guide?
 10. Do you want optional Headroom context compression for long logs, tool output, or large retrieved context?
-11. Do you want developer/benchmark dependencies for source work or release validation?
-12. If any optional feature is selected, should I install its Python dependencies now?
-13. If semantic is selected, should I download and configure a local ONNX embedding model now?
-14. If Supabase is selected, should I generate daily sync templates for cron, LaunchAgent, or n8n?
-15. Should user profile/persona memory stay private by default, with only reviewed summaries shared?
-16. Should Profile / Dream / Forgetting memory-agent guidance be generated?
+11. If Supabase is selected, should I generate remote reader templates for shell, n8n, Coze, or all?
+12. Do you want developer/benchmark dependencies for source work or release validation?
+13. If any optional feature is selected, should I install its Python dependencies now?
+14. If semantic is selected, should I download and configure a local ONNX embedding model now?
+15. If Supabase is selected, should I generate daily sync templates for cron, LaunchAgent, or n8n?
+16. Should user profile/persona memory stay private by default, with only reviewed summaries shared?
+17. Should Profile / Dream / Forgetting memory-agent guidance be generated?
 
 Keep MCP defaulting to yes for MCP-capable runtimes. Keep semantic, Supabase,
 Headroom, and dev dependencies defaulting to no unless the user confirms.
@@ -66,7 +67,7 @@ used by scheduled jobs.
 Use the PyPI release unless the user explicitly asks for source development:
 
 ```bash
-python -m pip install "vault-for-llm[mcp]==0.6.35"
+python -m pip install "vault-for-llm[mcp]==0.6.36"
 vault setup-agent
 ```
 
@@ -99,6 +100,7 @@ vault setup-agent \
   --install-optional-deps \
   --install-embedding-model mix \
   --supabase-setup simple \
+  --remote-reader all \
   --json
 ```
 
@@ -115,12 +117,19 @@ vault setup-agent \
   --install-optional-deps \
   --supabase-setup simple \
   --supabase-sync cron \
+  --remote-reader all \
   --json
 ```
 
 Use simple Supabase setup by default. Only choose `--supabase-setup advanced`
 when the user explicitly asks for multi-agent RLS, Coze/n8n read-only access, or
 sensitivity-based sharing.
+
+When remote readers are needed, use `--remote-reader shell|n8n|coze|all`. This
+writes `agent-install/README-remote-reader.md`, a shell smoke script, a n8n
+workflow, a Coze OpenAPI connector template, and an env example. Remote readers
+must use `SUPABASE_ANON_KEY` or an authenticated read token, not
+`SUPABASE_SERVICE_ROLE_KEY`.
 
 To generate Profile / Dream / Forgetting agent guidance:
 

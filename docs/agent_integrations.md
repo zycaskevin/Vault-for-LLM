@@ -85,6 +85,7 @@ export SUPABASE_SERVICE_ROLE_KEY=...
 python -m scripts.sync_to_supabase --db /path/to/project/vault.db --document-map --health
 
 # after applying docs/supabase_read_policy.sql, non-MCP automation can read remotely
+vault remote smoke --agent-id coco --query "deployment SOP" --json
 vault remote search "deployment SOP" --agent-id coco --json
 vault remote map 12 --compact --json
 vault remote read 12 --node-uid node_install --json
@@ -97,8 +98,20 @@ vault setup-agent \
   --features core,mcp,supabase \
   --install-optional-deps \
   --supabase-sync cron \
+  --remote-reader all \
   --json
 ```
+
+`--remote-reader all` writes:
+
+- `README-remote-reader.md` for the reader workflow and safety notes.
+- `remote-reader-smoke.sh` for a local shell smoke test.
+- `n8n-remote-reader.workflow.json` for workflow automation.
+- `coze-supabase-vault-openapi.json` for a Coze/OpenAPI connector to the Supabase RPC.
+- `remote-reader.env.example` with anon-key placeholders only.
+
+Remote readers should use `SUPABASE_ANON_KEY` or a scoped authenticated token.
+Keep `SUPABASE_SERVICE_ROLE_KEY` only on trusted sync hosts.
 
 Supabase is a sync/read target, not the source of truth. Ask again before using
 `--include-content`.
@@ -229,6 +242,7 @@ vault search "refund policy source of truth" --limit 5
 vault remember "Candidate: new support rule" --content "..." --reason "..."
 vault db backup --verify
 vault search-qa run --qa-file qa.json --output /tmp/searchqa.json
+vault remote smoke --agent-id n8n --query "refund policy" --json
 ```
 
 For long-running services, wrap the CLI or MCP server behind a small internal

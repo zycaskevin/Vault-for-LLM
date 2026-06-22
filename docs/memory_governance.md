@@ -135,6 +135,25 @@ For Hermes Agent, OpenClaw, Codex, Claude Code, n8n, Coze, or other runtimes:
 - Treat `status: candidate` as not active memory; use `vault candidates` to
   review the queue, then promote before shared use.
 
+Recommended product setup:
+
+```bash
+vault setup-agent \
+  --non-interactive \
+  --agent nancy \
+  --scope shared \
+  --agent-project-dir ~/Vaults/project-memory \
+  --features core,mcp,supabase,memory_agents \
+  --supabase-setup advanced \
+  --supabase-sync cron \
+  --remote-reader all \
+  --json
+```
+
+This keeps local SQLite as the source of truth, creates Supabase guidance for a
+reviewed remote read layer, generates shell/n8n/Coze reader templates, and writes
+Profile / Dream / Forgetting guidance without exposing raw private conversations.
+
 ## Supabase and RLS
 
 Supabase RLS can enforce shared-memory boundaries, but RLS should use columns

@@ -31,6 +31,7 @@ VALID_FEATURES = {
     "dev",
 }
 VALID_SYNC_TARGETS = {"none", "cron", "launchagent", "n8n", "all"}
+VALID_REMOTE_READER_TARGETS = {"none", "shell", "n8n", "coze", "all"}
 VALID_SUPABASE_SETUP_MODES = {"none", "simple", "advanced"}
 VALID_SETUP_LANGUAGES = {"en", "zh-Hant", "zh-CN"}
 PYPI_EXTRA_FEATURES = {"mcp", "semantic", "supabase", "dev"}
@@ -352,6 +353,121 @@ def render_n8n_workflow(*, command: list[str], interval_minutes: int = 15) -> st
     return json.dumps(workflow, ensure_ascii=False, indent=2) + "\n"
 
 
+def render_n8n_remote_reader_workflow(
+    *,
+    agent_id: str,
+    query: str = "deployment SOP",
+    vault_executable: str = "vault",
+) -> str:
+    command = [
+        vault_executable,
+        "remote",
+        "search",
+        query,
+        "--agent-id",
+        agent_id,
+        "--json",
+    ]
+    workflow = {
+        "name": "Vault-for-LLM Remote Reader",
+        "nodes": [
+            {
+                "parameters": {},
+                "id": "manual-trigger",
+                "name": "Manual trigger",
+                "type": "n8n-nodes-base.manualTrigger",
+                "typeVersion": 1,
+                "position": [0, 0],
+            },
+            {
+                "parameters": {"command": shell_join(command)},
+                "id": "vault-remote-search",
+                "name": "Vault Remote Search",
+                "type": "n8n-nodes-base.executeCommand",
+                "typeVersion": 1,
+                "position": [260, 0],
+            },
+        ],
+        "connections": {
+            "Manual trigger": {"main": [[{"node": "Vault Remote Search", "type": "main", "index": 0}]]}
+        },
+        "active": False,
+        "settings": {"executionOrder": "v1"},
+    }
+    return json.dumps(workflow, ensure_ascii=False, indent=2) + "\n"
+
+
+def render_coze_supabase_openapi_template(*, agent_id: str) -> str:
+    spec = {
+        "openapi": "3.1.0",
+        "info": {
+            "title": "Vault-for-LLM Supabase Remote Reader",
+            "version": __version__,
+            "description": "Read safe Vault-for-LLM memory summaries through the Supabase vault_search_readable RPC.",
+        },
+        "servers": [
+            {
+                "url": "https://YOUR_PROJECT.supabase.co/rest/v1",
+                "description": "Replace with your Supabase Project URL plus /rest/v1.",
+            }
+        ],
+        "paths": {
+            "/rpc/vault_search_readable": {
+                "post": {
+                    "operationId": "vaultRemoteSearch",
+                    "summary": "Search reviewed Vault-for-LLM remote memory summaries",
+                    "description": "Use an anon/authenticated key. Do not expose SUPABASE_SERVICE_ROLE_KEY to Coze or browser clients.",
+                    "security": [{"SupabaseApiKey": []}, {"SupabaseBearer": []}],
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "p_agent_id": {"type": "string", "default": agent_id},
+                                        "p_query": {"type": "string", "default": "deployment SOP"},
+                                        "p_include_private": {"type": "boolean", "default": False},
+                                        "p_max_sensitivity": {
+                                            "type": "string",
+                                            "enum": ["low", "medium", "high", "restricted"],
+                                            "default": "medium",
+                                        },
+                                        "p_limit": {"type": "integer", "default": 10, "minimum": 1, "maximum": 50},
+                                    },
+                                    "required": ["p_agent_id", "p_query"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Safe metadata and summary rows. This RPC intentionally does not return content_raw.",
+                            "content": {"application/json": {"schema": {"type": "array", "items": {"type": "object"}}}},
+                        }
+                    },
+                }
+            }
+        },
+        "components": {
+            "securitySchemes": {
+                "SupabaseApiKey": {
+                    "type": "apiKey",
+                    "in": "header",
+                    "name": "apikey",
+                    "description": "Use SUPABASE_ANON_KEY or an authenticated user token.",
+                },
+                "SupabaseBearer": {
+                    "type": "http",
+                    "scheme": "bearer",
+                    "description": "Use the same anon/authenticated token as a Bearer token.",
+                },
+            }
+        },
+    }
+    return json.dumps(spec, ensure_ascii=False, indent=2) + "\n"
+
+
 def supabase_sync_command(
     *,
     project_dir: str | Path,
@@ -425,6 +541,140 @@ def write_supabase_sync_templates(
                 "",
                 "Review `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` before enabling any scheduled job.",
                 "The local SQLite database remains the source of truth.",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    written["readme"] = str(readme)
+    return written
+
+
+def _normalize_remote_reader_targets(raw: str | list[str] | None) -> set[str]:
+    if raw is None:
+        return set()
+    if isinstance(raw, str):
+        parts = [part.strip().lower() for part in raw.split(",") if part.strip()]
+    else:
+        parts = [str(part).strip().lower() for part in raw if str(part).strip()]
+    if not parts or "none" in parts:
+        return set()
+    unknown = [part for part in parts if part not in VALID_REMOTE_READER_TARGETS]
+    if unknown:
+        allowed = ", ".join(sorted(VALID_REMOTE_READER_TARGETS))
+        raise ValueError(f"unknown remote reader template target '{unknown[0]}' (expected one of: {allowed})")
+    if "all" in parts:
+        return {"shell", "n8n", "coze"}
+    return set(parts)
+
+
+def write_remote_reader_templates(
+    *,
+    output_dir: str | Path,
+    agent: str,
+    targets: str | list[str] = "all",
+    query: str = "deployment SOP",
+    vault_executable: str = "vault",
+) -> dict[str, str]:
+    out = Path(output_dir).expanduser().resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    selected = _normalize_remote_reader_targets(targets)
+    if not selected:
+        return {}
+
+    safe_agent = str(agent or "generic")
+    safe_query = str(query or "deployment SOP")
+    written: dict[str, str] = {}
+
+    if "shell" in selected:
+        path = out / "remote-reader-smoke.sh"
+        path.write_text(
+            "\n".join(
+                [
+                    "#!/usr/bin/env sh",
+                    "set -eu",
+                    ": \"${SUPABASE_URL:?Set SUPABASE_URL first}\"",
+                    ": \"${SUPABASE_ANON_KEY:?Set SUPABASE_ANON_KEY first}\"",
+                    shell_join(
+                        [
+                            vault_executable,
+                            "remote",
+                            "smoke",
+                            "--agent-id",
+                            safe_agent,
+                            "--query",
+                            safe_query,
+                        ]
+                    ),
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        written["shell"] = str(path)
+
+    if "n8n" in selected:
+        path = out / "n8n-remote-reader.workflow.json"
+        path.write_text(
+            render_n8n_remote_reader_workflow(
+                agent_id=safe_agent,
+                query=safe_query,
+                vault_executable=vault_executable,
+            ),
+            encoding="utf-8",
+        )
+        written["n8n"] = str(path)
+
+    if "coze" in selected:
+        path = out / "coze-supabase-vault-openapi.json"
+        path.write_text(render_coze_supabase_openapi_template(agent_id=safe_agent), encoding="utf-8")
+        written["coze"] = str(path)
+
+    env_path = out / "remote-reader.env.example"
+    env_path.write_text(
+        "\n".join(
+            [
+                "# Vault-for-LLM remote reader credentials",
+                "# Use an anon/authenticated key. Do not put SUPABASE_SERVICE_ROLE_KEY in hosted agents.",
+                "SUPABASE_URL=https://YOUR_PROJECT.supabase.co",
+                "SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY",
+                f"VAULT_AGENT_ID={safe_agent}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    written["env_example"] = str(env_path)
+
+    readme = out / "README-remote-reader.md"
+    readme.write_text(
+        "\n".join(
+            [
+                "# Vault-for-LLM Remote Reader Templates",
+                "",
+                "Use these templates after Supabase sync and `docs/supabase_read_policy.sql` are applied.",
+                "",
+                "Remote readers are for safe summaries and metadata. They should not receive the service role key.",
+                "",
+                "## Required credentials",
+                "",
+                "- `SUPABASE_URL`: Supabase Project URL",
+                "- `SUPABASE_ANON_KEY`: anon/authenticated key for read-only RPC access",
+                f"- Agent ID: `{safe_agent}`",
+                "",
+                "## Smoke test",
+                "",
+                f"```bash\nvault remote smoke --agent-id {shlex.quote(safe_agent)} --query {shlex.quote(safe_query)} --json\n```",
+                "",
+                "Expected result: `ok=true` and a `vault_search_readable` payload. If `ok=false`, follow the `next_action` message.",
+                "",
+                "## Reader flow",
+                "",
+                "```text",
+                "vault remote search -> vault remote map -> vault remote read",
+                "```",
+                "",
+                "Coze should call the Supabase RPC directly through the OpenAPI template. n8n can either run the CLI template or call the same RPC through HTTP nodes.",
                 "",
             ]
         ),
@@ -993,6 +1243,8 @@ class AgentSetupConfig:
     supabase_sync_targets: str | list[str] = "none"
     supabase_sync_interval_minutes: int = DEFAULT_SUPABASE_SYNC_INTERVAL_MINUTES
     supabase_setup_mode: str = "simple"
+    remote_reader_targets: str | list[str] = "none"
+    remote_reader_query: str = "deployment SOP"
     template_dir: Path | None = None
     allow_private: bool = False
 
@@ -1035,6 +1287,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         "sync_templates": {},
         "supabase_setup": {},
         "supabase_sync_templates": {},
+        "remote_reader_templates": {},
         "memory_agents": {},
         "next_steps": [
             f"vault search \"test query\" --project-dir {shlex.quote(str(project_path))} --limit 5",
@@ -1112,6 +1365,20 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
             targets=sorted(supabase_targets),
             interval_minutes=config.supabase_sync_interval_minutes,
         )
+
+    remote_reader_targets = _normalize_remote_reader_targets(config.remote_reader_targets)
+    if "supabase" in features and remote_reader_targets:
+        template_dir = config.template_dir or (project_path / "agent-install")
+        result["remote_reader_templates"] = write_remote_reader_templates(
+            output_dir=template_dir,
+            agent=config.agent,
+            targets=sorted(remote_reader_targets),
+            query=config.remote_reader_query,
+        )
+        if result["remote_reader_templates"]:
+            result["next_steps"].append(
+                f"Run remote reader smoke test: {result['remote_reader_templates'].get('shell') or 'vault remote smoke'}"
+            )
 
     return result
 
@@ -1236,6 +1503,7 @@ def optional_feature_next_steps(
             "Use Supabase only for cross-host/team/shared-memory sync; skip it when local vault.db is enough."
         )
         steps.append("configure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY before running sync scripts")
+        steps.append("use SUPABASE_ANON_KEY, not the service role key, for remote reader agents")
     if "headroom" in features:
         if not installed_deps:
             steps.append("python -m pip install headroom-ai")
@@ -1302,6 +1570,10 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
         supabase_setup_mode = _ask("Supabase setup guide (simple/advanced/none)", "simple")
     if "supabase" in features and not argv_config.get("supabase_sync_targets"):
         supabase_sync_targets = _ask("Daily Supabase sync templates (none/cron/launchagent/n8n/all)", "none")
+    remote_reader_targets = argv_config.get("remote_reader_targets", "none")
+    if "supabase" in features and not argv_config.get("remote_reader_targets"):
+        remote_reader_targets = _ask("Remote reader templates for n8n/Coze/shell (none/shell/n8n/coze/all)", "none")
+    remote_reader_query = str(argv_config.get("remote_reader_query") or "deployment SOP")
 
     return AgentSetupConfig(
         project_dir=Path(project_dir),
@@ -1322,6 +1594,8 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
             or DEFAULT_SUPABASE_SYNC_INTERVAL_MINUTES
         ),
         supabase_setup_mode=str(supabase_setup_mode or "simple"),
+        remote_reader_targets=remote_reader_targets,
+        remote_reader_query=remote_reader_query,
         template_dir=Path(argv_config["template_dir"]) if argv_config.get("template_dir") else None,
         allow_private=bool(argv_config.get("allow_private", False)),
     )

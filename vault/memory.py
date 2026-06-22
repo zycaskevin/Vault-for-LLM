@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .compiler import VaultCompiler, simple_aaak_compress, generate_summary
-from .db import VaultDB
+from .db import VaultDB, normalize_governance_metadata
 from .privacy import redact_secrets, scan_privacy
 
 _VALID_LAYERS = {"L0", "L1", "L2", "L3"}
@@ -71,6 +71,12 @@ def normalize_metadata(
     source: str = "memory",
     source_ref: str = "",
     reason: str = "",
+    scope: str = "project",
+    sensitivity: str = "low",
+    owner_agent: str = "",
+    allowed_agents: str | list[str] = "",
+    memory_type: str = "knowledge",
+    expires_at: str = "",
 ) -> dict:
     if isinstance(tags, list):
         tags_s = ",".join(str(t).strip() for t in tags if str(t).strip())
@@ -83,6 +89,14 @@ def normalize_metadata(
         trust_f = max(0.0, min(1.0, float(trust)))
     except (TypeError, ValueError):
         trust_f = 0.5
+    governance = normalize_governance_metadata(
+        scope=scope,
+        sensitivity=sensitivity,
+        owner_agent=owner_agent,
+        allowed_agents=allowed_agents,
+        memory_type=memory_type,
+        expires_at=expires_at,
+    )
     return {
         "title": normalize_title(title),
         "content": (content or "").strip(),
@@ -93,6 +107,7 @@ def normalize_metadata(
         "source": (source or "memory").strip() or "memory",
         "source_ref": (source_ref or "").strip(),
         "reason": (reason or "").strip(),
+        **governance,
     }
 
 
@@ -174,7 +189,18 @@ def _all_gates_pass(result: dict) -> bool:
 
 def create_candidate(db: VaultDB, **kwargs) -> dict:
     meta = normalize_metadata(**kwargs)
-    privacy = scan_privacy(f"{meta['title']}\n{meta['content']}\n{meta['source_ref']}\n{meta['reason']}")
+    privacy = scan_privacy(
+        "\n".join(
+            [
+                meta["title"],
+                meta["content"],
+                meta["source_ref"],
+                meta["reason"],
+                meta["owner_agent"],
+                meta["allowed_agents"],
+            ]
+        )
+    )
     duplicate = duplicate_gate(db, meta["title"], meta["content"])
     metadata = metadata_gate(meta)
     quality = quality_gate(meta)
@@ -244,7 +270,18 @@ def promote_candidate(db: VaultDB, candidate_id: str, *, confirm: bool = False, 
     if candidate["status"] == "rejected":
         return {"status": "blocked", "candidate_id": candidate_id, "knowledge_id": None, "candidate": candidate}
 
-    privacy = scan_privacy(f"{candidate['title']}\n{candidate['content']}\n{candidate['source_ref']}\n{candidate['reason']}")
+    privacy = scan_privacy(
+        "\n".join(
+            [
+                candidate["title"],
+                candidate["content"],
+                candidate["source_ref"],
+                candidate["reason"],
+                candidate.get("owner_agent", ""),
+                candidate.get("allowed_agents", ""),
+            ]
+        )
+    )
     duplicate = duplicate_gate(db, candidate["title"], candidate["content"], exclude_candidate_id=candidate_id)
     metadata = metadata_gate(candidate)
     quality = quality_gate(candidate)
@@ -264,6 +301,12 @@ def promote_candidate(db: VaultDB, candidate_id: str, *, confirm: bool = False, 
         "trust": candidate["trust"],
         "source": source_file,
         "memory_candidate_id": candidate_id,
+        "scope": candidate.get("scope", "project"),
+        "sensitivity": candidate.get("sensitivity", "low"),
+        "owner_agent": candidate.get("owner_agent", ""),
+        "allowed_agents": candidate.get("allowed_agents", "[]"),
+        "memory_type": candidate.get("memory_type", "knowledge"),
+        "expires_at": candidate.get("expires_at", ""),
     }
     raw_path.write_text(f"---\n{json.dumps(frontmatter, ensure_ascii=False, indent=2)}\n---\n\n{candidate['content']}\n", encoding="utf-8")
 
@@ -284,6 +327,12 @@ def promote_candidate(db: VaultDB, candidate_id: str, *, confirm: bool = False, 
             tags=candidate["tags"],
             trust=float(candidate["trust"]),
             source=source_file,
+            scope=candidate.get("scope", "project"),
+            sensitivity=candidate.get("sensitivity", "low"),
+            owner_agent=candidate.get("owner_agent", ""),
+            allowed_agents=candidate.get("allowed_agents", "[]"),
+            memory_type=candidate.get("memory_type", "knowledge"),
+            expires_at=candidate.get("expires_at", ""),
         )
         if build_map:
             VaultCompiler(root, db=db, embed_provider=None)._refresh_document_map(knowledge_id)

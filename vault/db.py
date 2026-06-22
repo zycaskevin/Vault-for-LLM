@@ -9,11 +9,12 @@ Vault-for-LLM — SQLite + sqlite-vec 資料庫抽象層。
 """
 
 import hashlib
+import json
 import sqlite3
 import sys
 from pathlib import Path
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Any
 
 # sqlite-vec 是可選依賴
 _VEC_AVAILABLE = False
@@ -24,10 +25,67 @@ except ImportError:
     pass
 
 
+_VALID_SCOPES = {"private", "project", "shared", "public"}
+_VALID_SENSITIVITIES = {"low", "medium", "high", "restricted"}
+
+
+def normalize_allowed_agents(value: Any = None) -> str:
+    """Return allowed agent names as a compact JSON array string."""
+    if value is None or value == "":
+        return "[]"
+    if isinstance(value, (list, tuple, set)):
+        items = [str(item).strip() for item in value if str(item).strip()]
+        return json.dumps(items, ensure_ascii=False)
+    text = str(value).strip()
+    if not text:
+        return "[]"
+    if text.startswith("["):
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, list):
+            items = [str(item).strip() for item in parsed if str(item).strip()]
+            return json.dumps(items, ensure_ascii=False)
+    items = [part.strip() for part in text.split(",") if part.strip()]
+    return json.dumps(items, ensure_ascii=False)
+
+
+def normalize_governance_metadata(
+    *,
+    scope: str = "project",
+    sensitivity: str = "low",
+    owner_agent: str = "",
+    allowed_agents: Any = None,
+    memory_type: str = "knowledge",
+    expires_at: str = "",
+) -> dict[str, str]:
+    """Normalize memory-governance fields shared by DB, CLI, MCP, and sync."""
+    norm_scope = str(scope or "project").strip().lower()
+    if norm_scope not in _VALID_SCOPES:
+        norm_scope = "project"
+    norm_sensitivity = str(sensitivity or "low").strip().lower()
+    if norm_sensitivity not in _VALID_SENSITIVITIES:
+        norm_sensitivity = "low"
+    norm_memory_type = str(memory_type or "knowledge").strip() or "knowledge"
+    if hasattr(expires_at, "isoformat"):
+        norm_expires_at = expires_at.isoformat()
+    else:
+        norm_expires_at = str(expires_at or "").strip()
+    return {
+        "scope": norm_scope,
+        "sensitivity": norm_sensitivity,
+        "owner_agent": str(owner_agent or "").strip(),
+        "allowed_agents": normalize_allowed_agents(allowed_agents),
+        "memory_type": norm_memory_type,
+        "expires_at": norm_expires_at,
+    }
+
+
 class VaultDB:
     """Vault-for-LLM 資料庫層。"""
 
-    SCHEMA_VERSION = 7
+    SCHEMA_VERSION = 8
     KNOWLEDGE_UPDATE_COLUMNS = {
         "title",
         "layer",
@@ -45,6 +103,12 @@ class VaultDB:
         "freshness",
         "summary",
         "summary_generated_at",
+        "scope",
+        "sensitivity",
+        "owner_agent",
+        "allowed_agents",
+        "memory_type",
+        "expires_at",
         "updated_at",
     }
     MEMORY_CANDIDATE_UPDATE_COLUMNS = {
@@ -64,6 +128,12 @@ class VaultDB:
         "quality_status",
         "gate_payload_json",
         "promoted_knowledge_id",
+        "scope",
+        "sensitivity",
+        "owner_agent",
+        "allowed_agents",
+        "memory_type",
+        "expires_at",
     }
     SKILL_UPDATE_COLUMNS = {
         "name",
@@ -87,6 +157,7 @@ class VaultDB:
         5: "document_map_semantic_tables",
         6: "memory_candidate_table",
         7: "memory_candidate_quality_status",
+        8: "governance_metadata_columns",
     }
 
     @staticmethod
@@ -177,7 +248,13 @@ class VaultDB:
                 convergence_score  REAL  DEFAULT NULL,
                 convergence_checked_at TEXT NOT NULL DEFAULT '',
                 last_verified       TEXT NOT NULL DEFAULT '',
-                freshness          REAL  NOT NULL DEFAULT 1.0
+                freshness          REAL  NOT NULL DEFAULT 1.0,
+                scope              TEXT NOT NULL DEFAULT 'project',
+                sensitivity        TEXT NOT NULL DEFAULT 'low',
+                owner_agent        TEXT NOT NULL DEFAULT '',
+                allowed_agents     TEXT NOT NULL DEFAULT '[]',
+                memory_type        TEXT NOT NULL DEFAULT 'knowledge',
+                expires_at         TEXT NOT NULL DEFAULT ''
             )
         """)
         self._ensure_table_columns(
@@ -194,11 +271,21 @@ class VaultDB:
                 "source": "TEXT NOT NULL DEFAULT ''",
                 "created_at": "TEXT NOT NULL DEFAULT ''",
                 "updated_at": "TEXT NOT NULL DEFAULT ''",
+                "scope": "TEXT NOT NULL DEFAULT 'project'",
+                "sensitivity": "TEXT NOT NULL DEFAULT 'low'",
+                "owner_agent": "TEXT NOT NULL DEFAULT ''",
+                "allowed_agents": "TEXT NOT NULL DEFAULT '[]'",
+                "memory_type": "TEXT NOT NULL DEFAULT 'knowledge'",
+                "expires_at": "TEXT NOT NULL DEFAULT ''",
             },
         )
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_layer ON knowledge(layer)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_category ON knowledge(category)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_trust ON knowledge(trust)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_scope ON knowledge(scope)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_sensitivity ON knowledge(sensitivity)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_owner_agent ON knowledge(owner_agent)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_memory_type ON knowledge(memory_type)")
 
         # ── Schema v3 migration：為現有資料庫加新欄位 ──
         existing_cols = {r[1] for r in c.execute("PRAGMA table_info(knowledge)").fetchall()}
@@ -358,6 +445,12 @@ class VaultDB:
                 quality_status TEXT NOT NULL DEFAULT 'pass',
                 gate_payload_json TEXT NOT NULL,
                 promoted_knowledge_id INTEGER,
+                scope TEXT NOT NULL DEFAULT 'project',
+                sensitivity TEXT NOT NULL DEFAULT 'low',
+                owner_agent TEXT NOT NULL DEFAULT '',
+                allowed_agents TEXT NOT NULL DEFAULT '[]',
+                memory_type TEXT NOT NULL DEFAULT 'knowledge',
+                expires_at TEXT NOT NULL DEFAULT '',
                 FOREIGN KEY (promoted_knowledge_id) REFERENCES knowledge(id)
             )
         """)
@@ -366,9 +459,21 @@ class VaultDB:
         c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_duplicate ON memory_candidates(duplicate_status)")
         self._ensure_table_columns(
             "memory_candidates",
-            {"quality_status": "TEXT NOT NULL DEFAULT 'pass'"},
+            {
+                "quality_status": "TEXT NOT NULL DEFAULT 'pass'",
+                "scope": "TEXT NOT NULL DEFAULT 'project'",
+                "sensitivity": "TEXT NOT NULL DEFAULT 'low'",
+                "owner_agent": "TEXT NOT NULL DEFAULT ''",
+                "allowed_agents": "TEXT NOT NULL DEFAULT '[]'",
+                "memory_type": "TEXT NOT NULL DEFAULT 'knowledge'",
+                "expires_at": "TEXT NOT NULL DEFAULT ''",
+            },
         )
         c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_quality ON memory_candidates(quality_status)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_scope ON memory_candidates(scope)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_sensitivity ON memory_candidates(sensitivity)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_owner_agent ON memory_candidates(owner_agent)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_memory_type ON memory_candidates(memory_type)")
 
         c.commit()
 
@@ -786,21 +891,38 @@ class VaultDB:
         source: str = "",
         content_aaak: str = "",
         summary: str = "",
+        scope: str = "project",
+        sensitivity: str = "low",
+        owner_agent: str = "",
+        allowed_agents: Any = None,
+        memory_type: str = "knowledge",
+        expires_at: str = "",
     ) -> int:
         """新增一筆知識，回傳 id。"""
         now = datetime.now(timezone.utc).isoformat()
         content_hash = hashlib.sha256(content_raw.encode()).hexdigest()[:16]
+        governance = normalize_governance_metadata(
+            scope=scope,
+            sensitivity=sensitivity,
+            owner_agent=owner_agent,
+            allowed_agents=allowed_agents,
+            memory_type=memory_type,
+            expires_at=expires_at,
+        )
 
         cursor = self.conn.execute(
             """INSERT INTO knowledge
                (title, layer, category, tags, trust,
                 content_raw, content_aaak, content_hash, source,
                 summary, summary_generated_at,
+                scope, sensitivity, owner_agent, allowed_agents, memory_type, expires_at,
                 created_at, updated_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (title, layer, category, tags, trust,
              content_raw, content_aaak, content_hash, source,
              summary, now if summary else '',
+             governance["scope"], governance["sensitivity"], governance["owner_agent"],
+             governance["allowed_agents"], governance["memory_type"], governance["expires_at"],
              now, now),
         )
         knowledge_id = int(cursor.lastrowid)
@@ -887,13 +1009,23 @@ class VaultDB:
         values.setdefault("created_at", now)
         values.setdefault("updated_at", now)
         values.setdefault("promoted_knowledge_id", None)
+        governance = normalize_governance_metadata(
+            scope=values.get("scope", "project"),
+            sensitivity=values.get("sensitivity", "low"),
+            owner_agent=values.get("owner_agent", ""),
+            allowed_agents=values.get("allowed_agents"),
+            memory_type=values.get("memory_type", "knowledge"),
+            expires_at=values.get("expires_at", ""),
+        )
+        values.update(governance)
         self.conn.execute(
             """INSERT INTO memory_candidates
                (id, created_at, updated_at, title, content, layer, category,
                 tags, trust, source, source_ref, reason, status,
                 privacy_status, duplicate_status, quality_status, gate_payload_json,
-                promoted_knowledge_id)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                promoted_knowledge_id,
+                scope, sensitivity, owner_agent, allowed_agents, memory_type, expires_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 values["id"], values["created_at"], values["updated_at"],
                 values["title"], values["content"], values["layer"],
@@ -903,6 +1035,8 @@ class VaultDB:
                 values["duplicate_status"], values.get("quality_status", "pass"),
                 values["gate_payload_json"],
                 values.get("promoted_knowledge_id"),
+                values["scope"], values["sensitivity"], values["owner_agent"],
+                values["allowed_agents"], values["memory_type"], values["expires_at"],
             ),
         )
         self.conn.commit()

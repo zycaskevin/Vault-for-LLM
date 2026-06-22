@@ -8,6 +8,7 @@ import workflows do not feed generated notes back into the source vault.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -17,6 +18,7 @@ from typing import Any
 import yaml
 
 from vault.compiler import extract_frontmatter, safe_path_segment
+from vault.db import normalize_governance_metadata
 
 
 DEFAULT_OBSIDIAN_EXCLUDES = {
@@ -152,6 +154,16 @@ def render_vault_raw_note(
         "obsidian_source_hash": source_hash,
         "imported_at": imported_at,
     }
+    governance = normalize_governance_metadata(
+        scope=metadata.get("scope", "project"),
+        sensitivity=metadata.get("sensitivity", "low"),
+        owner_agent=metadata.get("owner_agent", ""),
+        allowed_agents=metadata.get("allowed_agents", ""),
+        memory_type=metadata.get("memory_type", "knowledge"),
+        expires_at=metadata.get("expires_at", ""),
+    )
+    governance["allowed_agents"] = json.loads(governance["allowed_agents"])
+    frontmatter.update(governance)
     aliases = metadata.get("aliases")
     if aliases:
         frontmatter["obsidian_aliases"] = aliases

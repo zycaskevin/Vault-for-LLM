@@ -39,6 +39,11 @@ def find_project_dir() -> Path:
     return cwd
 
 
+def _arg_value(args, name: str, default=None):
+    """Read argparse/Namespace values without letting MagicMock invent attrs."""
+    return vars(args).get(name, default)
+
+
 def _extract_project_dir_arg(argv: list[str]) -> tuple[list[str], str | None]:
     """Extract --project-dir from anywhere in the CLI command.
 
@@ -134,7 +139,7 @@ def cmd_init(args):
 
 def cmd_add(args):
     """新增一筆知識。"""
-    from vault.db import VaultDB
+    from vault.db import VaultDB, normalize_governance_metadata
 
     project_dir = find_project_dir()
 
@@ -154,9 +159,17 @@ def cmd_add(args):
         allow_private=getattr(args, "allow_private", False),
         label="vault add",
     )
-    source = getattr(args, "source", "cli")
+    source = _arg_value(args, "source", "cli")
     if not isinstance(source, str) or not source:
         source = "cli"
+    governance = normalize_governance_metadata(
+        scope=_arg_value(args, "scope", "project"),
+        sensitivity=_arg_value(args, "sensitivity", "low"),
+        owner_agent=_arg_value(args, "owner_agent", ""),
+        allowed_agents=_arg_value(args, "allowed_agents", ""),
+        memory_type=_arg_value(args, "memory_type", "knowledge"),
+        expires_at=_arg_value(args, "expires_at", ""),
+    )
 
     with VaultDB(str(project_dir / "vault.db")) as db:
         kid = db.add_knowledge(
@@ -167,6 +180,7 @@ def cmd_add(args):
             tags=args.tags or "",
             trust=args.trust or 0.5,
             source=source,
+            **governance,
         )
         print(f"✅ 新增知識 ID={kid}")
 
@@ -178,6 +192,7 @@ def cmd_add(args):
         "category": args.category or "general",
         "tags": args.tags or "",
         "trust": args.trust or 0.5,
+        **governance,
     }
     raw_file.write_text(
         f"---\n{json.dumps(fm, ensure_ascii=False, indent=2)}\n---\n\n{content}\n",
@@ -1511,13 +1526,19 @@ def cmd_remember(args):
                 title=args.title,
                 content=content,
                 reason=args.reason,
-                mode=args.mode,
-                layer=args.layer,
-                category=args.category,
-                tags=args.tags,
-                trust=args.trust,
-                source=args.source,
-                source_ref=args.source_ref,
+                mode=_arg_value(args, "mode", "candidate"),
+                layer=_arg_value(args, "layer", "L3"),
+                category=_arg_value(args, "category", "general"),
+                tags=_arg_value(args, "tags", ""),
+                trust=_arg_value(args, "trust", 0.5),
+                source=_arg_value(args, "source", "cli"),
+                source_ref=_arg_value(args, "source_ref", ""),
+                scope=_arg_value(args, "scope", "project"),
+                sensitivity=_arg_value(args, "sensitivity", "low"),
+                owner_agent=_arg_value(args, "owner_agent", ""),
+                allowed_agents=_arg_value(args, "allowed_agents", ""),
+                memory_type=_arg_value(args, "memory_type", "knowledge"),
+                expires_at=_arg_value(args, "expires_at", ""),
             )
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -1556,6 +1577,12 @@ def _format_memory_candidate(row: dict, *, include_content: bool = False, includ
         "category": row.get("category"),
         "tags": row.get("tags"),
         "trust": row.get("trust"),
+        "scope": row.get("scope"),
+        "sensitivity": row.get("sensitivity"),
+        "owner_agent": row.get("owner_agent"),
+        "allowed_agents": row.get("allowed_agents"),
+        "memory_type": row.get("memory_type"),
+        "expires_at": row.get("expires_at"),
         "source": row.get("source"),
         "source_ref": row.get("source_ref"),
         "reason": row.get("reason"),
@@ -2091,6 +2118,15 @@ def cmd_setup_agent(args):
 
 # ── CLI 入口 ─────────────────────────────────────────────
 
+def _add_governance_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--scope", choices=["private", "project", "shared", "public"], default="project", help="記憶範圍：private/project/shared/public")
+    parser.add_argument("--sensitivity", choices=["low", "medium", "high", "restricted"], default="low", help="敏感度：low/medium/high/restricted")
+    parser.add_argument("--owner-agent", default="", help="擁有者 Agent，例如 nancy、mori、codex")
+    parser.add_argument("--allowed-agents", default="", help="可讀 Agent 清單；可用 JSON array 或逗號分隔")
+    parser.add_argument("--memory-type", default="knowledge", help="記憶類型，例如 knowledge/profile/dream/care_summary/decision")
+    parser.add_argument("--expires-at", default="", help="可選過期時間，ISO-8601 字串")
+
+
 def main(argv: list[str] | None = None):
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     normalized_argv, explicit_project_dir = _extract_project_dir_arg(raw_argv)
@@ -2117,6 +2153,7 @@ def main(argv: list[str] | None = None):
     p.add_argument("--trust", type=float, default=0.5)
     p.add_argument("--source", default="cli", help="來源標籤或檔案路徑")
     p.add_argument("--allow-private", action="store_true", help="允許含秘密模式的內容直接寫入本機 vault")
+    _add_governance_args(p)
 
     # remember/promote — safe memory curator workflow
     p = sub.add_parser("remember", help="提出記憶候選（預設不寫入 active knowledge）")
@@ -2131,6 +2168,7 @@ def main(argv: list[str] | None = None):
     p.add_argument("--trust", type=float, default=0.5)
     p.add_argument("--source", default="cli")
     p.add_argument("--source-ref", default="")
+    _add_governance_args(p)
     p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     p = sub.add_parser("promote", help="將記憶候選提升為 active knowledge")

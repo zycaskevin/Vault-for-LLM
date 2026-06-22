@@ -206,7 +206,8 @@ def _content_allowed_for_remote(text: str) -> bool:
 
 def _knowledge_sync_payload(row, *, include_content: bool = False) -> dict:
     kid, title, layer, category, tags, trust, content_raw, content_aaak, \
-        content_hash, source, summary, created_at, updated_at = row
+        content_hash, source, summary, scope, sensitivity, owner_agent, \
+        allowed_agents, memory_type, expires_at, created_at, updated_at = row
     content_raw = content_raw or ''
     content_aaak = content_aaak or ''
     include_raw = include_content and _content_allowed_for_remote(
@@ -229,6 +230,12 @@ def _knowledge_sync_payload(row, *, include_content: bool = False) -> dict:
         ),
         'summary': summary or '',
         'source': source or 'local',
+        'scope': scope or 'project',
+        'sensitivity': sensitivity or 'low',
+        'owner_agent': owner_agent or '',
+        'allowed_agents': _parse_tags(allowed_agents),
+        'memory_type': memory_type or 'knowledge',
+        'expires_at': expires_at or None,
         'updated_at': datetime.now().isoformat(),
     }
 
@@ -265,7 +272,9 @@ def sync(db_path=DB_PATH, *, include_content: bool = False):
 
     rows = db.conn.execute(
         "SELECT id, title, layer, category, tags, trust, content_raw, content_aaak, "
-        "content_hash, source, summary, created_at, updated_at FROM knowledge ORDER BY id"
+        "content_hash, source, summary, scope, sensitivity, owner_agent, "
+        "allowed_agents, memory_type, expires_at, created_at, updated_at "
+        "FROM knowledge ORDER BY id"
     ).fetchall()
     print(f"📚 本地知識: {len(rows)} 筆")
 
@@ -275,7 +284,8 @@ def sync(db_path=DB_PATH, *, include_content: bool = False):
 
     for row in rows:
         kid, title, layer, category, tags, trust, content_raw, content_aaak, \
-            content_hash, source, summary, created_at, updated_at = row
+            content_hash, source, summary, scope, sensitivity, owner_agent, \
+            allowed_agents, memory_type, expires_at, created_at, updated_at = row
         data = _knowledge_sync_payload(row, include_content=include_content)
 
         try:

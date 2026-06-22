@@ -44,6 +44,12 @@ create table if not exists vault_knowledge (
   content_hash text not null,
   summary text default '',
   source text default 'local',
+  scope text default 'project',
+  sensitivity text default 'low',
+  owner_agent text default '',
+  allowed_agents jsonb default '[]'::jsonb,
+  memory_type text default 'knowledge',
+  expires_at timestamptz,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
   last_synced timestamptz
@@ -174,6 +180,7 @@ alter table vault_knowledge add column if not exists owner_agent text default 'u
 alter table vault_knowledge add column if not exists scope text default 'project';
 alter table vault_knowledge add column if not exists sensitivity text default 'low';
 alter table vault_knowledge add column if not exists allowed_agents jsonb default '[]'::jsonb;
+alter table vault_knowledge add column if not exists memory_type text default 'knowledge';
 alter table vault_knowledge add column if not exists status text default 'active';
 alter table vault_knowledge add column if not exists expires_at timestamptz;
 ```

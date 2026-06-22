@@ -16,6 +16,11 @@ def test_sync_obsidian_vault_imports_notes_idempotently(tmp_path):
         "---\n"
         "tags: [architecture, api]\n"
         "aliases: [ADR one]\n"
+        "scope: shared\n"
+        "sensitivity: medium\n"
+        "owner_agent: nancy\n"
+        "allowed_agents: [mori, aiko]\n"
+        "memory_type: decision\n"
         "---\n"
         "# API Decision\n\n"
         "Use bounded reads before final citations.\n",
@@ -39,6 +44,13 @@ def test_sync_obsidian_vault_imports_notes_idempotently(tmp_path):
     content = imported.read_text(encoding="utf-8")
     assert "imported_from: obsidian" in content
     assert "obsidian_source_path: Projects/Decision.md" in content
+    assert "scope: shared" in content
+    assert "sensitivity: medium" in content
+    assert "owner_agent: nancy" in content
+    assert "allowed_agents:" in content
+    assert "- mori" in content
+    assert "- aiko" in content
+    assert "memory_type: decision" in content
     assert "API Decision" in content
     assert "architecture" in content
     assert "00-Vault-Knowledge" not in "\n".join(first["paths"])

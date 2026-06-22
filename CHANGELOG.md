@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.31] - 2026-06-22
+
+### Added
+
+- Added first-class governance metadata columns to active knowledge and memory candidates: `scope`, `sensitivity`, `owner_agent`, `allowed_agents`, `memory_type`, and `expires_at`.
+- Preserved governance metadata through CLI `vault add` / `vault remember`, MCP `vault_add` / `vault_memory_propose`, memory promotion, Markdown compilation, Obsidian import/export, and Supabase sync payloads.
+- Added tests for multi-agent memory governance metadata across DB writes, candidate promotion, compiler frontmatter, Obsidian import, and Supabase payloads.
+
 ## [0.6.30] - 2026-06-22
 
 ### Added

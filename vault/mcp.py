@@ -106,6 +106,12 @@ def _format_memory_candidate(row: dict, *, include_content: bool = False, includ
         "category": row.get("category"),
         "tags": row.get("tags"),
         "trust": row.get("trust"),
+        "scope": row.get("scope"),
+        "sensitivity": row.get("sensitivity"),
+        "owner_agent": row.get("owner_agent"),
+        "allowed_agents": row.get("allowed_agents"),
+        "memory_type": row.get("memory_type"),
+        "expires_at": row.get("expires_at"),
         "source": row.get("source"),
         "source_ref": row.get("source_ref"),
         "reason": row.get("reason"),
@@ -966,6 +972,12 @@ TOOLS = [
                     "description": "知識層級（L0-L3）",
                     "default": "L3"
                 },
+                "scope": {"type": "string", "enum": ["private", "project", "shared", "public"], "default": "project"},
+                "sensitivity": {"type": "string", "enum": ["low", "medium", "high", "restricted"], "default": "low"},
+                "owner_agent": {"type": "string", "default": ""},
+                "allowed_agents": {"type": "array", "items": {"type": "string"}, "default": []},
+                "memory_type": {"type": "string", "default": "knowledge"},
+                "expires_at": {"type": "string", "default": ""},
             },
             "required": ["title", "content"]
         }
@@ -984,6 +996,12 @@ TOOLS = [
                 "category": {"type": "string", "default": "general"},
                 "tags": {"type": "string", "default": ""},
                 "trust": {"type": "number", "default": 0.5},
+                "scope": {"type": "string", "enum": ["private", "project", "shared", "public"], "default": "project"},
+                "sensitivity": {"type": "string", "enum": ["low", "medium", "high", "restricted"], "default": "low"},
+                "owner_agent": {"type": "string", "default": ""},
+                "allowed_agents": {"type": "array", "items": {"type": "string"}, "default": []},
+                "memory_type": {"type": "string", "default": "knowledge"},
+                "expires_at": {"type": "string", "default": ""},
                 "reason": {"type": "string", "description": "Why this is worth remembering"},
                 "mode": {"type": "string", "enum": ["candidate", "promote_if_safe"], "default": "candidate"},
             },
@@ -1390,7 +1408,10 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
             privacy = scan_privacy(
                 "\n".join(
                     str(arguments.get(field, ""))
-                    for field in ("title", "content", "category", "tags", "layer")
+                    for field in (
+                        "title", "content", "category", "tags", "layer",
+                        "scope", "sensitivity", "owner_agent", "allowed_agents", "memory_type",
+                    )
                 )
             )
             if privacy["status"] == "fail":
@@ -1410,6 +1431,12 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     trust=arguments.get("trust", 0.5),
                     layer=arguments.get("layer", "L3"),
                     source="mcp",
+                    scope=arguments.get("scope", "project"),
+                    sensitivity=arguments.get("sensitivity", "low"),
+                    owner_agent=arguments.get("owner_agent", ""),
+                    allowed_agents=arguments.get("allowed_agents", []),
+                    memory_type=arguments.get("memory_type", "knowledge"),
+                    expires_at=arguments.get("expires_at", ""),
                 )
                 try:
                     build_document_map_for_entry(db.conn, kid)
@@ -1443,6 +1470,12 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     trust=arguments.get("trust", 0.5),
                     source=arguments.get("source", "mcp"),
                     source_ref=arguments.get("source_ref", ""),
+                    scope=arguments.get("scope", "project"),
+                    sensitivity=arguments.get("sensitivity", "low"),
+                    owner_agent=arguments.get("owner_agent", ""),
+                    allowed_agents=arguments.get("allowed_agents", []),
+                    memory_type=arguments.get("memory_type", "knowledge"),
+                    expires_at=arguments.get("expires_at", ""),
                 )
             finally:
                 db.close()

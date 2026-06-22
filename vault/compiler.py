@@ -20,6 +20,8 @@ import yaml
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .db import normalize_governance_metadata
+
 
 def extract_frontmatter(content: str) -> tuple[dict, str]:
     """從 Markdown 提取 YAML frontmatter，回傳 (metadata, body)。"""
@@ -549,6 +551,11 @@ class VaultCompiler:
                         str(metadata.get("category", "")),
                         str(metadata.get("tags", "")),
                         str(metadata.get("source", "")),
+                        str(metadata.get("scope", "")),
+                        str(metadata.get("sensitivity", "")),
+                        str(metadata.get("owner_agent", "")),
+                        str(metadata.get("allowed_agents", "")),
+                        str(metadata.get("memory_type", "")),
                         body,
                     ]
                 )
@@ -585,6 +592,14 @@ class VaultCompiler:
         if isinstance(tags, list):
             tags = ",".join(str(t) for t in tags)
         trust = float(metadata.get("trust", 0.5))
+        governance = normalize_governance_metadata(
+            scope=metadata.get("scope", "project"),
+            sensitivity=metadata.get("sensitivity", "low"),
+            owner_agent=metadata.get("owner_agent", ""),
+            allowed_agents=metadata.get("allowed_agents", ""),
+            memory_type=metadata.get("memory_type", "knowledge"),
+            expires_at=metadata.get("expires_at", ""),
+        )
 
         # AAAK 壓縮
         aaak = simple_aaak_compress(title, body)
@@ -613,6 +628,7 @@ class VaultCompiler:
                 tags=tags,
                 trust=trust,
                 source=str(source_file),
+                **governance,
             )
             self._refresh_document_map(knowledge_id)
             return "updated"
@@ -628,6 +644,7 @@ class VaultCompiler:
                 tags=tags,
                 trust=trust,
                 source=str(source_file),
+                **governance,
             )
             self._refresh_document_map(knowledge_id)
             return "new"

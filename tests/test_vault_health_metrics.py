@@ -304,7 +304,9 @@ def test_sync_cli_help_exposes_health_flags():
 def test_knowledge_sync_payload_excludes_content_by_default():
     row = (
         1, "Title", "L3", "general", "tag", 0.8,
-        "raw body", "aaak body", "abc123", "local", "summary", "", "",
+        "raw body", "aaak body", "abc123", "local", "summary",
+        "shared", "medium", "nancy", '["mori"]', "care_summary", "",
+        "", "",
     )
 
     payload = sync_to_supabase._knowledge_sync_payload(row)
@@ -313,12 +315,19 @@ def test_knowledge_sync_payload_excludes_content_by_default():
     assert payload["content_aaak"] == ""
     assert payload["summary"] == "summary"
     assert payload["content_hash"] == "abc123"
+    assert payload["scope"] == "shared"
+    assert payload["sensitivity"] == "medium"
+    assert payload["owner_agent"] == "nancy"
+    assert payload["allowed_agents"] == ["mori"]
+    assert payload["memory_type"] == "care_summary"
 
 
 def test_knowledge_sync_payload_generates_hash_when_missing():
     row = (
         1, "Title", "L3", "general", "tag", 0.8,
-        "raw body", "aaak body", None, "local", "summary", "", "",
+        "raw body", "aaak body", None, "local", "summary",
+        "project", "low", "", "[]", "knowledge", "",
+        "", "",
     )
 
     payload = sync_to_supabase._knowledge_sync_payload(row)
@@ -331,7 +340,9 @@ def test_knowledge_sync_payload_generates_hash_when_missing():
 def test_knowledge_sync_payload_include_content_blocks_privacy_fail():
     row = (
         1, "Title", "L3", "general", "tag", 0.8,
-        "password = supersecret123", "aaak body", "abc123", "local", "summary", "", "",
+        "password = supersecret123", "aaak body", "abc123", "local", "summary",
+        "project", "low", "", "[]", "knowledge", "",
+        "", "",
     )
 
     payload = sync_to_supabase._knowledge_sync_payload(row, include_content=True)

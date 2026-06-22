@@ -52,6 +52,8 @@ def _yaml_string(value: Any) -> str:
 def _frontmatter(row: dict[str, Any]) -> str:
     tags = _parse_tags(row.get("tags"))
     tag_list = "[" + ", ".join(json.dumps(tag, ensure_ascii=False) for tag in tags) + "]"
+    allowed_agents = _parse_tags(row.get("allowed_agents"))
+    allowed_agent_list = "[" + ", ".join(json.dumps(agent, ensure_ascii=False) for agent in allowed_agents) + "]"
     lines = [
         "---",
         f"vault_id: {row['id']}",
@@ -61,6 +63,12 @@ def _frontmatter(row: dict[str, Any]) -> str:
         f"layer: {_yaml_string(row.get('layer', 'L3'))}",
         f"trust: {float(row.get('trust') or 0):g}",
         f"source: {_yaml_string(row.get('source', ''))}",
+        f"scope: {_yaml_string(row.get('scope', 'project'))}",
+        f"sensitivity: {_yaml_string(row.get('sensitivity', 'low'))}",
+        f"owner_agent: {_yaml_string(row.get('owner_agent', ''))}",
+        f"allowed_agents: {allowed_agent_list}",
+        f"memory_type: {_yaml_string(row.get('memory_type', 'knowledge'))}",
+        f"expires_at: {_yaml_string(row.get('expires_at', ''))}",
         f"created: {_yaml_string(row.get('created_at', ''))}",
         f"updated: {_yaml_string(row.get('updated_at', ''))}",
         f"summary: {_yaml_string(row.get('summary', ''))}",

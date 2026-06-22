@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## [0.6.44] - 2026-06-23
+
+### Fixed
+
+- Fixed generated Supabase LaunchAgent templates so stdout/stderr logs use `supabase-sync.log` and `supabase-sync.err.log` instead of Obsidian log filenames.
+- Added regression coverage for Supabase LaunchAgent log paths.
+
 ## [0.6.43] - 2026-06-22
 
 ### Fixed

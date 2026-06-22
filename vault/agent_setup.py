@@ -282,11 +282,15 @@ def render_launchagent_plist(
     command: list[str],
     label: str = "com.zycaskevin.vault-for-llm.obsidian-sync",
     interval_minutes: int = 15,
+    log_basename: str = "obsidian-sync",
 ) -> str:
     interval_seconds = max(60, int(interval_minutes) * 60)
     program = command[0]
     args = command[1:]
     arg_lines = "\n".join(f"    <string>{_xml_escape(arg)}</string>" for arg in args)
+    safe_log_basename = str(log_basename or "vault-sync").strip().replace("/", "-")
+    stdout_path = Path.home() / ".vault-for-llm" / f"{safe_log_basename}.log"
+    stderr_path = Path.home() / ".vault-for-llm" / f"{safe_log_basename}.err.log"
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -302,9 +306,9 @@ def render_launchagent_plist(
   <key>StartInterval</key>
   <integer>{interval_seconds}</integer>
   <key>StandardOutPath</key>
-  <string>{_xml_escape(str(Path.home() / ".vault-for-llm" / "obsidian-sync.log"))}</string>
+  <string>{_xml_escape(str(stdout_path))}</string>
   <key>StandardErrorPath</key>
-  <string>{_xml_escape(str(Path.home() / ".vault-for-llm" / "obsidian-sync.err.log"))}</string>
+  <string>{_xml_escape(str(stderr_path))}</string>
 </dict>
 </plist>
 """
@@ -522,6 +526,7 @@ def write_supabase_sync_templates(
                 command=command,
                 label="com.zycaskevin.vault-for-llm.supabase-sync",
                 interval_minutes=interval_minutes,
+                log_basename="supabase-sync",
             ),
             encoding="utf-8",
         )

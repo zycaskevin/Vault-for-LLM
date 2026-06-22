@@ -142,6 +142,7 @@ vault setup-agent \
   --supabase-setup simple \
   --supabase-sync cron \
   --remote-reader all \
+  --validation-pack all \
   --json
 ```
 
@@ -172,6 +173,23 @@ export SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 export SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 vault remote smoke --agent-id coco --query "deployment SOP" --json
 ```
+
+To generate files for live external verification, add:
+
+```bash
+vault setup-agent \
+  --non-interactive \
+  --agent coco \
+  --scope shared \
+  --agent-project-dir /path/to/project \
+  --features core,mcp,supabase \
+  --remote-reader all \
+  --validation-pack all \
+  --json
+```
+
+This writes `README-live-validation.md`, `validate-remote-reader.sh`,
+`VALIDATE-n8n.md`, and `VALIDATE-coze.md`.
 
 ## Advanced RLS
 

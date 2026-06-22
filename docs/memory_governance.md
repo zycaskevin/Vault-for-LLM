@@ -147,12 +147,15 @@ vault setup-agent \
   --supabase-setup advanced \
   --supabase-sync cron \
   --remote-reader all \
+  --agent-roster nancy:profile,mori:work,aiko:work,coco:remote,n8n:automation \
+  --validation-pack all \
   --json
 ```
 
 This keeps local SQLite as the source of truth, creates Supabase guidance for a
-reviewed remote read layer, generates shell/n8n/Coze reader templates, and writes
-Profile / Dream / Forgetting guidance without exposing raw private conversations.
+reviewed remote read layer, generates shell/n8n/Coze reader templates, writes a
+multi-agent access matrix, and includes live validation checklists without
+exposing raw private conversations.
 
 ## Supabase and RLS
 

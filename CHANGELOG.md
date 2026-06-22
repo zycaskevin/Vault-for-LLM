@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## [0.6.37] - 2026-06-22
+
+### Added
+
+- Added `vault setup-agent --agent-roster` to generate a multi-agent roster, access matrix, per-agent env examples, and setup commands.
+- Added `vault setup-agent --validation-pack remote|n8n|coze|all` to generate live validation scripts and checklists for real Supabase/n8n/Coze deployments.
+- Documented the roster and validation workflow across README variants, CLI reference, agent install runbook, integration guide, memory governance, and `agent_manifest.json`.
+- Added tests proving generated rosters, access matrices, validation scripts, and hosted-reader checklists are written correctly.
+
 ## [0.6.36] - 2026-06-22
 
 ### Added

@@ -99,6 +99,8 @@ vault setup-agent \
   --install-optional-deps \
   --supabase-sync cron \
   --remote-reader all \
+  --agent-roster nancy:profile,mori:work,aiko:work,coco:remote,n8n:automation \
+  --validation-pack all \
   --json
 ```
 
@@ -112,6 +114,11 @@ vault setup-agent \
 
 Remote readers should use `SUPABASE_ANON_KEY` or a scoped authenticated token.
 Keep `SUPABASE_SERVICE_ROLE_KEY` only on trusted sync hosts.
+
+`--agent-roster` writes a reviewed multi-agent access matrix and per-agent env
+examples. `--validation-pack all` writes live verification files for remote CLI,
+n8n, and Coze so the operator can prove the hosted paths work after real
+credentials are configured.
 
 Supabase is a sync/read target, not the source of truth. Ask again before using
 `--include-content`.

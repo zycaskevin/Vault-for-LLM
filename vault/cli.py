@@ -298,6 +298,9 @@ def cmd_search(args):
             semantic_vector_kind=args.semantic_vector_kind,
             allow_hash=args.allow_hash,
             min_score=args.min_score,
+            agent_id=getattr(args, "agent_id", ""),
+            include_private=bool(getattr(args, "include_private", False)),
+            max_sensitivity=getattr(args, "max_sensitivity", ""),
         )
     except SemanticProviderError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -2213,6 +2216,9 @@ def main(argv: list[str] | None = None):
                    help="圖譜擴展跳數（0=不擴展，1=1跳，2=2跳）")
     p.add_argument("--no-rerank", action="store_true",
                    help="停用 reranker 重排序")
+    p.add_argument("--agent-id", default="", help="可選 Agent 身份；提供後套用治理 metadata 讀取過濾")
+    p.add_argument("--include-private", action="store_true", help="搭配 --agent-id 允許讀取 owner/allow-list 授權的 private 記憶")
+    p.add_argument("--max-sensitivity", choices=["", "low", "medium", "high", "restricted"], default="", help="最高可讀敏感度")
 
     # list
     p = sub.add_parser("list", help="列出知識")

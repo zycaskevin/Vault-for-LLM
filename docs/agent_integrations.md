@@ -119,6 +119,11 @@ All integrations should follow the same memory policy:
 search -> bounded read -> answer with source
 ```
 
+In shared or multi-agent vaults, search/read calls should include the agent
+identity (`agent_id`) and, when appropriate, a `max_sensitivity` cap. Only pass
+`include_private=true` when the user or local policy explicitly allows that
+agent to read its owner/allow-list private memory.
+
 Use map/inspect tools only when the agent needs section navigation before
 choosing a bounded read range.
 

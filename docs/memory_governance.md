@@ -43,6 +43,35 @@ Each step should respect `scope`, `sensitivity`, `owner_agent`,
 `allowed_agents`, and task context. Compression can reduce selected context
 after retrieval, but it should not replace permission checks or source reads.
 
+## Read-Side Filters
+
+Local SQLite remains inspectable by the operator, but agent-facing reads can
+apply a governance policy:
+
+```bash
+vault search "deployment notes" --agent-id mori --max-sensitivity medium
+```
+
+MCP tools accept the same policy fields:
+
+```json
+{
+  "query": "deployment notes",
+  "agent_id": "mori",
+  "include_private": false,
+  "max_sensitivity": "medium"
+}
+```
+
+Without an explicit policy, legacy local reads remain unchanged. With a policy:
+
+- `private` memory requires `include_private=true` and the agent must be the
+  `owner_agent` or listed in `allowed_agents`.
+- `restricted` memory requires the agent to be the `owner_agent` or listed in
+  `allowed_agents`.
+- `max_sensitivity` is a hard cap; for example `medium` excludes `high` and
+  `restricted` entries.
+
 ## User Profile Guidance
 
 Do not put a whole user personality profile into `L0`. `L0` is loaded often, so

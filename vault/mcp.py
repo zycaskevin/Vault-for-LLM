@@ -19,6 +19,8 @@ VAULT_DIR = str(Path(__file__).parent.parent)
 if VAULT_DIR not in sys.path:
     sys.path.insert(0, VAULT_DIR)
 
+from vault.access_policy import can_read_memory, normalize_read_policy
+
 DB_PATH = os.path.join(
     os.environ.get("VAULT_PATH") or VAULT_DIR,
     "vault.db",
@@ -411,6 +413,9 @@ def _vault_map_show_payload(
     knowledge_id: int,
     db_path: str | None = None,
     compact: bool = False,
+    agent_id: str = "",
+    include_private: bool = False,
+    max_sensitivity: str = "",
 ) -> dict:
     try:
         knowledge_id = int(knowledge_id)
@@ -428,11 +433,22 @@ def _vault_map_show_payload(
 
     try:
         entry = conn.execute(
-            "SELECT id, title FROM knowledge WHERE id=?",
+            "SELECT * FROM knowledge WHERE id=?",
             (knowledge_id,),
         ).fetchone()
         if entry is None:
             return _error("not_found", f"Knowledge id not found: {knowledge_id}")
+        policy = normalize_read_policy(
+            agent_id=agent_id,
+            include_private=include_private,
+            max_sensitivity=max_sensitivity,
+        )
+        if not can_read_memory(dict(entry), policy):
+            return _error(
+                "access_denied",
+                "Knowledge id is not readable under the provided agent policy.",
+                knowledge_id=knowledge_id,
+            )
 
         rows = conn.execute(
             """SELECT node_uid, path, heading, level, line_start, line_end,
@@ -741,6 +757,9 @@ def _vault_read_range_payload(
     line_end: int = 0,
     *,
     max_lines: int = 80,
+    agent_id: str = "",
+    include_private: bool = False,
+    max_sensitivity: str = "",
     db_path: str | None = None,
 ) -> dict:
     try:
@@ -766,11 +785,22 @@ def _vault_read_range_payload(
 
     try:
         entry = conn.execute(
-            "SELECT id, title, content_raw FROM knowledge WHERE id=?",
+            "SELECT * FROM knowledge WHERE id=?",
             (knowledge_id,),
         ).fetchone()
         if entry is None:
             return _error("not_found", f"Knowledge id not found: {knowledge_id}")
+        policy = normalize_read_policy(
+            agent_id=agent_id,
+            include_private=include_private,
+            max_sensitivity=max_sensitivity,
+        )
+        if not can_read_memory(dict(entry), policy):
+            return _error(
+                "access_denied",
+                "Knowledge id is not readable under the provided agent policy.",
+                knowledge_id=knowledge_id,
+            )
 
         node = None
         node_uid = (node_uid or "").strip()
@@ -933,6 +963,22 @@ TOOLS = [
                     "type": "boolean",
                     "description": "回傳精簡 payload（MCP 預設 true；設為 false 可取得含 content_preview 的完整輸出）",
                     "default": True
+                },
+                "agent_id": {
+                    "type": "string",
+                    "description": "可選 Agent 身份；提供後套用 scope/sensitivity/allowed_agents 讀取過濾",
+                    "default": ""
+                },
+                "include_private": {
+                    "type": "boolean",
+                    "description": "搭配 agent_id 使用；允許讀取 owner/allow-list 授權的 private 記憶",
+                    "default": False
+                },
+                "max_sensitivity": {
+                    "type": "string",
+                    "enum": ["", "low", "medium", "high", "restricted"],
+                    "description": "可選最高敏感度；例如 medium 會排除 high/restricted",
+                    "default": ""
                 },
             },
             "required": ["query"]
@@ -1150,6 +1196,13 @@ TOOLS = [
                     "description": "回傳精簡節點欄位（預設 false）",
                     "default": False
                 },
+                "agent_id": {"type": "string", "default": ""},
+                "include_private": {"type": "boolean", "default": False},
+                "max_sensitivity": {
+                    "type": "string",
+                    "enum": ["", "low", "medium", "high", "restricted"],
+                    "default": ""
+                },
             },
             "required": ["knowledge_id"]
         }
@@ -1178,6 +1231,13 @@ TOOLS = [
                     "type": "integer",
                     "description": "結束行號（含）",
                     "default": 0
+                },
+                "agent_id": {"type": "string", "default": ""},
+                "include_private": {"type": "boolean", "default": False},
+                "max_sensitivity": {
+                    "type": "string",
+                    "enum": ["", "low", "medium", "high", "restricted"],
+                    "default": ""
                 },
             },
             "required": ["knowledge_id"]
@@ -1336,6 +1396,9 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 fields=None,
                 min_trust=0.0,
                 compact=False,
+                agent_id=arguments.get("agent_id", ""),
+                include_private=bool(arguments.get("include_private", False)),
+                max_sensitivity=arguments.get("max_sensitivity", ""),
             )
             # 簡化輸出
             output = []
@@ -1623,6 +1686,9 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
             payload = _vault_map_show_payload(
                 arguments.get("knowledge_id", 0),
                 compact=bool(arguments.get("compact", False)),
+                agent_id=arguments.get("agent_id", ""),
+                include_private=bool(arguments.get("include_private", False)),
+                max_sensitivity=arguments.get("max_sensitivity", ""),
             )
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 
@@ -1632,6 +1698,9 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 node_uid=arguments.get("node_uid", ""),
                 line_start=arguments.get("line_start", 0),
                 line_end=arguments.get("line_end", 0),
+                agent_id=arguments.get("agent_id", ""),
+                include_private=bool(arguments.get("include_private", False)),
+                max_sensitivity=arguments.get("max_sensitivity", ""),
             )
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 

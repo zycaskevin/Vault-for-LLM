@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.32] - 2026-06-22
+
+### Added
+
+- Added read-side governance filters for local search and MCP reads. Agents can pass `agent_id`, `include_private`, and `max_sensitivity` to `vault search`, `vault_search`, `vault_map_show`, and `vault_read_range`.
+- Added shared access-policy helpers so search, map inspection, and bounded reads use the same `scope` / `sensitivity` / `owner_agent` / `allowed_agents` semantics.
+- Added tests proving legacy reads remain unchanged without an agent policy, while private/restricted entries are filtered or blocked when an agent policy is supplied.
+
 ## [0.6.31] - 2026-06-22
 
 ### Added

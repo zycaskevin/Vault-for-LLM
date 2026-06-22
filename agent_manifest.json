@@ -71,7 +71,7 @@
   "agent_setup_wizard": {
     "cli": "vault setup-agent",
     "alias": "vault install-agent",
-    "install_command": "python -m pip install \"vault-for-llm[mcp]==0.6.31\"",
+    "install_command": "python -m pip install \"vault-for-llm[mcp]==0.6.32\"",
     "non_interactive_example": "vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir /path/to/project --features core,mcp,obsidian_import --obsidian-vault /path/to/ObsidianVault --import-obsidian --obsidian-sync all",
     "non_interactive_with_optional_deps": "vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir /path/to/project --features core,mcp,semantic,supabase,headroom --language en --install-optional-deps --install-embedding-model mix --supabase-setup simple --supabase-sync cron --json",
     "sync_templates": ["cron", "launchagent", "n8n"]
@@ -83,7 +83,7 @@
       "prompt": "Install the core local Markdown + SQLite + keyword search workflow?",
       "when_to_install": "Always. This is the minimal local-first Vault workflow.",
       "install_commands": [
-        "python -m pip install vault-for-llm==0.6.31"
+        "python -m pip install vault-for-llm==0.6.32"
       ],
       "post_install": [
         "vault init --project-dir /path/to/project",
@@ -97,7 +97,7 @@
       "prompt": "Configure local stdio MCP tools for this agent?",
       "when_to_install": "Use when the runtime supports MCP, such as Hermes Agent, Codex surfaces with MCP, OpenCode, Claude Code, OpenClaw generic MCP, or other MCP hosts.",
       "install_commands": [
-        "python -m pip install \"vault-for-llm[mcp]==0.6.31\""
+        "python -m pip install \"vault-for-llm[mcp]==0.6.32\""
       ],
       "post_install": [
         "vault-mcp --project-dir /path/to/project --tool-profile core"
@@ -267,6 +267,11 @@
       "memory_type",
       "expires_at"
     ],
+    "read_filter": {
+      "fields": ["agent_id", "include_private", "max_sensitivity"],
+      "tools": ["vault search", "vault_search", "vault_map_show", "vault_read_range"],
+      "rule": "For shared vaults, pass agent_id on reads. Use include_private only when the user or local policy allows that agent to read owner/allow-list private memory. Use max_sensitivity as a hard cap."
+    },
     "profile_guidance": {
       "L0": "minimal identity only; private by default",
       "L1": "durable work preferences and collaboration rules",

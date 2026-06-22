@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vault-for-llm"
-version = "0.6.31"
+version = "0.6.32"
 description = "Local-first Markdown + SQLite memory for LLM agents, with keyword search, optional embeddings, MCP, and bounded citation tools."
 readme = "README.md"
 requires-python = ">=3.10"

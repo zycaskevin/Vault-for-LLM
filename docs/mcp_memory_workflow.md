@@ -35,6 +35,21 @@ selected project directory.
 5. vault_read_range      # read bounded source range and cite it
 ```
 
+For shared or multi-agent vaults, pass the agent identity on read tools:
+
+```json
+{
+  "agent_id": "mori",
+  "include_private": false,
+  "max_sensitivity": "medium"
+}
+```
+
+`vault_search`, `vault_map_show`, and `vault_read_range` use the same local
+read-side governance filter. Without these fields, legacy local behavior is
+unchanged. With them, private and restricted memory follows `owner_agent` and
+`allowed_agents`.
+
 ## Why not direct `vault_add`?
 
 `vault_add` is still available for compatibility and controlled scripts, but it writes directly to active knowledge. It blocks obvious privacy failures and builds a Document Map when possible, but it still bypasses candidate review. For autonomous agents and unreviewed memories, use `vault_memory_propose` so the memory passes deterministic gates first.

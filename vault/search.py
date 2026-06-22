@@ -14,6 +14,7 @@ import threading
 from typing import Optional, List
 
 from .db import VaultDB
+from .access_policy import filter_readable_memories, normalize_read_policy
 from .embed import (
     create_embedding_provider,
     EmbeddingProvider,
@@ -1492,6 +1493,9 @@ class VaultSearch:
         include_snippet: bool = False,
         highlight_snippet: bool = False,
         fields: Optional[list[str]] = None,
+        agent_id: str = "",
+        include_private: bool = False,
+        max_sensitivity: str = "",
     ) -> list[dict]:
         """
         搜尋知識庫。
@@ -1540,6 +1544,7 @@ class VaultSearch:
                     graph_expand, use_rerank, compact, semantic_vector_kind,
                     allow_hash, min_score, use_query_expansion, use_llm_rewrite,
                     normalize_scores, include_snippet, highlight_snippet, fields,
+                    agent_id, include_private, max_sensitivity,
                 )
             except (ValueError, TypeError):
                 raise  # 參數驗證錯誤仍然拋出
@@ -1551,6 +1556,7 @@ class VaultSearch:
             graph_expand, use_rerank, compact, semantic_vector_kind,
             allow_hash, min_score, use_query_expansion, use_llm_rewrite,
             normalize_scores, include_snippet, highlight_snippet, fields,
+            agent_id, include_private, max_sensitivity,
         )
 
     def _do_search(
@@ -1574,8 +1580,16 @@ class VaultSearch:
         include_snippet: bool = False,
         highlight_snippet: bool = False,
         fields: Optional[list[str]] = None,
+        agent_id: str = "",
+        include_private: bool = False,
+        max_sensitivity: str = "",
     ) -> list[dict]:
         """內部搜尋實現。"""
+        read_policy = normalize_read_policy(
+            agent_id=agent_id,
+            include_private=include_private,
+            max_sensitivity=max_sensitivity,
+        )
         # 驗證 mode 參數
         valid_modes = {"auto", "basic", "keyword", "vector", "semantic", "hybrid"}
         if mode not in valid_modes:
@@ -1613,6 +1627,9 @@ class VaultSearch:
                 fields=",".join(sorted(fields)) if fields else "",
                 semantic_vector_kind=semantic_vector_kind,
                 allow_hash=allow_hash,
+                agent_id=read_policy.agent_id,
+                include_private=read_policy.include_private,
+                max_sensitivity=read_policy.max_sensitivity,
                 embed_provider=self._embed_cache_identity(),
                 rerank_strategy=self._rerank_strategy,
             )
@@ -1799,6 +1816,8 @@ class VaultSearch:
             results = self._apply_graph_expand(
                 results, graph_expand, limit, min_trust, layer, category
             )
+
+        results = filter_readable_memories(results, read_policy)
 
         # Reranker
         if use_rerank and results:

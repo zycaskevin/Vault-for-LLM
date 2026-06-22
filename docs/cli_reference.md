@@ -49,6 +49,7 @@ changed notes without duplicating unchanged ones.
 | `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,semantic,supabase,headroom --language en --install-optional-deps --install-embedding-model mix --supabase-setup simple --json` | Install selected optional dependencies and configure a local semantic model |
 | `vault setup-agent --non-interactive --agent nancy --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,memory_agents --language zh-Hant --json` | Generate Profile / Dream / Forgetting agent guidance with report-only and candidate-only defaults |
 | `vault setup-agent --non-interactive --agent nancy --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase --language zh-Hant --install-optional-deps --supabase-setup simple --supabase-sync cron --remote-reader all --json` | Generate guided Supabase setup, daily sync templates, and shell/n8n/Coze remote reader templates |
+| `vault setup-agent --non-interactive --agent nancy --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase,memory_agents --agent-roster nancy:profile,mori:work,coco:remote,n8n:automation --validation-pack all --json` | Generate a multi-agent access matrix plus live Supabase/n8n/Coze validation checklists |
 | `vault setup-agent --obsidian-vault ~/Documents/ObsidianVault --import-obsidian --obsidian-sync all` | Run first Obsidian import and write cron, LaunchAgent, and n8n templates |
 
 `vault install-agent` is an alias for `vault setup-agent`.
@@ -62,6 +63,10 @@ and use `python -m scripts.sync_to_supabase --db <project>/vault.db`.
 Supabase remote reader templates are opt-in with
 `--remote-reader shell|n8n|coze|all`; validate credentials with
 `vault remote smoke --agent-id <agent> --json`.
+Multi-agent roster templates are opt-in with `--agent-roster`; each entry uses
+`agent_id:role[:scope[:max_sensitivity]]`, for example
+`nancy:profile,mori:work,coco:remote,n8n:automation`. Live external validation
+files are opt-in with `--validation-pack remote|n8n|coze|all`.
 Manual interactive setup asks for `en`, `zh-Hant`, or `zh-CN`; non-interactive
 agent installs can pass `--language`. Supabase setup guide generation is opt-in
 with `--supabase-setup none|simple|advanced`; keep `simple` as the default path

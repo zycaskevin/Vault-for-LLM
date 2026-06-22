@@ -2147,6 +2147,8 @@ def cmd_setup_agent(args):
             supabase_sync_interval_minutes=args.supabase_sync_interval_minutes,
             remote_reader_targets=args.remote_reader,
             remote_reader_query=args.remote_reader_query,
+            agent_roster=args.agent_roster,
+            validation_pack_targets=args.validation_pack,
             template_dir=Path(args.template_dir).expanduser() if args.template_dir else None,
             allow_private=bool(args.allow_private),
         )
@@ -2163,6 +2165,7 @@ def cmd_setup_agent(args):
             "obsidian_vault": args.obsidian_vault,
             "supabase_setup_mode": args.supabase_setup,
             "remote_reader_query": args.remote_reader_query,
+            "agent_roster": args.agent_roster,
             "sync_interval_minutes": args.sync_interval_minutes,
             "supabase_sync_interval_minutes": args.supabase_sync_interval_minutes,
             "template_dir": args.template_dir,
@@ -2176,6 +2179,8 @@ def cmd_setup_agent(args):
             setup_values["supabase_sync_targets"] = args.supabase_sync
         if args.remote_reader != "none":
             setup_values["remote_reader_targets"] = args.remote_reader
+        if args.validation_pack != "none":
+            setup_values["validation_pack_targets"] = args.validation_pack
         config = interactive_setup(setup_values)
 
     payload = run_agent_setup(config)
@@ -2215,6 +2220,20 @@ def cmd_setup_agent(args):
         print("  supabase_sync_templates:")
         for name, path in payload["supabase_sync_templates"].items():
             print(f"    {name}: {path}")
+    if payload.get("remote_reader_templates"):
+        print("  remote_reader_templates:")
+        for name, path in payload["remote_reader_templates"].items():
+            print(f"    {name}: {path}")
+    if payload.get("agent_roster"):
+        print("  agent_roster:")
+        for name, path in payload["agent_roster"].items():
+            if name == "env":
+                continue
+            print(f"    {name}: {path}")
+    if payload.get("live_validation_pack"):
+        print("  live_validation_pack:")
+        for name, path in payload["live_validation_pack"].items():
+            print(f"    {name}: {path}")
     if payload.get("memory_agents"):
         print("  memory_agents:")
         for name, path in payload["memory_agents"].items():
@@ -2243,6 +2262,9 @@ def main(argv: list[str] | None = None):
         description="Vault-for-LLM — local-first knowledge vault for LLM agents",
         epilog="Global agent option: --project-dir PATH may be passed before or after the subcommand.",
     )
+    from vault import __version__
+
+    parser.add_argument("--version", action="version", version=f"vault-for-llm {__version__}")
     sub = parser.add_subparsers(dest="command", help="子命令")
 
     # init
@@ -2387,6 +2409,10 @@ def main(argv: list[str] | None = None):
                         default="none", help="產生 Supabase remote reader 範本給 shell/n8n/Coze")
         ap.add_argument("--remote-reader-query", default="deployment SOP",
                         help="remote reader smoke/template 使用的示範查詢")
+        ap.add_argument("--agent-roster",
+                        help="產生多 Agent roster/access matrix，例如 nancy:profile,mori:work,coco:remote")
+        ap.add_argument("--validation-pack", choices=["none", "remote", "n8n", "coze", "all"],
+                        default="none", help="產生 Supabase/n8n/Coze live validation pack")
         ap.add_argument("--template-dir", help="同步模板輸出目錄；預設 project/agent-install")
         ap.add_argument("--allow-private", action="store_true",
                         help="允許 Obsidian 匯入含 secret-like pattern 的本機私人資料")

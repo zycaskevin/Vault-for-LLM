@@ -32,6 +32,8 @@ VALID_FEATURES = {
 }
 VALID_SYNC_TARGETS = {"none", "cron", "launchagent", "n8n", "all"}
 VALID_REMOTE_READER_TARGETS = {"none", "shell", "n8n", "coze", "all"}
+VALID_VALIDATION_PACK_TARGETS = {"none", "remote", "n8n", "coze", "all"}
+VALID_AGENT_ROLES = {"work", "profile", "care", "dream", "remote", "automation", "observer"}
 VALID_SUPABASE_SETUP_MODES = {"none", "simple", "advanced"}
 VALID_SETUP_LANGUAGES = {"en", "zh-Hant", "zh-CN"}
 PYPI_EXTRA_FEATURES = {"mcp", "semantic", "supabase", "dev"}
@@ -684,6 +686,334 @@ def write_remote_reader_templates(
     return written
 
 
+def _safe_slug(value: object, default: str = "agent") -> str:
+    text = str(value or default).strip().lower()
+    cleaned = []
+    for char in text:
+        if char.isalnum() or char in {"-", "_"}:
+            cleaned.append(char)
+        elif char in {" ", ".", "/"}:
+            cleaned.append("-")
+    slug = "".join(cleaned).strip("-_")
+    return slug or default
+
+
+def _role_defaults(role: str) -> dict[str, Any]:
+    normalized = str(role or "work").strip().lower()
+    if normalized == "profile":
+        return {"scope": "private", "max_sensitivity": "high", "tool_profile": "review", "can_write_candidates": True}
+    if normalized == "care":
+        return {"scope": "private", "max_sensitivity": "medium", "tool_profile": "core", "can_write_candidates": True}
+    if normalized == "dream":
+        return {"scope": "private", "max_sensitivity": "medium", "tool_profile": "maintenance", "can_write_candidates": True}
+    if normalized == "remote":
+        return {"scope": "shared", "max_sensitivity": "medium", "tool_profile": "remote", "can_write_candidates": False}
+    if normalized == "automation":
+        return {"scope": "shared", "max_sensitivity": "low", "tool_profile": "core", "can_write_candidates": False}
+    if normalized == "observer":
+        return {"scope": "shared", "max_sensitivity": "low", "tool_profile": "core", "can_write_candidates": False}
+    return {"scope": "shared", "max_sensitivity": "medium", "tool_profile": "core", "can_write_candidates": True}
+
+
+def normalize_agent_roster(raw: str | list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if raw is None:
+        return []
+    entries: list[dict[str, Any]] = []
+    if isinstance(raw, str):
+        parts = [part.strip() for part in raw.split(",") if part.strip()]
+        for part in parts:
+            fields = [field.strip() for field in part.split(":")]
+            agent = fields[0] if fields else ""
+            role = fields[1] if len(fields) > 1 and fields[1] else "work"
+            scope = fields[2] if len(fields) > 2 and fields[2] else None
+            max_sensitivity = fields[3] if len(fields) > 3 and fields[3] else None
+            entries.append(
+                {
+                    "agent_id": agent,
+                    "role": role,
+                    **({"scope": scope} if scope else {}),
+                    **({"max_sensitivity": max_sensitivity} if max_sensitivity else {}),
+                }
+            )
+    else:
+        entries = [dict(item) for item in raw]
+
+    normalized: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in entries:
+        agent_id = _safe_slug(item.get("agent_id") or item.get("agent") or item.get("name"), default="")
+        if not agent_id:
+            raise ValueError("agent roster entries require an agent id")
+        if agent_id in seen:
+            continue
+        seen.add(agent_id)
+        role = str(item.get("role") or "work").strip().lower()
+        if role not in VALID_AGENT_ROLES:
+            allowed = ", ".join(sorted(VALID_AGENT_ROLES))
+            raise ValueError(f"unknown agent role '{role}' (expected one of: {allowed})")
+        defaults = _role_defaults(role)
+        scope = str(item.get("scope") or defaults["scope"]).strip().lower()
+        if scope not in {"private", "project", "shared", "public"}:
+            raise ValueError("agent roster scope must be private, project, shared, or public")
+        max_sensitivity = str(item.get("max_sensitivity") or defaults["max_sensitivity"]).strip().lower()
+        if max_sensitivity not in {"low", "medium", "high", "restricted"}:
+            raise ValueError("agent roster max_sensitivity must be low, medium, high, or restricted")
+        normalized.append(
+            {
+                "agent_id": agent_id,
+                "role": role,
+                "scope": scope,
+                "max_sensitivity": max_sensitivity,
+                "tool_profile": str(item.get("tool_profile") or defaults["tool_profile"]),
+                "can_write_candidates": bool(item.get("can_write_candidates", defaults["can_write_candidates"])),
+                "private_memory": bool(item.get("private_memory", role in {"profile", "care", "dream"})),
+                "remote_reader": bool(item.get("remote_reader", role in {"remote", "automation", "observer"})),
+            }
+        )
+    return normalized
+
+
+def render_agent_access_matrix(roster: list[dict[str, Any]]) -> str:
+    lines = [
+        "# Vault-for-LLM Agent Access Matrix",
+        "",
+        "Use this file as the reviewed roster for multi-agent memory sharing.",
+        "",
+        "| Agent | Role | Scope | Max sensitivity | Tool profile | Candidate write | Private memory | Remote reader |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for item in roster:
+        lines.append(
+            "| {agent_id} | {role} | {scope} | {max_sensitivity} | {tool_profile} | {can_write_candidates} | {private_memory} | {remote_reader} |".format(
+                **item
+            )
+        )
+    lines.extend(
+        [
+            "",
+            "Rules:",
+            "",
+            "- Persona files, raw private chats, and high-sensitivity profile notes stay in each agent's private memory.",
+            "- Shared project memory should be reviewed, source-backed, and usually `sensitivity: low` or `medium`.",
+            "- Care/profile agents may publish reviewed L2 summaries, not raw private conversations.",
+            "- Remote readers use `SUPABASE_ANON_KEY` or a scoped authenticated token, never the service role key.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def write_agent_roster_templates(
+    *,
+    output_dir: str | Path,
+    project_dir: str | Path,
+    roster: str | list[dict[str, Any]],
+) -> dict[str, Any]:
+    normalized = normalize_agent_roster(roster)
+    if not normalized:
+        return {}
+    out = Path(output_dir).expanduser().resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    env_dir = out / "agent-env"
+    env_dir.mkdir(parents=True, exist_ok=True)
+    project_path = Path(project_dir).expanduser()
+
+    roster_path = out / "agent-roster.json"
+    roster_path.write_text(json.dumps({"agents": normalized}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    matrix_path = out / "AGENT_ACCESS_MATRIX.md"
+    matrix_path.write_text(render_agent_access_matrix(normalized), encoding="utf-8")
+
+    command_lines = ["#!/usr/bin/env sh", "set -eu", ""]
+    env_paths: dict[str, str] = {}
+    for item in normalized:
+        agent_id = item["agent_id"]
+        env_path = env_dir / f"{agent_id}.env.example"
+        env_path.write_text(
+            "\n".join(
+                [
+                    f"VAULT_AGENT_ID={agent_id}",
+                    f"VAULT_AGENT_ROLE={item['role']}",
+                    f"VAULT_SCOPE={item['scope']}",
+                    f"VAULT_MAX_SENSITIVITY={item['max_sensitivity']}",
+                    f"VAULT_TOOL_PROFILE={item['tool_profile']}",
+                    f"VAULT_PROJECT_DIR={project_path}",
+                    "SUPABASE_URL=https://YOUR_PROJECT.supabase.co",
+                    "SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        env_paths[agent_id] = str(env_path)
+        command_lines.append(
+            shell_join(
+                [
+                    "vault",
+                    "setup-agent",
+                    "--non-interactive",
+                    "--agent",
+                    agent_id,
+                    "--scope",
+                    "private" if item["private_memory"] else "shared",
+                    "--agent-project-dir",
+                    str(project_path),
+                    "--features",
+                    "core,mcp",
+                    "--tool-profile",
+                    item["tool_profile"],
+                    "--json",
+                ]
+            )
+        )
+
+    commands_path = out / "agent-setup-commands.sh"
+    commands_path.write_text("\n".join(command_lines) + "\n", encoding="utf-8")
+
+    readme_path = out / "README-agent-roster.md"
+    readme_path.write_text(
+        "\n".join(
+            [
+                "# Vault-for-LLM Multi-Agent Roster",
+                "",
+                "Generated files:",
+                "",
+                "- `agent-roster.json`: machine-readable roster.",
+                "- `AGENT_ACCESS_MATRIX.md`: human-reviewed sharing policy.",
+                "- `agent-env/*.env.example`: per-agent environment examples.",
+                "- `agent-setup-commands.sh`: local setup commands for each agent.",
+                "",
+                "Review the matrix before using these settings in production. This generator does not grant access by itself; it writes policy files and setup helpers.",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    return {
+        "count": len(normalized),
+        "roster": str(roster_path),
+        "matrix": str(matrix_path),
+        "commands": str(commands_path),
+        "readme": str(readme_path),
+        "env": env_paths,
+    }
+
+
+def _normalize_validation_pack_targets(raw: str | list[str] | None) -> set[str]:
+    if raw is None:
+        return set()
+    if isinstance(raw, str):
+        parts = [part.strip().lower() for part in raw.split(",") if part.strip()]
+    else:
+        parts = [str(part).strip().lower() for part in raw if str(part).strip()]
+    if not parts or "none" in parts:
+        return set()
+    unknown = [part for part in parts if part not in VALID_VALIDATION_PACK_TARGETS]
+    if unknown:
+        allowed = ", ".join(sorted(VALID_VALIDATION_PACK_TARGETS))
+        raise ValueError(f"unknown validation pack target '{unknown[0]}' (expected one of: {allowed})")
+    if "all" in parts:
+        return {"remote", "n8n", "coze"}
+    return set(parts)
+
+
+def write_live_validation_pack(
+    *,
+    output_dir: str | Path,
+    agent: str,
+    targets: str | list[str] = "all",
+    query: str = "deployment SOP",
+) -> dict[str, str]:
+    selected = _normalize_validation_pack_targets(targets)
+    if not selected:
+        return {}
+    out = Path(output_dir).expanduser().resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    safe_agent = _safe_slug(agent, default="generic")
+    safe_query = str(query or "deployment SOP")
+    written: dict[str, str] = {}
+
+    if "remote" in selected:
+        path = out / "validate-remote-reader.sh"
+        path.write_text(
+            "\n".join(
+                [
+                    "#!/usr/bin/env sh",
+                    "set -eu",
+                    ": \"${SUPABASE_URL:?Set SUPABASE_URL first}\"",
+                    ": \"${SUPABASE_ANON_KEY:?Set SUPABASE_ANON_KEY first}\"",
+                    shell_join(["vault", "remote", "smoke", "--agent-id", safe_agent, "--query", safe_query]),
+                    shell_join(["vault", "remote", "search", safe_query, "--agent-id", safe_agent, "--json"]),
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        written["remote"] = str(path)
+
+    if "n8n" in selected:
+        path = out / "VALIDATE-n8n.md"
+        path.write_text(
+            "\n".join(
+                [
+                    "# Validate n8n Remote Reader",
+                    "",
+                    "1. Import `n8n-remote-reader.workflow.json` from the same `agent-install/` directory.",
+                    "2. Ensure the n8n host can run the `vault` CLI.",
+                    "3. Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` in the n8n process environment.",
+                    "4. Run the manual trigger and confirm the command output contains `vault_search_readable` results.",
+                    "5. Do not place `SUPABASE_SERVICE_ROLE_KEY` in n8n unless n8n is the trusted sync host.",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        written["n8n"] = str(path)
+
+    if "coze" in selected:
+        path = out / "VALIDATE-coze.md"
+        path.write_text(
+            "\n".join(
+                [
+                    "# Validate Coze Remote Reader",
+                    "",
+                    "1. Import `coze-supabase-vault-openapi.json` as the Coze connector schema.",
+                    "2. Replace `https://YOUR_PROJECT.supabase.co/rest/v1` with your Supabase REST endpoint.",
+                    "3. Configure headers: `apikey: SUPABASE_ANON_KEY` and `Authorization: Bearer SUPABASE_ANON_KEY`.",
+                    "4. Call `vaultRemoteSearch` with `p_agent_id`, `p_query`, `p_include_private=false`, `p_max_sensitivity=medium`, and `p_limit=5`.",
+                    "5. Confirm responses contain safe summaries and do not expose `content_raw`.",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        written["coze"] = str(path)
+
+    readme = out / "README-live-validation.md"
+    readme.write_text(
+        "\n".join(
+            [
+                "# Vault-for-LLM Live Validation Pack",
+                "",
+                "Use this after the local setup, Supabase schema, read policy, and first sync are complete.",
+                "",
+                "Validation order:",
+                "",
+                "1. Run `validate-remote-reader.sh` on a trusted machine.",
+                "2. Import and run the n8n workflow if n8n is part of the deployment.",
+                "3. Import and call the Coze OpenAPI connector if Coze/Coco is part of the deployment.",
+                "",
+                "Passing local tests does not prove remote credentials or hosted platform settings. This pack verifies the external deployment without exposing service-role credentials to hosted agents.",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    written["readme"] = str(readme)
+    return written
+
+
 def render_memory_agents_guide(
     *,
     project_dir: str | Path,
@@ -1245,6 +1575,8 @@ class AgentSetupConfig:
     supabase_setup_mode: str = "simple"
     remote_reader_targets: str | list[str] = "none"
     remote_reader_query: str = "deployment SOP"
+    agent_roster: str | list[dict[str, Any]] | None = None
+    validation_pack_targets: str | list[str] = "none"
     template_dir: Path | None = None
     allow_private: bool = False
 
@@ -1272,6 +1604,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
     )
     environment_warnings = python_environment_warnings()
     result: dict[str, Any] = {
+        "version": __version__,
         "project_dir": str(project_path),
         "scope": config.scope,
         "agent": config.agent,
@@ -1288,6 +1621,8 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         "supabase_setup": {},
         "supabase_sync_templates": {},
         "remote_reader_templates": {},
+        "agent_roster": {},
+        "live_validation_pack": {},
         "memory_agents": {},
         "next_steps": [
             f"vault search \"test query\" --project-dir {shlex.quote(str(project_path))} --limit 5",
@@ -1379,6 +1714,28 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
             result["next_steps"].append(
                 f"Run remote reader smoke test: {result['remote_reader_templates'].get('shell') or 'vault remote smoke'}"
             )
+
+    if config.agent_roster:
+        template_dir = config.template_dir or (project_path / "agent-install")
+        result["agent_roster"] = write_agent_roster_templates(
+            output_dir=template_dir,
+            project_dir=project_path,
+            roster=config.agent_roster,
+        )
+        if result["agent_roster"]:
+            result["next_steps"].append(f"Review agent access matrix: {result['agent_roster']['matrix']}")
+
+    validation_targets = _normalize_validation_pack_targets(config.validation_pack_targets)
+    if validation_targets:
+        template_dir = config.template_dir or (project_path / "agent-install")
+        result["live_validation_pack"] = write_live_validation_pack(
+            output_dir=template_dir,
+            agent=config.agent,
+            targets=sorted(validation_targets),
+            query=config.remote_reader_query,
+        )
+        if result["live_validation_pack"]:
+            result["next_steps"].append(f"Run live validation checklist: {result['live_validation_pack']['readme']}")
 
     return result
 
@@ -1574,6 +1931,12 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
     if "supabase" in features and not argv_config.get("remote_reader_targets"):
         remote_reader_targets = _ask("Remote reader templates for n8n/Coze/shell (none/shell/n8n/coze/all)", "none")
     remote_reader_query = str(argv_config.get("remote_reader_query") or "deployment SOP")
+    agent_roster = argv_config.get("agent_roster")
+    if agent_roster is None and _ask_yes_no("Generate multi-agent roster/access-matrix templates?", False):
+        agent_roster = _ask("Agent roster (example: nancy:profile,mori:work,aiko:work,coco:remote,n8n:automation)", "")
+    validation_pack_targets = argv_config.get("validation_pack_targets", "none")
+    if "supabase" in features and not argv_config.get("validation_pack_targets"):
+        validation_pack_targets = _ask("Live validation pack for remote/n8n/coze (none/remote/n8n/coze/all)", "none")
 
     return AgentSetupConfig(
         project_dir=Path(project_dir),
@@ -1596,6 +1959,8 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
         supabase_setup_mode=str(supabase_setup_mode or "simple"),
         remote_reader_targets=remote_reader_targets,
         remote_reader_query=remote_reader_query,
+        agent_roster=agent_roster or None,
+        validation_pack_targets=validation_pack_targets,
         template_dir=Path(argv_config["template_dir"]) if argv_config.get("template_dir") else None,
         allow_private=bool(argv_config.get("allow_private", False)),
     )

@@ -137,6 +137,50 @@ def test_run_agent_setup_writes_remote_reader_templates(tmp_path):
     assert any("remote reader smoke" in step for step in result["next_steps"])
 
 
+def test_run_agent_setup_writes_agent_roster_and_validation_pack(tmp_path):
+    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+
+    project = tmp_path / "agent-project"
+    result = run_agent_setup(
+        AgentSetupConfig(
+            project_dir=project,
+            scope="shared",
+            agent="nancy",
+            features=["core", "mcp", "supabase", "memory_agents"],
+            supabase_setup_mode="advanced",
+            remote_reader_targets="all",
+            remote_reader_query="pricing SOP",
+            agent_roster="nancy:profile,mori:work,aiko:work,coco:remote,n8n:automation",
+            validation_pack_targets="all",
+            template_dir=tmp_path / "templates",
+        )
+    )
+
+    roster = result["agent_roster"]
+    validation = result["live_validation_pack"]
+    assert roster["count"] == 5
+    assert {"roster", "matrix", "commands", "readme", "env"}.issubset(roster)
+    assert {"remote", "n8n", "coze", "readme"}.issubset(validation)
+
+    roster_json = json.loads((tmp_path / "templates" / "agent-roster.json").read_text(encoding="utf-8"))
+    matrix = (tmp_path / "templates" / "AGENT_ACCESS_MATRIX.md").read_text(encoding="utf-8")
+    nancy_env = (tmp_path / "templates" / "agent-env" / "nancy.env.example").read_text(encoding="utf-8")
+    validate_remote = (tmp_path / "templates" / "validate-remote-reader.sh").read_text(encoding="utf-8")
+    validate_coze = (tmp_path / "templates" / "VALIDATE-coze.md").read_text(encoding="utf-8")
+
+    assert roster_json["agents"][0]["agent_id"] == "nancy"
+    assert roster_json["agents"][0]["role"] == "profile"
+    assert roster_json["agents"][0]["private_memory"] is True
+    assert any(item["agent_id"] == "coco" and item["remote_reader"] for item in roster_json["agents"])
+    assert "| nancy | profile | private | high | review | True | True | False |" in matrix
+    assert "VAULT_AGENT_ROLE=profile" in nancy_env
+    assert "vault remote smoke" in validate_remote
+    assert "pricing SOP" in validate_remote
+    assert "content_raw" in validate_coze
+    assert any("agent access matrix" in step for step in result["next_steps"])
+    assert any("live validation checklist" in step for step in result["next_steps"])
+
+
 def test_setup_agent_cli_non_interactive(tmp_path, capsys):
     from vault.cli import main
 
@@ -217,7 +261,21 @@ def test_setup_agent_help_exposes_supabase_sync_options(capsys):
     assert "--supabase-setup" in captured.out
     assert "--supabase-sync-interval-minutes" in captured.out
     assert "--remote-reader" in captured.out
+    assert "--agent-roster" in captured.out
+    assert "--validation-pack" in captured.out
     assert "--language" in captured.out
+
+
+def test_cli_version_flag(capsys):
+    from vault.cli import main
+
+    try:
+        main(["--version"])
+    except SystemExit as exc:
+        assert exc.code == 0
+
+    captured = capsys.readouterr()
+    assert "vault-for-llm 0.6.37" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -382,6 +440,9 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
             "simple",  # Supabase setup guide
             "none",  # Supabase sync templates
             "n8n",  # remote reader templates
+            "yes",  # agent roster
+            "nancy:profile,coco:remote",  # roster entries
+            "all",  # live validation pack
         ]
     )
     prompts: list[str] = []
@@ -407,7 +468,11 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
     assert any("local ONNX embedding model" in prompt for prompt in prompts)
     assert any("Daily Supabase sync templates" in prompt for prompt in prompts)
     assert any("Remote reader templates" in prompt for prompt in prompts)
+    assert any("multi-agent roster" in prompt for prompt in prompts)
+    assert any("Live validation pack" in prompt for prompt in prompts)
     assert config.remote_reader_targets == "n8n"
+    assert config.agent_roster == "nancy:profile,coco:remote"
+    assert config.validation_pack_targets == "all"
 
 
 def test_run_agent_setup_can_skip_supabase_setup_guide(tmp_path):

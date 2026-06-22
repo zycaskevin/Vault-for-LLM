@@ -10,7 +10,7 @@ install path below keeps Vault local-first and governed.
 ## One-Sentence Prompt
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.26, ask which database scope I want, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.27, ask which database scope I want, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
 ```
 
 ## What To Ask First
@@ -28,6 +28,7 @@ Ask these before installing extras or writing memory:
 9. Do you want developer/benchmark dependencies for source work or release validation?
 10. If any optional feature is selected, should I install its Python dependencies now?
 11. If semantic is selected, should I download and configure a local ONNX embedding model now?
+12. If Supabase is selected, should I generate daily sync templates for cron, LaunchAgent, or n8n?
 
 Keep MCP defaulting to yes for MCP-capable runtimes. Keep semantic, Supabase,
 Headroom, and dev dependencies defaulting to no unless the user confirms.
@@ -51,13 +52,17 @@ use the same project directory.
 locations and not stable shared vaults. Do not reuse a version-labelled temp
 path such as `/tmp/vault-install-test-0.6.24` as a real project memory path.
 For shared memory, choose a stable directory such as `~/Vaults/my-project`.
+For long-lived installs, also use a stable Python virtualenv path. Hermes/Nancy
+installs should prefer a path such as `~/.hermes/venvs/vault-for-llm/`;
+temporary venvs under `/tmp/...` can disappear after reboot and should not be
+used by scheduled jobs.
 
 ## Default Install
 
 Use the PyPI release unless the user explicitly asks for source development:
 
 ```bash
-python -m pip install "vault-for-llm[mcp]==0.6.26"
+python -m pip install "vault-for-llm[mcp]==0.6.27"
 vault setup-agent
 ```
 
@@ -90,6 +95,29 @@ vault setup-agent \
   --install-embedding-model mix \
   --json
 ```
+
+To install Supabase support and generate a daily cron template:
+
+```bash
+vault setup-agent \
+  --non-interactive \
+  --agent nancy \
+  --scope shared \
+  --agent-project-dir /path/to/project \
+  --features core,mcp,supabase \
+  --install-optional-deps \
+  --supabase-sync cron \
+  --json
+```
+
+The generated Supabase sync command uses an explicit database path:
+
+```bash
+python -m scripts.sync_to_supabase --db /path/to/project/vault.db --document-map --health
+```
+
+Keep `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the project `.env` or
+another reviewed environment source before enabling the scheduled job.
 
 ## Optional Headroom Compression
 

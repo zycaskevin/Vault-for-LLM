@@ -54,6 +54,7 @@
     "ask whether developer/benchmark dependencies should be enabled",
     "if optional features are selected, ask whether to install their Python dependencies now",
     "if semantic search is selected, ask whether to download and configure a local ONNX embedding model",
+    "if Supabase sync is selected, ask whether to generate daily cron, LaunchAgent, or n8n sync templates",
     "ask whether to connect an existing Obsidian vault",
     "install vault",
     "configure CLI or stdio MCP",
@@ -65,9 +66,9 @@
   "agent_setup_wizard": {
     "cli": "vault setup-agent",
     "alias": "vault install-agent",
-    "install_command": "python -m pip install \"vault-for-llm[mcp]==0.6.26\"",
+    "install_command": "python -m pip install \"vault-for-llm[mcp]==0.6.27\"",
     "non_interactive_example": "vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir /path/to/project --features core,mcp,obsidian_import --obsidian-vault /path/to/ObsidianVault --import-obsidian --obsidian-sync all",
-    "non_interactive_with_optional_deps": "vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir /path/to/project --features core,mcp,semantic,supabase,headroom --install-optional-deps --install-embedding-model mix --json",
+    "non_interactive_with_optional_deps": "vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir /path/to/project --features core,mcp,semantic,supabase,headroom --install-optional-deps --install-embedding-model mix --supabase-sync cron --json",
     "sync_templates": ["cron", "launchagent", "n8n"]
   },
   "optional_features": [
@@ -77,7 +78,7 @@
       "prompt": "Install the core local Markdown + SQLite + keyword search workflow?",
       "when_to_install": "Always. This is the minimal local-first Vault workflow.",
       "install_commands": [
-        "python -m pip install vault-for-llm==0.6.26"
+        "python -m pip install vault-for-llm==0.6.27"
       ],
       "post_install": [
         "vault init --project-dir /path/to/project",
@@ -91,7 +92,7 @@
       "prompt": "Configure local stdio MCP tools for this agent?",
       "when_to_install": "Use when the runtime supports MCP, such as Hermes Agent, Codex surfaces with MCP, OpenCode, Claude Code, OpenClaw generic MCP, or other MCP hosts.",
       "install_commands": [
-        "python -m pip install \"vault-for-llm[mcp]==0.6.26\""
+        "python -m pip install \"vault-for-llm[mcp]==0.6.27\""
       ],
       "post_install": [
         "vault-mcp --project-dir /path/to/project --tool-profile core"
@@ -137,14 +138,14 @@
       "prompt": "Install optional Supabase sync/read dependencies?",
       "when_to_install": "Use when a team needs remote read paths, a synced copy of local SQLite data, or cross-host memory sharing for agents on different machines.",
       "install_commands": [
-        "vault setup-agent --non-interactive --agent generic --scope shared --agent-project-dir /path/to/project --features core,mcp,supabase --install-optional-deps --json"
+        "vault setup-agent --non-interactive --agent generic --scope shared --agent-project-dir /path/to/project --features core,mcp,supabase --install-optional-deps --supabase-sync cron --json"
       ],
       "post_install": [
         "export SUPABASE_URL=...",
         "export SUPABASE_SERVICE_ROLE_KEY=...",
-        "python scripts/sync_to_supabase.py --document-map"
+        "python -m scripts.sync_to_supabase --db /path/to/project/vault.db --document-map --health"
       ],
-      "notes": "SQLite remains the source of truth. Supabase can provide a shared remote read/sync layer for different hosts. Do not sync full content unless the user explicitly wants --include-content."
+      "notes": "SQLite remains the source of truth. Supabase can provide a shared remote read/sync layer for different hosts. Do not sync full content unless the user explicitly wants --include-content. If privacy gates block files, clean the source notes before recompiling instead of bypassing the gate."
     },
     {
       "id": "headroom",
@@ -290,6 +291,7 @@
     "Do not commit runtime vault.db files, report artifacts, benchmark outputs, or secrets.",
     "Do not expose vault-mcp directly to the public internet.",
     "Do not present benchmark percentages as universal scores without dataset and probe caveats.",
-    "For shared vaults, use candidate-first memory writes by default."
+    "For shared vaults, use candidate-first memory writes by default.",
+    "Do not rely on /tmp virtualenvs for scheduled agent jobs; use a stable path such as ~/.hermes/venvs/vault-for-llm/."
   ]
 }

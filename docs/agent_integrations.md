@@ -82,7 +82,17 @@ Supabase follow-up:
 ```bash
 export SUPABASE_URL=...
 export SUPABASE_SERVICE_ROLE_KEY=...
-python scripts/sync_to_supabase.py --document-map
+python -m scripts.sync_to_supabase --db /path/to/project/vault.db --document-map --health
+
+vault setup-agent \
+  --non-interactive \
+  --agent nancy \
+  --scope shared \
+  --agent-project-dir /path/to/project \
+  --features core,mcp,supabase \
+  --install-optional-deps \
+  --supabase-sync cron \
+  --json
 ```
 
 Supabase is a sync/read target, not the source of truth. Ask again before using

@@ -15,13 +15,15 @@ Sync Vault-knowledge local DB → Supabase
 import os
 import sys
 import json
+import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scripts._utils import find_db_path, load_dotenv_cascade
+from scripts._utils import find_db_path, load_dotenv_cascade  # noqa: E402
 
-# 載入 .env：優先用專案目錄的 .env，其次 ~/.env
+# 載入 .env：優先用目前 project directory 的 .env，其次 ~/.env。
+# CLI --db 會在 __main__ 解析後再補載一次指定 db 旁邊的 .env。
 load_dotenv_cascade()
 
 try:
@@ -29,19 +31,21 @@ try:
 except Exception:  # optional dependency for remote sync only
     create_client = None
 
-from vault.db import VaultDB
-from vault.health import (
+from vault.db import VaultDB  # noqa: E402
+from vault.health import (  # noqa: E402
     DEFAULT_SAMPLE_LIMIT,
     VaultHealthMetrics,
     collect_vault_health_metrics,
 )
-from vault.privacy import scan_privacy
+from vault.privacy import scan_privacy  # noqa: E402
 
 DB_PATH = str(find_db_path())
 
 DOCUMENT_MAP_NODE_TABLE = os.getenv('VAULT_SUPABASE_NODE_TABLE', 'vault_knowledge_nodes')
 DOCUMENT_MAP_CLAIM_TABLE = os.getenv('VAULT_SUPABASE_CLAIM_TABLE', 'vault_knowledge_claims')
 VAULT_HEALTH_TABLE = os.getenv('VAULT_SUPABASE_HEALTH_TABLE', 'vault_health_metrics')
+KNOWLEDGE_TABLE = os.getenv('VAULT_SUPABASE_KNOWLEDGE_TABLE', 'vault_knowledge')
+SKILLS_TABLE = os.getenv('VAULT_SUPABASE_SKILLS_TABLE', 'vault_skills')
 
 DOCUMENT_MAP_NODE_COLUMNS = [
     'knowledge_id',
@@ -116,14 +120,26 @@ def _parse_capabilities(caps_str) -> list:
     return [t.strip() for t in str(caps_str).split(',') if t.strip()]
 
 
+def _nonempty_content_hash(existing_hash, *parts) -> str:
+    """Return a deterministic non-empty hash for Supabase NOT NULL schemas."""
+    if existing_hash:
+        return str(existing_hash)
+    text = "\n".join(str(part or "") for part in parts)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def _get_sb_client():
     if create_client is None:
         print("❌ Supabase Python client 未安裝，無法執行遠端同步")
         return None
     url = os.getenv('SUPABASE_URL')
-    key = os.getenv('SUPABASE_ANON_KEY') or os.getenv('SUPABASE_KEY')
+    key = (
+        os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+        or os.getenv('SUPABASE_ANON_KEY')
+        or os.getenv('SUPABASE_KEY')
+    )
     if not url or not key:
-        print("❌ SUPABASE_URL 或 SUPABASE_ANON_KEY 未設定")
+        print("❌ SUPABASE_URL 或 SUPABASE_SERVICE_ROLE_KEY/SUPABASE_ANON_KEY 未設定")
         return None
     return create_client(url, key)
 
@@ -204,7 +220,13 @@ def _knowledge_sync_payload(row, *, include_content: bool = False) -> dict:
         'trust': trust or 0.5,
         'content_raw': content_raw if include_raw else '',
         'content_aaak': content_aaak if include_raw else '',
-        'content_hash': content_hash or '',
+        'content_hash': _nonempty_content_hash(
+            content_hash,
+            content_raw,
+            content_aaak,
+            summary,
+            title,
+        ),
         'summary': summary or '',
         'source': source or 'local',
         'updated_at': datetime.now().isoformat(),
@@ -227,7 +249,7 @@ def _skill_sync_payload(row, *, include_content: bool = False) -> dict:
         'dependencies': _parse_capabilities(dependencies),
         'trust': trust or 0.5,
         'content_raw': content_raw if include_raw else '',
-        'content_hash': content_hash or '',
+        'content_hash': _nonempty_content_hash(content_hash, content_raw, description, name),
         'description': description or '',
         'updated_at': datetime.now().isoformat(),
     }
@@ -257,42 +279,43 @@ def sync(db_path=DB_PATH, *, include_content: bool = False):
         data = _knowledge_sync_payload(row, include_content=include_content)
 
         try:
-            existing = sb.table('vault_knowledge').select('id').ilike('title', title).execute()
+            sync_hash = data['content_hash']
+            existing = sb.table(KNOWLEDGE_TABLE).select('id').ilike('title', title).execute()
             if existing.data:
                 for e in existing.data:
-                    sb.table('vault_knowledge').update(data).eq('id', e['id']).execute()
+                    sb.table(KNOWLEDGE_TABLE).update(data).eq('id', e['id']).execute()
                 updated += len(existing.data)
-            elif content_hash:
+            elif sync_hash:
                 # Fallback: match by content_hash (title may differ)
-                hash_match = sb.table('vault_knowledge').select('id').eq('content_hash', content_hash).execute()
+                hash_match = sb.table(KNOWLEDGE_TABLE).select('id').eq('content_hash', sync_hash).execute()
                 if hash_match.data:
                     for h in hash_match.data:
-                        sb.table('vault_knowledge').update(data).eq('id', h['id']).execute()
+                        sb.table(KNOWLEDGE_TABLE).update(data).eq('id', h['id']).execute()
                     updated += len(hash_match.data)
                 else:
                     data['created_at'] = created_at or datetime.now().isoformat()
-                    sb.table('vault_knowledge').insert(data).execute()
+                    sb.table(KNOWLEDGE_TABLE).insert(data).execute()
                     inserted += 1
             else:
                 data['created_at'] = created_at or datetime.now().isoformat()
-                sb.table('vault_knowledge').insert(data).execute()
+                sb.table(KNOWLEDGE_TABLE).insert(data).execute()
                 inserted += 1
         except Exception as e:
             err = str(e)
             if 'duplicate' in err.lower():
                 try:
                     # 1st: fuzzy title match
-                    fuzzy = sb.table('vault_knowledge').select('id').ilike('title', f'%{title[:30]}%').execute()
+                    fuzzy = sb.table(KNOWLEDGE_TABLE).select('id').ilike('title', f'%{title[:30]}%').execute()
                     if fuzzy.data:
                         for f in fuzzy.data:
-                            sb.table('vault_knowledge').update(data).eq('id', f['id']).execute()
+                            sb.table(KNOWLEDGE_TABLE).update(data).eq('id', f['id']).execute()
                         updated += len(fuzzy.data)
-                    elif content_hash:
+                    elif data['content_hash']:
                         # 2nd: content_hash match
-                        hash_match = sb.table('vault_knowledge').select('id').eq('content_hash', content_hash).execute()
+                        hash_match = sb.table(KNOWLEDGE_TABLE).select('id').eq('content_hash', data['content_hash']).execute()
                         if hash_match.data:
                             for h in hash_match.data:
-                                sb.table('vault_knowledge').update(data).eq('id', h['id']).execute()
+                                sb.table(KNOWLEDGE_TABLE).update(data).eq('id', h['id']).execute()
                             updated += len(hash_match.data)
                         else:
                             failed += 1
@@ -312,8 +335,8 @@ def sync(db_path=DB_PATH, *, include_content: bool = False):
 
     db.close()
 
-    final = sb.table('vault_knowledge').select('id').execute().data
-    print(f"\n✅ Knowledge sync complete:")
+    final = sb.table(KNOWLEDGE_TABLE).select('id').execute().data
+    print("\n✅ Knowledge sync complete:")
     print(f"   Inserted: {inserted}")
     print(f"   Updated: {updated}")
     print(f"   Failed: {failed}")
@@ -357,10 +380,10 @@ def sync_skills(db_path=DB_PATH, *, include_content: bool = False):
 
     # 測試 Supabase 表是否存在
     try:
-        sb.table('vault_skills').select('id', count='exact').limit(1).execute()
-    except Exception as e:
-        print(f"⚠️ Supabase vault_skills 表不存在或無權限。跳過技能同步。")
-        print(f"   請手動執行上方註解中的 CREATE TABLE。")
+        sb.table(SKILLS_TABLE).select('id', count='exact').limit(1).execute()
+    except Exception:
+        print(f"⚠️ Supabase {SKILLS_TABLE} 表不存在或無權限。跳過技能同步。")
+        print("   請手動執行上方註解中的 CREATE TABLE。")
         db.close()
         return
 
@@ -374,14 +397,14 @@ def sync_skills(db_path=DB_PATH, *, include_content: bool = False):
         data = _skill_sync_payload(row, include_content=include_content)
 
         try:
-            existing = sb.table('vault_skills').select('id').eq('name', name).execute()
+            existing = sb.table(SKILLS_TABLE).select('id').eq('name', name).execute()
             if existing.data:
                 for e in existing.data:
-                    sb.table('vault_skills').update(data).eq('id', e['id']).execute()
+                    sb.table(SKILLS_TABLE).update(data).eq('id', e['id']).execute()
                 updated += len(existing.data)
             else:
                 data['created_at'] = created_at or datetime.now().isoformat()
-                sb.table('vault_skills').insert(data).execute()
+                sb.table(SKILLS_TABLE).insert(data).execute()
                 inserted += 1
         except Exception as e:
             failed += 1
@@ -397,10 +420,10 @@ def sync_skills(db_path=DB_PATH, *, include_content: bool = False):
     db.close()
 
     try:
-        final = sb.table('vault_skills').select('id').execute().data
+        final = sb.table(SKILLS_TABLE).select('id').execute().data
     except Exception:
         final = []
-    print(f"\n✅ Skill sync complete:")
+    print("\n✅ Skill sync complete:")
     print(f"   Inserted: {inserted}")
     print(f"   Updated: {updated}")
     print(f"   Failed: {failed}")
@@ -559,6 +582,7 @@ def sync_vault_health(
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Sync local DB → Supabase")
+    parser.add_argument("--db", default=DB_PATH, help="vault.db 路徑；預設從 VAULT_PATH/cwd 搜尋")
     parser.add_argument("--skills", action="store_true", help="同步技能表（而非知識表）")
     parser.add_argument(
         "--include-content",
@@ -580,12 +604,13 @@ if __name__ == "__main__":
         help="Document Map citation health sampling size（預設 20）",
     )
     args = parser.parse_args()
+    load_dotenv_cascade(str(Path(args.db).expanduser().resolve().parent / ".env"))
 
     if args.skills:
-        sync_skills(include_content=args.include_content)
+        sync_skills(args.db, include_content=args.include_content)
     if args.document_map:
-        sync_document_map()
+        sync_document_map(args.db)
     if args.health:
-        sync_vault_health(sample_limit=args.health_sample_limit)
+        sync_vault_health(args.db, sample_limit=args.health_sample_limit)
     if not (args.skills or args.document_map or args.health):
-        sync(include_content=args.include_content)
+        sync(args.db, include_content=args.include_content)

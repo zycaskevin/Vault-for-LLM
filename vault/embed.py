@@ -13,7 +13,6 @@ Vault-for-LLM — 嵌入生成模組。
 """
 
 import os
-import sys
 import importlib.util
 import time
 from pathlib import Path
@@ -48,6 +47,17 @@ MODELS = {
 }
 
 DEFAULT_MODEL_KEY = "mix"
+
+
+def _load_auto_tokenizer(auto_tokenizer_cls, model_or_path: str):
+    """Load tokenizer with newer mistral-regex fix when supported."""
+    try:
+        return auto_tokenizer_cls.from_pretrained(
+            model_or_path,
+            fix_mistral_regex=True,
+        )
+    except TypeError:
+        return auto_tokenizer_cls.from_pretrained(model_or_path)
 
 
 class EmbeddingProvider:
@@ -121,7 +131,7 @@ class ONNXEmbeddingProvider(EmbeddingProvider):
             from optimum.onnxruntime import ORTModelForFeatureExtraction
             from transformers import AutoTokenizer
 
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            tokenizer = _load_auto_tokenizer(AutoTokenizer, model_name)
             model = ORTModelForFeatureExtraction.from_pretrained(
                 model_name, export=True
             )
@@ -151,7 +161,7 @@ class ONNXEmbeddingProvider(EmbeddingProvider):
             self._ensure_model()
 
         # 載入 tokenizer
-        self._tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
+        self._tokenizer = _load_auto_tokenizer(AutoTokenizer, str(model_dir))
 
         # 載入 ONNX session
         sess_options = ort.SessionOptions()

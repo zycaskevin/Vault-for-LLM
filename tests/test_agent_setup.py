@@ -50,6 +50,38 @@ def test_run_agent_setup_imports_obsidian_and_writes_templates(tmp_path):
     assert workflow["nodes"][1]["type"] == "n8n-nodes-base.executeCommand"
 
 
+def test_run_agent_setup_writes_supabase_sync_templates(tmp_path):
+    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+
+    project = tmp_path / "agent-project"
+    result = run_agent_setup(
+        AgentSetupConfig(
+            project_dir=project,
+            scope="shared",
+            agent="nancy",
+            features=["core", "mcp", "supabase"],
+            supabase_sync_targets="all",
+            template_dir=tmp_path / "templates",
+        )
+    )
+
+    assert {"cron", "launchagent", "n8n", "readme"}.issubset(result["supabase_sync_templates"])
+
+    cron = (tmp_path / "templates" / "supabase-sync.cron").read_text(encoding="utf-8")
+    plist = (tmp_path / "templates" / "com.zycaskevin.vault-for-llm.supabase-sync.plist").read_text(
+        encoding="utf-8"
+    )
+    workflow = json.loads((tmp_path / "templates" / "n8n-supabase-sync.workflow.json").read_text(encoding="utf-8"))
+
+    assert "scripts.sync_to_supabase" in cron
+    assert "--db" in cron
+    assert str(project / "vault.db") in cron
+    assert "--document-map" in cron
+    assert "--health" in cron
+    assert "supabase-sync" in plist
+    assert "scripts.sync_to_supabase" in workflow["nodes"][1]["parameters"]["command"]
+
+
 def test_setup_agent_cli_non_interactive(tmp_path, capsys):
     from vault.cli import main
 
@@ -112,6 +144,19 @@ def test_setup_agent_accepts_global_project_dir_for_missing_directory(tmp_path, 
     assert payload["project_dir"] == str(project.resolve())
     assert (project / "vault.db").exists()
     assert (project / "raw").is_dir()
+
+
+def test_setup_agent_help_exposes_supabase_sync_options(capsys):
+    from vault.cli import main
+
+    try:
+        main(["setup-agent", "--help"])
+    except SystemExit as exc:
+        assert exc.code == 0
+
+    captured = capsys.readouterr()
+    assert "--supabase-sync" in captured.out
+    assert "--supabase-sync-interval-minutes" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -211,6 +256,25 @@ def test_run_agent_setup_installs_embedding_model_when_requested(tmp_path, monke
     assert not any(step == "vault install-embedding --model mix" for step in result["next_steps"])
 
 
+def test_run_agent_setup_warns_about_temporary_python_env(tmp_path, monkeypatch):
+    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+
+    monkeypatch.setattr("vault.agent_setup.sys.prefix", "/tmp/vault-migrate-venv")
+    monkeypatch.setattr("vault.agent_setup.sys.executable", "/tmp/vault-migrate-venv/bin/python")
+
+    result = run_agent_setup(
+        AgentSetupConfig(
+            project_dir=tmp_path / "agent-project",
+            scope="shared",
+            agent="nancy",
+            features=["core", "mcp"],
+        )
+    )
+
+    assert result["environment_warnings"]
+    assert any("~/.hermes/venvs/vault-for-llm" in step for step in result["next_steps"])
+
+
 def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch):
     from vault.agent_setup import interactive_setup
 
@@ -227,6 +291,7 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
             "yes",  # install optional deps
             "no",  # install local embedding model
             "",  # Obsidian
+            "none",  # Supabase sync templates
         ]
     )
     prompts: list[str] = []
@@ -247,3 +312,4 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
     assert any("Headroom context compression" in prompt for prompt in prompts)
     assert any("optional Python dependencies" in prompt for prompt in prompts)
     assert any("local ONNX embedding model" in prompt for prompt in prompts)
+    assert any("Daily Supabase sync templates" in prompt for prompt in prompts)

@@ -116,8 +116,8 @@ everything by default:
 
 | Feature | Default | Install command | Ask when |
 |---|---|---|---|
-| `core` | yes | `python -m pip install vault-for-llm==0.6.26` | Always: local Markdown, SQLite, keyword search. |
-| `mcp` | yes for MCP-capable agents | `python -m pip install "vault-for-llm[mcp]==0.6.26"` | The runtime can connect local stdio MCP tools. |
+| `core` | yes | `python -m pip install vault-for-llm==0.6.27` | Always: local Markdown, SQLite, keyword search. |
+| `mcp` | yes for MCP-capable agents | `python -m pip install "vault-for-llm[mcp]==0.6.27"` | The runtime can connect local stdio MCP tools. |
 | `obsidian_import` | no | built into core CLI | The user already has an Obsidian vault and wants agents to search those notes through Vault. |
 | `semantic` | no | `python -m pip install "vault-for-llm[semantic]"` | The user wants embedding-backed semantic/hybrid search. |
 | `supabase` | no | `python -m pip install "vault-for-llm[supabase]"` | The user wants optional remote sync/read paths. |
@@ -139,6 +139,7 @@ vault setup-agent \
   --features core,mcp,semantic,supabase,headroom \
   --install-optional-deps \
   --install-embedding-model mix \
+  --supabase-sync cron \
   --json
 ```
 
@@ -175,6 +176,9 @@ different directories, they use isolated databases.
 package install location and should not be used as long-lived shared memory.
 For real shared use, choose a stable project directory such as
 `~/Vaults/my-project` and point every trusted agent at that same path.
+For scheduled jobs, also keep the Python virtualenv in a stable path such as
+`~/.hermes/venvs/vault-for-llm/`; a venv under `/tmp/...` can disappear after
+reboot.
 
 For shared vaults, prefer `vault_memory_propose` over direct writes so multiple
 agents do not pollute active memory before review.
@@ -191,7 +195,7 @@ required dependency for local use.
 
 ## Current Source Status
 
-The current source tree is `0.6.26`. Core local search is stable, while
+The current source tree is `0.6.27`. Core local search is stable, while
 advanced semantic, rerank, sync, and benchmarking workflows remain optional.
 See [CHANGELOG.md](CHANGELOG.md) for release details.
 
@@ -280,12 +284,12 @@ In story form: the agent writes a note, the front desk checks whether it is safe
 
 ### Install from PyPI
 
-Vault-for-LLM `0.6.26` is published on PyPI.
+Vault-for-LLM `0.6.27` is published on PyPI.
 
 For agent-driven installation, paste this into Hermes Agent, Codex, OpenCode, Claude Code, OpenClaw, or another agent that can run local commands:
 
 ```text
-Install Vault-for-LLM for this project. Use PyPI package vault-for-llm[mcp]==0.6.26.
+Install Vault-for-LLM for this project. Use PyPI package vault-for-llm[mcp]==0.6.27.
 Ask whether the vault database should be shared, private, domain-specific, or temporary.
 Ask separately about MCP, semantic search, Supabase sync, Headroom context compression,
 and dev/benchmark dependencies. If optional features are selected, ask whether to
@@ -300,7 +304,7 @@ Manual install:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.26"
+pip install "vault-for-llm[mcp]==0.6.27"
 
 vault setup-agent
 ```
@@ -618,7 +622,18 @@ Knowledge and skill sync use a minimal-disclosure default: metadata, summaries, 
 pip install supabase
 
 # configure Supabase credentials in your environment, then run sync scripts as needed
-python scripts/sync_to_supabase.py --document-map
+python -m scripts.sync_to_supabase --db /path/to/project/vault.db --document-map --health
+
+# or let setup-agent generate daily cron, LaunchAgent, or n8n templates
+vault setup-agent \
+  --non-interactive \
+  --agent nancy \
+  --scope shared \
+  --agent-project-dir /path/to/project \
+  --features core,mcp,supabase \
+  --install-optional-deps \
+  --supabase-sync cron \
+  --json
 ```
 
 ---

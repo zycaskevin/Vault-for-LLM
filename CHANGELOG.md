@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## [0.6.27] - 2026-06-22
+
+### Fixed
+
+- Ensured Supabase knowledge and skill sync payloads always include a non-empty `content_hash`, even when older local rows have a missing hash.
+- Added `--db` support to `scripts.sync_to_supabase` so scheduled jobs can target a stable `vault.db` path.
+- Added optional daily Supabase sync template generation to `vault setup-agent` via `--supabase-sync`.
+- Added agent setup warnings when Vault is running from a temporary `/tmp/...` Python environment.
+- Passed `fix_mistral_regex=True` when loading ONNX tokenizer models to address tokenizer warning noise from recent Transformers versions.
+
 ## [0.6.26] - 2026-06-22
 
 ### Fixed

@@ -1950,6 +1950,8 @@ def cmd_setup_agent(args):
             import_obsidian=bool(args.import_obsidian),
             sync_targets=args.obsidian_sync,
             sync_interval_minutes=args.sync_interval_minutes,
+            supabase_sync_targets=args.supabase_sync,
+            supabase_sync_interval_minutes=args.supabase_sync_interval_minutes,
             template_dir=Path(args.template_dir).expanduser() if args.template_dir else None,
             allow_private=bool(args.allow_private),
         )
@@ -1963,7 +1965,9 @@ def cmd_setup_agent(args):
             "install_optional_deps": args.install_optional_deps,
             "install_embedding_model": args.install_embedding_model,
             "obsidian_vault": args.obsidian_vault,
+            "supabase_sync_targets": args.supabase_sync,
             "sync_interval_minutes": args.sync_interval_minutes,
+            "supabase_sync_interval_minutes": args.supabase_sync_interval_minutes,
             "template_dir": args.template_dir,
             "allow_private": args.allow_private,
         }
@@ -2135,6 +2139,10 @@ def main(argv: list[str] | None = None):
                         default="none", help="產生後續自動同步模板")
         ap.add_argument("--sync-interval-minutes", type=int, default=15,
                         help="同步模板排程間隔分鐘數")
+        ap.add_argument("--supabase-sync", choices=["none", "cron", "launchagent", "n8n", "all"],
+                        default="none", help="產生每日 Supabase sync 模板")
+        ap.add_argument("--supabase-sync-interval-minutes", type=int, default=1440,
+                        help="Supabase sync LaunchAgent/n8n 排程間隔分鐘數（預設每日）")
         ap.add_argument("--template-dir", help="同步模板輸出目錄；預設 project/agent-install")
         ap.add_argument("--allow-private", action="store_true",
                         help="允許 Obsidian 匯入含 secret-like pattern 的本機私人資料")

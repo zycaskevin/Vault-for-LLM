@@ -315,6 +315,19 @@ def test_knowledge_sync_payload_excludes_content_by_default():
     assert payload["content_hash"] == "abc123"
 
 
+def test_knowledge_sync_payload_generates_hash_when_missing():
+    row = (
+        1, "Title", "L3", "general", "tag", 0.8,
+        "raw body", "aaak body", None, "local", "summary", "", "",
+    )
+
+    payload = sync_to_supabase._knowledge_sync_payload(row)
+
+    assert payload["content_hash"]
+    assert len(payload["content_hash"]) == 64
+    assert payload["content_raw"] == ""
+
+
 def test_knowledge_sync_payload_include_content_blocks_privacy_fail():
     row = (
         1, "Title", "L3", "general", "tag", 0.8,
@@ -336,6 +349,18 @@ def test_skill_sync_payload_include_content_when_safe():
     payload = sync_to_supabase._skill_sync_payload(row, include_content=True)
 
     assert payload["content_raw"] == "# Skill\nSafe body."
+
+
+def test_skill_sync_payload_generates_hash_when_missing():
+    row = (
+        1, "skill", "1.0.0", "agent", "general", "search", "",
+        0.9, "# Skill\nSafe body.", None, "desc", "", "",
+    )
+
+    payload = sync_to_supabase._skill_sync_payload(row)
+
+    assert payload["content_hash"]
+    assert len(payload["content_hash"]) == 64
 
 
 def test_supabase_public_defaults_and_optional_imports_are_neutral(monkeypatch):

@@ -8,6 +8,7 @@ import json
 import shlex
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +24,7 @@ VALID_FEATURES = {"core", "mcp", "obsidian_import", "semantic", "supabase", "hea
 VALID_SYNC_TARGETS = {"none", "cron", "launchagent", "n8n", "all"}
 PYPI_EXTRA_FEATURES = {"mcp", "semantic", "supabase", "dev"}
 VALID_EMBEDDING_MODELS = {"zh", "en", "mix"}
+DEFAULT_SUPABASE_SYNC_INTERVAL_MINUTES = 24 * 60
 
 
 def default_project_dir(scope: str, *, agent: str = "generic") -> Path:
@@ -129,6 +131,18 @@ def render_cron_template(*, command: list[str], interval_minutes: int = 15) -> s
     )
 
 
+def render_daily_cron_template(*, command: list[str], hour: int = 3, minute: int = 0) -> str:
+    safe_hour = max(0, min(23, int(hour)))
+    safe_minute = max(0, min(59, int(minute)))
+    return "\n".join(
+        [
+            "# Vault-for-LLM daily sync",
+            f"{safe_minute} {safe_hour} * * * {shell_join(command)} >> $HOME/.vault-for-llm/supabase-sync.log 2>&1",
+            "",
+        ]
+    )
+
+
 def render_launchagent_plist(
     *,
     command: list[str],
@@ -205,6 +219,88 @@ def render_n8n_workflow(*, command: list[str], interval_minutes: int = 15) -> st
         "settings": {"executionOrder": "v1"},
     }
     return json.dumps(workflow, ensure_ascii=False, indent=2) + "\n"
+
+
+def supabase_sync_command(
+    *,
+    project_dir: str | Path,
+    python_executable: str | Path | None = None,
+    document_map: bool = True,
+    health: bool = True,
+    include_content: bool = False,
+) -> list[str]:
+    command = [
+        str(python_executable or sys.executable),
+        "-m",
+        "scripts.sync_to_supabase",
+        "--db",
+        str(Path(project_dir).expanduser() / "vault.db"),
+    ]
+    if include_content:
+        command.append("--include-content")
+    if document_map:
+        command.append("--document-map")
+    if health:
+        command.append("--health")
+    return command
+
+
+def write_supabase_sync_templates(
+    *,
+    output_dir: str | Path,
+    project_dir: str | Path,
+    targets: str | list[str] = "all",
+    interval_minutes: int = DEFAULT_SUPABASE_SYNC_INTERVAL_MINUTES,
+    python_executable: str | Path | None = None,
+) -> dict[str, str]:
+    out = Path(output_dir).expanduser().resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    selected = _normalize_sync_targets(targets)
+    command = supabase_sync_command(
+        project_dir=project_dir,
+        python_executable=python_executable,
+    )
+
+    written: dict[str, str] = {}
+    if "cron" in selected:
+        path = out / "supabase-sync.cron"
+        path.write_text(render_daily_cron_template(command=command), encoding="utf-8")
+        written["cron"] = str(path)
+    if "launchagent" in selected:
+        path = out / "com.zycaskevin.vault-for-llm.supabase-sync.plist"
+        path.write_text(
+            render_launchagent_plist(
+                command=command,
+                label="com.zycaskevin.vault-for-llm.supabase-sync",
+                interval_minutes=interval_minutes,
+            ),
+            encoding="utf-8",
+        )
+        written["launchagent"] = str(path)
+    if "n8n" in selected:
+        path = out / "n8n-supabase-sync.workflow.json"
+        path.write_text(render_n8n_workflow(command=command, interval_minutes=interval_minutes), encoding="utf-8")
+        written["n8n"] = str(path)
+
+    readme = out / "README-supabase-sync.md"
+    readme.write_text(
+        "\n".join(
+            [
+                "# Vault-for-LLM Supabase Sync Templates",
+                "",
+                "Generated command:",
+                "",
+                f"```bash\n{shell_join(command)}\n```",
+                "",
+                "Review `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` before enabling any scheduled job.",
+                "The local SQLite database remains the source of truth.",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    written["readme"] = str(readme)
+    return written
 
 
 def write_sync_templates(
@@ -291,6 +387,8 @@ class AgentSetupConfig:
     obsidian_dry_run_first: bool = True
     sync_targets: str | list[str] = "none"
     sync_interval_minutes: int = 15
+    supabase_sync_targets: str | list[str] = "none"
+    supabase_sync_interval_minutes: int = DEFAULT_SUPABASE_SYNC_INTERVAL_MINUTES
     template_dir: Path | None = None
     allow_private: bool = False
 
@@ -315,6 +413,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         installed_deps=bool(config.install_optional_deps),
         installed_embedding_model=config.install_embedding_model,
     )
+    environment_warnings = python_environment_warnings()
     result: dict[str, Any] = {
         "project_dir": str(project_path),
         "scope": config.scope,
@@ -323,16 +422,22 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         "tool_profile": config.tool_profile,
         "optional_dependency_install": optional_dependency_install,
         "embedding_model_install": embedding_model_install,
+        "environment_warnings": environment_warnings,
         "db_path": str(project_path / "vault.db"),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "obsidian": None,
         "sync_templates": {},
+        "supabase_sync_templates": {},
         "next_steps": [
             f"vault search \"test query\" --project-dir {shlex.quote(str(project_path))} --limit 5",
             f"vault-mcp --project-dir {shlex.quote(str(project_path))} --tool-profile {shlex.quote(config.tool_profile)}",
         ]
         + feature_next_steps,
     }
+    if environment_warnings:
+        result["next_steps"].append(
+            "Move temporary Python virtualenvs to a stable path such as ~/.hermes/venvs/vault-for-llm/ before relying on scheduled jobs."
+        )
 
     if config.obsidian_vault:
         obsidian_payload: dict[str, Any] = {"vault": str(config.obsidian_vault)}
@@ -363,6 +468,16 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
                 targets=sorted(targets),
                 interval_minutes=config.sync_interval_minutes,
             )
+
+    supabase_targets = _normalize_sync_targets(config.supabase_sync_targets)
+    if "supabase" in features and supabase_targets:
+        template_dir = config.template_dir or (project_path / "agent-install")
+        result["supabase_sync_templates"] = write_supabase_sync_templates(
+            output_dir=template_dir,
+            project_dir=project_path,
+            targets=sorted(supabase_targets),
+            interval_minutes=config.supabase_sync_interval_minutes,
+        )
 
     return result
 
@@ -406,6 +521,29 @@ def install_optional_dependencies(features: list[str]) -> dict[str, Any]:
         "commands": [shell_join(command) for command in commands],
         "results": results,
     }
+
+
+def python_environment_warnings() -> list[str]:
+    """Warn agents when Vault was installed into a disposable temp environment."""
+    prefixes = {
+        str(Path(tempfile.gettempdir()).resolve()),
+        "/tmp",
+        "/private/tmp",
+        "/var/tmp",
+        "/private/var/tmp",
+    }
+    candidates = {
+        "sys_prefix": str(Path(sys.prefix).expanduser()),
+        "sys_executable": str(Path(sys.executable).expanduser()),
+    }
+    warnings: list[str] = []
+    for label, raw_path in candidates.items():
+        path = str(Path(raw_path).resolve())
+        if any(path == prefix or path.startswith(prefix + "/") for prefix in prefixes):
+            warnings.append(
+                f"{label} is under a temporary directory ({raw_path}); use a stable venv such as ~/.hermes/venvs/vault-for-llm/ for long-lived agent installs."
+            )
+    return warnings
 
 
 def install_embedding_model(model_key: str, *, project_dir: str | Path) -> dict[str, Any]:
@@ -510,6 +648,10 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
         if not argv_config.get("sync_targets"):
             sync_targets = _ask("Automatic sync templates (none/cron/launchagent/n8n/all)", "none")
 
+    supabase_sync_targets = argv_config.get("supabase_sync_targets", "none")
+    if "supabase" in features and not argv_config.get("supabase_sync_targets"):
+        supabase_sync_targets = _ask("Daily Supabase sync templates (none/cron/launchagent/n8n/all)", "none")
+
     return AgentSetupConfig(
         project_dir=Path(project_dir),
         scope=scope,
@@ -522,6 +664,11 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
         import_obsidian=import_obsidian,
         sync_targets=sync_targets,
         sync_interval_minutes=int(argv_config.get("sync_interval_minutes") or 15),
+        supabase_sync_targets=supabase_sync_targets,
+        supabase_sync_interval_minutes=int(
+            argv_config.get("supabase_sync_interval_minutes")
+            or DEFAULT_SUPABASE_SYNC_INTERVAL_MINUTES
+        ),
         template_dir=Path(argv_config["template_dir"]) if argv_config.get("template_dir") else None,
         allow_private=bool(argv_config.get("allow_private", False)),
     )

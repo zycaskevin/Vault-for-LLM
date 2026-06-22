@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## [0.6.30] - 2026-06-22
+
+### Added
+
+- Added the `vault_memory_candidates` MCP review tool so MCP agents can inspect pending memory candidates without reading SQLite internals or dumping full raw content by default.
+
 ## [0.6.29] - 2026-06-22
 
 ### Added

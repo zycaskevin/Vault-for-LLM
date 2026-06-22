@@ -53,6 +53,7 @@ MCP_ALLOWED_SEARCH_FIELDS = {
     "_snippet",
     "content_preview",
 }
+MCP_MEMORY_CANDIDATE_MAX_LIMIT = 100
 
 
 def _set_project_dir(project_dir: str | os.PathLike[str]) -> None:
@@ -94,6 +95,40 @@ def _get_search():
         pass
 
     return db, VaultSearch(db, embed_provider=embed)
+
+
+def _format_memory_candidate(row: dict, *, include_content: bool = False, include_gates: bool = False) -> dict:
+    item = {
+        "id": row.get("id"),
+        "title": row.get("title"),
+        "status": row.get("status"),
+        "layer": row.get("layer"),
+        "category": row.get("category"),
+        "tags": row.get("tags"),
+        "trust": row.get("trust"),
+        "source": row.get("source"),
+        "source_ref": row.get("source_ref"),
+        "reason": row.get("reason"),
+        "privacy_status": row.get("privacy_status"),
+        "duplicate_status": row.get("duplicate_status"),
+        "quality_status": row.get("quality_status"),
+        "promoted_knowledge_id": row.get("promoted_knowledge_id"),
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
+    }
+    content = row.get("content") or ""
+    item["content_length"] = len(content)
+    if include_content:
+        item["content"] = content
+    elif content:
+        item["content_preview"] = " ".join(content.split())[:180]
+    if include_gates:
+        raw_gates = row.get("gate_payload_json") or "{}"
+        try:
+            item["gates"] = json.loads(raw_gates)
+        except json.JSONDecodeError:
+            item["gates"] = {"raw": raw_gates}
+    return item
 
 
 def _get_supabase_client():
@@ -970,6 +1005,42 @@ TOOLS = [
         }
     },
     {
+        "name": "vault_memory_candidates",
+        "description": "List memory candidates for review. Defaults to pending candidates and omits full raw content unless requested.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "description": "Candidate status filter, for example candidate/promoted/rejected.",
+                    "default": "candidate",
+                },
+                "all": {
+                    "type": "boolean",
+                    "description": "List all statuses instead of filtering by status.",
+                    "default": False,
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum candidates to return.",
+                    "default": 50,
+                    "minimum": 1,
+                    "maximum": MCP_MEMORY_CANDIDATE_MAX_LIMIT,
+                },
+                "include_content": {
+                    "type": "boolean",
+                    "description": "Include full candidate content. Defaults false to keep MCP payloads small.",
+                    "default": False,
+                },
+                "include_gates": {
+                    "type": "boolean",
+                    "description": "Include the full gate payload for review.",
+                    "default": False,
+                },
+            },
+        }
+    },
+    {
         "name": "vault_obsidian_import",
         "description": "Import an existing Obsidian vault into raw/obsidian/. Run dry_run first; compile only after user confirmation.",
         "inputSchema": {
@@ -1156,6 +1227,7 @@ TOOL_PROFILES = {
         "vault_read_range",
         "vault_memory_propose",
         "vault_memory_promote",
+        "vault_memory_candidates",
         "vault_dream_run",
         "vault_stats",
     ],
@@ -1172,6 +1244,7 @@ TOOL_PROFILES = {
         "vault_read_range",
         "vault_memory_propose",
         "vault_memory_promote",
+        "vault_memory_candidates",
         "vault_obsidian_import",
         "vault_dream_run",
         "vault_stats",
@@ -1391,6 +1464,33 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 )
             finally:
                 db.close()
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
+
+        elif name == "vault_memory_candidates":
+            limit = _clamp_int(
+                arguments.get("limit", 50),
+                default=50,
+                minimum=1,
+                maximum=MCP_MEMORY_CANDIDATE_MAX_LIMIT,
+            )
+            status = None if bool(arguments.get("all", False)) else arguments.get("status", "candidate")
+            db = _get_db()
+            try:
+                rows = db.list_memory_candidates(status=status, limit=limit)
+            finally:
+                db.close()
+            payload = {
+                "count": len(rows),
+                "status": status or "all",
+                "candidates": [
+                    _format_memory_candidate(
+                        row,
+                        include_content=bool(arguments.get("include_content", False)),
+                        include_gates=bool(arguments.get("include_gates", False)),
+                    )
+                    for row in rows
+                ],
+            }
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 
         elif name == "vault_obsidian_import":

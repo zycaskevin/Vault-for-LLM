@@ -10,7 +10,7 @@ install path below keeps Vault local-first and governed.
 ## One-Sentence Prompt
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.29, ask which database scope I want, ask for setup language when this is a manual CLI install, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, Profile / Dream / Forgetting memory-agent guidance, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.30, ask which database scope I want, ask for setup language when this is a manual CLI install, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, Profile / Dream / Forgetting memory-agent guidance, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
 ```
 
 ## What To Ask First
@@ -66,7 +66,7 @@ used by scheduled jobs.
 Use the PyPI release unless the user explicitly asks for source development:
 
 ```bash
-python -m pip install "vault-for-llm[mcp]==0.6.29"
+python -m pip install "vault-for-llm[mcp]==0.6.30"
 vault setup-agent
 ```
 
@@ -249,6 +249,13 @@ For daily agent use, prefer the small core profile:
 vault-mcp --project-dir /path/to/project --tool-profile core
 ```
 
+Use `review` when a trusted operator or agent needs to inspect and promote
+candidate memory:
+
+```bash
+vault-mcp --project-dir /path/to/project --tool-profile review
+```
+
 Use `maintenance` only when the agent needs curation or Obsidian import tools:
 
 ```bash
@@ -286,6 +293,7 @@ For MCP-capable agents, also verify:
 ```text
 vault_search -> vault_read_range -> answer with source
 vault_memory_propose -> candidate created, not directly promoted
+vault_memory_candidates -> candidate review queue visible in review profile
 ```
 
 ## Runtime Notes

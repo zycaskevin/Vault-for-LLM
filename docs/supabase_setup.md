@@ -187,6 +187,17 @@ alter table vault_knowledge add column if not exists expires_at timestamptz;
 
 Keep raw private conversations and shareable summaries in separate tables, views, or RPC responses. RLS is row-level, not a substitute for separating unsafe columns from safe fields.
 
+For a ready-to-paste read-only starting point, use
+[`docs/supabase_read_policy.sql`](supabase_read_policy.sql). It creates a
+`vault_search_readable` RPC for hosted readers. The RPC applies
+`scope` / `sensitivity` / `owner_agent` / `allowed_agents` / `expires_at`
+filters and returns safe metadata plus summaries only. It does not return raw
+full text; keep authoritative citations on local `vault_read_range` unless you
+intentionally design a separate reviewed content API.
+
+`vault setup-agent --supabase-setup advanced` also writes the same SQL to
+`agent-install/supabase-read-policy.sql` beside the generated setup guide.
+
 Treat `layer` as memory depth, not access control:
 
 - `L0` is minimal identity and should usually stay private.

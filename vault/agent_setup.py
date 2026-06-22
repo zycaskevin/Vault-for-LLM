@@ -39,6 +39,125 @@ DEFAULT_SUPABASE_SYNC_INTERVAL_MINUTES = 24 * 60
 SUPABASE_SETUP_DOC_URL = "https://github.com/zycaskevin/Vault-for-LLM/blob/main/docs/supabase_setup.md"
 
 
+SUPABASE_READ_POLICY_SQL = """-- Vault-for-LLM advanced Supabase read policy
+-- Paste this into the Supabase SQL editor after creating the minimal tables.
+-- Keep SUPABASE_SERVICE_ROLE_KEY only on trusted sync hosts. Hosted agents
+-- should call vault_search_readable with anon/authenticated credentials.
+
+alter table public.vault_knowledge add column if not exists scope text default 'project';
+alter table public.vault_knowledge add column if not exists sensitivity text default 'low';
+alter table public.vault_knowledge add column if not exists owner_agent text default '';
+alter table public.vault_knowledge add column if not exists allowed_agents jsonb default '[]'::jsonb;
+alter table public.vault_knowledge add column if not exists memory_type text default 'knowledge';
+alter table public.vault_knowledge add column if not exists status text default 'active';
+alter table public.vault_knowledge add column if not exists expires_at timestamptz;
+
+create index if not exists vault_knowledge_scope_idx on public.vault_knowledge (scope);
+create index if not exists vault_knowledge_sensitivity_idx on public.vault_knowledge (sensitivity);
+create index if not exists vault_knowledge_owner_agent_idx on public.vault_knowledge (owner_agent);
+
+create or replace function public.vault_sensitivity_rank(value text)
+returns integer
+language sql
+immutable
+as $$
+  select case coalesce(lower(value), 'low')
+    when 'low' then 0
+    when 'medium' then 1
+    when 'high' then 2
+    when 'restricted' then 3
+    else 0
+  end
+$$;
+
+create or replace function public.vault_search_readable(
+  p_agent_id text default '',
+  p_query text default '',
+  p_include_private boolean default false,
+  p_max_sensitivity text default 'medium',
+  p_limit integer default 20
+)
+returns table (
+  id bigint,
+  title text,
+  layer smallint,
+  category text,
+  tags jsonb,
+  trust real,
+  summary text,
+  source text,
+  scope text,
+  sensitivity text,
+  owner_agent text,
+  allowed_agents jsonb,
+  memory_type text,
+  expires_at timestamptz,
+  updated_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    k.id,
+    k.title,
+    k.layer,
+    k.category,
+    k.tags,
+    k.trust,
+    k.summary,
+    k.source,
+    coalesce(k.scope, 'project') as scope,
+    coalesce(k.sensitivity, 'low') as sensitivity,
+    coalesce(k.owner_agent, '') as owner_agent,
+    coalesce(k.allowed_agents, '[]'::jsonb) as allowed_agents,
+    coalesce(k.memory_type, 'knowledge') as memory_type,
+    k.expires_at,
+    k.updated_at
+  from public.vault_knowledge k
+  where coalesce(k.status, 'active') in ('active', 'reviewed')
+    and (k.expires_at is null or k.expires_at > now())
+    and public.vault_sensitivity_rank(k.sensitivity)
+      <= public.vault_sensitivity_rank(p_max_sensitivity)
+    and (
+      coalesce(k.scope, 'project') <> 'private'
+      or (
+        p_include_private
+        and coalesce(p_agent_id, '') <> ''
+        and (
+          coalesce(k.owner_agent, '') = p_agent_id
+          or coalesce(k.allowed_agents, '[]'::jsonb) ? p_agent_id
+        )
+      )
+    )
+    and (
+      coalesce(k.sensitivity, 'low') <> 'restricted'
+      or (
+        coalesce(p_agent_id, '') <> ''
+        and (
+          coalesce(k.owner_agent, '') = p_agent_id
+          or coalesce(k.allowed_agents, '[]'::jsonb) ? p_agent_id
+        )
+      )
+    )
+    and (
+      coalesce(p_query, '') = ''
+      or k.title ilike '%' || p_query || '%'
+      or k.summary ilike '%' || p_query || '%'
+      or k.source ilike '%' || p_query || '%'
+    )
+  order by k.updated_at desc nulls last, k.id desc
+  limit greatest(1, least(coalesce(p_limit, 20), 100));
+$$;
+
+alter table public.vault_knowledge enable row level security;
+revoke all on table public.vault_knowledge from anon, authenticated;
+revoke all on function public.vault_search_readable(text, text, boolean, text, integer) from public;
+grant execute on function public.vault_search_readable(text, text, boolean, text, integer) to anon, authenticated;
+"""
+
+
 def default_project_dir(scope: str, *, agent: str = "generic") -> Path:
     home = Path.home()
     if scope == "shared":
@@ -564,6 +683,10 @@ def _render_supabase_setup_guide_en(*, mode: str, project_path: Path, agent: str
                 "- normal agents can propose candidates but cannot directly write active shared memory",
                 "- service role is reserved for reviewed sync jobs or backend functions",
                 "",
+                "This installer also writes `supabase-read-policy.sql` in advanced mode. Paste it into the Supabase SQL editor after the minimal schema to create a read-only RPC named `vault_search_readable`.",
+                "",
+                "`vault_search_readable` returns safe metadata and summaries only. It does not return raw full text; use local Vault reads for authoritative citations unless you intentionally design a separate reviewed full-content API.",
+                "",
                 "Do not put raw private conversations and shareable summaries in the same unrestricted row. Use separate tables, views, or RPC responses that return only safe fields.",
             ]
         )
@@ -639,6 +762,10 @@ def _render_supabase_setup_guide_zh_hant(*, mode: str, project_path: Path, agent
                 "- medium sensitivity 摘要需要檢查 `allowed_agents`",
                 "- 一般 Agent 只能 propose candidate，不直接寫 active shared memory",
                 "- service role 只給審核過的同步工作或後端函式",
+                "",
+                "advanced 模式也會產生 `supabase-read-policy.sql`。建立 minimal schema 後，把它貼到 Supabase SQL editor，可建立名為 `vault_search_readable` 的 read-only RPC。",
+                "",
+                "`vault_search_readable` 只回傳安全 metadata 與摘要，不回傳原始全文。正式引用仍建議回到本地 Vault 的 bounded read，除非你另外設計審核過的全文 API。",
                 "",
                 "不要把私人原始對話和可共享摘要放在同一個無限制 row。請用不同 tables、views 或 RPC，只回傳安全欄位。",
             ]
@@ -738,7 +865,12 @@ def write_supabase_setup_guide(
         ),
         encoding="utf-8",
     )
-    return {"mode": safe_mode, "guide": str(path)}
+    written = {"mode": safe_mode, "guide": str(path)}
+    if safe_mode == "advanced":
+        sql_path = out / "supabase-read-policy.sql"
+        sql_path.write_text(SUPABASE_READ_POLICY_SQL, encoding="utf-8")
+        written["read_policy_sql"] = str(sql_path)
+    return written
 
 
 def write_sync_templates(

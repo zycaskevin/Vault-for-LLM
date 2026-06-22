@@ -69,9 +69,11 @@ def test_run_agent_setup_writes_supabase_sync_templates(tmp_path):
 
     assert result["language"] == "zh-Hant"
     assert result["supabase_setup"]["mode"] == "advanced"
+    assert "read_policy_sql" in result["supabase_setup"]
     assert {"cron", "launchagent", "n8n", "readme"}.issubset(result["supabase_sync_templates"])
 
     guide = (tmp_path / "templates" / "README-supabase-setup.md").read_text(encoding="utf-8")
+    policy = (tmp_path / "templates" / "supabase-read-policy.sql").read_text(encoding="utf-8")
     cron = (tmp_path / "templates" / "supabase-sync.cron").read_text(encoding="utf-8")
     plist = (tmp_path / "templates" / "com.zycaskevin.vault-for-llm.supabase-sync.plist").read_text(
         encoding="utf-8"
@@ -80,7 +82,13 @@ def test_run_agent_setup_writes_supabase_sync_templates(tmp_path):
 
     assert "Supabase 是可選功能" in guide
     assert "進階 Multi-Agent / RLS" in guide
+    assert "supabase-read-policy.sql" in guide
     assert "service role key" in guide
+    assert "vault_search_readable" in policy
+    assert "security definer" in policy
+    assert "allowed_agents" in policy
+    assert "? p_agent_id" in policy
+    assert "content_raw" not in policy
     assert "scripts.sync_to_supabase" in cron
     assert "--db" in cron
     assert str(project / "vault.db") in cron
@@ -374,3 +382,18 @@ def test_run_agent_setup_can_skip_supabase_setup_guide(tmp_path):
 
     assert result["supabase_setup"] == {}
     assert not (tmp_path / "agent-project" / "agent-install" / "README-supabase-setup.md").exists()
+
+
+def test_checked_in_supabase_read_policy_matches_generated_template():
+    from pathlib import Path
+
+    from vault.agent_setup import SUPABASE_READ_POLICY_SQL
+
+    root = Path(__file__).resolve().parents[1]
+    checked_in = (root / "docs" / "supabase_read_policy.sql").read_text(encoding="utf-8")
+
+    assert checked_in == SUPABASE_READ_POLICY_SQL
+    assert "vault_search_readable" in checked_in
+    assert "revoke all on table public.vault_knowledge from anon, authenticated" in checked_in
+    assert "grant execute on function public.vault_search_readable" in checked_in
+    assert "content_raw" not in checked_in

@@ -84,6 +84,11 @@ export SUPABASE_URL=...
 export SUPABASE_SERVICE_ROLE_KEY=...
 python -m scripts.sync_to_supabase --db /path/to/project/vault.db --document-map --health
 
+# after applying docs/supabase_read_policy.sql, non-MCP automation can read remotely
+vault remote search "deployment SOP" --agent-id coco --json
+vault remote map 12 --compact --json
+vault remote read 12 --node-uid node_install --json
+
 vault setup-agent \
   --non-interactive \
   --agent nancy \

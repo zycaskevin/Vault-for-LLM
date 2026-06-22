@@ -15,6 +15,9 @@ with the daily loop in the README and only use these commands when needed.
 | `vault compile` | Compile `raw/` into SQLite and generated artifacts |
 | `vault search "query"` | Search the vault |
 | `vault map read <id> --lines 10-30` | Read a bounded source range for citation |
+| `vault remote search "query" --agent-id coco --json` | Search the Supabase read-only memory view through `vault_search_readable` |
+| `vault remote map <id> --compact --json` | Inspect remote synced Document Map rows |
+| `vault remote read <id> --node-uid <node> --json` | Read remote bounded evidence from synced content/claims |
 | `vault remove <id> --confirm` | Remove a knowledge entry after reviewing its ID |
 
 ## Knowledge Ingestion

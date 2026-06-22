@@ -148,8 +148,8 @@ everything by default:
 
 | Feature | Default | Install command | Ask when |
 |---|---|---|---|
-| `core` | yes | `python -m pip install vault-for-llm==0.6.34` | Always: local Markdown, SQLite, keyword search. |
-| `mcp` | yes for MCP-capable agents | `python -m pip install "vault-for-llm[mcp]==0.6.34"` | The runtime can connect local stdio MCP tools. |
+| `core` | yes | `python -m pip install vault-for-llm==0.6.35` | Always: local Markdown, SQLite, keyword search. |
+| `mcp` | yes for MCP-capable agents | `python -m pip install "vault-for-llm[mcp]==0.6.35"` | The runtime can connect local stdio MCP tools. |
 | `obsidian_import` | no | built into core CLI | The user already has an Obsidian vault and wants agents to search those notes through Vault. |
 | `semantic` | no | `python -m pip install "vault-for-llm[semantic]"` | The user wants embedding-backed semantic/hybrid search. |
 | `supabase` | no | `python -m pip install "vault-for-llm[supabase]"` | The user wants optional remote sync/read paths. |
@@ -230,7 +230,7 @@ required dependency for local use.
 
 ## Current Source Status
 
-The current source tree is `0.6.34`. Core local search is stable, while
+The current source tree is `0.6.35`. Core local search is stable, while
 advanced semantic, rerank, sync, and benchmarking workflows remain optional.
 See [CHANGELOG.md](CHANGELOG.md) for release details.
 
@@ -331,12 +331,12 @@ In story form: the agent writes a note, the front desk checks whether it is safe
 
 ### Install from PyPI
 
-Vault-for-LLM `0.6.34` is published on PyPI.
+Vault-for-LLM `0.6.35` is published on PyPI.
 
 For agent-driven installation, paste this into Hermes Agent, Codex, OpenCode, Claude Code, OpenClaw, or another agent that can run local commands:
 
 ```text
-Install Vault-for-LLM for this project. Use PyPI package vault-for-llm[mcp]==0.6.34.
+Install Vault-for-LLM for this project. Use PyPI package vault-for-llm[mcp]==0.6.35.
 Ask whether the vault database should be shared, private, domain-specific, or temporary.
 Ask separately about MCP, semantic search, Supabase sync, Headroom context compression,
 and dev/benchmark dependencies. If optional features are selected, ask whether to
@@ -351,7 +351,7 @@ Manual install:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.34"
+pip install "vault-for-llm[mcp]==0.6.35"
 
 vault setup-agent
 ```
@@ -542,6 +542,7 @@ your-project/
 | `vault import obsidian --vault /path/to/ObsidianVault --dry-run` | Preview importing existing Obsidian notes into `raw/obsidian/` |
 | `vault search "query"` | Search project memory |
 | `vault map read <id> --lines 10-30` | Read a bounded range for citation |
+| `vault remote search "query" --agent-id coco --json` | Search a Supabase read-only memory view |
 | `vault remove <id> --confirm` | Remove a reviewed knowledge entry by ID |
 
 For the broader command surface, see the [CLI reference](docs/cli_reference.md).
@@ -685,6 +686,11 @@ pip install supabase
 
 # configure Supabase credentials in your environment, then run sync scripts as needed
 python -m scripts.sync_to_supabase --db /path/to/project/vault.db --document-map --health
+
+# after applying docs/supabase_read_policy.sql, hosted readers can use CLI remote reads
+vault remote search "deployment SOP" --agent-id coco --json
+vault remote map 12 --compact --json
+vault remote read 12 --node-uid node_install --json
 
 # or let setup-agent generate daily cron, LaunchAgent, or n8n templates
 vault setup-agent \

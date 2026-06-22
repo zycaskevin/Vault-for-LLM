@@ -107,6 +107,149 @@ class TestParseMapLineRange:
             _parse_map_line_range("0-10")
 
 
+class _RemoteResponse:
+    def __init__(self, data):
+        self.data = data
+
+
+class _RemoteRpcQuery:
+    def __init__(self, client, name, params):
+        self.client = client
+        self.name = name
+        self.params = params
+
+    def execute(self):
+        self.client.rpc_calls.append((self.name, dict(self.params)))
+        return _RemoteResponse([dict(row) for row in self.client.rpcs.get(self.name, [])])
+
+
+class _RemoteTableQuery:
+    def __init__(self, client, table_name):
+        self.client = client
+        self.table_name = table_name
+        self.filters = []
+
+    def select(self, *args, **kwargs):
+        return self
+
+    def eq(self, field, value):
+        self.filters.append((field, value))
+        return self
+
+    def execute(self):
+        rows = self.client.tables.get(self.table_name, [])
+        data = [
+            dict(row)
+            for row in rows
+            if all(row.get(field) == value for field, value in self.filters)
+        ]
+        return _RemoteResponse(data)
+
+
+class _RemoteClient:
+    def __init__(self):
+        self.rpc_calls = []
+        self.rpcs = {
+            "vault_search_readable": [
+                {
+                    "id": 7,
+                    "title": "Remote Entry",
+                    "summary": "Safe summary",
+                    "source": "raw/remote.md",
+                    "content_raw": "must stay hidden",
+                }
+            ]
+        }
+        self.tables = {
+            "vault_knowledge_nodes": [
+                {
+                    "knowledge_id": 7,
+                    "node_uid": "remote-node",
+                    "level": 2,
+                    "heading": "Remote Node",
+                    "path": "Remote/Node",
+                    "summary": "Node summary",
+                    "line_start": 2,
+                    "line_end": 3,
+                    "knowledge_title": "Remote Entry",
+                    "knowledge_content_hash": "remote-hash",
+                }
+            ],
+            "vault_knowledge_claims": [
+                {
+                    "knowledge_id": 7,
+                    "node_uid": "remote-node",
+                    "claim": "Remote claim line.",
+                    "line_start": 2,
+                    "line_end": 2,
+                    "knowledge_title": "Remote Entry",
+                    "knowledge_content_hash": "remote-hash",
+                }
+            ],
+            "vault_knowledge": [],
+        }
+
+    def rpc(self, name, params):
+        return _RemoteRpcQuery(self, name, params)
+
+    def table(self, table_name):
+        return _RemoteTableQuery(self, table_name)
+
+
+class TestRemoteCli:
+    def test_remote_search_json_uses_supabase_rpc(self, monkeypatch, capsys):
+        from vault.cli import main
+        from vault import mcp
+
+        client = _RemoteClient()
+        monkeypatch.setattr(mcp, "_get_supabase_client", lambda: client)
+
+        main([
+            "remote",
+            "search",
+            "Safe",
+            "--agent-id",
+            "coco",
+            "--limit",
+            "3",
+            "--json",
+        ])
+
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["rpc"] == "vault_search_readable"
+        assert payload["count"] == 1
+        assert payload["results"][0]["next_action"]["tool"] == "vault_remote_map_show"
+        assert "content_raw" not in payload["results"][0]
+        assert client.rpc_calls == [
+            (
+                "vault_search_readable",
+                {
+                    "p_agent_id": "coco",
+                    "p_query": "Safe",
+                    "p_include_private": False,
+                    "p_max_sensitivity": "medium",
+                    "p_limit": 3,
+                },
+            )
+        ]
+
+    def test_remote_map_and_read_json(self, monkeypatch, capsys):
+        from vault.cli import main
+        from vault import mcp
+
+        monkeypatch.setattr(mcp, "_get_supabase_client", lambda: _RemoteClient())
+
+        main(["remote", "map", "7", "--compact", "--json"])
+        map_payload = json.loads(capsys.readouterr().out)
+        assert map_payload["next_action"]["tool"] == "vault_remote_read_range"
+        assert map_payload["nodes"][0]["node_uid"] == "remote-node"
+
+        main(["remote", "read", "7", "--lines", "2-2", "--json"])
+        read_payload = json.loads(capsys.readouterr().out)
+        assert read_payload["citation"] == "#7 Remote Entry L2-L2"
+        assert read_payload["source"] == "remote_claims"
+
+
 class TestJsonPrint:
     def test_json_print_basic(self, capsys):
         from vault.cli import _json_print

@@ -1319,6 +1319,74 @@ def cmd_map(args):
     print("用法: vault map {build|show|read|query}")
 
 
+def cmd_remote(args):
+    """Supabase remote read workflow: search / map / read."""
+    from vault.mcp import (
+        _vault_remote_map_show_payload,
+        _vault_remote_read_range_payload,
+        _vault_remote_search_payload,
+    )
+
+    action = args.remote_action
+    if action == "search":
+        payload = _vault_remote_search_payload(
+            query=args.query or "",
+            agent_id=args.agent_id or "",
+            include_private=bool(args.include_private),
+            max_sensitivity=args.max_sensitivity or "medium",
+            limit=args.limit,
+            compact=bool(args.compact),
+        )
+    elif action == "map":
+        payload = _vault_remote_map_show_payload(
+            args.knowledge_id,
+            compact=bool(args.compact),
+        )
+    elif action == "read":
+        line_start = 0
+        line_end = 0
+        if args.lines:
+            try:
+                line_start, line_end = _parse_map_line_range(args.lines)
+            except ValueError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                raise SystemExit(2)
+        payload = _vault_remote_read_range_payload(
+            args.knowledge_id,
+            node_uid=args.node_uid or "",
+            line_start=line_start,
+            line_end=line_end,
+            max_lines=args.max_lines,
+        )
+    else:
+        print("用法: vault remote {search|map|read}")
+        return
+
+    if args.json or args.pretty:
+        print(json.dumps(payload, ensure_ascii=False, indent=2 if args.pretty else None))
+        return
+
+    if payload.get("error"):
+        print(f"error: {payload['error']}: {payload.get('message', '')}", file=sys.stderr)
+        if payload.get("next_action"):
+            print(json.dumps({"next_action": payload["next_action"]}, ensure_ascii=False))
+        raise SystemExit(2)
+
+    if action == "search":
+        print(f"remote search: {payload.get('count', 0)} result(s)")
+        for item in payload.get("results", []):
+            print(f"  #{item.get('id')} {item.get('title', '')}")
+            summary = item.get("summary")
+            if summary:
+                print(f"    {summary}")
+            next_action = item.get("next_action")
+            if next_action:
+                print(f"    next: {next_action.get('tool')} {json.dumps(next_action.get('arguments', {}), ensure_ascii=False)}")
+        return
+
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
 def _connect_map_readonly(db_path: Path) -> sqlite3.Connection | None:
     """Open vault.db in SQLite read-only mode for map navigation commands."""
     if not db_path.exists():
@@ -2378,6 +2446,35 @@ def main(argv: list[str] | None = None):
     mp.add_argument("query", help="查詢文字")
     mp.add_argument("--limit", "-n", type=_positive_int, default=10)
 
+    # remote — optional Supabase read-only navigation
+    p = sub.add_parser("remote", help="Supabase 遠端唯讀搜尋與 bounded read")
+    remote_sub = p.add_subparsers(dest="remote_action", help="Remote 子命令")
+
+    def add_remote_output_args(rp):
+        rp.add_argument("--json", action="store_true", help="輸出 JSON")
+        rp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    rp = remote_sub.add_parser("search", help="透過 Supabase vault_search_readable RPC 搜尋")
+    rp.add_argument("query", nargs="?", default="", help="搜尋文字；省略時回傳最新可讀記憶")
+    rp.add_argument("--agent-id", default="", help="Agent 身份，用於 owner/allowed_agents 過濾")
+    rp.add_argument("--include-private", action="store_true", help="允許讀取此 agent 被授權的 private 記憶")
+    rp.add_argument("--max-sensitivity", choices=["low", "medium", "high", "restricted"], default="medium")
+    rp.add_argument("--limit", "-n", type=_positive_int, default=10)
+    rp.add_argument("--compact", action=argparse.BooleanOptionalAction, default=True, help="回傳精簡欄位")
+    add_remote_output_args(rp)
+
+    rp = remote_sub.add_parser("map", help="讀取 Supabase 同步的 Document Map")
+    rp.add_argument("knowledge_id", type=int, help="知識 ID")
+    rp.add_argument("--compact", action=argparse.BooleanOptionalAction, default=False, help="回傳精簡節點欄位")
+    add_remote_output_args(rp)
+
+    rp = remote_sub.add_parser("read", help="讀取 Supabase 同步的 bounded range")
+    rp.add_argument("knowledge_id", type=int, help="知識 ID")
+    rp.add_argument("--node-uid", default="", help="Document Map node_uid；可單獨指定")
+    rp.add_argument("--lines", help="行號範圍，例如 1-40")
+    rp.add_argument("--max-lines", type=_positive_int, default=80, help="最大讀取行數")
+    add_remote_output_args(rp)
+
     # skill — 本機跨 Agent 技能登錄（實驗性）
     p = sub.add_parser("skill", help="本機技能登錄（實驗性）")
     skill_sub = p.add_subparsers(dest="skill_action", help="技能子命令")
@@ -2608,6 +2705,7 @@ def main(argv: list[str] | None = None):
         "config": cmd_config,
         "db": cmd_db,
         "map": cmd_map,
+        "remote": cmd_remote,
         "graph": cmd_graph,
         "skill": cmd_skill,
         "converge": cmd_converge,

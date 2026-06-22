@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## [0.6.35] - 2026-06-22
+
+### Added
+
+- Added CLI `vault remote search`, `vault remote map`, and `vault remote read` for Supabase read-only remote memory workflows.
+- Reused the same `vault_search_readable` RPC and remote Document Map helpers as MCP, so shell/n8n agents can search safe summaries and then request bounded evidence.
+- Documented the CLI remote flow in README variants, CLI reference, and agent integration docs.
+- Added tests for CLI remote search/map/read with a fake Supabase client, proving the command path does not require live network access in CI.
+
 ## [0.6.34] - 2026-06-22
 
 ### Added

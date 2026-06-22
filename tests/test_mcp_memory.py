@@ -13,7 +13,12 @@ def _payload(result):
 
 def test_mcp_memory_tools_are_advertised():
     names = {tool["name"] for tool in TOOLS}
-    assert {"vault_memory_propose", "vault_memory_promote", "vault_dream_run"}.issubset(names)
+    assert {
+        "vault_memory_propose",
+        "vault_memory_promote",
+        "vault_memory_candidates",
+        "vault_dream_run",
+    }.issubset(names)
     add_tool = next(tool for tool in TOOLS if tool["name"] == "vault_add")
     assert "Prefer vault_memory_propose" in add_tool["description"]
     search_tool = next(tool for tool in TOOLS if tool["name"] == "vault_search")
@@ -30,6 +35,10 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
         "vault_memory_propose",
         "vault_stats",
     ]
+    assert "vault_memory_candidates" not in core_names
+
+    review_names = [tool["name"] for tool in select_tools("review")]
+    assert "vault_memory_candidates" in review_names
 
     full_names = {tool["name"] for tool in select_tools("full")}
     assert "vault_add" in full_names
@@ -169,6 +178,50 @@ def test_mcp_memory_promote_writes_active_knowledge(tmp_path):
             (promoted["knowledge_id"],),
         ).fetchone()["n"]
         assert nodes >= 1
+
+
+def test_mcp_memory_candidates_lists_review_queue_without_full_payload(tmp_path):
+    _set_project_dir(tmp_path)
+    proposed = _payload(handle_tool_call(
+        "vault_memory_propose",
+        {
+            "title": "MCP candidate queue",
+            "content": "MCP candidate queue entries should be visible before promotion.",
+            "reason": "Review agents need a small candidate queue payload.",
+            "source": "test",
+            "tags": "mcp,candidate",
+        },
+    ))
+
+    listed = _payload(handle_tool_call(
+        "vault_memory_candidates",
+        {
+            "limit": 10,
+        },
+    ))
+
+    assert listed["count"] == 1
+    assert listed["status"] == "candidate"
+    item = listed["candidates"][0]
+    assert item["id"] == proposed["candidate_id"]
+    assert item["title"] == "MCP candidate queue"
+    assert item["status"] == "candidate"
+    assert item["privacy_status"] == "pass"
+    assert "content_preview" in item
+    assert "content" not in item
+    assert "gates" not in item
+
+    detailed = _payload(handle_tool_call(
+        "vault_memory_candidates",
+        {
+            "include_content": True,
+            "include_gates": True,
+        },
+    ))
+
+    detailed_item = detailed["candidates"][0]
+    assert detailed_item["content"].startswith("MCP candidate queue entries")
+    assert detailed_item["gates"]["privacy"]["status"] == "pass"
 
 
 def test_mcp_vault_add_warns_and_builds_document_map(tmp_path):

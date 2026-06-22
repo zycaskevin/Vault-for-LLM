@@ -9,7 +9,7 @@ Use the smallest MCP tool profile that fits the session:
 | Profile | Tools | Use when |
 |---|---|---|
 | `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats` | Daily agent use with fewer tool-schema tokens |
-| `review` | Core plus `vault_memory_promote`, `vault_dream_run` | Reviewing and promoting candidate memory |
+| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_dream_run` | Reviewing and promoting candidate memory |
 | `remote` | Core plus `vault_remote_map_show`, `vault_remote_read_range` | Reading a Supabase-synced cross-host memory view |
 | `maintenance` | Review plus Obsidian import and freshness/convergence checks | Scheduled or operator-led curation |
 | `full` | All tools, including compatibility `vault_add` | Backward compatibility or explicit power-user setups |
@@ -29,7 +29,7 @@ selected project directory.
 
 ```text
 1. vault_memory_propose  # candidate-first write with gates
-2. human/agent review    # inspect privacy/duplicate/metadata gate result
+2. vault_memory_candidates # inspect pending candidates and gate result
 3. vault_memory_promote  # explicit confirm=true promotion
 4. vault_search          # find active memory later
 5. vault_read_range      # read bounded source range and cite it
@@ -135,6 +135,24 @@ Rules:
 - Duplicate findings are surfaced but do not delete or merge automatically.
 - A Markdown source file is written under `raw/`.
 - Active knowledge is inserted or compiled and can then be searched/read.
+
+### `vault_memory_candidates`
+
+Lists memory candidates for review. It defaults to pending `candidate` rows and
+does not return full raw content unless requested.
+
+```json
+{
+  "status": "candidate",
+  "limit": 50,
+  "include_content": false,
+  "include_gates": false
+}
+```
+
+Use `include_gates=true` when a trusted review agent needs the full privacy,
+duplicate, metadata, and quality gate payload. Use `include_content=true` only
+when the preview is not enough for review.
 
 ## Citation-safe reading
 

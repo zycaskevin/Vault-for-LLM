@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## [0.6.34] - 2026-06-22
+
+### Added
+
+- Added MCP `vault_remote_search`, a Supabase read-only search tool that calls the `vault_search_readable` RPC from the advanced Supabase read-policy template.
+- Added `vault_remote_search` to the `remote` MCP tool profile so hosted agents can use `vault_remote_search` -> `vault_remote_map_show` -> `vault_remote_read_range`.
+- Added tests proving remote search passes agent/sensitivity parameters to the RPC and does not expose `content_raw` in results.
+- Updated README, MCP workflow, CLI reference, agent integration docs, and `agent_manifest.json` with the remote search flow.
+
 ## [0.6.33] - 2026-06-22
 
 ### Added

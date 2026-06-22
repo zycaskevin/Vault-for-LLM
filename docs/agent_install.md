@@ -10,7 +10,7 @@ install path below keeps Vault local-first and governed.
 ## One-Sentence Prompt
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.33, ask which database scope I want, ask for setup language when this is a manual CLI install, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, Profile / Dream / Forgetting memory-agent guidance, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.34, ask which database scope I want, ask for setup language when this is a manual CLI install, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, Profile / Dream / Forgetting memory-agent guidance, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
 ```
 
 ## What To Ask First
@@ -66,7 +66,7 @@ used by scheduled jobs.
 Use the PyPI release unless the user explicitly asks for source development:
 
 ```bash
-python -m pip install "vault-for-llm[mcp]==0.6.33"
+python -m pip install "vault-for-llm[mcp]==0.6.34"
 vault setup-agent
 ```
 

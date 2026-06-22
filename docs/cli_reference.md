@@ -59,6 +59,9 @@ Manual interactive setup asks for `en`, `zh-Hant`, or `zh-CN`; non-interactive
 agent installs can pass `--language`. Supabase setup guide generation is opt-in
 with `--supabase-setup none|simple|advanced`; keep `simple` as the default path
 unless the user asks for RLS or multi-agent permissions.
+For MCP remote readers, use `vault-mcp --tool-profile remote` and the sequence
+`vault_remote_search` -> `vault_remote_map_show` -> `vault_remote_read_range`
+after applying `docs/supabase_read_policy.sql` in Supabase.
 
 ## Search And Navigation
 

@@ -245,4 +245,7 @@ When the agent supports MCP, use `vault-mcp` and keep final answers grounded in
 For token-sensitive agents, use `vault-mcp --tool-profile core`. This exposes
 only `vault_search`, `vault_read_range`, `vault_memory_propose`, and
 `vault_stats`. Use `review`, `remote`, `maintenance`, or `full` only when those
-extra tools are needed.
+extra tools are needed. For cross-host Supabase readers, the `remote` profile
+adds `vault_remote_search`, `vault_remote_map_show`, and
+`vault_remote_read_range`; use them in that order so hosted agents search safe
+summaries before asking for bounded evidence.

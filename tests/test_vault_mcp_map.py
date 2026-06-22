@@ -38,14 +38,33 @@ class _FakeTableQuery:
         return _FakeResponse([dict(row) for row in matches])
 
 
+class _FakeRpcQuery:
+    def __init__(self, client, function_name: str, params: dict):
+        self.client = client
+        self.function_name = function_name
+        self.params = params
+
+    def execute(self):
+        self.client.rpc_calls.append((self.function_name, dict(self.params)))
+        rows = self.client.rpcs.setdefault(self.function_name, [])
+        return _FakeResponse([dict(row) for row in rows])
+
+
 class _FakeSupabaseClient:
-    def __init__(self, tables):
+    def __init__(self, tables, rpcs=None):
         self.tables = tables
+        self.rpcs = rpcs or {}
+        self.rpc_calls = []
 
     def table(self, table_name: str):
         if table_name not in self.tables:
             raise RuntimeError(f"missing table: {table_name}")
         return _FakeTableQuery(self, table_name)
+
+    def rpc(self, function_name: str, params: dict):
+        if function_name not in self.rpcs:
+            raise RuntimeError(f"missing rpc: {function_name}")
+        return _FakeRpcQuery(self, function_name, params)
 
 
 def _remote_fake_client():
@@ -426,6 +445,56 @@ def test_vault_remote_map_show_uses_synced_supabase_nodes():
     }
 
 
+def test_vault_remote_search_uses_readable_rpc_without_raw_content():
+    fake = _remote_fake_client()
+    fake.rpcs["vault_search_readable"] = [
+        {
+            "id": 42,
+            "title": "Example",
+            "summary": "Safe remote summary",
+            "source": "raw/example.md",
+            "scope": "project",
+            "sensitivity": "medium",
+            "memory_type": "knowledge",
+            "content_raw": "must not be exposed",
+        }
+    ]
+
+    payload = vault_mcp._vault_remote_search_payload(
+        "summary",
+        agent_id="coco",
+        include_private=False,
+        max_sensitivity="medium",
+        limit=5,
+        sb_client=fake,
+    )
+
+    assert payload["rpc"] == "vault_search_readable"
+    assert payload["count"] == 1
+    assert fake.rpc_calls == [
+        (
+            "vault_search_readable",
+            {
+                "p_agent_id": "coco",
+                "p_query": "summary",
+                "p_include_private": False,
+                "p_max_sensitivity": "medium",
+                "p_limit": 5,
+            },
+        )
+    ]
+    result = payload["results"][0]
+    assert result["id"] == 42
+    assert result["summary"] == "Safe remote summary"
+    assert "content_raw" not in result
+    assert result["next_action"]["tool"] == "vault_remote_map_show"
+
+
+def test_vault_remote_search_tool_is_in_remote_profile():
+    remote_tools = {tool["name"] for tool in vault_mcp.select_tools("remote")}
+    assert "vault_remote_search" in remote_tools
+
+
 def test_vault_remote_read_range_uses_content_raw_when_available():
     payload = vault_mcp._vault_remote_read_range_payload(
         42,
@@ -514,3 +583,18 @@ def test_handle_tool_call_routes_remote_document_map_tools(monkeypatch):
     read_payload = json.loads(read_response["result"])
     assert read_payload["citation"] == "#42 Example L3-L4"
     assert "4|Tool-gated reading" in read_payload["content"]
+
+
+def test_handle_tool_call_routes_vault_remote_search(monkeypatch):
+    fake = _remote_fake_client()
+    fake.rpcs["vault_search_readable"] = [{"id": 42, "title": "Example", "summary": "Safe"}]
+    monkeypatch.setattr(vault_mcp, "_get_supabase_client", lambda: fake)
+
+    response = vault_mcp.handle_tool_call(
+        "vault_remote_search",
+        {"query": "Safe", "agent_id": "mori", "limit": 3},
+    )
+
+    payload = json.loads(response["result"])
+    assert payload["count"] == 1
+    assert payload["results"][0]["next_action"]["tool"] == "vault_remote_map_show"

@@ -316,6 +316,95 @@ def _supabase_rows(sb_client, table_name: str, columns: str = "*", filters: dict
     return [dict(row) for row in (getattr(response, "data", None) or [])]
 
 
+def _supabase_rpc(sb_client, function_name: str, params: dict) -> list[dict]:
+    response = sb_client.rpc(function_name, params).execute()
+    return [dict(row) for row in (getattr(response, "data", None) or [])]
+
+
+def _remote_search_result(row: dict, *, compact: bool = True) -> dict:
+    knowledge_id = row.get("id")
+    item = {
+        "id": knowledge_id,
+        "title": row.get("title"),
+        "category": row.get("category"),
+        "layer": row.get("layer"),
+        "trust": row.get("trust"),
+        "tags": row.get("tags"),
+        "summary": row.get("summary"),
+        "source": row.get("source"),
+        "scope": row.get("scope"),
+        "sensitivity": row.get("sensitivity"),
+        "owner_agent": row.get("owner_agent"),
+        "allowed_agents": row.get("allowed_agents"),
+        "memory_type": row.get("memory_type"),
+        "expires_at": row.get("expires_at"),
+        "updated_at": row.get("updated_at"),
+        "recommended_next_tool": "vault_remote_map_show",
+    }
+    if knowledge_id is not None:
+        item["next_action"] = {
+            "tool": "vault_remote_map_show",
+            "arguments": {"knowledge_id": knowledge_id, "compact": True},
+        }
+    if compact:
+        keep = {
+            "id",
+            "title",
+            "summary",
+            "source",
+            "scope",
+            "sensitivity",
+            "memory_type",
+            "recommended_next_tool",
+            "next_action",
+        }
+        item = {key: value for key, value in item.items() if key in keep}
+    return {key: value for key, value in item.items() if value is not None}
+
+
+def _vault_remote_search_payload(
+    query: str = "",
+    *,
+    agent_id: str = "",
+    include_private: bool = False,
+    max_sensitivity: str = "medium",
+    limit: int = 10,
+    compact: bool = True,
+    sb_client=None,
+) -> dict:
+    limit = _clamp_int(limit, default=10, minimum=1, maximum=MCP_SEARCH_MAX_LIMIT)
+    sb_client = sb_client or _get_supabase_client()
+    if sb_client is None:
+        return _remote_error(
+            "remote_client_missing",
+            "SUPABASE_URL and SUPABASE_ANON_KEY/SUPABASE_KEY are required for remote search.",
+        )
+
+    params = {
+        "p_agent_id": str(agent_id or ""),
+        "p_query": str(query or ""),
+        "p_include_private": bool(include_private),
+        "p_max_sensitivity": str(max_sensitivity or "medium"),
+        "p_limit": limit,
+    }
+    try:
+        rows = _supabase_rpc(sb_client, "vault_search_readable", params)
+    except Exception as exc:
+        return _remote_error(
+            "remote_read_failed",
+            "Unable to call Supabase RPC vault_search_readable. Apply docs/supabase_read_policy.sql first, then retry. "
+            f"Original error: {exc}",
+        )
+
+    return {
+        "source": "supabase",
+        "rpc": "vault_search_readable",
+        "query": str(query or ""),
+        "count": len(rows),
+        "results": [_remote_search_result(row, compact=compact) for row in rows],
+    }
+
+
 def _sort_remote_nodes(rows: list[dict]) -> list[dict]:
     return sorted(
         rows,
@@ -1244,6 +1333,46 @@ TOOLS = [
         }
     },
     {
+        "name": "vault_remote_search",
+        "description": "透過 Supabase read-only RPC 搜尋可讀遠端記憶；預設只回傳安全 metadata 與摘要。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "搜尋字串；空字串會回傳最新可讀記憶",
+                    "default": ""
+                },
+                "agent_id": {
+                    "type": "string",
+                    "description": "Agent 身份，用於 owner_agent / allowed_agents 過濾",
+                    "default": ""
+                },
+                "include_private": {
+                    "type": "boolean",
+                    "description": "是否允許讀取此 agent 被授權的 private 記憶",
+                    "default": False
+                },
+                "max_sensitivity": {
+                    "type": "string",
+                    "enum": ["low", "medium", "high", "restricted"],
+                    "description": "最高可讀 sensitivity；預設 medium",
+                    "default": "medium"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "最多回傳幾筆，最高 50",
+                    "default": 10
+                },
+                "compact": {
+                    "type": "boolean",
+                    "description": "回傳精簡欄位（預設 true）",
+                    "default": True
+                },
+            },
+        }
+    },
+    {
         "name": "vault_remote_map_show",
         "description": "從 Supabase 同步目標讀取 Document Map 結構（唯讀；SQLite 仍是 source of truth）。",
         "inputSchema": {
@@ -1314,6 +1443,7 @@ TOOL_PROFILES = {
         "vault_read_range",
         "vault_memory_propose",
         "vault_stats",
+        "vault_remote_search",
         "vault_remote_map_show",
         "vault_remote_read_range",
     ],
@@ -1701,6 +1831,17 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 agent_id=arguments.get("agent_id", ""),
                 include_private=bool(arguments.get("include_private", False)),
                 max_sensitivity=arguments.get("max_sensitivity", ""),
+            )
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
+
+        elif name == "vault_remote_search":
+            payload = _vault_remote_search_payload(
+                query=arguments.get("query", ""),
+                agent_id=arguments.get("agent_id", ""),
+                include_private=bool(arguments.get("include_private", False)),
+                max_sensitivity=arguments.get("max_sensitivity", "medium"),
+                limit=arguments.get("limit", 10),
+                compact=bool(arguments.get("compact", True)),
             )
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 

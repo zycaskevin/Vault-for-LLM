@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.42] - 2026-06-22
+
+### Changed
+
+- Reworked the agent install runbook into a smaller first-run flow with optional features introduced only when they match the user's goal.
+- Refined the Supabase setup guide so local-first use, simple sync, remote readers, and advanced RLS are easier to choose between.
+- Kept multi-agent sharing, private profile memory, Headroom, Obsidian, and memory maintenance guidance in focused docs rather than the README.
+
 ## [0.6.41] - 2026-06-22
 
 ### Changed

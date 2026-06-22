@@ -1,6 +1,6 @@
 # Memory Curator MCP + Dream Implementation Plan
 
-> **For Hermes:** Use `nancy-agent-task-protocol` + `writing-plans` before implementation. For coding execution, use subagent-driven-development task-by-task and verify every MCP tool with real calls.
+> **For Hermes:** Use `profile-agent-task-protocol` + `writing-plans` before implementation. For coding execution, use subagent-driven-development task-by-task and verify every MCP tool with real calls.
 
 **Goal:** Let agents use Vault-for-LLM through MCP to safely remember knowledge, read knowledge with citations, and periodically curate memory through a scheduled “dream” workflow.
 

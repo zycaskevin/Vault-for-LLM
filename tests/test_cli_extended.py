@@ -209,7 +209,7 @@ class TestRemoteCli:
             "search",
             "Safe",
             "--agent-id",
-            "coco",
+            "remote-agent",
             "--limit",
             "3",
             "--json",
@@ -224,7 +224,7 @@ class TestRemoteCli:
             (
                 "vault_search_readable",
                 {
-                    "p_agent_id": "coco",
+                    "p_agent_id": "remote-agent",
                     "p_query": "Safe",
                     "p_include_private": False,
                     "p_max_sensitivity": "medium",
@@ -259,7 +259,7 @@ class TestRemoteCli:
             "remote",
             "smoke",
             "--agent-id",
-            "coco",
+            "remote-agent",
             "--query",
             "Safe",
             "--json",

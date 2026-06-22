@@ -58,7 +58,7 @@ def test_run_agent_setup_writes_supabase_sync_templates(tmp_path):
         AgentSetupConfig(
             project_dir=project,
             scope="shared",
-            agent="nancy",
+            agent="profile-agent",
             features=["core", "mcp", "supabase"],
             language="zh-Hant",
             supabase_setup_mode="advanced",
@@ -106,7 +106,7 @@ def test_run_agent_setup_writes_remote_reader_templates(tmp_path):
         AgentSetupConfig(
             project_dir=project,
             scope="shared",
-            agent="coco",
+            agent="remote-agent",
             features=["core", "mcp", "supabase"],
             supabase_setup_mode="advanced",
             remote_reader_targets="all",
@@ -125,7 +125,7 @@ def test_run_agent_setup_writes_remote_reader_templates(tmp_path):
     readme = (tmp_path / "templates" / "README-remote-reader.md").read_text(encoding="utf-8")
 
     assert "vault remote smoke" in shell
-    assert "--agent-id coco" in shell
+    assert "--agent-id remote-agent" in shell
     assert "pricing SOP" in shell
     assert workflow["nodes"][1]["name"] == "Vault Remote Search"
     assert "vault remote search" in workflow["nodes"][1]["parameters"]["command"]
@@ -145,12 +145,12 @@ def test_run_agent_setup_writes_agent_roster_and_validation_pack(tmp_path):
         AgentSetupConfig(
             project_dir=project,
             scope="shared",
-            agent="nancy",
+            agent="profile-agent",
             features=["core", "mcp", "supabase", "memory_agents"],
             supabase_setup_mode="advanced",
             remote_reader_targets="all",
             remote_reader_query="pricing SOP",
-            agent_roster="nancy:profile,mori:work,aiko:work,coco:remote,n8n:automation",
+            agent_roster="profile-agent:profile,work-agent:work,product-agent:work,remote-agent:remote,n8n:automation",
             validation_pack_targets="all",
             template_dir=tmp_path / "templates",
         )
@@ -164,16 +164,16 @@ def test_run_agent_setup_writes_agent_roster_and_validation_pack(tmp_path):
 
     roster_json = json.loads((tmp_path / "templates" / "agent-roster.json").read_text(encoding="utf-8"))
     matrix = (tmp_path / "templates" / "AGENT_ACCESS_MATRIX.md").read_text(encoding="utf-8")
-    nancy_env = (tmp_path / "templates" / "agent-env" / "nancy.env.example").read_text(encoding="utf-8")
+    profile_agent_env = (tmp_path / "templates" / "agent-env" / "profile-agent.env.example").read_text(encoding="utf-8")
     validate_remote = (tmp_path / "templates" / "validate-remote-reader.sh").read_text(encoding="utf-8")
     validate_coze = (tmp_path / "templates" / "VALIDATE-coze.md").read_text(encoding="utf-8")
 
-    assert roster_json["agents"][0]["agent_id"] == "nancy"
+    assert roster_json["agents"][0]["agent_id"] == "profile-agent"
     assert roster_json["agents"][0]["role"] == "profile"
     assert roster_json["agents"][0]["private_memory"] is True
-    assert any(item["agent_id"] == "coco" and item["remote_reader"] for item in roster_json["agents"])
-    assert "| nancy | profile | private | high | review | True | True | False |" in matrix
-    assert "VAULT_AGENT_ROLE=profile" in nancy_env
+    assert any(item["agent_id"] == "remote-agent" and item["remote_reader"] for item in roster_json["agents"])
+    assert "| profile-agent | profile | private | high | review | True | True | False |" in matrix
+    assert "VAULT_AGENT_ROLE=profile" in profile_agent_env
     assert "vault remote smoke" in validate_remote
     assert "pricing SOP" in validate_remote
     assert "content_raw" in validate_coze
@@ -230,7 +230,7 @@ def test_setup_agent_accepts_global_project_dir_for_missing_directory(tmp_path, 
             "setup-agent",
             "--non-interactive",
             "--agent",
-            "nancy",
+            "profile-agent",
             "--scope",
             "private",
             "--features",
@@ -275,7 +275,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.37" in captured.out
+    assert "vault-for-llm 0.6.38" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -304,7 +304,7 @@ def test_setup_agent_memory_agents_writes_report_only_guide(tmp_path):
         AgentSetupConfig(
             project_dir=project,
             scope="shared",
-            agent="nancy",
+            agent="profile-agent",
             features=["core", "mcp", "memory_agents"],
             language="zh-Hant",
             template_dir=tmp_path / "templates",
@@ -317,7 +317,7 @@ def test_setup_agent_memory_agents_writes_report_only_guide(tmp_path):
     assert "Profile agent 預設只產生候選記憶" in guide
     assert "Dream agent 預設只產生 report" in guide
     assert "Forgetting agent 預設只建議" in guide
-    assert "owner_agent: nancy" in guide
+    assert "owner_agent: profile-agent" in guide
     assert any("Progressive Memory Disclosure" in step for step in result["next_steps"])
 
 
@@ -344,7 +344,7 @@ def test_run_agent_setup_installs_selected_optional_dependencies(tmp_path, monke
         AgentSetupConfig(
             project_dir=tmp_path / "agent-project",
             scope="private",
-            agent="nancy",
+            agent="profile-agent",
             features=["core", "mcp", "semantic", "supabase", "headroom"],
             install_optional_deps=True,
         )
@@ -378,7 +378,7 @@ def test_run_agent_setup_installs_embedding_model_when_requested(tmp_path, monke
         AgentSetupConfig(
             project_dir=project,
             scope="private",
-            agent="nancy",
+            agent="profile-agent",
             features=["core", "semantic"],
             install_embedding_model="mix",
         )
@@ -410,7 +410,7 @@ def test_run_agent_setup_warns_about_temporary_python_env(tmp_path, monkeypatch)
         AgentSetupConfig(
             project_dir=tmp_path / "agent-project",
             scope="shared",
-            agent="nancy",
+            agent="profile-agent",
             features=["core", "mcp"],
         )
     )
@@ -424,7 +424,7 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
 
     answers = iter(
         [
-            "nancy",
+            "profile-agent",
             "private",
             str(tmp_path / "agent-project"),
             "zh-Hant",  # setup language
@@ -441,7 +441,7 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
             "none",  # Supabase sync templates
             "n8n",  # remote reader templates
             "yes",  # agent roster
-            "nancy:profile,coco:remote",  # roster entries
+            "profile-agent:profile,remote-agent:remote",  # roster entries
             "all",  # live validation pack
         ]
     )
@@ -471,7 +471,7 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
     assert any("multi-agent roster" in prompt for prompt in prompts)
     assert any("Live validation pack" in prompt for prompt in prompts)
     assert config.remote_reader_targets == "n8n"
-    assert config.agent_roster == "nancy:profile,coco:remote"
+    assert config.agent_roster == "profile-agent:profile,remote-agent:remote"
     assert config.validation_pack_targets == "all"
 
 
@@ -482,7 +482,7 @@ def test_run_agent_setup_can_skip_supabase_setup_guide(tmp_path):
         AgentSetupConfig(
             project_dir=tmp_path / "agent-project",
             scope="shared",
-            agent="coco",
+            agent="remote-agent",
             features=["core", "supabase"],
             supabase_setup_mode="none",
         )

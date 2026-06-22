@@ -18,8 +18,8 @@ Use side metadata to decide who may read, write, sync, or export a memory:
 layer: L2
 scope: shared
 sensitivity: medium
-owner_agent: nancy
-allowed_agents: ["nancy", "mori", "aiko"]
+owner_agent: profile-agent
+allowed_agents: ["profile-agent", "work-agent", "product-agent"]
 status: reviewed
 memory_type: care_summary
 expires_at: 2026-07-01
@@ -49,7 +49,7 @@ Local SQLite remains inspectable by the operator, but agent-facing reads can
 apply a governance policy:
 
 ```bash
-vault search "deployment notes" --agent-id mori --max-sensitivity medium
+vault search "deployment notes" --agent-id work-agent --max-sensitivity medium
 ```
 
 MCP tools accept the same policy fields:
@@ -57,7 +57,7 @@ MCP tools accept the same policy fields:
 ```json
 {
   "query": "deployment notes",
-  "agent_id": "mori",
+  "agent_id": "work-agent",
   "include_private": false,
   "max_sensitivity": "medium"
 }
@@ -95,13 +95,13 @@ layer: L2
 memory_type: care_summary
 scope: shared
 sensitivity: medium
-owner_agent: niangzi
-allowed_agents: ["nancy", "mori", "aiko"]
+owner_agent: care-agent
+allowed_agents: ["profile-agent", "work-agent", "product-agent"]
 status: reviewed
 expires_at: 2026-07-01
 ---
 
-Arthur seems under heavier workload this week. Prefer concise reassurance before
+the user seems under heavier workload this week. Prefer concise reassurance before
 task pressure, and avoid repeated follow-up questions unless the task is urgent.
 ```
 
@@ -140,14 +140,14 @@ Recommended product setup:
 ```bash
 vault setup-agent \
   --non-interactive \
-  --agent nancy \
+  --agent profile-agent \
   --scope shared \
   --agent-project-dir ~/Vaults/project-memory \
   --features core,mcp,supabase,memory_agents \
   --supabase-setup advanced \
   --supabase-sync cron \
   --remote-reader all \
-  --agent-roster nancy:profile,mori:work,aiko:work,coco:remote,n8n:automation \
+  --agent-roster profile-agent:profile,work-agent:work,product-agent:work,remote-agent:remote,n8n:automation \
   --validation-pack all \
   --json
 ```
@@ -177,7 +177,7 @@ metadata fields is backward-compatible:
 layer: L3
 scope: shared
 sensitivity: low
-owner_agent: mori
+owner_agent: work-agent
 status: active
 memory_type: procedure
 ---

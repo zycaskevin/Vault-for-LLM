@@ -85,21 +85,21 @@ export SUPABASE_SERVICE_ROLE_KEY=...
 python -m scripts.sync_to_supabase --db /path/to/project/vault.db --document-map --health
 
 # after applying docs/supabase_read_policy.sql, non-MCP automation can read remotely
-vault remote smoke --agent-id coco --query "deployment SOP" --json
-vault remote search "deployment SOP" --agent-id coco --json
+vault remote smoke --agent-id remote-agent --query "deployment SOP" --json
+vault remote search "deployment SOP" --agent-id remote-agent --json
 vault remote map 12 --compact --json
 vault remote read 12 --node-uid node_install --json
 
 vault setup-agent \
   --non-interactive \
-  --agent nancy \
+  --agent profile-agent \
   --scope shared \
   --agent-project-dir /path/to/project \
   --features core,mcp,supabase \
   --install-optional-deps \
   --supabase-sync cron \
   --remote-reader all \
-  --agent-roster nancy:profile,mori:work,aiko:work,coco:remote,n8n:automation \
+  --agent-roster profile-agent:profile,work-agent:work,product-agent:work,remote-agent:remote,n8n:automation \
   --validation-pack all \
   --json
 ```
@@ -127,7 +127,7 @@ Supabase is a sync/read target, not the source of truth. Ask again before using
 
 | System | Recommended path | Status | Notes |
 |---|---|---|---|
-| Hermes Agent / Nancy | MCP server plus optional scheduled CLI jobs | proven locally | Use `vault-mcp` for search/read/propose. Use cron or Hermes jobs for `vault dream`, backups, and benchmark runs. |
+| Hermes Agent | MCP server plus optional scheduled CLI jobs | proven locally | Use `vault-mcp` for search/read/propose. Use cron or Hermes jobs for `vault dream`, backups, and benchmark runs. |
 | OpenClaw | OpenClaw adapter in `integrations/openclaw/` or generic MCP | adapter included | Registers `vault_search`, `vault_read_range`, `vault_memory_propose`, and `vault_stats`; auto-recall is off by default. |
 | n8n | CLI command node, Execute Command, HTTP wrapper, or MCP bridge | compatible | Best for workflows: compile docs, run Search QA, propose memory, backup/verify, or search before a customer-service step. |
 | Codex | CLI in the workspace; MCP where the selected Codex surface supports it | compatible | Use `vault search`, `vault map read`, benchmarks, and release gates from the repo. |

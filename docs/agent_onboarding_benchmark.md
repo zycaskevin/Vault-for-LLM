@@ -172,9 +172,9 @@ as committed fixtures.
 | Provider export | Transcript baseline | Vault top-k | Vault source hit | Vault read-range guidance | Delta | Candidate active delta |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Codex local review sessions | `7/28` (`0.25`) | `28/28` (`1.0`) | `1.0` | `1.0` | `+0.75` | `0` |
-| Hermes/Nancy session export | `3/28` (`0.1071`) | `28/28` (`1.0`) | `1.0` | `1.0` | `+0.892857` | `0` |
+| Hermes profile session export | `3/28` (`0.1071`) | `28/28` (`1.0`) | `1.0` | `1.0` | `+0.892857` | `0` |
 
-The Hermes/Nancy run used a 161-message transcript export and produced
+The Hermes profile run used a 161-message transcript export and produced
 `wrong_source_guard_passed: true`. The transcript and report were intentionally
 left outside the repository because real agent sessions can contain private
 work context.

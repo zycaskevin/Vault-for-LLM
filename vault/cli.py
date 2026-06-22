@@ -2247,7 +2247,7 @@ def cmd_setup_agent(args):
 def _add_governance_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--scope", choices=["private", "project", "shared", "public"], default="project", help="記憶範圍：private/project/shared/public")
     parser.add_argument("--sensitivity", choices=["low", "medium", "high", "restricted"], default="low", help="敏感度：low/medium/high/restricted")
-    parser.add_argument("--owner-agent", default="", help="擁有者 Agent，例如 nancy、mori、codex")
+    parser.add_argument("--owner-agent", default="", help="擁有者 Agent，例如 profile-agent、work-agent、codex")
     parser.add_argument("--allowed-agents", default="", help="可讀 Agent 清單；可用 JSON array 或逗號分隔")
     parser.add_argument("--memory-type", default="knowledge", help="記憶類型，例如 knowledge/profile/dream/care_summary/decision")
     parser.add_argument("--expires-at", default="", help="可選過期時間，ISO-8601 字串")
@@ -2410,7 +2410,7 @@ def main(argv: list[str] | None = None):
         ap.add_argument("--remote-reader-query", default="deployment SOP",
                         help="remote reader smoke/template 使用的示範查詢")
         ap.add_argument("--agent-roster",
-                        help="產生多 Agent roster/access matrix，例如 nancy:profile,mori:work,coco:remote")
+                        help="產生多 Agent roster/access matrix，例如 profile-agent:profile,work-agent:work,remote-agent:remote")
         ap.add_argument("--validation-pack", choices=["none", "remote", "n8n", "coze", "all"],
                         default="none", help="產生 Supabase/n8n/Coze live validation pack")
         ap.add_argument("--template-dir", help="同步模板輸出目錄；預設 project/agent-install")

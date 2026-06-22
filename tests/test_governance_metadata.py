@@ -6,15 +6,15 @@ from vault.memory import promote_candidate, propose_memory
 
 
 def test_normalize_governance_metadata_accepts_csv_json_and_lists():
-    assert normalize_allowed_agents(["nancy", "mori"]) == '["nancy", "mori"]'
-    assert normalize_allowed_agents('["aiko", "codex"]') == '["aiko", "codex"]'
-    assert normalize_allowed_agents("nancy,mori") == '["nancy", "mori"]'
+    assert normalize_allowed_agents(["profile-agent", "work-agent"]) == '["profile-agent", "work-agent"]'
+    assert normalize_allowed_agents('["product-agent", "codex"]') == '["product-agent", "codex"]'
+    assert normalize_allowed_agents("profile-agent,work-agent") == '["profile-agent", "work-agent"]'
 
     meta = normalize_governance_metadata(
         scope="SHARED",
         sensitivity="medium",
-        owner_agent=" nancy ",
-        allowed_agents="mori,aiko",
+        owner_agent=" profile-agent ",
+        allowed_agents="work-agent,product-agent",
         memory_type="care_summary",
         expires_at="2026-07-01T00:00:00Z",
     )
@@ -22,8 +22,8 @@ def test_normalize_governance_metadata_accepts_csv_json_and_lists():
     assert meta == {
         "scope": "shared",
         "sensitivity": "medium",
-        "owner_agent": "nancy",
-        "allowed_agents": '["mori", "aiko"]',
+        "owner_agent": "profile-agent",
+        "allowed_agents": '["work-agent", "product-agent"]',
         "memory_type": "care_summary",
         "expires_at": "2026-07-01T00:00:00Z",
     }
@@ -37,8 +37,8 @@ def test_add_knowledge_persists_governance_metadata(tmp_path):
             source="test",
             scope="shared",
             sensitivity="medium",
-            owner_agent="nancy",
-            allowed_agents=["mori", "aiko"],
+            owner_agent="profile-agent",
+            allowed_agents=["work-agent", "product-agent"],
             memory_type="decision",
             expires_at="2026-07-01T00:00:00Z",
         )
@@ -46,8 +46,8 @@ def test_add_knowledge_persists_governance_metadata(tmp_path):
 
     assert row["scope"] == "shared"
     assert row["sensitivity"] == "medium"
-    assert row["owner_agent"] == "nancy"
-    assert json.loads(row["allowed_agents"]) == ["mori", "aiko"]
+    assert row["owner_agent"] == "profile-agent"
+    assert json.loads(row["allowed_agents"]) == ["work-agent", "product-agent"]
     assert row["memory_type"] == "decision"
     assert row["expires_at"] == "2026-07-01T00:00:00Z"
 
@@ -64,8 +64,8 @@ def test_candidate_promotion_preserves_governance_metadata(tmp_path):
             source="test",
             scope="shared",
             sensitivity="medium",
-            owner_agent="nancy",
-            allowed_agents=["niangzi", "mori"],
+            owner_agent="profile-agent",
+            allowed_agents=["care-agent", "work-agent"],
             memory_type="care_summary",
         )
         promoted = promote_candidate(
@@ -80,13 +80,13 @@ def test_candidate_promotion_preserves_governance_metadata(tmp_path):
 
     assert candidate["scope"] == "shared"
     assert candidate["sensitivity"] == "medium"
-    assert candidate["owner_agent"] == "nancy"
-    assert json.loads(candidate["allowed_agents"]) == ["niangzi", "mori"]
+    assert candidate["owner_agent"] == "profile-agent"
+    assert json.loads(candidate["allowed_agents"]) == ["care-agent", "work-agent"]
     assert candidate["memory_type"] == "care_summary"
     assert knowledge["scope"] == "shared"
     assert knowledge["sensitivity"] == "medium"
-    assert knowledge["owner_agent"] == "nancy"
-    assert json.loads(knowledge["allowed_agents"]) == ["niangzi", "mori"]
+    assert knowledge["owner_agent"] == "profile-agent"
+    assert json.loads(knowledge["allowed_agents"]) == ["care-agent", "work-agent"]
     assert knowledge["memory_type"] == "care_summary"
 
 
@@ -103,12 +103,12 @@ def test_compiler_preserves_governance_frontmatter(tmp_path):
         "trust: 0.8\n"
         "scope: shared\n"
         "sensitivity: medium\n"
-        "owner_agent: nancy\n"
-        "allowed_agents: [mori, aiko]\n"
+        "owner_agent: profile-agent\n"
+        "allowed_agents: [work-agent, product-agent]\n"
         "memory_type: profile_summary\n"
         "expires_at: 2026-07-01T00:00:00Z\n"
         "---\n\n"
-        "Arthur prefers reviewed shared summaries instead of exposing raw private chats.\n",
+        "the user prefers reviewed shared summaries instead of exposing raw private chats.\n",
         encoding="utf-8",
     )
 
@@ -120,7 +120,7 @@ def test_compiler_preserves_governance_frontmatter(tmp_path):
     assert stats["new"] == 1
     assert row["scope"] == "shared"
     assert row["sensitivity"] == "medium"
-    assert row["owner_agent"] == "nancy"
-    assert json.loads(row["allowed_agents"]) == ["mori", "aiko"]
+    assert row["owner_agent"] == "profile-agent"
+    assert json.loads(row["allowed_agents"]) == ["work-agent", "product-agent"]
     assert row["memory_type"] == "profile_summary"
     assert row["expires_at"] == "2026-07-01T00:00:00+00:00"

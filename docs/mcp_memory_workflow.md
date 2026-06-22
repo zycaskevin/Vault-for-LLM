@@ -39,7 +39,7 @@ For shared or multi-agent vaults, pass the agent identity on read tools:
 
 ```json
 {
-  "agent_id": "mori",
+  "agent_id": "work-agent",
   "include_private": false,
   "max_sensitivity": "medium"
 }

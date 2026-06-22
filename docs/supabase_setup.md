@@ -134,7 +134,7 @@ For a simple guided setup:
 ```bash
 vault setup-agent \
   --non-interactive \
-  --agent nancy \
+  --agent profile-agent \
   --scope shared \
   --agent-project-dir /path/to/project \
   --features core,mcp,supabase \
@@ -151,7 +151,7 @@ For Traditional Chinese output:
 ```bash
 vault setup-agent \
   --non-interactive \
-  --agent nancy \
+  --agent profile-agent \
   --scope shared \
   --agent-project-dir /path/to/project \
   --features core,mcp,supabase \
@@ -171,7 +171,7 @@ After applying `docs/supabase_read_policy.sql`, verify the remote reader path:
 ```bash
 export SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 export SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
-vault remote smoke --agent-id coco --query "deployment SOP" --json
+vault remote smoke --agent-id remote-agent --query "deployment SOP" --json
 ```
 
 To generate files for live external verification, add:
@@ -179,7 +179,7 @@ To generate files for live external verification, add:
 ```bash
 vault setup-agent \
   --non-interactive \
-  --agent coco \
+  --agent remote-agent \
   --scope shared \
   --agent-project-dir /path/to/project \
   --features core,mcp,supabase \

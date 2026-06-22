@@ -96,7 +96,7 @@ local Markdown + SQLite, exposed through CLI and optional stdio MCP.
 
 | System | How to use Vault-for-LLM |
 |---|---|
-| Hermes Agent / Nancy | Configure `vault-mcp` for search/read/propose tools; run CLI jobs for dream reports, backups, and onboarding benchmarks. |
+| Hermes Agent | Configure `vault-mcp` for search/read/propose tools; run CLI jobs for dream reports, backups, and onboarding benchmarks. |
 | OpenClaw | Use the bundled adapter in [`integrations/openclaw/`](integrations/openclaw/) to register `vault_search`, `vault_read_range`, `vault_memory_propose`, and `vault_stats`; generic MCP also works. |
 | n8n | Call the `vault` CLI from Execute Command nodes, wrap it behind an internal HTTP service, or bridge to MCP for workflow automation. |
 | Codex | Use the CLI inside the repo/workspace; use MCP on Codex surfaces that support local MCP servers. |
@@ -148,8 +148,8 @@ everything by default:
 
 | Feature | Default | Install command | Ask when |
 |---|---|---|---|
-| `core` | yes | `python -m pip install vault-for-llm==0.6.37` | Always: local Markdown, SQLite, keyword search. |
-| `mcp` | yes for MCP-capable agents | `python -m pip install "vault-for-llm[mcp]==0.6.37"` | The runtime can connect local stdio MCP tools. |
+| `core` | yes | `python -m pip install vault-for-llm==0.6.38` | Always: local Markdown, SQLite, keyword search. |
+| `mcp` | yes for MCP-capable agents | `python -m pip install "vault-for-llm[mcp]==0.6.38"` | The runtime can connect local stdio MCP tools. |
 | `obsidian_import` | no | built into core CLI | The user already has an Obsidian vault and wants agents to search those notes through Vault. |
 | `semantic` | no | `python -m pip install "vault-for-llm[semantic]"` | The user wants embedding-backed semantic/hybrid search. |
 | `supabase` | no | `python -m pip install "vault-for-llm[supabase]"` | The user wants optional remote sync/read paths. |
@@ -176,7 +176,7 @@ vault setup-agent \
   --supabase-setup simple \
   --supabase-sync cron \
   --remote-reader all \
-  --agent-roster nancy:profile,mori:work,aiko:work,coco:remote,n8n:automation \
+  --agent-roster profile-agent:profile,work-agent:work,product-agent:work,remote-agent:remote,n8n:automation \
   --validation-pack all \
   --json
 ```
@@ -233,7 +233,7 @@ required dependency for local use.
 
 ## Current Source Status
 
-The current source tree is `0.6.37`. Core local search is stable, while
+The current source tree is `0.6.38`. Core local search is stable, while
 advanced semantic, rerank, sync, and benchmarking workflows remain optional.
 See [CHANGELOG.md](CHANGELOG.md) for release details.
 
@@ -334,12 +334,12 @@ In story form: the agent writes a note, the front desk checks whether it is safe
 
 ### Install from PyPI
 
-Vault-for-LLM `0.6.37` is published on PyPI.
+Vault-for-LLM `0.6.38` is published on PyPI.
 
 For agent-driven installation, paste this into Hermes Agent, Codex, OpenCode, Claude Code, OpenClaw, or another agent that can run local commands:
 
 ```text
-Install Vault-for-LLM for this project. Use PyPI package vault-for-llm[mcp]==0.6.37.
+Install Vault-for-LLM for this project. Use PyPI package vault-for-llm[mcp]==0.6.38.
 Ask whether the vault database should be shared, private, domain-specific, or temporary.
 Ask separately about MCP, semantic search, Supabase sync, Headroom context compression,
 and dev/benchmark dependencies. If optional features are selected, ask whether to
@@ -354,7 +354,7 @@ Manual install:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.37"
+pip install "vault-for-llm[mcp]==0.6.38"
 
 vault setup-agent
 ```
@@ -545,7 +545,7 @@ your-project/
 | `vault import obsidian --vault /path/to/ObsidianVault --dry-run` | Preview importing existing Obsidian notes into `raw/obsidian/` |
 | `vault search "query"` | Search project memory |
 | `vault map read <id> --lines 10-30` | Read a bounded range for citation |
-| `vault remote search "query" --agent-id coco --json` | Search a Supabase read-only memory view |
+| `vault remote search "query" --agent-id remote-agent --json` | Search a Supabase read-only memory view |
 | `vault remove <id> --confirm` | Remove a reviewed knowledge entry by ID |
 
 For the broader command surface, see the [CLI reference](docs/cli_reference.md).
@@ -691,15 +691,15 @@ pip install supabase
 python -m scripts.sync_to_supabase --db /path/to/project/vault.db --document-map --health
 
 # after applying docs/supabase_read_policy.sql, hosted readers can use CLI remote reads
-vault remote smoke --agent-id coco --query "deployment SOP" --json
-vault remote search "deployment SOP" --agent-id coco --json
+vault remote smoke --agent-id remote-agent --query "deployment SOP" --json
+vault remote search "deployment SOP" --agent-id remote-agent --json
 vault remote map 12 --compact --json
 vault remote read 12 --node-uid node_install --json
 
 # or let setup-agent generate daily sync plus shell/n8n/Coze remote-reader templates
 vault setup-agent \
   --non-interactive \
-  --agent nancy \
+  --agent profile-agent \
   --scope shared \
   --agent-project-dir /path/to/project \
   --features core,mcp,supabase \
@@ -708,7 +708,7 @@ vault setup-agent \
   --supabase-setup simple \
   --supabase-sync cron \
   --remote-reader all \
-  --agent-roster nancy:profile,mori:work,aiko:work,coco:remote,n8n:automation \
+  --agent-roster profile-agent:profile,work-agent:work,product-agent:work,remote-agent:remote,n8n:automation \
   --validation-pack all \
   --json
 ```
@@ -746,7 +746,7 @@ commands.
 
 | Probe | Result | Caveat |
 |---|---:|---|
-| Repo onboarding fixture | Vault top-k/source/read-range guidance `28/28`; Codex transcript baseline `7/28`; Hermes/Nancy transcript baseline `3/28` | 28-task source-aware project benchmark; private transcripts are not committed |
+| Repo onboarding fixture | Vault top-k/source/read-range guidance `28/28`; Codex transcript baseline `7/28`; Hermes profile transcript baseline `3/28` | 28-task source-aware project benchmark; private transcripts are not committed |
 | Candidate-first memory | `0` active-memory pollution before promotion | candidate proposals do not enter official memory automatically |
 | LoCoMo hierarchical retrieval probe | `97.7%` Any evidence@50 and `90.5%` All evidence@50 on official-scored categories | retrieval evidence score only; not an official answer/judge leaderboard score |
 

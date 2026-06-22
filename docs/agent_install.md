@@ -10,7 +10,7 @@ install path below keeps Vault local-first and governed.
 ## One-Sentence Prompt
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.37, ask which database scope I want, ask for setup language when this is a manual CLI install, ask separately about MCP, semantic search, Supabase sync, Supabase remote reader templates for shell/n8n/Coze, Headroom context compression, Profile / Dream / Forgetting memory-agent guidance, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.38, ask which database scope I want, ask for setup language when this is a manual CLI install, ask separately about MCP, semantic search, Supabase sync, Supabase remote reader templates for shell/n8n/Coze, Headroom context compression, Profile / Dream / Forgetting memory-agent guidance, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
 ```
 
 ## What To Ask First
@@ -57,7 +57,7 @@ use the same project directory.
 locations and not stable shared vaults. Do not reuse a version-labelled temp
 path such as `/tmp/vault-install-test-0.6.24` as a real project memory path.
 For shared memory, choose a stable directory such as `~/Vaults/my-project`.
-For long-lived installs, also use a stable Python virtualenv path. Hermes/Nancy
+For long-lived installs, also use a stable Python virtualenv path. Hermes profile
 installs should prefer a path such as `~/.hermes/venvs/vault-for-llm/`;
 temporary venvs under `/tmp/...` can disappear after reboot and should not be
 used by scheduled jobs.
@@ -67,7 +67,7 @@ used by scheduled jobs.
 Use the PyPI release unless the user explicitly asks for source development:
 
 ```bash
-python -m pip install "vault-for-llm[mcp]==0.6.37"
+python -m pip install "vault-for-llm[mcp]==0.6.38"
 vault setup-agent
 ```
 
@@ -101,7 +101,7 @@ vault setup-agent \
   --install-embedding-model mix \
   --supabase-setup simple \
   --remote-reader all \
-  --agent-roster nancy:profile,mori:work,aiko:work,coco:remote,n8n:automation \
+  --agent-roster profile-agent:profile,work-agent:work,product-agent:work,remote-agent:remote,n8n:automation \
   --validation-pack all \
   --json
 ```
@@ -111,7 +111,7 @@ To install Supabase support and generate a daily cron template:
 ```bash
 vault setup-agent \
   --non-interactive \
-  --agent nancy \
+  --agent profile-agent \
   --scope shared \
   --agent-project-dir /path/to/project \
   --features core,mcp,supabase \
@@ -120,7 +120,7 @@ vault setup-agent \
   --supabase-setup simple \
   --supabase-sync cron \
   --remote-reader all \
-  --agent-roster nancy:profile,mori:work,aiko:work,coco:remote,n8n:automation \
+  --agent-roster profile-agent:profile,work-agent:work,product-agent:work,remote-agent:remote,n8n:automation \
   --validation-pack all \
   --json
 ```
@@ -145,7 +145,7 @@ agent_id:role[:scope[:max_sensitivity]]
 Example:
 
 ```bash
---agent-roster nancy:profile,mori:work,aiko:work,coco:remote,n8n:automation
+--agent-roster profile-agent:profile,work-agent:work,product-agent:work,remote-agent:remote,n8n:automation
 ```
 
 This writes `agent-roster.json`, `AGENT_ACCESS_MATRIX.md`,
@@ -160,7 +160,7 @@ To generate Profile / Dream / Forgetting agent guidance:
 ```bash
 vault setup-agent \
   --non-interactive \
-  --agent nancy \
+  --agent profile-agent \
   --scope shared \
   --agent-project-dir /path/to/project \
   --features core,mcp,memory_agents \
@@ -180,8 +180,8 @@ For access and sync decisions, prefer frontmatter or remote-table metadata:
 ```yaml
 scope: private | project | shared | public
 sensitivity: low | medium | high | restricted
-owner_agent: nancy
-allowed_agents: ["nancy", "mori", "aiko"]
+owner_agent: profile-agent
+allowed_agents: ["profile-agent", "work-agent", "product-agent"]
 status: candidate | reviewed | active | archived
 memory_type: identity | user_profile | context | decision | pitfall | procedure | care_summary
 expires_at: 2026-07-01
@@ -333,7 +333,7 @@ vault_memory_candidates -> candidate review queue visible in review profile
 
 | Runtime | Recommended setup |
 |---|---|
-| Hermes Agent / Nancy | Install PyPI package, configure `vault-mcp`, use `core` for daily recall and `maintenance` for curation. |
+| Hermes Agent | Install PyPI package, configure `vault-mcp`, use `core` for daily recall and `maintenance` for curation. |
 | Codex | Use CLI inside the workspace; use MCP when the selected Codex surface supports local MCP. |
 | Claude Code | Configure `vault-mcp` as a local stdio MCP server, or shell out to CLI commands. |
 | OpenCode | Use the same stdio MCP path as Claude Code/Codex, or CLI in shell-capable sessions. |

@@ -12,7 +12,7 @@ def test_read_policy_preserves_legacy_visibility_without_agent():
         {
             "scope": "private",
             "sensitivity": "restricted",
-            "owner_agent": "nancy",
+            "owner_agent": "profile-agent",
             "allowed_agents": "[]",
         },
         policy,
@@ -23,25 +23,25 @@ def test_read_policy_private_and_restricted_rules():
     private_row = {
         "scope": "private",
         "sensitivity": "high",
-        "owner_agent": "nancy",
-        "allowed_agents": '["mori"]',
+        "owner_agent": "profile-agent",
+        "allowed_agents": '["work-agent"]',
     }
     restricted_row = {
         "scope": "shared",
         "sensitivity": "restricted",
-        "owner_agent": "nancy",
-        "allowed_agents": '["mori"]',
+        "owner_agent": "profile-agent",
+        "allowed_agents": '["work-agent"]',
     }
 
-    mori_default = normalize_read_policy(agent_id="mori")
-    mori_private = normalize_read_policy(agent_id="mori", include_private=True)
-    aiko_private = normalize_read_policy(agent_id="aiko", include_private=True)
+    work_agent_default = normalize_read_policy(agent_id="work-agent")
+    work_agent_private = normalize_read_policy(agent_id="work-agent", include_private=True)
+    product_agent_private = normalize_read_policy(agent_id="product-agent", include_private=True)
 
-    assert can_read_memory(private_row, mori_default) is False
-    assert can_read_memory(private_row, mori_private) is True
-    assert can_read_memory(private_row, aiko_private) is False
-    assert can_read_memory(restricted_row, mori_default) is True
-    assert can_read_memory(restricted_row, aiko_private) is False
+    assert can_read_memory(private_row, work_agent_default) is False
+    assert can_read_memory(private_row, work_agent_private) is True
+    assert can_read_memory(private_row, product_agent_private) is False
+    assert can_read_memory(restricted_row, work_agent_default) is True
+    assert can_read_memory(restricted_row, product_agent_private) is False
 
 
 def test_search_applies_governance_read_filter(tmp_path):
@@ -54,13 +54,13 @@ def test_search_applies_governance_read_filter(tmp_path):
             sensitivity="low",
         )
         db.add_knowledge(
-            title="Nancy private note",
+            title="Profile Agent private note",
             content_raw="Governance search smoke private note.",
             source="test",
             scope="private",
             sensitivity="high",
-            owner_agent="nancy",
-            allowed_agents=["mori"],
+            owner_agent="profile-agent",
+            allowed_agents=["work-agent"],
         )
         db.add_knowledge(
             title="Restricted project note",
@@ -68,45 +68,45 @@ def test_search_applies_governance_read_filter(tmp_path):
             source="test",
             scope="shared",
             sensitivity="restricted",
-            owner_agent="nancy",
-            allowed_agents=["mori"],
+            owner_agent="profile-agent",
+            allowed_agents=["work-agent"],
         )
         search = VaultSearch(db)
 
         legacy = search.search("governance search smoke", mode="keyword", limit=10)
-        mori = search.search("governance search smoke", mode="keyword", limit=10, agent_id="mori")
-        mori_private = search.search(
+        work_agent = search.search("governance search smoke", mode="keyword", limit=10, agent_id="work-agent")
+        work_agent_private = search.search(
             "governance search smoke",
             mode="keyword",
             limit=10,
-            agent_id="mori",
+            agent_id="work-agent",
             include_private=True,
         )
-        aiko = search.search("governance search smoke", mode="keyword", limit=10, agent_id="aiko")
+        product_agent = search.search("governance search smoke", mode="keyword", limit=10, agent_id="product-agent")
         capped = search.search(
             "governance search smoke",
             mode="keyword",
             limit=10,
-            agent_id="mori",
+            agent_id="work-agent",
             include_private=True,
             max_sensitivity="medium",
         )
 
     assert {row["title"] for row in legacy} == {
         "Shared deployment note",
-        "Nancy private note",
+        "Profile Agent private note",
         "Restricted project note",
     }
-    assert {row["title"] for row in mori} == {
+    assert {row["title"] for row in work_agent} == {
         "Shared deployment note",
         "Restricted project note",
     }
-    assert {row["title"] for row in mori_private} == {
+    assert {row["title"] for row in work_agent_private} == {
         "Shared deployment note",
-        "Nancy private note",
+        "Profile Agent private note",
         "Restricted project note",
     }
-    assert {row["title"] for row in aiko} == {"Shared deployment note"}
+    assert {row["title"] for row in product_agent} == {"Shared deployment note"}
     assert {row["title"] for row in capped} == {"Shared deployment note"}
 
 
@@ -121,13 +121,13 @@ def test_mcp_search_and_read_range_apply_governance_policy(tmp_path, monkeypatch
             sensitivity="low",
         )
         private_id = db.add_knowledge(
-            title="Nancy MCP private note",
-            content_raw="# Nancy MCP private note\n\nPrivate line for Nancy only.",
+            title="Profile Agent MCP private note",
+            content_raw="# Profile Agent MCP private note\n\nPrivate line for Profile Agent only.",
             source="test",
             scope="private",
             sensitivity="high",
-            owner_agent="nancy",
-            allowed_agents=["mori"],
+            owner_agent="profile-agent",
+            allowed_agents=["work-agent"],
         )
 
     monkeypatch.setattr(vault_mcp, "DB_PATH", str(db_path))
@@ -139,7 +139,7 @@ def test_mcp_search_and_read_range_apply_governance_policy(tmp_path, monkeypatch
                 "query": "MCP note",
                 "mode": "keyword",
                 "limit": 10,
-                "agent_id": "aiko",
+                "agent_id": "product-agent",
             },
         )["result"]
     )
@@ -150,23 +150,23 @@ def test_mcp_search_and_read_range_apply_governance_policy(tmp_path, monkeypatch
         line_start=1,
         line_end=2,
         db_path=str(db_path),
-        agent_id="aiko",
+        agent_id="product-agent",
     )
     allowed = vault_mcp._vault_read_range_payload(
         private_id,
         line_start=1,
         line_end=3,
         db_path=str(db_path),
-        agent_id="mori",
+        agent_id="work-agent",
         include_private=True,
     )
     map_denied = vault_mcp._vault_map_show_payload(
         private_id,
         db_path=str(db_path),
-        agent_id="aiko",
+        agent_id="product-agent",
     )
 
     assert denied["error"] == "access_denied"
     assert map_denied["error"] == "access_denied"
     assert allowed["entry_id"] == private_id
-    assert "Private line for Nancy only" in allowed["content"]
+    assert "Private line for Profile Agent only" in allowed["content"]

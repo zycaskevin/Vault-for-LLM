@@ -980,7 +980,7 @@ def write_live_validation_pack(
                     "",
                     "1. Import `coze-supabase-vault-openapi.json` as the Coze connector schema.",
                     "2. Replace `https://YOUR_PROJECT.supabase.co/rest/v1` with your Supabase REST endpoint.",
-                    "3. Configure headers: `apikey: SUPABASE_ANON_KEY` and `Authorization: Bearer SUPABASE_ANON_KEY`.",
+                    "3. Configure the Supabase anon key as both the `apikey` header and the bearer value for the authorization header.",
                     "4. Call `vaultRemoteSearch` with `p_agent_id`, `p_query`, `p_include_private=false`, `p_max_sensitivity=medium`, and `p_limit=5`.",
                     "5. Confirm responses contain safe summaries and do not expose `content_raw`.",
                     "",
@@ -1002,7 +1002,7 @@ def write_live_validation_pack(
                 "",
                 "1. Run `validate-remote-reader.sh` on a trusted machine.",
                 "2. Import and run the n8n workflow if n8n is part of the deployment.",
-                "3. Import and call the Coze OpenAPI connector if Coze/Coco is part of the deployment.",
+                    "3. Import and call the Coze OpenAPI connector if Coze or another hosted agent is part of the deployment.",
                 "",
                 "Passing local tests does not prove remote credentials or hosted platform settings. This pack verifies the external deployment without exposing service-role credentials to hosted agents.",
                 "",
@@ -1248,7 +1248,7 @@ def _render_supabase_setup_guide_en(*, mode: str, project_path: Path, agent: str
                 "",
                 "Suggested columns for a shared-memory table or view:",
                 "",
-                "- `owner_agent`: `nancy`, `niangzi`, `mori`, `aiko`, `codex`, `coco`, ...",
+                "- `owner_agent`: `profile-agent`, `care-agent`, `work-agent`, `product-agent`, `codex`, `remote-agent`, ...",
                 "- `scope`: `private`, `project`, `shared`, `public`",
                 "- `sensitivity`: `low`, `medium`, `high`, `restricted`",
                 "- `allowed_agents`: text array or JSON array of agent IDs",
@@ -1328,7 +1328,7 @@ def _render_supabase_setup_guide_zh_hant(*, mode: str, project_path: Path, agent
                 "",
                 "shared-memory table 或 view 可考慮這些欄位：",
                 "",
-                "- `owner_agent`：`nancy`、`niangzi`、`mori`、`aiko`、`codex`、`coco` 等",
+                "- `owner_agent`：`profile-agent`、`care-agent`、`work-agent`、`product-agent`、`codex`、`remote-agent` 等",
                 "- `scope`：`private`、`project`、`shared`、`public`",
                 "- `sensitivity`：`low`、`medium`、`high`、`restricted`",
                 "- `allowed_agents`：可讀 Agent 的 text array 或 JSON array",
@@ -1933,7 +1933,7 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
     remote_reader_query = str(argv_config.get("remote_reader_query") or "deployment SOP")
     agent_roster = argv_config.get("agent_roster")
     if agent_roster is None and _ask_yes_no("Generate multi-agent roster/access-matrix templates?", False):
-        agent_roster = _ask("Agent roster (example: nancy:profile,mori:work,aiko:work,coco:remote,n8n:automation)", "")
+        agent_roster = _ask("Agent roster (example: profile-agent:profile,work-agent:work,product-agent:work,remote-agent:remote,n8n:automation)", "")
     validation_pack_targets = argv_config.get("validation_pack_targets", "none")
     if "supabase" in features and not argv_config.get("validation_pack_targets"):
         validation_pack_targets = _ask("Live validation pack for remote/n8n/coze (none/remote/n8n/coze/all)", "none")

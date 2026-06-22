@@ -462,7 +462,7 @@ def test_vault_remote_search_uses_readable_rpc_without_raw_content():
 
     payload = vault_mcp._vault_remote_search_payload(
         "summary",
-        agent_id="coco",
+        agent_id="remote-agent",
         include_private=False,
         max_sensitivity="medium",
         limit=5,
@@ -475,7 +475,7 @@ def test_vault_remote_search_uses_readable_rpc_without_raw_content():
         (
             "vault_search_readable",
             {
-                "p_agent_id": "coco",
+                "p_agent_id": "remote-agent",
                 "p_query": "summary",
                 "p_include_private": False,
                 "p_max_sensitivity": "medium",
@@ -592,7 +592,7 @@ def test_handle_tool_call_routes_vault_remote_search(monkeypatch):
 
     response = vault_mcp.handle_tool_call(
         "vault_remote_search",
-        {"query": "Safe", "agent_id": "mori", "limit": 3},
+        {"query": "Safe", "agent_id": "work-agent", "limit": 3},
     )
 
     payload = json.loads(response["result"])

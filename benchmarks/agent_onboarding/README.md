@@ -59,6 +59,6 @@ session transcripts or generated reports:
 | Provider export | Transcript baseline | Vault top-k | Vault source hit | Vault read-range guidance | Delta |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Codex local review sessions | `7/28` | `28/28` | `1.0` | `1.0` | `+0.75` |
-| Hermes/Nancy session export | `3/28` | `28/28` | `1.0` | `1.0` | `+0.892857` |
+| Hermes profile session export | `3/28` | `28/28` | `1.0` | `1.0` | `+0.892857` |
 
 For both runs, `candidate_active_delta_before_promotion` stayed `0`.

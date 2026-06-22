@@ -15,8 +15,8 @@ with the daily loop in the README and only use these commands when needed.
 | `vault compile` | Compile `raw/` into SQLite and generated artifacts |
 | `vault search "query"` | Search the vault |
 | `vault map read <id> --lines 10-30` | Read a bounded source range for citation |
-| `vault remote smoke --agent-id coco --query "deployment SOP" --json` | Verify Supabase remote reader credentials and the `vault_search_readable` RPC |
-| `vault remote search "query" --agent-id coco --json` | Search the Supabase read-only memory view through `vault_search_readable` |
+| `vault remote smoke --agent-id remote-agent --query "deployment SOP" --json` | Verify Supabase remote reader credentials and the `vault_search_readable` RPC |
+| `vault remote search "query" --agent-id remote-agent --json` | Search the Supabase read-only memory view through `vault_search_readable` |
 | `vault remote map <id> --compact --json` | Inspect remote synced Document Map rows |
 | `vault remote read <id> --node-uid <node> --json` | Read remote bounded evidence from synced content/claims |
 | `vault remove <id> --confirm` | Remove a knowledge entry after reviewing its ID |
@@ -47,9 +47,9 @@ changed notes without duplicating unchanged ones.
 | `vault setup-agent` | Ask for scope, setup language, optional features, Obsidian import, sync templates, and smoke-test next steps |
 | `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,obsidian_import` | Agent-friendly scripted install |
 | `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,semantic,supabase,headroom --language en --install-optional-deps --install-embedding-model mix --supabase-setup simple --json` | Install selected optional dependencies and configure a local semantic model |
-| `vault setup-agent --non-interactive --agent nancy --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,memory_agents --language zh-Hant --json` | Generate Profile / Dream / Forgetting agent guidance with report-only and candidate-only defaults |
-| `vault setup-agent --non-interactive --agent nancy --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase --language zh-Hant --install-optional-deps --supabase-setup simple --supabase-sync cron --remote-reader all --json` | Generate guided Supabase setup, daily sync templates, and shell/n8n/Coze remote reader templates |
-| `vault setup-agent --non-interactive --agent nancy --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase,memory_agents --agent-roster nancy:profile,mori:work,coco:remote,n8n:automation --validation-pack all --json` | Generate a multi-agent access matrix plus live Supabase/n8n/Coze validation checklists |
+| `vault setup-agent --non-interactive --agent profile-agent --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,memory_agents --language zh-Hant --json` | Generate Profile / Dream / Forgetting agent guidance with report-only and candidate-only defaults |
+| `vault setup-agent --non-interactive --agent profile-agent --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase --language zh-Hant --install-optional-deps --supabase-setup simple --supabase-sync cron --remote-reader all --json` | Generate guided Supabase setup, daily sync templates, and shell/n8n/Coze remote reader templates |
+| `vault setup-agent --non-interactive --agent profile-agent --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase,memory_agents --agent-roster profile-agent:profile,work-agent:work,remote-agent:remote,n8n:automation --validation-pack all --json` | Generate a multi-agent access matrix plus live Supabase/n8n/Coze validation checklists |
 | `vault setup-agent --obsidian-vault ~/Documents/ObsidianVault --import-obsidian --obsidian-sync all` | Run first Obsidian import and write cron, LaunchAgent, and n8n templates |
 
 `vault install-agent` is an alias for `vault setup-agent`.
@@ -65,7 +65,7 @@ Supabase remote reader templates are opt-in with
 `vault remote smoke --agent-id <agent> --json`.
 Multi-agent roster templates are opt-in with `--agent-roster`; each entry uses
 `agent_id:role[:scope[:max_sensitivity]]`, for example
-`nancy:profile,mori:work,coco:remote,n8n:automation`. Live external validation
+`profile-agent:profile,work-agent:work,remote-agent:remote,n8n:automation`. Live external validation
 files are opt-in with `--validation-pack remote|n8n|coze|all`.
 Manual interactive setup asks for `en`, `zh-Hant`, or `zh-CN`; non-interactive
 agent installs can pass `--language`. Supabase setup guide generation is opt-in

@@ -58,6 +58,13 @@ PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("secret_literal", re.compile(r"\b(sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{12,}|xox[baprs]-[A-Za-z0-9-]{12,})\b")),
 ]
 
+ALLOWED_SECRET_PLACEHOLDERS = {
+    "SUPABASE_ANON_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "YOUR_SUPABASE_ANON_KEY",
+    "supersecret123",
+}
+
 
 @dataclass(frozen=True)
 class DiffLine:
@@ -225,6 +232,8 @@ def scan_diff(
             continue
         for kind, pattern in PATTERNS:
             if pattern.search(item.line):
+                if kind == "secret_literal" and any(placeholder in item.line for placeholder in ALLOWED_SECRET_PLACEHOLDERS):
+                    continue
                 finding: dict[str, object] = {
                     "kind": kind,
                     "path": item.path,

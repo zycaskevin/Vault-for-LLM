@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.38] - 2026-06-22
+
+### Fixed
+
+- Sanitized public docs, release notes, CLI help examples, manifest examples, and tests so multi-agent examples use generic role IDs instead of private/local agent names.
+- Replaced private transcript labels with generic Hermes profile wording while keeping benchmark numbers and reproducibility notes intact.
+- Re-ran repository privacy scans for private names, local user paths, emails, tokens, and credential-like patterns; remaining credential-pattern hits are code/test placeholders rather than committed secrets.
+
 ## [0.6.37] - 2026-06-22
 
 ### Added
@@ -109,7 +117,7 @@
 - Added `vault setup-agent --install-optional-deps` so non-interactive agents can install selected optional Python dependencies instead of only receiving next-step instructions.
 - Added `vault setup-agent --install-embedding-model zh|en|mix` so semantic installs can download and configure a local ONNX embedding model during setup.
 - Updated interactive setup so it asks whether to install selected optional dependencies now, and asks whether semantic search should configure a local embedding model.
-- Updated README variants, CLI reference, agent install runbook, and `agent_manifest.json` so Hermes/Nancy, Codex, OpenClaw, Claude Code, OpenCode, n8n, and other agents can distinguish enabling a feature from actually installing its dependencies.
+- Updated README variants, CLI reference, agent install runbook, and `agent_manifest.json` so Hermes profile, Codex, OpenClaw, Claude Code, OpenCode, n8n, and other agents can distinguish enabling a feature from actually installing its dependencies.
 - Clarified that `/tmp/...` paths are disposable test workspaces, not stable Vault install locations or long-lived shared memory paths.
 
 ## [0.6.25] - 2026-06-22
@@ -142,7 +150,7 @@
 - Slimmed the README command surface and moved the broader command list to `docs/cli_reference.md`.
 - Added `vault import obsidian` so existing Obsidian Markdown vaults can be imported into `raw/obsidian/`, re-run idempotently, and optionally compiled into `vault.db`.
 - Documented Obsidian import/sync for README readers and agent installers, including dry-run first use, default export-folder exclusions, and cron/LaunchAgent/n8n scheduling.
-- Added an agent integration guide documenting how to use Vault-for-LLM from Hermes Agent/Nancy, OpenClaw, n8n, Codex, OpenCode, Claude Code, generic MCP-compatible agents, and shell-based automation.
+- Added an agent integration guide documenting how to use Vault-for-LLM from Hermes Agent, OpenClaw, n8n, Codex, OpenCode, Claude Code, generic MCP-compatible agents, and shell-based automation.
 - Added an OpenClaw adapter under `integrations/openclaw/` with a portable `vault-openclaw` wrapper, OpenClaw skill instructions, plugin metadata, manual tools, install/verify scripts, and config snippets.
 - Updated README variants to make CLI/MCP portability a first-class product message instead of presenting Vault as tied to one agent runtime.
 - Documented shared/private/temporary Vault project scope so agent installs can choose whether to share one `vault.db` or use isolated databases.
@@ -159,7 +167,7 @@
 - Added `scripts/build_agent_onboarding_vault.py` to build a temporary benchmark Vault from README/docs source-of-truth files instead of committing runtime databases.
 - Documented how to run exported Codex/Hermes-style sessions against the governed Vault benchmark while keeping private session exports and reports outside git.
 - Validated the current local Codex-session comparison path at 28 tasks: session transcript baseline hit rate `7/28`, Vault top-k/source/read-range guidance rates `28/28`.
-- Validated a private Hermes/Nancy transcript export at 28 tasks: session transcript baseline hit rate `3/28`, Vault top-k/source/read-range guidance rates `28/28`, and candidate active delta before promotion `0`.
+- Validated a private Hermes profile transcript export at 28 tasks: session transcript baseline hit rate `3/28`, Vault top-k/source/read-range guidance rates `28/28`, and candidate active delta before promotion `0`.
 
 #### License
 - Relicensed the source tree from MIT to Apache-2.0 now that contributions are still controlled by the project maintainers, adding explicit patent-license terms for downstream agent-infrastructure users.

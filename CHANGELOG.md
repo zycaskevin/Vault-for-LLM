@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## [0.6.33] - 2026-06-22
+
+### Added
+
+- Added `docs/supabase_read_policy.sql`, a ready-to-paste advanced Supabase read-policy template for hosted agents, Coze, n8n, and cross-host readers.
+- Added `vault_search_readable`, a read-only Supabase RPC shape that applies `scope`, `sensitivity`, `owner_agent`, `allowed_agents`, and `expires_at` filtering while returning safe metadata and summaries only.
+- Updated `vault setup-agent --supabase-setup advanced` to generate `agent-install/supabase-read-policy.sql` next to the guided Supabase setup document.
+- Added tests that keep the generated advanced SQL in sync with the checked-in template and prevent accidental raw full-text exposure in the read-only RPC.
+
 ## [0.6.32] - 2026-06-22
 
 ### Added

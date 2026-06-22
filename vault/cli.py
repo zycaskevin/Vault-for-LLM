@@ -2120,6 +2120,7 @@ def cmd_setup_agent(args):
     """Interactive/non-interactive agent setup wizard."""
     from vault.agent_setup import (
         AgentSetupConfig,
+        default_stable_venv_path,
         default_project_dir,
         interactive_setup,
         normalize_features,
@@ -2151,6 +2152,11 @@ def cmd_setup_agent(args):
             validation_pack_targets=args.validation_pack,
             template_dir=Path(args.template_dir).expanduser() if args.template_dir else None,
             allow_private=bool(args.allow_private),
+            stable_venv_path=(
+                Path(args.stable_venv).expanduser()
+                if args.stable_venv
+                else (default_stable_venv_path() if args.write_stable_venv_script else None)
+            ),
         )
     else:
         setup_values = {
@@ -2170,6 +2176,8 @@ def cmd_setup_agent(args):
             "supabase_sync_interval_minutes": args.supabase_sync_interval_minutes,
             "template_dir": args.template_dir,
             "allow_private": args.allow_private,
+            "stable_venv_path": args.stable_venv,
+            "write_stable_venv_script": args.write_stable_venv_script,
         }
         if args.import_obsidian:
             setup_values["import_obsidian"] = True
@@ -2237,6 +2245,10 @@ def cmd_setup_agent(args):
     if payload.get("memory_agents"):
         print("  memory_agents:")
         for name, path in payload["memory_agents"].items():
+            print(f"    {name}: {path}")
+    if payload.get("stable_venv"):
+        print("  stable_venv:")
+        for name, path in payload["stable_venv"].items():
             print(f"    {name}: {path}")
     print("Next steps:")
     for step in payload["next_steps"]:
@@ -2413,6 +2425,10 @@ def main(argv: list[str] | None = None):
                         help="產生多 Agent roster/access matrix，例如 profile-agent:profile,work-agent:work,remote-agent:remote")
         ap.add_argument("--validation-pack", choices=["none", "remote", "n8n", "coze", "all"],
                         default="none", help="產生 Supabase/n8n/Coze live validation pack")
+        ap.add_argument("--stable-venv",
+                        help="產生穩定 Python virtualenv bootstrap 腳本，建議 ~/.hermes/venvs/vault-for-llm")
+        ap.add_argument("--write-stable-venv-script", action="store_true",
+                        help="用預設穩定 venv 路徑產生 setup-stable-venv.sh")
         ap.add_argument("--template-dir", help="同步模板輸出目錄；預設 project/agent-install")
         ap.add_argument("--allow-private", action="store_true",
                         help="允許 Obsidian 匯入含 secret-like pattern 的本機私人資料")

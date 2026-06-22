@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.40] - 2026-06-22
+
+### Added
+
+- Added `vault setup-agent --stable-venv PATH` and `--write-stable-venv-script` to generate a reviewed long-lived Python virtualenv bootstrap script.
+- Added `agent-install/setup-stable-venv.sh` and `README-stable-venv.md` templates so scheduled jobs, MCP commands, and Supabase sync can move off disposable `/tmp` virtualenvs.
+- Documented stable venv setup in README variants, the agent install runbook, and `agent_manifest.json`.
+
 ## [0.6.39] - 2026-06-22
 
 ### Fixed

@@ -1,5 +1,6 @@
 import json
 import sys
+from pathlib import Path
 
 
 def test_run_agent_setup_imports_obsidian_and_writes_templates(tmp_path):
@@ -275,7 +276,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.39" in captured.out
+    assert "vault-for-llm 0.6.40" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -417,6 +418,64 @@ def test_run_agent_setup_warns_about_temporary_python_env(tmp_path, monkeypatch)
 
     assert result["environment_warnings"]
     assert any("~/.hermes/venvs/vault-for-llm" in step for step in result["next_steps"])
+
+
+def test_run_agent_setup_writes_stable_venv_template(tmp_path):
+    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+
+    project = tmp_path / "agent-project"
+    stable_venv = tmp_path / "stable-venv"
+
+    result = run_agent_setup(
+        AgentSetupConfig(
+            project_dir=project,
+            scope="shared",
+            agent="codex",
+            features=["core", "mcp", "supabase", "headroom"],
+            stable_venv_path=stable_venv,
+        )
+    )
+
+    payload = result["stable_venv"]
+    script = Path(payload["script"])
+    readme = Path(payload["readme"])
+    assert payload["venv_path"] == str(stable_venv)
+    assert script.exists()
+    assert readme.exists()
+    body = script.read_text(encoding="utf-8")
+    assert "python3 -m venv \"$VENV\"" in body
+    assert "vault-for-llm[mcp,supabase]==0.6.40" in body
+    assert "headroom-ai" in body
+    assert "--agent-project-dir" in body
+    assert str(project) in body
+    assert any("setup-stable-venv.sh" in step for step in result["next_steps"])
+
+
+def test_setup_agent_cli_writes_default_stable_venv_script(tmp_path, capsys):
+    from vault.cli import main
+
+    project = tmp_path / "agent-project"
+    main(
+        [
+            "setup-agent",
+            "--non-interactive",
+            "--agent",
+            "codex",
+            "--scope",
+            "shared",
+            "--agent-project-dir",
+            str(project),
+            "--features",
+            "core,mcp",
+            "--write-stable-venv-script",
+            "--json",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["stable_venv"]["venv_path"].endswith(".hermes/venvs/vault-for-llm")
+    assert Path(payload["stable_venv"]["script"]).exists()
 
 
 def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch):

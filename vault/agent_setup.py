@@ -1579,6 +1579,7 @@ class AgentSetupConfig:
     validation_pack_targets: str | list[str] = "none"
     template_dir: Path | None = None
     allow_private: bool = False
+    stable_venv_path: Path | None = None
 
 
 def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
@@ -1624,6 +1625,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         "agent_roster": {},
         "live_validation_pack": {},
         "memory_agents": {},
+        "stable_venv": {},
         "next_steps": [
             f"vault search \"test query\" --project-dir {shlex.quote(str(project_path))} --limit 5",
             f"vault-mcp --project-dir {shlex.quote(str(project_path))} --tool-profile {shlex.quote(config.tool_profile)}",
@@ -1645,6 +1647,22 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         )
         result["next_steps"].append(
             f"Review memory agents guide: {result['memory_agents']['guide']}"
+        )
+
+    if config.stable_venv_path:
+        template_dir = config.template_dir or (project_path / "agent-install")
+        result["stable_venv"] = write_stable_venv_template(
+            output_dir=template_dir,
+            project_dir=project_path,
+            venv_path=config.stable_venv_path,
+            agent=config.agent,
+            scope=config.scope,
+            features=features,
+            tool_profile=config.tool_profile,
+            install_embedding_model=config.install_embedding_model,
+        )
+        result["next_steps"].append(
+            f"Run stable venv bootstrap: sh {shlex.quote(result['stable_venv']['script'])}"
         )
 
     if config.obsidian_vault:
@@ -1738,6 +1756,140 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
             result["next_steps"].append(f"Run live validation checklist: {result['live_validation_pack']['readme']}")
 
     return result
+
+
+def default_stable_venv_path() -> Path:
+    return Path("~/.hermes/venvs/vault-for-llm").expanduser()
+
+
+def _pypi_install_target_for_features(features: list[str]) -> str:
+    selected = normalize_features(features)
+    extras = [feature for feature in ["mcp", "semantic", "supabase", "dev"] if feature in selected]
+    if extras:
+        return f"vault-for-llm[{','.join(extras)}]=={__version__}"
+    return f"vault-for-llm=={__version__}"
+
+
+def render_stable_venv_script(
+    *,
+    venv_path: str | Path,
+    project_dir: str | Path,
+    agent: str,
+    scope: str,
+    features: list[str],
+    tool_profile: str,
+    install_embedding_model: str | None = None,
+) -> str:
+    selected = normalize_features(features)
+    install_target = _pypi_install_target_for_features(selected)
+    project_path = Path(project_dir).expanduser()
+    venv = Path(venv_path).expanduser()
+    setup_command = [
+        '"$VENV/bin/vault"',
+        "setup-agent",
+        "--non-interactive",
+        "--agent",
+        agent,
+        "--scope",
+        scope,
+        "--agent-project-dir",
+        str(project_path),
+        "--features",
+        ",".join(selected),
+        "--tool-profile",
+        tool_profile,
+        "--json",
+    ]
+    if install_embedding_model:
+        setup_command.extend(["--install-embedding-model", install_embedding_model])
+
+    lines = [
+        "#!/usr/bin/env sh",
+        "set -eu",
+        "",
+        f"VENV={shlex.quote(str(venv))}",
+        f"PROJECT_DIR={shlex.quote(str(project_path))}",
+        "",
+        "mkdir -p \"$(dirname \"$VENV\")\"",
+        "python3 -m venv \"$VENV\"",
+        "\"$VENV/bin/python\" -m pip install --upgrade pip",
+        f"\"$VENV/bin/python\" -m pip install {shlex.quote(install_target)}",
+    ]
+    if "headroom" in selected:
+        lines.append("\"$VENV/bin/python\" -m pip install headroom-ai")
+    lines.extend(
+        [
+            "\"$VENV/bin/vault\" --version",
+            "mkdir -p \"$PROJECT_DIR\"",
+            " ".join(shlex.quote(part) if "$" not in part else part for part in setup_command),
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def render_stable_venv_readme(*, venv_path: str | Path, script_path: str | Path) -> str:
+    return "\n".join(
+        [
+            "# Stable Python Virtualenv",
+            "",
+            "This template creates a long-lived Python virtualenv for Vault-for-LLM.",
+            "Use it for scheduled jobs, MCP commands, Supabase sync, and agent runtimes.",
+            "",
+            f"Recommended venv path: `{Path(venv_path).expanduser()}`",
+            "",
+            "Run:",
+            "",
+            "```bash",
+            f"sh {shlex.quote(str(script_path))}",
+            "```",
+            "",
+            "After it succeeds, point scheduled jobs and agent MCP commands at the",
+            "`vault` and `vault-mcp` executables inside that venv instead of a",
+            "temporary `/tmp/...` virtualenv.",
+            "",
+        ]
+    )
+
+
+def write_stable_venv_template(
+    *,
+    output_dir: str | Path,
+    project_dir: str | Path,
+    venv_path: str | Path,
+    agent: str,
+    scope: str,
+    features: list[str],
+    tool_profile: str,
+    install_embedding_model: str | None = None,
+) -> dict[str, Any]:
+    out = Path(output_dir).expanduser().resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    script_path = out / "setup-stable-venv.sh"
+    script_path.write_text(
+        render_stable_venv_script(
+            venv_path=venv_path,
+            project_dir=project_dir,
+            agent=agent,
+            scope=scope,
+            features=features,
+            tool_profile=tool_profile,
+            install_embedding_model=install_embedding_model,
+        ),
+        encoding="utf-8",
+    )
+    script_path.chmod(0o755)
+
+    readme_path = out / "README-stable-venv.md"
+    readme_path.write_text(
+        render_stable_venv_readme(venv_path=venv_path, script_path=script_path),
+        encoding="utf-8",
+    )
+    return {
+        "venv_path": str(Path(venv_path).expanduser()),
+        "script": str(script_path),
+        "readme": str(readme_path),
+    }
 
 
 def install_optional_dependencies(features: list[str]) -> dict[str, Any]:
@@ -1938,6 +2090,13 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
     if "supabase" in features and not argv_config.get("validation_pack_targets"):
         validation_pack_targets = _ask("Live validation pack for remote/n8n/coze (none/remote/n8n/coze/all)", "none")
 
+    stable_venv_path = argv_config.get("stable_venv_path")
+    if not stable_venv_path and argv_config.get("write_stable_venv_script"):
+        stable_venv_path = str(default_stable_venv_path())
+    if stable_venv_path is None and python_environment_warnings():
+        if _ask_yes_no("Current Python environment looks temporary. Generate a stable venv bootstrap script?", True):
+            stable_venv_path = _ask("Stable venv path", str(default_stable_venv_path()))
+
     return AgentSetupConfig(
         project_dir=Path(project_dir),
         scope=scope,
@@ -1963,6 +2122,7 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
         validation_pack_targets=validation_pack_targets,
         template_dir=Path(argv_config["template_dir"]) if argv_config.get("template_dir") else None,
         allow_private=bool(argv_config.get("allow_private", False)),
+        stable_venv_path=Path(stable_venv_path).expanduser() if stable_venv_path else None,
     )
 
 

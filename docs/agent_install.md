@@ -10,7 +10,7 @@ install path below keeps Vault local-first and governed.
 ## One-Sentence Prompt
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.39, ask which database scope I want, ask for a stable project directory, ask whether any Python virtualenv you create should live in a stable path such as ~/.hermes/venvs/vault-for-llm/ instead of /tmp, ask for setup language when this is a manual CLI install, ask separately about MCP, semantic search, Supabase sync, Supabase remote reader templates for shell/n8n/Coze, Headroom context compression, Profile / Dream / Forgetting memory-agent guidance, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.40, ask which database scope I want, ask for a stable project directory, ask whether any Python virtualenv you create should live in a stable path such as ~/.hermes/venvs/vault-for-llm/ instead of /tmp, ask for setup language when this is a manual CLI install, ask separately about MCP, semantic search, Supabase sync, Supabase remote reader templates for shell/n8n/Coze, Headroom context compression, Profile / Dream / Forgetting memory-agent guidance, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent with --stable-venv or --write-stable-venv-script when a long-lived venv is needed, and finish with a search/read/propose smoke test.
 ```
 
 ## What To Ask First
@@ -35,12 +35,16 @@ Ask these before installing extras or writing memory:
 16. If Supabase is selected, should I generate daily sync templates for cron, LaunchAgent, or n8n?
 17. Should user profile/persona memory stay private by default, with only reviewed summaries shared?
 18. Should Profile / Dream / Forgetting memory-agent guidance be generated?
+19. Should I generate `agent-install/setup-stable-venv.sh` for a reboot-safe Python environment?
 
 Keep MCP defaulting to yes for MCP-capable runtimes. Keep semantic, Supabase,
 Headroom, and dev dependencies defaulting to no unless the user confirms.
 When the user confirms optional dependency installation, pass
 `--install-optional-deps`. For semantic local model setup, pass
 `--install-embedding-model mix` or the selected `zh`/`en`/`mix` model.
+For long-lived agent installs or scheduled jobs, pass `--write-stable-venv-script`
+or `--stable-venv ~/.hermes/venvs/vault-for-llm` so the installer writes
+`agent-install/setup-stable-venv.sh`.
 
 ## Scope Choices
 
@@ -68,7 +72,7 @@ used by scheduled jobs.
 Use the PyPI release unless the user explicitly asks for source development:
 
 ```bash
-python -m pip install "vault-for-llm[mcp]==0.6.39"
+python -m pip install "vault-for-llm[mcp]==0.6.40"
 vault setup-agent
 ```
 
@@ -100,6 +104,7 @@ vault setup-agent \
   --language en \
   --install-optional-deps \
   --install-embedding-model mix \
+  --write-stable-venv-script \
   --supabase-setup simple \
   --remote-reader all \
   --agent-roster profile-agent:profile,work-agent:work,product-agent:work,remote-agent:remote,n8n:automation \

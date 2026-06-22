@@ -148,8 +148,8 @@ everything by default:
 
 | Feature | Default | Install command | Ask when |
 |---|---|---|---|
-| `core` | yes | `python -m pip install vault-for-llm==0.6.39` | Always: local Markdown, SQLite, keyword search. |
-| `mcp` | yes for MCP-capable agents | `python -m pip install "vault-for-llm[mcp]==0.6.39"` | The runtime can connect local stdio MCP tools. |
+| `core` | yes | `python -m pip install vault-for-llm==0.6.40` | Always: local Markdown, SQLite, keyword search. |
+| `mcp` | yes for MCP-capable agents | `python -m pip install "vault-for-llm[mcp]==0.6.40"` | The runtime can connect local stdio MCP tools. |
 | `obsidian_import` | no | built into core CLI | The user already has an Obsidian vault and wants agents to search those notes through Vault. |
 | `semantic` | no | `python -m pip install "vault-for-llm[semantic]"` | The user wants embedding-backed semantic/hybrid search. |
 | `supabase` | no | `python -m pip install "vault-for-llm[supabase]"` | The user wants optional remote sync/read paths. |
@@ -161,7 +161,9 @@ When optional features are selected, `vault setup-agent` can install the chosen
 Python dependencies for the agent. Interactive setup asks before installing.
 Non-interactive agents should pass `--install-optional-deps`; semantic setup can
 also pass `--install-embedding-model mix` to download and configure the default
-local ONNX embedding model.
+local ONNX embedding model. For long-lived agent installs, add
+`--write-stable-venv-script` or `--stable-venv ~/.hermes/venvs/vault-for-llm`
+so the wizard writes a reboot-safe bootstrap script under `agent-install/`.
 
 ```bash
 vault setup-agent \
@@ -173,6 +175,7 @@ vault setup-agent \
   --language en \
   --install-optional-deps \
   --install-embedding-model mix \
+  --write-stable-venv-script \
   --supabase-setup simple \
   --supabase-sync cron \
   --remote-reader all \
@@ -233,7 +236,7 @@ required dependency for local use.
 
 ## Current Source Status
 
-The current source tree is `0.6.39`. Core local search is stable, while
+The current source tree is `0.6.40`. Core local search is stable, while
 advanced semantic, rerank, sync, and benchmarking workflows remain optional.
 See [CHANGELOG.md](CHANGELOG.md) for release details.
 
@@ -334,12 +337,12 @@ In story form: the agent writes a note, the front desk checks whether it is safe
 
 ### Install from PyPI
 
-Vault-for-LLM `0.6.39` is published on PyPI.
+Vault-for-LLM `0.6.40` is published on PyPI.
 
 For agent-driven installation, paste this into Hermes Agent, Codex, OpenCode, Claude Code, OpenClaw, or another agent that can run local commands:
 
 ```text
-Install Vault-for-LLM for this project. Use PyPI package vault-for-llm[mcp]==0.6.39.
+Install Vault-for-LLM for this project. Use PyPI package vault-for-llm[mcp]==0.6.40.
 Ask whether the vault database should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory, and do not use /tmp for long-lived vaults.
 If you create or move a Python virtualenv, prefer a stable path such as
@@ -357,7 +360,7 @@ Manual install:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.39"
+pip install "vault-for-llm[mcp]==0.6.40"
 
 vault setup-agent
 ```
@@ -574,6 +577,9 @@ vault setup-agent \
 ```
 
 The wizard asks for database scope, project directory, setup language, MCP, semantic search, Supabase sync, Supabase remote reader templates for shell/n8n/Coze, Headroom context compression, developer/benchmark dependencies, whether to install selected optional dependencies now, an existing Obsidian vault path, whether to run the first import, and whether to generate cron, LaunchAgent, or n8n sync templates. Semantic, Supabase, Headroom, and dev dependencies default to off. If semantic is selected and dependency installation is confirmed, the wizard can also download and configure a local ONNX embedding model. `headroom` is an advanced optional feature for context compression; it is not required for Vault memory governance and should stay off unless the user has long logs, large tool output, or token pressure.
+If the current Python environment is temporary, the wizard can generate
+`agent-install/setup-stable-venv.sh`; non-interactive installs can request the
+same artifact with `--write-stable-venv-script` or `--stable-venv PATH`.
 
 ### Obsidian export
 

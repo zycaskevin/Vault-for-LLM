@@ -50,12 +50,15 @@ changed notes without duplicating unchanged ones.
 | `vault setup-agent --non-interactive --agent profile-agent --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,memory_agents --language zh-Hant --json` | Generate Profile / Dream / Forgetting agent guidance with report-only and candidate-only defaults |
 | `vault setup-agent --non-interactive --agent profile-agent --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase --language zh-Hant --install-optional-deps --supabase-setup simple --supabase-sync cron --remote-reader all --json` | Generate guided Supabase setup, daily sync templates, and shell/n8n/Coze remote reader templates |
 | `vault setup-agent --non-interactive --agent profile-agent --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase,memory_agents --agent-roster profile-agent:profile,work-agent:work,remote-agent:remote,n8n:automation --validation-pack all --json` | Generate a multi-agent access matrix plus live Supabase/n8n/Coze validation checklists |
+| `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase --write-stable-venv-script --json` | Generate `agent-install/setup-stable-venv.sh` for reboot-safe scheduled jobs and MCP commands |
 | `vault setup-agent --obsidian-vault ~/Documents/ObsidianVault --import-obsidian --obsidian-sync all` | Run first Obsidian import and write cron, LaunchAgent, and n8n templates |
 
 `vault install-agent` is an alias for `vault setup-agent`.
 Interactive setup asks before installing optional dependencies. Non-interactive
 agents must pass `--install-optional-deps`; semantic model download is opt-in
 with `--install-embedding-model zh|en|mix`.
+Use `--write-stable-venv-script` for the default long-lived venv path, or
+`--stable-venv PATH` when the user chooses a custom stable virtualenv.
 Memory-agent guidance is opt-in with `--features memory_agents`; it writes
 `README-memory-agents.md` and does not install a model or auto-promote memory.
 Supabase sync templates are opt-in with `--supabase-sync cron|launchagent|n8n|all`

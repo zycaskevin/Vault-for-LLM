@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.41] - 2026-06-22
+
+### Changed
+
+- Reworked the English and Traditional Chinese README files into shorter product entry points with warmer, clearer wording.
+- Moved detailed workflows toward focused docs links instead of keeping every installer, integration, benchmark, and roadmap detail in the README.
+- Kept the core install, quickstart, agent flow, governance model, integration map, and benchmark caveats visible on the first public page.
+
 ## [0.6.40] - 2026-06-22
 
 ### Added

@@ -10,7 +10,7 @@ install path below keeps Vault local-first and governed.
 ## One-Sentence Prompt
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.40, ask which database scope I want, ask for a stable project directory, ask whether any Python virtualenv you create should live in a stable path such as ~/.hermes/venvs/vault-for-llm/ instead of /tmp, ask for setup language when this is a manual CLI install, ask separately about MCP, semantic search, Supabase sync, Supabase remote reader templates for shell/n8n/Coze, Headroom context compression, Profile / Dream / Forgetting memory-agent guidance, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent with --stable-venv or --write-stable-venv-script when a long-lived venv is needed, and finish with a search/read/propose smoke test.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.41, ask which database scope I want, ask for a stable project directory, ask whether any Python virtualenv you create should live in a stable path such as ~/.hermes/venvs/vault-for-llm/ instead of /tmp, ask for setup language when this is a manual CLI install, ask separately about MCP, semantic search, Supabase sync, Supabase remote reader templates for shell/n8n/Coze, Headroom context compression, Profile / Dream / Forgetting memory-agent guidance, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent with --stable-venv or --write-stable-venv-script when a long-lived venv is needed, and finish with a search/read/propose smoke test.
 ```
 
 ## What To Ask First
@@ -72,7 +72,7 @@ used by scheduled jobs.
 Use the PyPI release unless the user explicitly asks for source development:
 
 ```bash
-python -m pip install "vault-for-llm[mcp]==0.6.40"
+python -m pip install "vault-for-llm[mcp]==0.6.41"
 vault setup-agent
 ```
 

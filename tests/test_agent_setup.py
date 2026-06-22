@@ -190,6 +190,31 @@ def test_setup_agent_headroom_is_optional_next_step(tmp_path):
     assert any("original vault_read_range" in step for step in result["next_steps"])
 
 
+def test_setup_agent_memory_agents_writes_report_only_guide(tmp_path):
+    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+
+    project = tmp_path / "agent-project"
+    result = run_agent_setup(
+        AgentSetupConfig(
+            project_dir=project,
+            scope="shared",
+            agent="nancy",
+            features=["core", "mcp", "memory_agents"],
+            language="zh-Hant",
+            template_dir=tmp_path / "templates",
+        )
+    )
+
+    assert result["features"] == ["core", "mcp", "memory_agents"]
+    assert result["memory_agents"]["mode"] == "report_only_candidate_only"
+    guide = (tmp_path / "templates" / "README-memory-agents.md").read_text(encoding="utf-8")
+    assert "Profile agent 預設只產生候選記憶" in guide
+    assert "Dream agent 預設只產生 report" in guide
+    assert "Forgetting agent 預設只建議" in guide
+    assert "owner_agent: nancy" in guide
+    assert any("Progressive Memory Disclosure" in step for step in result["next_steps"])
+
+
 def test_run_agent_setup_installs_selected_optional_dependencies(tmp_path, monkeypatch):
     from vault.agent_setup import AgentSetupConfig, run_agent_setup
 
@@ -301,6 +326,7 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
             "yes",  # semantic
             "yes",  # Supabase
             "yes",  # Headroom
+            "no",  # memory agents
             "no",  # dev
             "yes",  # install optional deps
             "no",  # install local embedding model
@@ -327,6 +353,7 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
     assert any("semantic search" in prompt for prompt in prompts)
     assert any("Supabase sync" in prompt for prompt in prompts)
     assert any("Headroom context compression" in prompt for prompt in prompts)
+    assert any("memory-agent guidance" in prompt for prompt in prompts)
     assert any("optional Python dependencies" in prompt for prompt in prompts)
     assert any("local ONNX embedding model" in prompt for prompt in prompts)
     assert any("Daily Supabase sync templates" in prompt for prompt in prompts)

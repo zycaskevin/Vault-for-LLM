@@ -10,7 +10,7 @@ install path below keeps Vault local-first and governed.
 ## One-Sentence Prompt
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.28, ask which database scope I want, ask for setup language when this is a manual CLI install, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.28, ask which database scope I want, ask for setup language when this is a manual CLI install, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, Profile / Dream / Forgetting memory-agent guidance, and dev/benchmark dependencies, install selected optional dependencies when I confirm, ask whether semantic should download a local ONNX embedding model, ask whether I have an existing Obsidian vault to import, run vault setup-agent, and finish with a search/read/propose smoke test.
 ```
 
 ## What To Ask First
@@ -31,6 +31,8 @@ Ask these before installing extras or writing memory:
 12. If any optional feature is selected, should I install its Python dependencies now?
 13. If semantic is selected, should I download and configure a local ONNX embedding model now?
 14. If Supabase is selected, should I generate daily sync templates for cron, LaunchAgent, or n8n?
+15. Should user profile/persona memory stay private by default, with only reviewed summaries shared?
+16. Should Profile / Dream / Forgetting memory-agent guidance be generated?
 
 Keep MCP defaulting to yes for MCP-capable runtimes. Keep semantic, Supabase,
 Headroom, and dev dependencies defaulting to no unless the user confirms.
@@ -92,7 +94,7 @@ vault setup-agent \
   --agent codex \
   --scope shared \
   --agent-project-dir /path/to/project \
-  --features core,mcp,semantic,supabase,headroom \
+  --features core,mcp,semantic,supabase,headroom,memory_agents \
   --language en \
   --install-optional-deps \
   --install-embedding-model mix \
@@ -119,6 +121,50 @@ vault setup-agent \
 Use simple Supabase setup by default. Only choose `--supabase-setup advanced`
 when the user explicitly asks for multi-agent RLS, Coze/n8n read-only access, or
 sensitivity-based sharing.
+
+To generate Profile / Dream / Forgetting agent guidance:
+
+```bash
+vault setup-agent \
+  --non-interactive \
+  --agent nancy \
+  --scope shared \
+  --agent-project-dir /path/to/project \
+  --features core,mcp,memory_agents \
+  --language zh-Hant \
+  --json
+```
+
+This writes `agent-install/README-memory-agents.md`. It does not install a
+model, schedule jobs, promote memories, or delete anything. Treat memory agents
+as report-only or candidate-only until the user approves a stronger policy.
+
+## Memory Governance Defaults
+
+Keep `L0` through `L3` as memory depth layers. Do not treat them as permissions.
+For access and sync decisions, prefer frontmatter or remote-table metadata:
+
+```yaml
+scope: private | project | shared | public
+sensitivity: low | medium | high | restricted
+owner_agent: nancy
+allowed_agents: ["nancy", "mori", "aiko"]
+status: candidate | reviewed | active | archived
+memory_type: identity | user_profile | context | decision | pitfall | procedure | care_summary
+expires_at: 2026-07-01
+```
+
+For user profile memory:
+
+- `L0`: minimal identity only.
+- `L1`: durable work preferences and collaboration rules.
+- `L2`: recent state or care summaries, with expiry.
+- private `L3` or a private vault: deep analysis and raw private interaction history.
+
+When agents share Supabase or Obsidian sync, share reviewed summaries and project
+knowledge. Keep raw private conversations, persona files, and high-sensitivity
+profile notes local to the owning agent unless the user explicitly says
+otherwise. See [memory governance layers](memory_governance.md).
 
 The generated Supabase sync command uses an explicit database path:
 
@@ -231,6 +277,8 @@ vault remember "Agent install decision" \
   --project-dir /path/to/project \
   --content "The user chose this Vault project directory and feature set during installation." \
   --reason "Keep install decisions reviewable before promotion."
+
+vault candidates --project-dir /path/to/project
 ```
 
 For MCP-capable agents, also verify:

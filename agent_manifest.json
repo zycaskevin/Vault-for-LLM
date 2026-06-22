@@ -12,6 +12,8 @@
     "AGENTS.md",
     "docs/agent_install.md",
     "docs/agent_integrations.md",
+    "docs/memory_governance.md",
+    "docs/vision.md",
     "docs/comparisons/pageindex_headroom.md",
     "docs/design/document_tree_navigation.md",
     "docs/integrations/headroom.md",
@@ -52,7 +54,9 @@
     "ask whether optional semantic search and embedding dependencies should be enabled",
     "ask whether optional Supabase sync/read dependencies should be enabled",
     "ask whether optional Headroom context compression is needed for long logs or tool output",
+    "ask whether Profile / Dream / Forgetting memory-agent guidance should be generated",
     "ask whether developer/benchmark dependencies should be enabled",
+    "ask whether user profile/persona memory should stay private by default, with only reviewed summaries shared",
     "if optional features are selected, ask whether to install their Python dependencies now",
     "if semantic search is selected, ask whether to download and configure a local ONNX embedding model",
     "if Supabase sync is selected, start with simple setup guidance and ask whether to generate daily cron, LaunchAgent, or n8n sync templates",
@@ -63,7 +67,7 @@
     "ask whether to schedule automatic Obsidian sync",
     "verify search/read/propose"
   ],
-  "agent_install_prompt": "Install Vault-for-LLM for this project. Read AGENTS.md and agent_manifest.json, ask whether the vault should be shared or private, ask setup language for manual CLI installs, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, and dev/benchmark dependencies, install selected optional dependencies when confirmed, ask whether semantic should download a local ONNX embedding model, ask whether an existing Obsidian vault should be imported, configure CLI/MCP, run the first Obsidian dry-run/import if requested, ask whether automatic sync should be scheduled, and run a search/read/propose smoke test.",
+  "agent_install_prompt": "Install Vault-for-LLM for this project. Read AGENTS.md and agent_manifest.json, ask whether the vault should be shared or private, ask setup language for manual CLI installs, ask separately about MCP, semantic search, Supabase sync, Headroom context compression, Profile / Dream / Forgetting memory-agent guidance, and dev/benchmark dependencies, ask whether user profile/persona memory should stay private by default with only reviewed summaries shared, install selected optional dependencies when confirmed, ask whether semantic should download a local ONNX embedding model, ask whether an existing Obsidian vault should be imported, configure CLI/MCP, run the first Obsidian dry-run/import if requested, ask whether automatic sync should be scheduled, and run a search/read/propose smoke test.",
   "agent_setup_wizard": {
     "cli": "vault setup-agent",
     "alias": "vault install-agent",
@@ -165,6 +169,22 @@
       "notes": "Headroom is an adjacent optional compression layer, not a Vault dependency and not the source of truth for citations."
     },
     {
+      "id": "memory_agents",
+      "default": false,
+      "prompt": "Generate Profile / Dream / Forgetting memory-agent guidance?",
+      "when_to_install": "Use when the user wants dedicated memory-maintenance agents, user-profile summaries, dream reports, or governed forgetting workflows.",
+      "install_commands": [
+        "vault setup-agent --non-interactive --agent generic --scope shared --agent-project-dir /path/to/project --features core,mcp,memory_agents --language en --json"
+      ],
+      "post_install": [
+        "Review /path/to/project/agent-install/README-memory-agents.md.",
+        "Keep Profile agents candidate-only by default.",
+        "Keep Dream / Forgetting agents report-only by default.",
+        "Do not promote, delete, or sync private profile memory without user-approved policy."
+      ],
+      "notes": "This feature writes guidance only. It does not install a model, start a scheduler, promote memory, or delete entries."
+    },
+    {
       "id": "dev",
       "default": false,
       "prompt": "Install developer and benchmark/test dependencies?",
@@ -228,7 +248,36 @@
     "shared_vault_default": "propose_before_promote",
     "candidate_tool": "vault_memory_propose",
     "cli_candidate_command": "vault remember",
+    "cli_candidate_review_command": "vault candidates",
     "direct_active_writes": "avoid in shared vaults unless the user explicitly approves"
+  },
+  "memory_governance": {
+    "rule": "L0-L3 describe memory depth and usage, not access control.",
+    "vision": "Vault-for-LLM is the user-owned memory core; agent runtimes are hands; models are compute tools.",
+    "user_centered_design": "Vault can store project knowledge and reviewed user profile memory. Raw private interactions stay private; trusted agents may share short reviewed summaries.",
+    "progressive_memory_disclosure": "Start with boot summaries and active context, then topic maps, search candidates, bounded source ranges, and raw/archive memory only when task and permissions justify it.",
+    "access_metadata": [
+      "scope",
+      "sensitivity",
+      "owner_agent",
+      "allowed_agents",
+      "status",
+      "memory_type",
+      "expires_at"
+    ],
+    "profile_guidance": {
+      "L0": "minimal identity only; private by default",
+      "L1": "durable work preferences and collaboration rules",
+      "L2": "recent state or care summaries; use expires_at",
+      "L3_private": "deep analysis and raw private interaction history"
+    },
+    "dedicated_memory_agents": {
+      "profile_agent": "Maintains stable user profile, preferences, care summaries, and agent-specific boundaries without exposing raw private chats.",
+      "dream_forgetting_agent": "Runs dream reports, deduplication, stale-memory review, promotion/archive suggestions, and expiry recommendations for low-value context."
+    },
+    "sharing_rule": "Share reviewed project knowledge and short summaries; keep raw private conversations, persona files, and high-sensitivity profile notes local unless the user explicitly approves wider sharing.",
+    "obsidian_rule": "Preserve layer plus governance metadata in frontmatter; adding metadata is compatible with import/export.",
+    "supabase_rule": "Use RLS with scope, sensitivity, owner_agent, allowed_agents, and status; do not use layer as a permission level."
   },
   "install_commands": {
     "from_source": [

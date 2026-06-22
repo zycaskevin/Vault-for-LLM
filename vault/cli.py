@@ -10,6 +10,7 @@ Vault-for-LLM — CLI 入口。
   vault search "查詢"     # 搜尋知識
   vault export obsidian   # 匯出成 Obsidian vault Markdown notes
   vault list              # 列出知識
+  vault candidates        # 列出候選記憶
   vault remove <id>       # 刪除知識（需要 --confirm）
   vault lint              # 健康檢查
   vault doctor            # 環境診斷
@@ -1546,6 +1547,68 @@ def cmd_promote(args):
     _json_print(payload, pretty=args.pretty)
 
 
+def _format_memory_candidate(row: dict, *, include_content: bool = False, include_gates: bool = False) -> dict:
+    item = {
+        "id": row.get("id"),
+        "title": row.get("title"),
+        "status": row.get("status"),
+        "layer": row.get("layer"),
+        "category": row.get("category"),
+        "tags": row.get("tags"),
+        "trust": row.get("trust"),
+        "source": row.get("source"),
+        "source_ref": row.get("source_ref"),
+        "reason": row.get("reason"),
+        "privacy_status": row.get("privacy_status"),
+        "duplicate_status": row.get("duplicate_status"),
+        "quality_status": row.get("quality_status"),
+        "promoted_knowledge_id": row.get("promoted_knowledge_id"),
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
+    }
+    content = row.get("content") or ""
+    item["content_length"] = len(content)
+    if include_content:
+        item["content"] = content
+    elif content:
+        item["content_preview"] = " ".join(content.split())[:180]
+    if include_gates:
+        raw_gates = row.get("gate_payload_json") or "{}"
+        try:
+            item["gates"] = json.loads(raw_gates)
+        except json.JSONDecodeError:
+            item["gates"] = {"raw": raw_gates}
+    return item
+
+
+def cmd_candidates(args):
+    """List memory candidates without reading the SQLite database by hand."""
+    from vault.db import VaultDB
+
+    project_dir = find_project_dir()
+    status = None if args.all else args.status
+    try:
+        with VaultDB(project_dir / "vault.db") as db:
+            rows = db.list_memory_candidates(status=status, limit=args.limit)
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+
+    payload = {
+        "count": len(rows),
+        "status": status or "all",
+        "candidates": [
+            _format_memory_candidate(
+                row,
+                include_content=args.include_content,
+                include_gates=args.include_gates,
+            )
+            for row in rows
+        ],
+    }
+    _json_print(payload, pretty=args.pretty)
+
+
 def cmd_dream(args):
     """Run a deterministic report-first dream curation pass."""
     from vault.dream import run_dream
@@ -1952,6 +2015,7 @@ def cmd_setup_agent(args):
             sync_targets=args.obsidian_sync,
             sync_interval_minutes=args.sync_interval_minutes,
             supabase_sync_targets=args.supabase_sync,
+            supabase_setup_mode=args.supabase_setup or "simple",
             supabase_sync_interval_minutes=args.supabase_sync_interval_minutes,
             template_dir=Path(args.template_dir).expanduser() if args.template_dir else None,
             allow_private=bool(args.allow_private),
@@ -2017,6 +2081,10 @@ def cmd_setup_agent(args):
         print("  supabase_sync_templates:")
         for name, path in payload["supabase_sync_templates"].items():
             print(f"    {name}: {path}")
+    if payload.get("memory_agents"):
+        print("  memory_agents:")
+        for name, path in payload["memory_agents"].items():
+            print(f"    {name}: {path}")
     print("Next steps:")
     for step in payload["next_steps"]:
         print(f"  {step}")
@@ -2070,6 +2138,14 @@ def main(argv: list[str] | None = None):
     p.add_argument("--confirm", action="store_true", help="必要：確認提升候選")
     p.add_argument("--no-compile", action="store_true", help="跳過 raw/ 編譯，直接寫 active DB")
     p.add_argument("--no-build-map", action="store_true", help="搭配 --no-compile 時跳過 Document Map 建置")
+    p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    p = sub.add_parser("candidates", help="列出候選記憶（預設只列待審候選）")
+    p.add_argument("--status", default="candidate", help="候選狀態，例如 candidate/promoted/rejected")
+    p.add_argument("--all", action="store_true", help="列出所有狀態")
+    p.add_argument("--limit", "-n", type=int, default=50)
+    p.add_argument("--include-content", action="store_true", help="包含完整候選內容")
+    p.add_argument("--include-gates", action="store_true", help="包含完整 gate payload")
     p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     # compile
@@ -2137,7 +2213,7 @@ def main(argv: list[str] | None = None):
         ap.add_argument("--agent-project-dir", "--project", dest="agent_project_dir",
                         help="要初始化/使用的 Vault project directory")
         ap.add_argument("--features", default=None,
-                        help="可選功能 CSV，例如 core,mcp,obsidian_import,semantic,supabase,headroom")
+                        help="可選功能 CSV，例如 core,mcp,obsidian_import,semantic,supabase,headroom,memory_agents")
         ap.add_argument("--language", choices=["en", "zh-Hant", "zh-CN"], default=None,
                         help="互動式安裝與產生文件的語言；非互動模式預設 en")
         ap.add_argument("--tool-profile", choices=["core", "review", "remote", "maintenance", "full"],
@@ -2471,6 +2547,7 @@ def main(argv: list[str] | None = None):
         "add": cmd_add,
         "remember": cmd_remember,
         "promote": cmd_promote,
+        "candidates": cmd_candidates,
         "compile": cmd_compile,
         "search": cmd_search,
         "list": cmd_list,

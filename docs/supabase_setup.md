@@ -179,3 +179,15 @@ alter table vault_knowledge add column if not exists expires_at timestamptz;
 ```
 
 Keep raw private conversations and shareable summaries in separate tables, views, or RPC responses. RLS is row-level, not a substitute for separating unsafe columns from safe fields.
+
+Treat `layer` as memory depth, not access control:
+
+- `L0` is minimal identity and should usually stay private.
+- `L1` can include stable work preferences and reviewed project contracts.
+- `L2` can include recent state or handoff summaries, preferably with `expires_at`.
+- `L3` is best for low-sensitivity shared SOPs, architecture notes, fixes, and lessons.
+
+For user personality/profile memory, sync only reviewed summaries unless the
+user explicitly approves wider sharing. Raw private chats, deep psychological
+analysis, persona files, and high-sensitivity notes should stay in a private
+vault or owner-only table. See [memory governance layers](memory_governance.md).

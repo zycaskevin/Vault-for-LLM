@@ -158,7 +158,44 @@ class _RemoteClient:
                     "source": "raw/remote.md",
                     "content_raw": "must stay hidden",
                 }
-            ]
+            ],
+            "vault_get_readable": [
+                {
+                    "id": 7,
+                    "title": "Remote Entry",
+                    "scope": "project",
+                    "sensitivity": "medium",
+                    "owner_agent": "",
+                    "allowed_agents": [],
+                    "memory_type": "knowledge",
+                }
+            ],
+            "vault_nodes_readable": [
+                {
+                    "knowledge_id": 7,
+                    "node_uid": "remote-node",
+                    "level": 2,
+                    "heading": "Remote Node",
+                    "path": "Remote/Node",
+                    "summary": "Node summary",
+                    "line_start": 2,
+                    "line_end": 3,
+                    "knowledge_title": "Remote Entry",
+                    "knowledge_content_hash": "remote-hash",
+                }
+            ],
+            "vault_claims_readable": [
+                {
+                    "knowledge_id": 7,
+                    "node_uid": "remote-node",
+                    "claim": "Remote claim line.",
+                    "line_start": 2,
+                    "line_end": 2,
+                    "knowledge_title": "Remote Entry",
+                    "knowledge_content_hash": "remote-hash",
+                }
+            ],
+            "vault_content_readable": [],
         }
         self.tables = {
             "vault_knowledge_nodes": [

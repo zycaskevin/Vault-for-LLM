@@ -211,7 +211,14 @@ def _next_action_for_error(code: str, extra: dict | None = None) -> dict:
 def _remote_next_action_for_error(code: str, extra: dict | None = None) -> dict:
     extra = extra or {}
     knowledge_id = extra.get("knowledge_id") or extra.get("entry_id")
-    if code in {"invalid_knowledge_id", "not_found", "remote_client_missing", "remote_read_failed"}:
+    if code in {
+        "invalid_knowledge_id",
+        "not_found",
+        "access_denied",
+        "remote_client_missing",
+        "remote_read_failed",
+        "remote_policy_missing",
+    }:
         return {"tool": "vault_search", "arguments": {}}
     if code in {
         "invalid_range",
@@ -264,9 +271,21 @@ def vault_map_show(knowledge_id: int, compact: bool = False) -> dict:
     return _vault_map_show_payload(knowledge_id, compact=compact)
 
 
-def vault_remote_map_show(knowledge_id: int, compact: bool = False) -> dict:
+def vault_remote_map_show(
+    knowledge_id: int,
+    compact: bool = False,
+    agent_id: str = "",
+    include_private: bool = False,
+    max_sensitivity: str = "medium",
+) -> dict:
     """Return a synced Supabase Document Map structure (read-only target)."""
-    return _vault_remote_map_show_payload(knowledge_id, compact=compact)
+    return _vault_remote_map_show_payload(
+        knowledge_id,
+        compact=compact,
+        agent_id=agent_id,
+        include_private=include_private,
+        max_sensitivity=max_sensitivity,
+    )
 
 
 def _compact_node(node: dict) -> dict:
@@ -298,13 +317,26 @@ def _read_range_action(knowledge_id: int, node: dict) -> dict:
     return {"tool": "vault_read_range", "arguments": args}
 
 
-def _remote_read_range_action(knowledge_id: int, node: dict) -> dict:
+def _remote_read_range_action(
+    knowledge_id: int,
+    node: dict,
+    *,
+    agent_id: str = "",
+    include_private: bool = False,
+    max_sensitivity: str = "medium",
+) -> dict:
     args = {"knowledge_id": knowledge_id}
     if node.get("node_uid"):
         args["node_uid"] = node["node_uid"]
     if node.get("line_start") and node.get("line_end"):
         args["line_start"] = int(node["line_start"])
         args["line_end"] = int(node["line_end"])
+    if agent_id:
+        args["agent_id"] = agent_id
+    if include_private:
+        args["include_private"] = True
+    if max_sensitivity:
+        args["max_sensitivity"] = max_sensitivity
     return {"tool": "vault_remote_read_range", "arguments": args}
 
 
@@ -321,8 +353,69 @@ def _supabase_rpc(sb_client, function_name: str, params: dict) -> list[dict]:
     return [dict(row) for row in (getattr(response, "data", None) or [])]
 
 
-def _remote_search_result(row: dict, *, compact: bool = True) -> dict:
+def _remote_policy_params(
+    *,
+    agent_id: str = "",
+    include_private: bool = False,
+    max_sensitivity: str = "medium",
+) -> dict:
+    return {
+        "p_agent_id": str(agent_id or ""),
+        "p_include_private": bool(include_private),
+        "p_max_sensitivity": str(max_sensitivity or "medium"),
+    }
+
+
+def _remote_policy_args(
+    *,
+    agent_id: str = "",
+    include_private: bool = False,
+    max_sensitivity: str = "medium",
+) -> dict:
+    args = {}
+    if agent_id:
+        args["agent_id"] = str(agent_id)
+    if include_private:
+        args["include_private"] = True
+    if max_sensitivity:
+        args["max_sensitivity"] = str(max_sensitivity)
+    return args
+
+
+def _remote_readable_entry(
+    sb_client,
+    knowledge_id: int,
+    *,
+    agent_id: str = "",
+    include_private: bool = False,
+    max_sensitivity: str = "medium",
+) -> dict | None:
+    params = {
+        **_remote_policy_params(
+            agent_id=agent_id,
+            include_private=include_private,
+            max_sensitivity=max_sensitivity,
+        ),
+        "p_knowledge_id": int(knowledge_id),
+    }
+    rows = _supabase_rpc(sb_client, "vault_get_readable", params)
+    return rows[0] if rows else None
+
+
+def _remote_search_result(
+    row: dict,
+    *,
+    compact: bool = True,
+    agent_id: str = "",
+    include_private: bool = False,
+    max_sensitivity: str = "medium",
+) -> dict:
     knowledge_id = row.get("id")
+    policy_args = _remote_policy_args(
+        agent_id=agent_id,
+        include_private=include_private,
+        max_sensitivity=max_sensitivity,
+    )
     item = {
         "id": knowledge_id,
         "title": row.get("title"),
@@ -344,7 +437,7 @@ def _remote_search_result(row: dict, *, compact: bool = True) -> dict:
     if knowledge_id is not None:
         item["next_action"] = {
             "tool": "vault_remote_map_show",
-            "arguments": {"knowledge_id": knowledge_id, "compact": True},
+            "arguments": {"knowledge_id": knowledge_id, "compact": True, **policy_args},
         }
     if compact:
         keep = {
@@ -392,8 +485,7 @@ def _vault_remote_search_payload(
     except Exception as exc:
         return _remote_error(
             "remote_read_failed",
-            "Unable to call Supabase RPC vault_search_readable. Apply docs/supabase_read_policy.sql first, then retry. "
-            f"Original error: {exc}",
+            "Unable to call Supabase RPC vault_search_readable. Apply docs/supabase_read_policy.sql first, then retry.",
         )
 
     return {
@@ -401,7 +493,16 @@ def _vault_remote_search_payload(
         "rpc": "vault_search_readable",
         "query": str(query or ""),
         "count": len(rows),
-        "results": [_remote_search_result(row, compact=compact) for row in rows],
+        "results": [
+            _remote_search_result(
+                row,
+                compact=compact,
+                agent_id=agent_id,
+                include_private=include_private,
+                max_sensitivity=max_sensitivity,
+            )
+            for row in rows
+        ],
     }
 
 
@@ -445,6 +546,9 @@ def _vault_remote_map_show_payload(
     knowledge_id: int,
     *,
     compact: bool = False,
+    agent_id: str = "",
+    include_private: bool = False,
+    max_sensitivity: str = "medium",
     sb_client=None,
 ) -> dict:
     try:
@@ -463,17 +567,47 @@ def _vault_remote_map_show_payload(
         )
 
     try:
-        rows = _sort_remote_nodes(
-            _supabase_rows(sb_client, REMOTE_NODE_TABLE, "*", {"knowledge_id": knowledge_id})
+        entry = _remote_readable_entry(
+            sb_client,
+            knowledge_id,
+            agent_id=agent_id,
+            include_private=include_private,
+            max_sensitivity=max_sensitivity,
         )
-    except Exception as exc:
+    except Exception:
         return _remote_error(
-            "remote_read_failed",
-            f"Unable to read remote Document Map nodes: {exc}",
+            "remote_policy_missing",
+            "Remote Document Map reads require the guarded Supabase RPCs from docs/supabase_read_policy.sql.",
+            knowledge_id=knowledge_id,
+        )
+    if not entry:
+        return _remote_error(
+            "not_found",
+            "Remote knowledge id was not found or is not readable under the provided agent policy.",
             knowledge_id=knowledge_id,
         )
 
-    title = next((str(row.get("knowledge_title") or "") for row in rows if row.get("knowledge_title")), "")
+    policy_params = _remote_policy_params(
+        agent_id=agent_id,
+        include_private=include_private,
+        max_sensitivity=max_sensitivity,
+    )
+    try:
+        rows = _sort_remote_nodes(
+            _supabase_rpc(
+                sb_client,
+                "vault_nodes_readable",
+                {**policy_params, "p_knowledge_id": knowledge_id},
+            )
+        )
+    except Exception:
+        return _remote_error(
+            "remote_read_failed",
+            "Unable to read remote Document Map nodes through the guarded Supabase RPC.",
+            knowledge_id=knowledge_id,
+        )
+
+    title = str(entry.get("title") or "")
     output_nodes = [_compact_node(row) for row in rows] if compact else [_remote_node_payload(row) for row in rows]
     payload = {
         "entry_id": knowledge_id,
@@ -484,8 +618,23 @@ def _vault_remote_map_show_payload(
     if rows:
         preferred_node = _preferred_read_node(rows)
         if preferred_node is not None:
-            payload["next_action"] = _remote_read_range_action(knowledge_id, preferred_node)
-        payload["next_actions"] = [_remote_read_range_action(knowledge_id, node) for node in rows]
+            payload["next_action"] = _remote_read_range_action(
+                knowledge_id,
+                preferred_node,
+                agent_id=agent_id,
+                include_private=include_private,
+                max_sensitivity=max_sensitivity,
+            )
+        payload["next_actions"] = [
+            _remote_read_range_action(
+                knowledge_id,
+                node,
+                agent_id=agent_id,
+                include_private=include_private,
+                max_sensitivity=max_sensitivity,
+            )
+            for node in rows
+        ]
         return payload
 
     payload.update(
@@ -595,6 +744,9 @@ def vault_remote_read_range(
     node_uid: str = "",
     line_start: int = 0,
     line_end: int = 0,
+    agent_id: str = "",
+    include_private: bool = False,
+    max_sensitivity: str = "medium",
 ) -> dict:
     """Return a bounded remote source/claim range with a fixed citation."""
     return _vault_remote_read_range_payload(
@@ -602,20 +754,30 @@ def vault_remote_read_range(
         node_uid=node_uid,
         line_start=line_start,
         line_end=line_end,
+        agent_id=agent_id,
+        include_private=include_private,
+        max_sensitivity=max_sensitivity,
     )
 
 
-def _find_remote_content_row(sb_client, title: str, content_hash: str) -> dict | None:
-    lookups = []
-    if content_hash:
-        lookups.append({"content_hash": content_hash})
-    if title:
-        lookups.append({"title": title})
-    for filters in lookups:
-        rows = _supabase_rows(sb_client, REMOTE_KNOWLEDGE_TABLE, "title,content_raw,content_hash", filters)
-        if rows:
-            return rows[0]
-    return None
+def _find_remote_content_row(
+    sb_client,
+    knowledge_id: int,
+    *,
+    agent_id: str = "",
+    include_private: bool = False,
+    max_sensitivity: str = "medium",
+) -> dict | None:
+    params = {
+        **_remote_policy_params(
+            agent_id=agent_id,
+            include_private=include_private,
+            max_sensitivity=max_sensitivity,
+        ),
+        "p_knowledge_id": int(knowledge_id),
+    }
+    rows = _supabase_rpc(sb_client, "vault_content_readable", params)
+    return rows[0] if rows else None
 
 
 def _remote_claim_content(claims: list[dict]) -> str:
@@ -639,6 +801,9 @@ def _vault_remote_read_range_payload(
     line_end: int = 0,
     *,
     max_lines: int = 80,
+    agent_id: str = "",
+    include_private: bool = False,
+    max_sensitivity: str = "medium",
     sb_client=None,
 ) -> dict:
     try:
@@ -664,16 +829,50 @@ def _vault_remote_read_range_payload(
         )
 
     try:
+        entry = _remote_readable_entry(
+            sb_client,
+            knowledge_id,
+            agent_id=agent_id,
+            include_private=include_private,
+            max_sensitivity=max_sensitivity,
+        )
+    except Exception:
+        return _remote_error(
+            "remote_policy_missing",
+            "Remote range reads require the guarded Supabase RPCs from docs/supabase_read_policy.sql.",
+            knowledge_id=knowledge_id,
+        )
+    if not entry:
+        return _remote_error(
+            "not_found",
+            "Remote knowledge id was not found or is not readable under the provided agent policy.",
+            knowledge_id=knowledge_id,
+        )
+
+    policy_params = _remote_policy_params(
+        agent_id=agent_id,
+        include_private=include_private,
+        max_sensitivity=max_sensitivity,
+    )
+    try:
         nodes = _sort_remote_nodes(
-            _supabase_rows(sb_client, REMOTE_NODE_TABLE, "*", {"knowledge_id": knowledge_id})
+            _supabase_rpc(
+                sb_client,
+                "vault_nodes_readable",
+                {**policy_params, "p_knowledge_id": knowledge_id},
+            )
         )
         claims = _sort_remote_claims(
-            _supabase_rows(sb_client, REMOTE_CLAIM_TABLE, "*", {"knowledge_id": knowledge_id})
+            _supabase_rpc(
+                sb_client,
+                "vault_claims_readable",
+                {**policy_params, "p_knowledge_id": knowledge_id},
+            )
         )
-    except Exception as exc:
+    except Exception:
         return _remote_error(
             "remote_read_failed",
-            f"Unable to read remote Document Map rows: {exc}",
+            "Unable to read remote Document Map rows through the guarded Supabase RPC.",
             knowledge_id=knowledge_id,
         )
 
@@ -684,14 +883,7 @@ def _vault_remote_read_range_payload(
             knowledge_id=knowledge_id,
         )
 
-    title = next(
-        (
-            str(row.get("knowledge_title") or "")
-            for row in [*nodes, *claims]
-            if row.get("knowledge_title")
-        ),
-        "",
-    )
+    title = str(entry.get("title") or "")
     knowledge_content_hash = next(
         (
             str(row.get("knowledge_content_hash") or "")
@@ -776,7 +968,13 @@ def _vault_remote_read_range_payload(
     content_hash = ""
     source = "remote_claims"
     try:
-        content_row = _find_remote_content_row(sb_client, title, knowledge_content_hash)
+        content_row = _find_remote_content_row(
+            sb_client,
+            knowledge_id,
+            agent_id=agent_id,
+            include_private=include_private,
+            max_sensitivity=max_sensitivity,
+        )
     except Exception:
         content_row = None
     if content_row and content_row.get("content_raw"):
@@ -1387,6 +1585,22 @@ TOOLS = [
                     "description": "回傳精簡節點欄位（預設 false）",
                     "default": False
                 },
+                "agent_id": {
+                    "type": "string",
+                    "description": "Agent 身份，用於 owner_agent / allowed_agents 過濾",
+                    "default": ""
+                },
+                "include_private": {
+                    "type": "boolean",
+                    "description": "是否允許讀取此 agent 被授權的 private 記憶",
+                    "default": False
+                },
+                "max_sensitivity": {
+                    "type": "string",
+                    "enum": ["low", "medium", "high", "restricted"],
+                    "description": "最高可讀 sensitivity；預設 medium",
+                    "default": "medium"
+                },
             },
             "required": ["knowledge_id"]
         }
@@ -1415,6 +1629,22 @@ TOOLS = [
                     "type": "integer",
                     "description": "結束行號（含）",
                     "default": 0
+                },
+                "agent_id": {
+                    "type": "string",
+                    "description": "Agent 身份，用於 owner_agent / allowed_agents 過濾",
+                    "default": ""
+                },
+                "include_private": {
+                    "type": "boolean",
+                    "description": "是否允許讀取此 agent 被授權的 private 記憶",
+                    "default": False
+                },
+                "max_sensitivity": {
+                    "type": "string",
+                    "enum": ["low", "medium", "high", "restricted"],
+                    "description": "最高可讀 sensitivity；預設 medium",
+                    "default": "medium"
                 },
             },
             "required": ["knowledge_id"]
@@ -1849,6 +2079,9 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
             payload = _vault_remote_map_show_payload(
                 arguments.get("knowledge_id", 0),
                 compact=bool(arguments.get("compact", False)),
+                agent_id=arguments.get("agent_id", ""),
+                include_private=bool(arguments.get("include_private", False)),
+                max_sensitivity=arguments.get("max_sensitivity", "medium"),
             )
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 
@@ -1858,6 +2091,9 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 node_uid=arguments.get("node_uid", ""),
                 line_start=arguments.get("line_start", 0),
                 line_end=arguments.get("line_end", 0),
+                agent_id=arguments.get("agent_id", ""),
+                include_private=bool(arguments.get("include_private", False)),
+                max_sensitivity=arguments.get("max_sensitivity", "medium"),
             )
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 

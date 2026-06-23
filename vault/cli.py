@@ -1913,9 +1913,28 @@ def cmd_automation(args):
             f"  archive expired: eligible={archive.get('eligible_count', 0)} "
             f"archived={archive.get('archived_count', 0)} "
             f"skipped_used={archive.get('skipped_used_count', 0)} "
+            f"skipped_policy={archive.get('skipped_protected_count', 0)} "
             f"dry_run={archive.get('dry_run')}"
         )
+        diff = payload.get("dry_run_diff") or {}
+        if diff:
+            print(
+                f"  diff: would_archive={diff.get('would_archive_count', 0)} "
+                f"applied={diff.get('applied_count', 0)} "
+                f"policy_skips={diff.get('skipped_policy_count', 0)} "
+                f"hard_delete={diff.get('hard_delete')}"
+            )
         _print_usage_review(payload)
+        ledger = payload.get("action_ledger") or []
+        if ledger:
+            print("  action ledger:")
+            for item in ledger[:5]:
+                print(
+                    f"    - #{item.get('knowledge_id')} {item.get('operation')} "
+                    f"{item.get('status')} ({item.get('reason')})"
+                )
+            if len(ledger) > 5:
+                print(f"    ... {len(ledger) - 5} more")
         dream = payload.get("dream", {})
         print(f"  dream report: {dream.get('report_path', '')}")
         if payload.get("human_review", {}).get("required"):

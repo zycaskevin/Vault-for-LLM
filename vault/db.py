@@ -1124,6 +1124,8 @@ class VaultDB:
         limit: int = 100,
         dry_run: bool = False,
         skip_used: bool = False,
+        protected_scopes: list[str] | tuple[str, ...] | None = None,
+        protected_sensitivities: list[str] | tuple[str, ...] | None = None,
     ) -> dict:
         """Archive active memories whose `expires_at` timestamp is in the past."""
         if isinstance(now, datetime):
@@ -1139,8 +1141,8 @@ class VaultDB:
 
         limit_i = max(1, min(int(limit or 100), 10000))
         rows = self.conn.execute(
-            """SELECT id, title, layer, category, memory_type, expires_at,
-                      access_count, citation_count
+            """SELECT id, title, layer, category, memory_type, scope, sensitivity,
+                      status, expires_at, access_count, citation_count
                  FROM knowledge
                 WHERE COALESCE(status, 'active') != 'archived'
                   AND COALESCE(expires_at, '') != ''
@@ -1153,9 +1155,19 @@ class VaultDB:
             expires_at = self._parse_timestamp(row["expires_at"])
             if expires_at is not None and expires_at <= now_dt:
                 expired.append(dict(row))
+        protected_scope_set = {str(value).strip().lower() for value in (protected_scopes or []) if str(value).strip()}
+        protected_sensitivity_set = {
+            str(value).strip().lower() for value in (protected_sensitivities or []) if str(value).strip()
+        }
         skipped_used = []
+        skipped_protected = []
         archiveable = []
         for row in expired:
+            scope = str(row.get("scope") or "").strip().lower()
+            sensitivity = str(row.get("sensitivity") or "").strip().lower()
+            if scope in protected_scope_set or sensitivity in protected_sensitivity_set:
+                skipped_protected.append(row)
+                continue
             usage_count = int(row.get("access_count") or 0) + int(row.get("citation_count") or 0)
             if skip_used and usage_count > 0:
                 skipped_used.append(row)
@@ -1169,9 +1181,11 @@ class VaultDB:
                 "archived_count": 0,
                 "eligible_count": len(expired),
                 "skipped_used_count": len(skipped_used),
+                "skipped_protected_count": len(skipped_protected),
                 "now": now_text,
                 "items": archiveable,
                 "skipped_used": skipped_used,
+                "skipped_protected": skipped_protected,
             }
 
         ids = [int(row["id"]) for row in archiveable]
@@ -1191,9 +1205,11 @@ class VaultDB:
             "archived_count": len(ids),
             "eligible_count": len(expired),
             "skipped_used_count": len(skipped_used),
+            "skipped_protected_count": len(skipped_protected),
             "now": now_text,
             "items": archiveable,
             "skipped_used": skipped_used,
+            "skipped_protected": skipped_protected,
         }
 
     # ── Memory candidate CRUD ───────────────────────────────

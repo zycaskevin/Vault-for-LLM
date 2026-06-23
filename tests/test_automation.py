@@ -51,6 +51,12 @@ def test_automation_run_balanced_apply_archives_expired_memory(tmp_path):
     assert payload["status"] == "completed"
     assert payload["archive_expired"]["dry_run"] is False
     assert payload["archive_expired"]["archived_count"] == 1
+    assert payload["dry_run_diff"]["applied_count"] == 1
+    assert payload["dry_run_diff"]["hard_delete"] is False
+    assert payload["dry_run_diff"]["promote_candidates"] is False
+    assert payload["action_ledger"][0]["status"] == "applied"
+    assert payload["action_ledger"][0]["before"] == {"status": "active"}
+    assert payload["action_ledger"][0]["after"] == {"status": "archived"}
     assert payload["report_path"].startswith("reports/automation/")
     assert payload["dream"]["report_path"].startswith("reports/dream/")
     with VaultDB(project / "vault.db") as db:
@@ -69,7 +75,9 @@ def test_automation_run_protects_expired_but_used_memory(tmp_path):
 
     assert payload["archive_expired"]["archived_count"] == 0
     assert payload["archive_expired"]["skipped_used_count"] == 1
+    assert payload["dry_run_diff"]["skipped_usage_count"] == 1
     assert payload["usage_review"]["expired_used_review_count"] == 1
+    assert payload["action_ledger"][0]["status"] == "skipped_usage"
     assert payload["human_review"]["required"] is True
     assert {"kind": "expired_but_used", "count": 1} in payload["human_review"]["items"]
     with VaultDB(project / "vault.db") as db:
@@ -104,6 +112,7 @@ def test_automation_cli_shows_usage_review(tmp_path, monkeypatch, capsys):
     assert "Usage review:" in out
     assert "review_expired_but_used" in out
     assert "skipped_used=1" in out
+    assert "action ledger:" in out
 
 
 def test_automation_run_conservative_apply_stays_dry_run(tmp_path):
@@ -119,6 +128,39 @@ def test_automation_run_conservative_apply_stays_dry_run(tmp_path):
     assert payload["warning"] == "apply requested, but policy auto_archive_expired is false"
     with VaultDB(project / "vault.db") as db:
         assert db.get_knowledge(expired_id)["status"] == "active"
+
+
+def test_automation_apply_does_not_touch_private_or_high_sensitivity_memory(tmp_path):
+    project = _init_project(tmp_path)
+    expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    with VaultDB(project / "vault.db") as db:
+        private_id = db.add_knowledge(
+            "Private expired profile",
+            "Private notes should stay human-reviewed.",
+            expires_at=expired,
+            scope="private",
+            sensitivity="low",
+        )
+        high_id = db.add_knowledge(
+            "High sensitivity expired summary",
+            "High sensitivity notes need explicit review.",
+            expires_at=expired,
+            scope="project",
+            sensitivity="high",
+        )
+
+    payload = automation_run(project, mode="balanced", apply=True, limit=10, write_reports=False)
+
+    assert payload["archive_expired"]["archived_count"] == 0
+    assert payload["archive_expired"]["skipped_protected_count"] == 2
+    assert payload["usage_review"]["expired_protected_count"] == 2
+    assert payload["dry_run_diff"]["skipped_policy_count"] == 2
+    assert payload["dry_run_diff"]["permission_changes"] is False
+    assert {item["status"] for item in payload["action_ledger"]} == {"skipped_policy"}
+    assert {"kind": "protected_expired", "count": 2} in payload["human_review"]["items"]
+    with VaultDB(project / "vault.db") as db:
+        assert db.get_knowledge(private_id)["status"] == "active"
+        assert db.get_knowledge(high_id)["status"] == "active"
 
 
 def test_automation_report_lists_recent_runs(tmp_path):

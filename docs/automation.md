@@ -9,8 +9,11 @@ reversible:
 - collect usage and lifecycle counters
 - split expired memories into low-risk archive candidates and used items that
   need TTL review
+- skip protected memories, such as `scope: private` or high-sensitivity rows,
+  unless the policy is intentionally changed
 - preview expired-memory archival
 - optionally archive expired memories when policy and `--apply` both allow it
+- write an action ledger and dry-run diff explaining what changed or was skipped
 - run a Dream report for stale, duplicate, weak, or orphaned knowledge
 - produce an automation report for operators and agents
 
@@ -70,6 +73,11 @@ vault automation doctor --pretty
 mode: balanced
 auto_archive_expired: true
 protect_used_expired: true
+protected_scopes:
+  - private
+protected_sensitivities:
+  - high
+  - restricted
 auto_apply_safe_metadata: false
 write_reports: true
 dream_checks:
@@ -95,6 +103,30 @@ but still have retrieval or citation usage. Those rows appear in
 `usage_review.expired_but_used` and `human_review.items` so the user can decide
 whether the TTL is wrong, the memory should be summarized, or the source should
 move to a longer-lived layer.
+
+`protected_scopes` and `protected_sensitivities` keep private or sensitive
+memory out of routine lifecycle automation. By default, expired private,
+high-sensitivity, and restricted rows appear in `usage_review.expired_protected`
+and the run `action_ledger` with `status: skipped_policy`. They stay active even
+when `vault automation run --apply` is used.
+
+## Reports, Ledgers, and Diffs
+
+Every automation run can write a JSON report under `reports/automation/`. The
+important review fields are:
+
+- `dry_run_diff`: count of rows that would be archived, were archived, or were
+  skipped by usage/policy. It also states that automation performs no hard
+  delete, no candidate promotion, and no permission changes.
+- `action_ledger`: per-memory entries with `knowledge_id`, operation, before
+  status, after status, risk, and reason.
+- `usage_review`: operator-facing buckets such as archiveable expired rows,
+  expired-but-used rows, protected expired rows, and top-used memories.
+- `human_review`: whether a person should inspect the run before stronger
+  autonomy.
+
+This gives agents a small, structured handoff: they can summarize the report,
+but the source of truth remains the machine-readable ledger.
 
 ## Scheduled Use
 

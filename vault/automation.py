@@ -28,6 +28,8 @@ DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
         "mode": "conservative",
         "auto_archive_expired": False,
         "protect_used_expired": True,
+        "protected_scopes": ["private"],
+        "protected_sensitivities": ["high", "restricted"],
         "auto_apply_safe_metadata": False,
         "write_reports": True,
         "dream_checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
@@ -43,6 +45,8 @@ DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
         "mode": "balanced",
         "auto_archive_expired": True,
         "protect_used_expired": True,
+        "protected_scopes": ["private"],
+        "protected_sensitivities": ["high", "restricted"],
         "auto_apply_safe_metadata": False,
         "write_reports": True,
         "dream_checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
@@ -58,6 +62,8 @@ DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
         "mode": "autonomous",
         "auto_archive_expired": True,
         "protect_used_expired": True,
+        "protected_scopes": ["private"],
+        "protected_sensitivities": ["high", "restricted"],
         "auto_apply_safe_metadata": False,
         "write_reports": True,
         "dream_checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
@@ -122,6 +128,8 @@ def automation_plan(
                 limit=limit,
                 dry_run=True,
                 skip_used=bool(policy.get("protect_used_expired", True)),
+                protected_scopes=_policy_list(policy, "protected_scopes"),
+                protected_sensitivities=_policy_list(policy, "protected_sensitivities"),
             )
             candidate_count = len(db.list_memory_candidates(status="candidate", limit=1000))
     else:
@@ -183,8 +191,12 @@ def automation_run(
             limit=limit,
             dry_run=not archive_apply,
             skip_used=bool(policy.get("protect_used_expired", True)),
+            protected_scopes=_policy_list(policy, "protected_scopes"),
+            protected_sensitivities=_policy_list(policy, "protected_sensitivities"),
         )
         usage_review_before = _usage_review(policy, before_usage, archive_result)
+        archive_ledger = _archive_action_ledger(archive_result, applied=archive_apply)
+        dry_run_diff = _dry_run_diff(archive_ledger, apply_requested=bool(apply), archive_allowed=archive_allowed)
 
     dream = run_dream(
         project,
@@ -207,6 +219,8 @@ def automation_run(
         "policy": {
             "auto_archive_expired": archive_allowed,
             "protect_used_expired": bool(policy.get("protect_used_expired", True)),
+            "protected_scopes": _policy_list(policy, "protected_scopes"),
+            "protected_sensitivities": _policy_list(policy, "protected_sensitivities"),
             "auto_apply_safe_metadata": bool(policy.get("auto_apply_safe_metadata", False)),
         },
         "usage_before": before_usage,
@@ -214,6 +228,8 @@ def automation_run(
         "usage_review": usage_review_before,
         "candidate_count": len(candidates),
         "archive_expired": archive_result,
+        "action_ledger": archive_ledger,
+        "dry_run_diff": dry_run_diff,
         "dream": dream,
         "human_review": _review_summary(policy, after_usage, len(candidates), dream, usage_review_before),
         "next_action": "Review human_review and report_path; adjust automation_policy.yaml before stronger autonomy.",
@@ -368,6 +384,10 @@ def _compact_memory_item(row: dict[str, Any]) -> dict[str, Any]:
         "title": row.get("title", ""),
         "layer": row.get("layer", ""),
         "category": row.get("category", ""),
+        "scope": row.get("scope", ""),
+        "sensitivity": row.get("sensitivity", ""),
+        "status": row.get("status", "active"),
+        "memory_type": row.get("memory_type", ""),
         "expires_at": row.get("expires_at", ""),
         "access_count": int(row.get("access_count") or 0),
         "citation_count": int(row.get("citation_count") or 0),
@@ -382,6 +402,7 @@ def _usage_review(
     """Summarize usage-aware maintenance suggestions for agents/operators."""
     archive_items = [_compact_memory_item(row) for row in archive_preview.get("items", [])]
     skipped_used = [_compact_memory_item(row) for row in archive_preview.get("skipped_used", [])]
+    skipped_protected = [_compact_memory_item(row) for row in archive_preview.get("skipped_protected", [])]
     top_used = [_compact_memory_item(row) for row in usage.get("top_used", [])[:5]]
 
     suggestions = []
@@ -403,6 +424,15 @@ def _usage_review(
                 "reason": "These memories are expired but still retrieved or cited; review TTL before archiving.",
             }
         )
+    if skipped_protected:
+        suggestions.append(
+            {
+                "kind": "protected_expired_not_touched",
+                "count": len(skipped_protected),
+                "autonomy": "policy-blocked",
+                "reason": "Private or high-sensitivity memories require an explicit human decision before lifecycle changes.",
+            }
+        )
     if top_used:
         suggestions.append(
             {
@@ -418,9 +448,11 @@ def _usage_review(
         "protect_used_expired": bool(policy.get("protect_used_expired", True)),
         "expired_archiveable_count": len(archive_items),
         "expired_used_review_count": len(skipped_used),
+        "expired_protected_count": len(skipped_protected),
         "top_used_count": len(top_used),
         "archiveable_expired": archive_items,
         "expired_but_used": skipped_used,
+        "expired_protected": skipped_protected,
         "top_used": top_used,
         "suggestions": suggestions,
         "principle": "usage helps agents prioritize maintenance; it does not override access policy or source quality",
@@ -443,6 +475,9 @@ def _review_summary(
     used_expired = int((usage_review or {}).get("expired_used_review_count", 0) or 0)
     if used_expired >= int(thresholds.get("used_expired", 1)):
         items.append({"kind": "expired_but_used", "count": used_expired})
+    protected_expired = int((usage_review or {}).get("expired_protected_count", 0) or 0)
+    if protected_expired:
+        items.append({"kind": "protected_expired", "count": protected_expired})
     if candidate_count >= int(thresholds.get("pending_candidates", 1)):
         items.append({"kind": "pending_candidates", "count": candidate_count})
     duplicates = int(dream_summary.get("duplicates", 0) or 0)
@@ -466,6 +501,82 @@ def _write_report(project: Path, payload: dict[str, Any]) -> str:
     return str(path.relative_to(project))
 
 
+def _archive_action_ledger(archive_result: dict[str, Any], *, applied: bool) -> list[dict[str, Any]]:
+    ledger: list[dict[str, Any]] = []
+    for row in archive_result.get("items", []) or []:
+        item = _compact_memory_item(row)
+        ledger.append(
+            {
+                "operation": "archive_expired",
+                "knowledge_id": item["id"],
+                "title": item["title"],
+                "status": "applied" if applied else "preview",
+                "before": {"status": item.get("status") or "active"},
+                "after": {"status": "archived"} if applied else {"status": item.get("status") or "active"},
+                "reason": "expires_at is in the past and policy allows reversible archival.",
+                "risk": "medium",
+                "scope": item.get("scope", ""),
+                "sensitivity": item.get("sensitivity", ""),
+            }
+        )
+    for row in archive_result.get("skipped_used", []) or []:
+        item = _compact_memory_item(row)
+        ledger.append(
+            {
+                "operation": "archive_expired",
+                "knowledge_id": item["id"],
+                "title": item["title"],
+                "status": "skipped_usage",
+                "before": {"status": item.get("status") or "active"},
+                "after": {"status": item.get("status") or "active"},
+                "reason": "memory is expired but still has access or citation usage.",
+                "risk": "human-review",
+                "scope": item.get("scope", ""),
+                "sensitivity": item.get("sensitivity", ""),
+            }
+        )
+    for row in archive_result.get("skipped_protected", []) or []:
+        item = _compact_memory_item(row)
+        ledger.append(
+            {
+                "operation": "archive_expired",
+                "knowledge_id": item["id"],
+                "title": item["title"],
+                "status": "skipped_policy",
+                "before": {"status": item.get("status") or "active"},
+                "after": {"status": item.get("status") or "active"},
+                "reason": "memory scope or sensitivity is protected by automation_policy.yaml.",
+                "risk": "policy-blocked",
+                "scope": item.get("scope", ""),
+                "sensitivity": item.get("sensitivity", ""),
+            }
+        )
+    return ledger
+
+
+def _dry_run_diff(
+    ledger: list[dict[str, Any]],
+    *,
+    apply_requested: bool,
+    archive_allowed: bool,
+) -> dict[str, Any]:
+    would_archive = [item for item in ledger if item.get("status") in {"preview", "applied"}]
+    skipped_usage = [item for item in ledger if item.get("status") == "skipped_usage"]
+    skipped_policy = [item for item in ledger if item.get("status") == "skipped_policy"]
+    return {
+        "apply_requested": bool(apply_requested),
+        "policy_allows_archive": bool(archive_allowed),
+        "would_archive_count": len(would_archive),
+        "applied_count": len([item for item in would_archive if item.get("status") == "applied"]),
+        "skipped_usage_count": len(skipped_usage),
+        "skipped_policy_count": len(skipped_policy),
+        "fields_changed": ["status", "archived_at", "updated_at"] if would_archive else [],
+        "hard_delete": False,
+        "promote_candidates": False,
+        "permission_changes": False,
+    }
+
+
 def _normalize_mode(mode: str) -> str:
     value = str(mode or DEFAULT_MODE).strip().lower()
     if value not in AUTOMATION_MODES:
@@ -482,6 +593,17 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
             out[key] = value
     out["mode"] = _normalize_mode(str(out.get("mode") or DEFAULT_MODE))
     return out
+
+
+def _policy_list(policy: dict[str, Any], key: str) -> list[str]:
+    value = policy.get(key, [])
+    if isinstance(value, str):
+        values = [part.strip() for part in value.split(",")]
+    elif isinstance(value, (list, tuple, set)):
+        values = [str(part).strip() for part in value]
+    else:
+        values = []
+    return [part.lower() for part in values if part]
 
 
 def _check(name: str, ok: bool, detail: str = "") -> dict[str, Any]:

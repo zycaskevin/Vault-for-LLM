@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.66] - 2026-06-24
+
+### Added
+
+- Added `--write-handoff` to `vault automation inbox`, writing `reports/automation/inbox-latest.json` for the next scheduled agent or reviewer.
+- Scheduled automation templates now run the selected `vault automation cycle|run` command and then write the inbox handoff in cron, LaunchAgent, and n8n templates.
+- Added MCP tool `vault_automation_inbox` to the review and maintenance profiles so agents can read the compact automation review queue without loading raw candidate content.
+
 ## [0.6.65] - 2026-06-24
 
 ### Added

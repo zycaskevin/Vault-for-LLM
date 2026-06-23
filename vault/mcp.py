@@ -1664,6 +1664,32 @@ TOOLS = [
         }
     },
     {
+        "name": "vault_automation_inbox",
+        "description": "Read the compact automation review inbox. Read-only by default; returns the shortest candidate/report queue without raw content unless requested.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum inbox items to return.",
+                    "default": 5,
+                    "minimum": 1,
+                    "maximum": 50,
+                },
+                "include_content": {
+                    "type": "boolean",
+                    "description": "Include redacted candidate content. Defaults false.",
+                    "default": False,
+                },
+                "write_handoff": {
+                    "type": "boolean",
+                    "description": "Write reports/automation/inbox-latest.json for scheduled handoff.",
+                    "default": False,
+                },
+            },
+        }
+    },
+    {
         "name": "vault_obsidian_import",
         "description": "Import an existing Obsidian vault into raw/obsidian/. Run dry_run first; compile only after user confirmation.",
         "inputSchema": {
@@ -1943,6 +1969,7 @@ TOOL_PROFILES = {
         "vault_memory_promote",
         "vault_memory_review",
         "vault_memory_candidates",
+        "vault_automation_inbox",
         "vault_dream_run",
         "vault_stats",
     ],
@@ -1962,6 +1989,7 @@ TOOL_PROFILES = {
         "vault_memory_promote",
         "vault_memory_review",
         "vault_memory_candidates",
+        "vault_automation_inbox",
         "vault_obsidian_import",
         "vault_dream_run",
         "vault_stats",
@@ -2243,6 +2271,18 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     for row in rows
                 ],
             }
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
+
+        elif name == "vault_automation_inbox":
+            from vault.automation import automation_inbox
+
+            limit = _clamp_int(arguments.get("limit", 5), default=5, minimum=1, maximum=50)
+            payload = automation_inbox(
+                Path(DB_PATH).resolve().parent,
+                limit=limit,
+                include_content=bool(arguments.get("include_content", False)),
+                write_handoff=bool(arguments.get("write_handoff", False)),
+            )
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 
         elif name == "vault_obsidian_import":

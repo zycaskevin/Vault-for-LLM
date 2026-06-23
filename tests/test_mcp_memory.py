@@ -18,6 +18,7 @@ def test_mcp_memory_tools_are_advertised():
         "vault_memory_promote",
         "vault_memory_review",
         "vault_memory_candidates",
+        "vault_automation_inbox",
         "vault_dream_run",
     }.issubset(names)
     add_tool = next(tool for tool in TOOLS if tool["name"] == "vault_add")
@@ -41,6 +42,8 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
     review_names = [tool["name"] for tool in select_tools("review")]
     assert "vault_memory_candidates" in review_names
     assert "vault_memory_review" in review_names
+    assert "vault_automation_inbox" in review_names
+    assert "vault_automation_inbox" not in core_names
     assert "vault_memory_review" not in core_names
 
     full_names = {tool["name"] for tool in select_tools("full")}
@@ -261,6 +264,52 @@ def test_mcp_memory_candidates_lists_review_queue_without_full_payload(tmp_path)
     detailed_item = detailed["candidates"][0]
     assert detailed_item["content"].startswith("MCP candidate queue entries")
     assert detailed_item["gates"]["privacy"]["status"] == "pass"
+
+
+def test_mcp_automation_inbox_reads_short_queue_without_content(tmp_path):
+    _set_project_dir(tmp_path)
+    proposed = _payload(handle_tool_call(
+        "vault_memory_propose",
+        {
+            "title": "MCP automation inbox",
+            "content": "Decision: MCP automation inbox should expose short review queues because agents need bounded handoffs.",
+            "reason": "Review agents need automation inbox access.",
+            "source": "session_capture",
+            "source_ref": "mcp:inbox:1",
+            "tags": "mcp,inbox",
+            "memory_type": "session_lesson",
+        },
+    ))
+
+    inbox = _payload(handle_tool_call("vault_automation_inbox", {"limit": 5}))
+
+    assert inbox["action"] == "inbox"
+    assert inbox["summary"]["pending_candidates"] == 1
+    assert inbox["review_queue"][0]["id"] == proposed["candidate_id"]
+    assert inbox["review_queue"][0]["recommended_action"] == "review_for_promotion"
+    assert "content" not in inbox["review_queue"][0]
+    assert inbox["safety"]["read_only"] is True
+
+
+def test_mcp_automation_inbox_can_write_handoff(tmp_path):
+    _set_project_dir(tmp_path)
+    _payload(handle_tool_call(
+        "vault_memory_propose",
+        {
+            "title": "MCP inbox handoff",
+            "content": "Workflow: MCP automation inbox can write handoff JSON because scheduled agents need a stable file.",
+            "reason": "Agent handoff workflow.",
+            "source": "session_capture",
+            "source_ref": "mcp:inbox:handoff",
+            "tags": "mcp,inbox,handoff",
+            "memory_type": "session_lesson",
+        },
+    ))
+
+    inbox = _payload(handle_tool_call("vault_automation_inbox", {"write_handoff": True}))
+
+    assert inbox["inbox_handoff_path"] == "reports/automation/inbox-latest.json"
+    assert (tmp_path / inbox["inbox_handoff_path"]).exists()
 
 
 def test_mcp_vault_add_warns_and_builds_document_map(tmp_path):

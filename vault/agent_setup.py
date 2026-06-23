@@ -885,6 +885,44 @@ def automation_schedule_command(
     return command_args
 
 
+def automation_inbox_handoff_command(
+    *,
+    project_dir: str | Path,
+    vault_executable: str = "vault",
+    limit: int = 5,
+) -> list[str]:
+    return [
+        vault_executable,
+        "automation",
+        "inbox",
+        "--project-dir",
+        str(Path(project_dir).expanduser()),
+        "--limit",
+        str(max(1, min(int(limit or 5), 50))),
+        "--write-handoff",
+        "--pretty",
+    ]
+
+
+def automation_schedule_with_inbox_command(
+    *,
+    project_dir: str | Path,
+    mode: str = "balanced",
+    apply: bool = False,
+    command: str = "cycle",
+    vault_executable: str = "vault",
+) -> list[str]:
+    primary = automation_schedule_command(
+        project_dir=project_dir,
+        mode=mode,
+        apply=apply,
+        command=command,
+        vault_executable=vault_executable,
+    )
+    inbox = automation_inbox_handoff_command(project_dir=project_dir, vault_executable=vault_executable)
+    return ["sh", "-lc", f"{shell_join(primary)} && {shell_join(inbox)}"]
+
+
 def write_automation_schedule_templates(
     *,
     output_dir: str | Path,
@@ -908,6 +946,14 @@ def write_automation_schedule_templates(
         command=normalized_command,
         vault_executable=vault_executable,
     )
+    scheduled_args = automation_schedule_with_inbox_command(
+        project_dir=project_dir,
+        mode=normalized_mode,
+        apply=apply,
+        command=normalized_command,
+        vault_executable=vault_executable,
+    )
+    inbox_args = automation_inbox_handoff_command(project_dir=project_dir, vault_executable=vault_executable)
 
     written: dict[str, str] = {}
     if "cron" in selected:
@@ -918,7 +964,7 @@ def write_automation_schedule_templates(
             "\n".join(
                 [
                     "# Vault-for-LLM memory automation",
-                    f"{schedule} {shell_join(command_args)} >> $HOME/.vault-for-llm/memory-automation.log 2>&1",
+                    f"{schedule} {shell_join(scheduled_args)} >> $HOME/.vault-for-llm/memory-automation.log 2>&1",
                     "",
                 ]
             ),
@@ -929,7 +975,7 @@ def write_automation_schedule_templates(
         path = out / "com.zycaskevin.vault-for-llm.memory-automation.plist"
         path.write_text(
             render_launchagent_plist(
-                command=command_args,
+                command=scheduled_args,
                 label="com.zycaskevin.vault-for-llm.memory-automation",
                 interval_minutes=interval_minutes,
                 log_basename="memory-automation",
@@ -940,7 +986,7 @@ def write_automation_schedule_templates(
     if "n8n" in selected:
         path = out / "n8n-memory-automation.workflow.json"
         path.write_text(
-            render_n8n_automation_workflow(command=command_args, interval_minutes=interval_minutes),
+            render_n8n_automation_workflow(command=scheduled_args, interval_minutes=interval_minutes),
             encoding="utf-8",
         )
         written["n8n"] = str(path)
@@ -954,6 +1000,10 @@ def write_automation_schedule_templates(
                 "Generated command:",
                 "",
                 f"```bash\n{shell_join(command_args)}\n```",
+                "",
+                "Scheduled templates run this command and then write an inbox handoff:",
+                "",
+                f"```bash\n{shell_join(inbox_args)}\n```",
                 "",
                 "Recommended first step:",
                 "",
@@ -969,6 +1019,7 @@ def write_automation_schedule_templates(
                 "- `cycle` first writes a bounded learning policy from reviewed candidate outcomes, then runs automation",
                 "- automation never hard-deletes memory",
                 "- expired memories with usage are protected and sent to human review",
+                "- scheduled runs write `reports/automation/inbox-latest.json` as the next-agent handoff",
                 "",
                 "Review `automation_policy.yaml` before enabling a scheduled job.",
                 "Keep the Python virtualenv and project directory in stable paths, not `/tmp`.",

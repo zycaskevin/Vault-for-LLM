@@ -405,6 +405,8 @@ def automation_inbox(
     limit: int = 5,
     candidate_scan_limit: int = 1000,
     include_content: bool = False,
+    write_handoff: bool = False,
+    handoff_path: str | Path = "",
 ) -> dict[str, Any]:
     """Build a compact review inbox for the memory automation loop.
 
@@ -416,7 +418,7 @@ def automation_inbox(
     generated_at = _now()
     db_path = project / "vault.db"
     if not db_path.exists():
-        return {
+        payload = {
             "action": "inbox",
             "generated_at": generated_at,
             "project_dir": str(project),
@@ -431,8 +433,12 @@ def automation_inbox(
             },
             "review_queue": [],
             "latest_report": {},
+            "inbox_handoff_path": "",
             "next_action": "Run vault init and capture/import memory before checking the automation inbox.",
         }
+        if write_handoff:
+            payload["inbox_handoff_path"] = _write_inbox_handoff(project, payload, handoff_path=handoff_path)
+        return payload
 
     limit_i = max(1, min(int(limit or 5), 50))
     scan_limit = max(limit_i, min(int(candidate_scan_limit or 1000), 5000))
@@ -450,7 +456,7 @@ def automation_inbox(
         latest_report = _report_summary(project, latest_path, _read_report(latest_path))
 
     summary = _inbox_summary(candidate_items, latest_report, review_budget=limit_i)
-    return {
+    payload = {
         "action": "inbox",
         "generated_at": generated_at,
         "project_dir": str(project),
@@ -458,6 +464,7 @@ def automation_inbox(
         "summary": summary,
         "review_queue": candidate_items[:limit_i],
         "latest_report": latest_report,
+        "inbox_handoff_path": "",
         "safety": {
             "read_only": True,
             "auto_promote": False,
@@ -469,6 +476,9 @@ def automation_inbox(
             "or `vault candidate-review` for rejected/blocked feedback."
         ),
     }
+    if write_handoff:
+        payload["inbox_handoff_path"] = _write_inbox_handoff(project, payload, handoff_path=handoff_path)
+    return payload
 
 
 def automation_eval(
@@ -646,6 +656,28 @@ def _write_learning_policy(project: Path, learning_policy: dict[str, Any]) -> st
     report_dir.mkdir(parents=True, exist_ok=True)
     path = report_dir / "learning_policy.json"
     path.write_text(json.dumps(learning_policy, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return str(path.relative_to(project))
+
+
+def _write_inbox_handoff(project: Path, payload: dict[str, Any], *, handoff_path: str | Path = "") -> str:
+    report_dir = project / "reports" / "automation"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    if handoff_path:
+        raw = Path(handoff_path)
+        candidate = raw if raw.is_absolute() else project / raw
+        try:
+            resolved = candidate.expanduser().resolve()
+            allowed = report_dir.expanduser().resolve()
+        except Exception as exc:
+            raise ValueError(f"unable to resolve automation inbox handoff path: {exc}") from exc
+        if allowed != resolved and allowed not in resolved.parents:
+            raise ValueError("automation inbox handoff path must stay under reports/automation")
+        path = resolved
+    else:
+        path = report_dir / "inbox-latest.json"
+    data = dict(payload)
+    data["inbox_handoff_path"] = str(path.relative_to(project))
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return str(path.relative_to(project))
 
 

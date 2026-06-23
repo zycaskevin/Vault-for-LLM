@@ -729,6 +729,42 @@ def test_automation_inbox_can_include_redacted_content(tmp_path):
     assert token not in json.dumps(payload)
 
 
+def test_automation_inbox_writes_handoff_under_reports(tmp_path):
+    project = _init_project(tmp_path)
+    with VaultDB(project / "vault.db") as db:
+        create_candidate(
+            db,
+            title="Decision: write inbox handoff",
+            content="Decision: scheduled automation should write inbox handoff because the next agent needs a short review queue.",
+            reason="Scheduled handoff workflow.",
+            source="session_capture",
+            source_ref="codex:session:handoff",
+            memory_type="session_lesson",
+            category="decision",
+            tags="session-capture,handoff",
+        )
+
+    payload = automation_inbox(project, limit=3, write_handoff=True)
+    path = project / payload["inbox_handoff_path"]
+    written = json.loads(path.read_text(encoding="utf-8"))
+
+    assert payload["inbox_handoff_path"] == "reports/automation/inbox-latest.json"
+    assert written["action"] == "inbox"
+    assert written["inbox_handoff_path"] == "reports/automation/inbox-latest.json"
+    assert written["summary"]["pending_candidates"] == 1
+
+
+def test_automation_inbox_handoff_path_must_stay_under_reports(tmp_path):
+    project = _init_project(tmp_path)
+
+    try:
+        automation_inbox(project, write_handoff=True, handoff_path="../outside.json")
+    except ValueError as exc:
+        assert "reports/automation" in str(exc)
+    else:
+        raise AssertionError("expected automation_inbox to reject handoff paths outside reports/automation")
+
+
 def test_automation_cli_inbox_prints_short_review_queue(tmp_path, monkeypatch, capsys):
     from vault.cli import cmd_automation
 

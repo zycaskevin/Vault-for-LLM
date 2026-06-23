@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.66.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.67.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,7 +83,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.66"
+pip install "vault-for-llm[mcp]==0.6.67"
 
 vault setup-agent
 ```
@@ -110,7 +110,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.66"
+pip install "vault-for-llm[mcp]==0.6.67"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -152,6 +152,10 @@ Recommended core tools:
 - `vault_read_range`
 - `vault_memory_propose`
 - `vault_stats`
+
+Reviewer or maintenance agents can use `vault_capture_session` from the MCP
+`review` profile to run the same session-capture flow. It previews by default;
+`write_candidates=true` is required before anything enters the candidate queue.
 
 MCP guides:
 
@@ -208,6 +212,8 @@ vault automation inbox --limit 5
 transcripts for reusable decisions, pitfalls, workflows, and source-of-truth
 signals, then routes them through the normal candidate gates. Automation and
 Dream can later rank and clean those candidates, but promotion remains explicit.
+MCP review agents can call `vault_capture_session` for the same preview-first
+flow without adding that heavier tool to the everyday `core` profile.
 
 Balanced automation can pre-fill the memory candidate queue with Dream and
 Forgetting suggestions when `--apply` is used, but it still never promotes
@@ -295,7 +301,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.66"
+pip install "vault-for-llm[supabase]==0.6.67"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

@@ -17,6 +17,7 @@ from .db import VaultDB
 
 DEFAULT_CHECKS = ["freshness", "dedup", "convergence", "metadata", "orphans"]
 _VALID_CHECKS = set(DEFAULT_CHECKS)
+LEARNING_POLICY_PATH = Path("reports") / "automation" / "learning_policy.json"
 
 
 def _normalize_checks(checks: Iterable[str] | str | None) -> list[str]:
@@ -148,6 +149,7 @@ def build_dream_report(payload: dict) -> str:
     checks = payload["checks"]
     candidate_suggestions = payload.get("candidate_suggestions", [])
     candidate_results = payload.get("candidate_results", [])
+    learning_policy = payload.get("learning_policy") or {}
     lines = [
         "# Vault Dream Report",
         "",
@@ -178,10 +180,26 @@ def build_dream_report(payload: dict) -> str:
         f"- Candidate writes: {len(candidate_results)}",
         f"- Applied safe actions: {len(payload.get('applied_actions', []))}",
     ]
+    if learning_policy:
+        lines.extend([
+            "",
+            "## Learning policy",
+            "",
+            f"- path: {learning_policy.get('path', '')}",
+            f"- applied_rules: {learning_policy.get('applied_rules', 0)}",
+            "- learning only changes candidate review priority; it does not promote, delete, or bypass policy.",
+        ])
     if candidate_suggestions:
         lines.extend(["", "## Candidate memory suggestions", ""])
         for item in candidate_suggestions[:20]:
-            lines.append(f"- {item['title']} ({item['kind']}): {item['reason']}")
+            learning = item.get("learning") or {}
+            suffix = ""
+            if learning:
+                suffix = (
+                    f" [learning: {learning.get('action')} "
+                    f"x{learning.get('priority_multiplier')} confidence={learning.get('confidence')}]"
+                )
+            lines.append(f"- {item['title']} ({item['kind']}): {item['reason']}{suffix}")
     for section, title in [
         ("freshness", "Freshness"),
         ("dedup", "Duplicate candidates"),
@@ -314,6 +332,88 @@ def _build_candidate_suggestions(findings: dict[str, list[dict]], limit: int) ->
     return suggestions
 
 
+def _load_learning_policy(project: Path) -> dict:
+    path = project / LEARNING_POLICY_PATH
+    if not path.exists():
+        return {"path": "", "rules": [], "applied_rules": 0, "status": "missing"}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {"path": str(path.relative_to(project)), "rules": [], "applied_rules": 0, "status": "invalid", "error": str(exc)}
+    if not isinstance(payload, dict):
+        return {"path": str(path.relative_to(project)), "rules": [], "applied_rules": 0, "status": "invalid"}
+    rules = payload.get("rules") if isinstance(payload.get("rules"), list) else []
+    return {
+        "path": str(path.relative_to(project)),
+        "status": "loaded",
+        "generated_at": payload.get("generated_at", ""),
+        "readiness": payload.get("readiness", ""),
+        "event_count": int(payload.get("event_count") or 0),
+        "rules": [rule for rule in rules if isinstance(rule, dict)],
+        "applied_rules": 0,
+        "principle": payload.get("principle", ""),
+    }
+
+
+def _apply_learning_policy(suggestions: list[dict], learning_policy: dict) -> list[dict]:
+    rules = learning_policy.get("rules") or []
+    if not suggestions or not rules:
+        return suggestions
+
+    ranked = []
+    applied = 0
+    for index, suggestion in enumerate(suggestions):
+        matched = _best_learning_rule(suggestion, rules)
+        item = dict(suggestion)
+        priority = 1.0
+        if matched:
+            priority = float(matched.get("priority_multiplier") or 1.0)
+            applied += 1
+            item["learning"] = {
+                "action": matched.get("action") or "observe",
+                "recommendation": matched.get("recommendation") or "",
+                "priority_multiplier": priority,
+                "confidence": float(matched.get("confidence") or 0.0),
+                "reason": matched.get("reason") or "",
+            }
+            item["reason"] = (
+                f"{item.get('reason', '')} Learning hint: {item['learning']['action']} "
+                f"(x{priority}, confidence {item['learning']['confidence']})."
+            ).strip()
+        item["learning_priority"] = priority
+        ranked.append((priority, index, item))
+
+    ranked.sort(key=lambda row: (-row[0], row[1]))
+    learning_policy["applied_rules"] = applied
+    return [item for _, _, item in ranked]
+
+
+def _best_learning_rule(suggestion: dict, rules: list[dict]) -> dict | None:
+    best: tuple[int, float, dict] | None = None
+    for rule in rules:
+        selector = rule.get("selector") if isinstance(rule.get("selector"), dict) else {}
+        score = _selector_match_score(suggestion, selector)
+        if score <= 0:
+            continue
+        confidence = float(rule.get("confidence") or 0.0)
+        candidate = (score, confidence, rule)
+        if best is None or candidate[:2] > best[:2]:
+            best = candidate
+    return best[2] if best else None
+
+
+def _selector_match_score(suggestion: dict, selector: dict) -> int:
+    score = 0
+    for key in ("source", "memory_type", "category"):
+        expected = str(selector.get(key) or "").strip()
+        if not expected:
+            continue
+        if str(suggestion.get(key) or "").strip() != expected:
+            return 0
+        score += 1
+    return score
+
+
 def _write_candidate_suggestions(db: VaultDB, suggestions: list[dict]) -> list[dict]:
     from .memory import create_candidate
 
@@ -340,10 +440,14 @@ def _write_candidate_suggestions(db: VaultDB, suggestions: list[dict]) -> list[d
             continue
         meta = dict(suggestion)
         meta.pop("kind", None)
+        meta.pop("learning", None)
+        meta.pop("learning_priority", None)
         result = create_candidate(db, **meta)
         results.append({
             "title": suggestion["title"],
             "kind": suggestion["kind"],
+            "learning": suggestion.get("learning", {}),
+            "learning_priority": suggestion.get("learning_priority", 1.0),
             **result,
         })
     return results
@@ -428,6 +532,7 @@ def run_dream(
     write_report: bool = False,
     write_candidates: bool = False,
     backup: bool = True,
+    use_learning_policy: bool = True,
 ) -> dict:
     project = Path(project_dir)
     if mode not in {"report", "apply_safe"}:
@@ -444,6 +549,12 @@ def run_dream(
     report_path = ""
     backup_path = ""
     plan_path = ""
+    learning_policy = _load_learning_policy(project) if use_learning_policy else {
+        "path": "",
+        "rules": [],
+        "applied_rules": 0,
+        "status": "disabled",
+    }
 
     findings: dict[str, list[dict]] = {}
     actions_applied = 0
@@ -471,6 +582,7 @@ def run_dream(
             "candidate_suggestions": [],
             "candidate_results": [],
             "applied_actions": [],
+            "learning_policy": learning_policy,
             "plan_path": plan_path,
             "report_path": report_path,
             "backup_path": backup_path,
@@ -504,6 +616,7 @@ def run_dream(
 
         proposed_actions = _build_safe_actions(findings)
         candidate_suggestions = _build_candidate_suggestions(findings, limit_i)
+        candidate_suggestions = _apply_learning_policy(candidate_suggestions, learning_policy)
         if write_candidates and candidate_suggestions:
             candidate_results = _write_candidate_suggestions(db, candidate_suggestions)
         if mode == "apply_safe" and backup:
@@ -537,6 +650,7 @@ def run_dream(
         "candidate_suggestions": candidate_suggestions,
         "candidate_results": candidate_results,
         "applied_actions": applied_actions,
+        "learning_policy": learning_policy,
         "plan_path": plan_path,
         "report_path": report_path,
         "backup_path": backup_path,

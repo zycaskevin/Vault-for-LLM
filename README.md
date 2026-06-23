@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.56.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.57.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,7 +83,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.56"
+pip install "vault-for-llm[mcp]==0.6.57"
 
 vault setup-agent
 ```
@@ -110,7 +110,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.56"
+pip install "vault-for-llm[mcp]==0.6.57"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -208,6 +208,10 @@ priority hints, such as preferring a suggestion source that is often promoted
 or downgrading one that is often rejected. The bounds are deliberately small
 and never authorize auto-promotion, deletion, or privacy bypass.
 
+Dream and scheduled automation can read that policy on the next run. They use
+it to annotate and sort candidate suggestions, so reviewers see better-ranked
+cleanup work first while the formal promote/reject decision remains explicit.
+
 Agent installers can generate cron, LaunchAgent, or n8n templates with
 `vault setup-agent --automation-schedule cron|launchagent|n8n|all`. Scheduled
 automation is report-first unless the user explicitly opts into `--automation-apply`.
@@ -247,7 +251,7 @@ Use it when agents on different machines or hosted platforms need to read a
 shared, filtered copy of reviewed project memory.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.56"
+pip install "vault-for-llm[supabase]==0.6.57"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

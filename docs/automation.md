@@ -101,6 +101,12 @@ bounded: it can suggest `prefer_candidates`, `downgrade_or_require_review`,
 `keep_observing`, or `observe`, with priority multipliers capped between `0.85`
 and `1.15`. It is a ranking and review hint, not an authorization policy.
 
+On later runs, `vault dream` and `vault automation run` read the same handoff
+file automatically. Matching Dream candidate suggestions are annotated with the
+learning action, confidence, and multiplier, then sorted by bounded priority.
+This helps review agents look at the most promising cleanup work first without
+changing the candidate-first safety boundary.
+
 ## Policy
 
 `automation_policy.yaml` controls the automation boundary:
@@ -185,6 +191,9 @@ important review fields are:
 - `learning_policy`: bounded priority hints derived from feedback events. Use
   it to guide future Dream or curator ordering, not to auto-promote or bypass
   access policy.
+- `dream.learning_policy`: whether the Dream run loaded a learning policy and
+  how many candidate suggestions received a matching rule. Automation report
+  summaries expose the same status so scheduled agents can monitor it cheaply.
 
 This gives agents a small, structured handoff: they can summarize the report,
 but the source of truth remains the machine-readable ledger.

@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## [0.6.57] - 2026-06-23
+
+### Added
+
+- Added Dream learning-policy ranking so `vault dream` and `vault automation run` can read `reports/automation/learning_policy.json` and annotate/sort candidate suggestions with bounded priority hints.
+- Added automation report summary fields for Dream learning-policy status and applied-rule counts.
+
+### Fixed
+
+- Excluded `reports/automation/learning_policy.json` from `vault automation report --latest` so handoff artifacts are not mistaken for timestamped automation run reports.
+
+### Changed
+
+- Updated install examples and release claim checks for `0.6.57`.
+
 ## [0.6.56] - 2026-06-23
 
 ### Added

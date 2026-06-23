@@ -179,6 +179,52 @@ def test_automation_run_balanced_writes_dream_candidates_by_policy(tmp_path):
     assert {item["memory_type"] for item in candidates} == {"dream_suggestion"}
 
 
+def test_automation_report_summarizes_dream_learning_policy(tmp_path):
+    project = _init_project(tmp_path)
+    policy_dir = project / "reports" / "automation"
+    policy_dir.mkdir(parents=True)
+    (policy_dir / "learning_policy.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "generated_at": "2026-06-23T00:00:00+00:00",
+                "readiness": "learning",
+                "event_count": 6,
+                "rules": [
+                    {
+                        "selector": {
+                            "source": "dream",
+                            "memory_type": "dream_suggestion",
+                            "category": "dream-review",
+                        },
+                        "action": "prefer_candidates",
+                        "recommendation": "prefer",
+                        "priority_multiplier": 1.15,
+                        "confidence": 0.9,
+                        "reason": "Dream suggestions are often promoted.",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with VaultDB(project / "vault.db") as db:
+        db.add_knowledge(
+            "Learning policy automation item",
+            "Automation should include Dream learning-policy status in report summaries.",
+            category="general",
+            tags="",
+            trust=0.3,
+        )
+
+    run = automation_run(project, mode="balanced", apply=True, limit=10, write_reports=True)
+    latest = automation_report(project, latest=True, detail=False)
+
+    assert run["dream"]["learning_policy"]["applied_rules"] >= 1
+    assert latest["report"]["dream_learning_policy_status"] == "loaded"
+    assert latest["report"]["dream_learning_policy_applied_rules"] == run["dream"]["learning_policy"]["applied_rules"]
+
+
 def test_automation_run_balanced_skips_existing_dream_candidates(tmp_path):
     project = _init_project(tmp_path)
     with VaultDB(project / "vault.db") as db:

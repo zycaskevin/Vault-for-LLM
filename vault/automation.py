@@ -298,7 +298,7 @@ def automation_report(
             "status": "completed" if data else "unreadable",
         }
 
-    reports = sorted(report_dir.glob("*.json"), reverse=True)[: max(1, int(limit or 5))]
+    reports = _automation_report_files(report_dir)[: max(1, int(limit or 5))]
     items = []
     for path in reports:
         items.append(_report_summary(project, path, _read_report(path)))
@@ -849,6 +849,8 @@ def _report_summary(project: Path, path: Path, data: dict[str, Any]) -> dict[str
     ledger = data.get("action_ledger") or []
     archive = data.get("archive_expired") or {}
     forgetting = data.get("forgetting") or {}
+    dream = data.get("dream") or {}
+    dream_learning = dream.get("learning_policy") or {}
     return {
         "path": str(path.relative_to(project)),
         "generated_at": data.get("generated_at", ""),
@@ -857,10 +859,12 @@ def _report_summary(project: Path, path: Path, data: dict[str, Any]) -> dict[str
         "apply": bool(data.get("apply", False)),
         "human_review": data.get("human_review", {}),
         "report_path": data.get("report_path", ""),
-        "dream_report_path": (data.get("dream") or {}).get("report_path", ""),
-        "dream_candidate_suggestions": int(((data.get("dream") or {}).get("summary") or {}).get("candidate_suggestions") or 0),
-        "dream_candidates_written": int(((data.get("dream") or {}).get("summary") or {}).get("candidates_written") or 0),
-        "dream_candidates_skipped_existing": int(((data.get("dream") or {}).get("summary") or {}).get("candidates_skipped_existing") or 0),
+        "dream_report_path": dream.get("report_path", ""),
+        "dream_candidate_suggestions": int((dream.get("summary") or {}).get("candidate_suggestions") or 0),
+        "dream_candidates_written": int((dream.get("summary") or {}).get("candidates_written") or 0),
+        "dream_candidates_skipped_existing": int((dream.get("summary") or {}).get("candidates_skipped_existing") or 0),
+        "dream_learning_policy_status": dream_learning.get("status", ""),
+        "dream_learning_policy_applied_rules": int(dream_learning.get("applied_rules") or 0),
         "forgetting_candidate_suggestions": int(forgetting.get("candidate_suggestions") or 0),
         "forgetting_candidates_written": int(forgetting.get("candidates_written") or 0),
         "forgetting_candidates_skipped_existing": int(forgetting.get("candidates_skipped_existing") or 0),
@@ -902,9 +906,17 @@ def _resolve_report_path(
             raise FileNotFoundError(str(resolved))
         return resolved
     if latest:
-        reports = sorted(report_dir.glob("*.json"), reverse=True)
+        reports = _automation_report_files(report_dir)
         return reports[0] if reports else None
     return None
+
+
+def _automation_report_files(report_dir: Path) -> list[Path]:
+    """Return timestamped automation run reports, excluding handoff artifacts."""
+    return sorted(
+        (path for path in report_dir.glob("*.json") if path.name != "learning_policy.json"),
+        reverse=True,
+    )
 
 
 def _archive_action_ledger(archive_result: dict[str, Any], *, applied: bool) -> list[dict[str, Any]]:

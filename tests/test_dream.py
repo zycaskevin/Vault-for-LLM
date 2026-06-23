@@ -148,6 +148,75 @@ def test_dream_write_candidates_skips_existing_suggestions(tmp_path):
         assert len(db.list_memory_candidates()) == 1
 
 
+def test_dream_learning_policy_prioritizes_candidate_suggestions(tmp_path):
+    policy_dir = tmp_path / "reports" / "automation"
+    policy_dir.mkdir(parents=True)
+    (policy_dir / "learning_policy.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "generated_at": "2026-06-23T00:00:00+00:00",
+                "readiness": "learning",
+                "event_count": 6,
+                "rules": [
+                    {
+                        "selector": {
+                            "source": "dream",
+                            "memory_type": "dream_suggestion",
+                            "category": "dream-review",
+                        },
+                        "action": "prefer_candidates",
+                        "recommendation": "prefer",
+                        "priority_multiplier": 1.15,
+                        "confidence": 0.9,
+                        "reason": "Dream suggestions are often promoted.",
+                    }
+                ],
+                "bounds": {
+                    "no_auto_promote": True,
+                    "no_auto_delete": True,
+                    "respect_privacy_and_access_policy": True,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    with VaultDB(tmp_path / "vault.db") as db:
+        db.add_knowledge(
+            title="Learning policy Dream item",
+            content_raw="Dream should annotate this suggestion with learning metadata.",
+            source="test",
+            category="general",
+            tags="",
+            trust=0.3,
+        )
+
+    payload = run_dream(
+        tmp_path,
+        mode="report",
+        checks=["metadata"],
+        limit=5,
+        write_candidates=True,
+        write_report=True,
+    )
+
+    assert payload["learning_policy"]["status"] == "loaded"
+    assert payload["learning_policy"]["applied_rules"] == 1
+    suggestion = payload["candidate_suggestions"][0]
+    assert suggestion["learning_priority"] == 1.15
+    assert suggestion["learning"]["action"] == "prefer_candidates"
+    assert "Learning hint: prefer_candidates" in suggestion["reason"]
+    assert payload["candidate_results"][0]["learning"]["action"] == "prefer_candidates"
+    report_text = (tmp_path / payload["report_path"]).read_text(encoding="utf-8")
+    assert "Learning policy" in report_text
+    with VaultDB(tmp_path / "vault.db") as db:
+        candidates = db.list_memory_candidates()
+        active = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge").fetchone()["n"]
+    assert len(candidates) == 1
+    assert "Learning hint: prefer_candidates" in candidates[0]["reason"]
+    assert active == 1
+
+
 def test_dream_apply_safe_updates_low_risk_metadata_and_backs_up(tmp_path):
     with VaultDB(tmp_path / "vault.db") as db:
         kid = db.add_knowledge(

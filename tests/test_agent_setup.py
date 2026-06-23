@@ -391,7 +391,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.56" in captured.out
+    assert "vault-for-llm 0.6.57" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -559,7 +559,7 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.6.56" in body
+    assert "vault-for-llm[mcp,supabase]==0.6.57" in body
     assert "headroom-ai" in body
     assert "--agent-project-dir" in body
     assert str(project) in body

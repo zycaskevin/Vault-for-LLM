@@ -10,6 +10,8 @@ with the daily loop in the README and only use these commands when needed.
 | `vault init` | Initialize a project vault |
 | `vault setup-agent` / `vault install-agent` | Run the agent installer wizard and optional Obsidian sync template generator |
 | `vault remember "Title" --content "..." --reason "..."` | Propose candidate memory for review |
+| `vault capture session codex-session.jsonl --pretty` | Preview candidate memories extracted from an agent session transcript |
+| `vault capture session codex-session.jsonl --write-candidates` | Write extracted session lessons into the candidate queue, not active knowledge |
 | `vault candidates` | List pending candidate memories without dumping full raw content |
 | `vault promote <candidate_id> --confirm` | Promote reviewed candidate memory |
 | `vault compile` | Compile `raw/` into SQLite and generated artifacts |
@@ -113,6 +115,7 @@ For per-tool MCP examples, see `docs/mcp_tool_reference.md`.
 | `vault dream` | Produce report-first memory curation summaries |
 | `vault candidates --include-gates` | Review candidate-memory queue and gate details before promotion |
 | `vault candidate-review <id> --outcome rejected --reason "..."` | Record rejected/blocked candidate feedback without promoting memory |
+| `vault capture session <transcript> --write-candidates` | Capture decisions, pitfalls, workflows, and source-of-truth lines from JSONL/Markdown/text transcripts as gated candidates |
 | `vault automation plan --write-policy` | Create a policy-based maintenance plan and starter `automation_policy.yaml` |
 | `vault automation run` / `vault automation run --apply` | Run report-first memory automation; reports include a dry-run diff and action ledger, and `--apply` only performs policy-allowed reversible actions |
 | `vault automation cycle --apply` | Run one safe feedback-to-curation loop: evaluate reviewed candidate outcomes, write `learning_policy.json`, then run policy-based automation so Dream can consume the latest hints |

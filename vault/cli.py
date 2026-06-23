@@ -1809,6 +1809,38 @@ def cmd_candidates(args):
     _json_print(payload, pretty=args.pretty)
 
 
+def cmd_capture(args):
+    """Capture agent/session artifacts into reviewable memory candidates."""
+    if args.capture_action != "session":
+        print("用法: vault capture session <transcript>", file=sys.stderr)
+        raise SystemExit(2)
+    from vault.db import VaultDB
+    from vault.session_capture import capture_session_candidates
+
+    project_dir = find_project_dir()
+    try:
+        with VaultDB(project_dir / "vault.db") as db:
+            payload = capture_session_candidates(
+                db,
+                args.transcript,
+                input_format=args.format,
+                source_system=args.source_system,
+                agent_id=args.agent_id,
+                write_candidates=bool(args.write_candidates),
+                max_candidates=args.max_candidates,
+                min_score=args.min_score,
+                scope=args.scope,
+                sensitivity=args.sensitivity,
+                owner_agent=args.owner_agent,
+                allowed_agents=args.allowed_agents,
+                include_content=bool(args.include_content),
+            )
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+    _json_print(payload, pretty=args.pretty)
+
+
 def cmd_dream(args):
     """Run a deterministic report-first dream curation pass."""
     from vault.dream import run_dream
@@ -2781,6 +2813,24 @@ def main(argv: list[str] | None = None):
     p.add_argument("--include-gates", action="store_true", help="包含完整 gate payload")
     p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
+    # capture — agent/session artifacts into candidate memory
+    p = sub.add_parser("capture", help="從 agent/session artifact 擷取候選記憶")
+    capture_sub = p.add_subparsers(dest="capture_action", help="Capture 子命令")
+    sp = capture_sub.add_parser("session", help="從 session transcript 擷取候選記憶")
+    sp.add_argument("transcript", help="JSONL、Markdown 或文字 transcript 檔案")
+    sp.add_argument("--format", choices=["auto", "jsonl", "markdown", "text"], default="auto")
+    sp.add_argument("--source-system", default="auto", help="來源系統，例如 codex/hermes/openclaw/claude-code")
+    sp.add_argument("--agent-id", default="", help="產生候選的 agent id")
+    sp.add_argument("--write-candidates", action="store_true", help="寫入 memory_candidates；預設只做 dry-run preview")
+    sp.add_argument("--max-candidates", "-n", type=int, default=20)
+    sp.add_argument("--min-score", type=float, default=0.55)
+    sp.add_argument("--scope", choices=["private", "project", "shared", "public"], default="project")
+    sp.add_argument("--sensitivity", choices=["low", "medium", "high", "restricted"], default="low")
+    sp.add_argument("--owner-agent", default="")
+    sp.add_argument("--allowed-agents", default="")
+    sp.add_argument("--include-content", action="store_true", help="包含完整候選內容；預設只回 content_preview")
+    sp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
     # compile
     p = sub.add_parser("compile", help="編譯 raw/ → db + compiled/")
     p.add_argument("--dry-run", action="store_true")
@@ -3328,6 +3378,7 @@ def main(argv: list[str] | None = None):
         "promote": cmd_promote,
         "candidate-review": cmd_candidate_review,
         "candidates": cmd_candidates,
+        "capture": cmd_capture,
         "compile": cmd_compile,
         "search": cmd_search,
         "list": cmd_list,

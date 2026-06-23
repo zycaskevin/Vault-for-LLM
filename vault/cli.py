@@ -312,6 +312,19 @@ def cmd_search(args):
         db.close()
         raise SystemExit(2) from exc
 
+    if bool(_arg_value(args, "json", False)):
+        payload = {
+            "query": args.query,
+            "requested_mode": mode,
+            "mode": results[0].get("_mode", mode) if results else mode,
+            "count": len(results),
+            "results": results,
+        }
+        indent = 2 if bool(_arg_value(args, "pretty", False)) else None
+        print(json.dumps(payload, ensure_ascii=False, indent=indent, default=str))
+        db.close()
+        return
+
     if not results:
         print("🔍 沒有找到匹配的知識")
     else:
@@ -2654,6 +2667,8 @@ def main(argv: list[str] | None = None):
     p.add_argument("--agent-id", default="", help="可選 Agent 身份；提供後套用治理 metadata 讀取過濾")
     p.add_argument("--include-private", action="store_true", help="搭配 --agent-id 允許讀取 owner/allow-list 授權的 private 記憶")
     p.add_argument("--max-sensitivity", choices=["", "low", "medium", "high", "restricted"], default="", help="最高可讀敏感度")
+    p.add_argument("--json", action="store_true", help="輸出 JSON")
+    p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     # list
     p = sub.add_parser("list", help="列出知識")

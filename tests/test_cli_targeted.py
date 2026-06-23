@@ -1,10 +1,12 @@
 """Targeted CLI tests to cover specific untested code paths."""
 
+import json
 import pytest
 import os
 import sys
 import tempfile
 from pathlib import Path
+from argparse import Namespace
 from unittest.mock import patch, MagicMock
 from io import StringIO
 
@@ -289,6 +291,42 @@ class TestCmdSearch:
         cmd_search(args)
         captured = capsys.readouterr()
         assert captured.out is not None
+
+    def test_search_json_output(self, initialized_project, monkeypatch, capsys):
+        """Test machine-readable search output for agents."""
+        from vault.cli import cmd_search
+
+        monkeypatch.chdir(initialized_project)
+        args = Namespace(
+            query="test",
+            mode="keyword",
+            keyword_only=True,
+            graph_expand=0,
+            limit=3,
+            min_trust=0.0,
+            min_score=None,
+            layer=None,
+            category=None,
+            semantic_vector_kind="claim",
+            allow_hash=False,
+            hash_dim=32,
+            no_rerank=True,
+            agent_id="",
+            include_private=False,
+            max_sensitivity="",
+            json=True,
+            pretty=True,
+        )
+
+        cmd_search(args)
+        payload = json.loads(capsys.readouterr().out)
+
+        assert payload["query"] == "test"
+        assert payload["requested_mode"] == "keyword"
+        assert payload["mode"] == "keyword_fts"
+        assert payload["count"] <= 3
+        assert payload["results"]
+        assert payload["results"][0]["title"].startswith("Test Entry")
 
 
 class TestCmdGraph:
@@ -650,4 +688,3 @@ class TestMiscHelpers:
         monkeypatch.chdir(subdir)
         result = find_project_dir()
         assert result == initialized_project
-

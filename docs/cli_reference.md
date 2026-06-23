@@ -88,6 +88,7 @@ For per-tool MCP examples, see `docs/mcp_tool_reference.md`.
 | Command | Purpose |
 |---|---|
 | `vault search "query"` | Search the vault; use `--min-score` to tune weak-match suppression |
+| `vault search "query" --json` | Return machine-readable search results for agents, scripts, and automation smoke tests |
 | `vault search "query" --graph-expand 2` | Search with graph expansion |
 | `vault map build` | Build/backfill Document Map rows |
 | `vault map show <id>` | Show a knowledge entry's section map |

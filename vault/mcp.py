@@ -523,6 +523,251 @@ def _vault_remote_search_payload(
     }
 
 
+def _remote_doctor_mark(payload: dict, name: str, status: str, detail: str = "") -> None:
+    payload.setdefault("checks", {})[name] = status
+    if detail:
+        payload.setdefault("details", {})[name] = detail
+
+
+def _remote_doctor_safe_detail(exc: Exception) -> str:
+    detail = str(exc or "")
+    try:
+        from vault.privacy import redact_secrets
+
+        detail = redact_secrets(detail)
+    except Exception:
+        detail = re.sub(r"(?i)(token|key|secret|password)=([^\s&]+)", r"\1=[REDACTED]", detail)
+    detail = re.sub(r"https://[^\s]+\.supabase\.co", "https://[SUPABASE_PROJECT].supabase.co", detail)
+    return detail[:300]
+
+
+def _remote_doctor_fail(
+    payload: dict,
+    *,
+    failure_mode: str,
+    next_action: str,
+    check: str = "",
+    detail: str = "",
+) -> dict:
+    if check:
+        _remote_doctor_mark(payload, check, "fail", detail)
+    payload["ok"] = False
+    payload["failure_mode"] = failure_mode
+    payload["next_action"] = next_action
+    return payload
+
+
+def _remote_doctor_rpc(
+    sb_client,
+    function_name: str,
+    params: dict,
+) -> tuple[bool, list[dict], str]:
+    try:
+        rows = _supabase_rpc(sb_client, function_name, params)
+        return True, rows, ""
+    except Exception as exc:
+        return False, [], _remote_doctor_safe_detail(exc)
+
+
+def _vault_remote_doctor_payload(
+    query: str = "",
+    *,
+    agent_id: str = "",
+    include_private: bool = False,
+    max_sensitivity: str = "medium",
+    limit: int = 3,
+    sb_client=None,
+) -> dict:
+    """Diagnose the complete Supabase remote reader path without exposing content."""
+    limit = _clamp_int(limit, default=3, minimum=1, maximum=MCP_SEARCH_MAX_LIMIT)
+    payload: dict = {
+        "source": "supabase",
+        "check": "remote_doctor",
+        "ok": False,
+        "query": str(query or ""),
+        "agent_id": str(agent_id or ""),
+        "checks": {},
+        "counts": {},
+    }
+
+    sb_client = sb_client or _get_supabase_client()
+    if sb_client is None:
+        return _remote_doctor_fail(
+            payload,
+            failure_mode="remote_client_missing",
+            next_action="Set SUPABASE_URL and SUPABASE_ANON_KEY/SUPABASE_KEY, then retry.",
+            check="remote_client",
+            detail="Supabase client could not be created.",
+        )
+    _remote_doctor_mark(payload, "remote_client", "pass")
+
+    search = _vault_remote_search_payload(
+        query,
+        agent_id=agent_id,
+        include_private=include_private,
+        max_sensitivity=max_sensitivity,
+        limit=limit,
+        compact=True,
+        sb_client=sb_client,
+    )
+    payload["counts"]["search_results"] = int(search.get("count") or 0)
+    if search.get("error"):
+        return _remote_doctor_fail(
+            payload,
+            failure_mode="remote_search_failed",
+            next_action="Apply docs/supabase_read_policy.sql and verify vault_search_readable is granted to anon/authenticated.",
+            check="remote_search",
+            detail=str(search.get("message") or search.get("error") or ""),
+        )
+    _remote_doctor_mark(payload, "remote_search", "pass")
+
+    results = search.get("results") or []
+    if not results:
+        return _remote_doctor_fail(
+            payload,
+            failure_mode="no_search_results",
+            next_action="Try a broader --query or verify the agent policy can read at least one memory.",
+            check="sample_result",
+            detail="vault_search_readable returned zero rows.",
+        )
+
+    sample = results[0]
+    remote_id = sample.get("id")
+    normalized_id = _normalize_remote_knowledge_id(remote_id)
+    if normalized_id is None:
+        return _remote_doctor_fail(
+            payload,
+            failure_mode="invalid_remote_id",
+            next_action="Upgrade to v0.6.61+ and ensure vault_search_readable returns an integer ID or UUID text.",
+            check="sample_id",
+            detail="Search returned an ID that remote map/read cannot use.",
+        )
+    remote_id = normalized_id
+    id_type = "uuid" if isinstance(remote_id, str) and REMOTE_UUID_RE.match(remote_id) else "integer"
+    payload["sample"] = {
+        "id_type": id_type,
+        "id_preview": f"{str(remote_id)[:8]}..." if isinstance(remote_id, str) else remote_id,
+        "title": sample.get("title"),
+    }
+    _remote_doctor_mark(payload, "sample_id", "pass")
+    _remote_doctor_mark(payload, "uuid_id" if id_type == "uuid" else "integer_id", "pass")
+
+    policy_params = _remote_policy_params(
+        agent_id=agent_id,
+        include_private=include_private,
+        max_sensitivity=max_sensitivity,
+    )
+    id_params = {**policy_params, "p_knowledge_id": remote_id}
+
+    rpc_checks = [
+        ("remote_get", "vault_get_readable", "missing_get_rpc"),
+        ("remote_nodes_rpc", "vault_nodes_readable", "missing_nodes_rpc"),
+        ("remote_claims_rpc", "vault_claims_readable", "missing_claims_rpc"),
+        ("remote_content_rpc", "vault_content_readable", "missing_content_rpc"),
+    ]
+    rpc_rows: dict[str, list[dict]] = {}
+    for check_name, function_name, failure_mode in rpc_checks:
+        ok, rows, detail = _remote_doctor_rpc(sb_client, function_name, id_params)
+        if not ok:
+            return _remote_doctor_fail(
+                payload,
+                failure_mode=failure_mode,
+                next_action="Reapply docs/supabase_read_policy.sql, then run `notify pgrst, 'reload schema';`.",
+                check=check_name,
+                detail=detail,
+            )
+        _remote_doctor_mark(payload, check_name, "pass")
+        rpc_rows[function_name] = rows
+
+    payload["counts"]["get_rows"] = len(rpc_rows["vault_get_readable"])
+    payload["counts"]["nodes_for_sample"] = len(rpc_rows["vault_nodes_readable"])
+    payload["counts"]["claims_for_sample"] = len(rpc_rows["vault_claims_readable"])
+    payload["counts"]["content_rows"] = len(rpc_rows["vault_content_readable"])
+
+    if not rpc_rows["vault_get_readable"]:
+        return _remote_doctor_fail(
+            payload,
+            failure_mode="sample_not_readable",
+            next_action="Check scope/sensitivity/owner_agent/allowed_agents for the sample memory.",
+            check="remote_get_result",
+            detail="vault_get_readable returned zero rows for the search result.",
+        )
+    _remote_doctor_mark(payload, "remote_get_result", "pass")
+
+    if not rpc_rows["vault_nodes_readable"]:
+        return _remote_doctor_fail(
+            payload,
+            failure_mode="missing_document_map_rows",
+            next_action="Run Document Map sync/backfill so vault_knowledge_nodes has rows for remote map/read.",
+            check="document_map_nodes",
+            detail="vault_nodes_readable returned zero rows for the search result.",
+        )
+    _remote_doctor_mark(payload, "document_map_nodes", "pass")
+
+    if not rpc_rows["vault_claims_readable"]:
+        _remote_doctor_mark(
+            payload,
+            "document_map_claims",
+            "warn",
+            "vault_claims_readable returned zero rows for the sample; content_raw reads may still work.",
+        )
+    else:
+        _remote_doctor_mark(payload, "document_map_claims", "pass")
+
+    map_payload = _vault_remote_map_show_payload(
+        remote_id,
+        compact=True,
+        agent_id=agent_id,
+        include_private=include_private,
+        max_sensitivity=max_sensitivity,
+        sb_client=sb_client,
+    )
+    if map_payload.get("error"):
+        return _remote_doctor_fail(
+            payload,
+            failure_mode=str(map_payload.get("failure_mode") or map_payload.get("error")),
+            next_action="Check remote map/read RPC grants and Document Map sync state.",
+            check="remote_map",
+            detail=str(map_payload.get("message") or map_payload.get("error") or ""),
+        )
+    _remote_doctor_mark(payload, "remote_map", "pass")
+    payload["counts"]["map_nodes"] = len(map_payload.get("nodes") or [])
+
+    action_args = (map_payload.get("next_action") or {}).get("arguments") or {}
+    if action_args:
+        read_payload = _vault_remote_read_range_payload(
+            action_args.get("knowledge_id", remote_id),
+            node_uid=action_args.get("node_uid", ""),
+            line_start=action_args.get("line_start", 0),
+            line_end=action_args.get("line_end", 0),
+            agent_id=agent_id,
+            include_private=include_private,
+            max_sensitivity=max_sensitivity,
+            sb_client=sb_client,
+        )
+        if read_payload.get("error"):
+            return _remote_doctor_fail(
+                payload,
+                failure_mode=str(read_payload.get("failure_mode") or read_payload.get("error")),
+                next_action="Check vault_content_readable, vault_claims_readable, and synced line ranges.",
+                check="remote_read",
+                detail=str(read_payload.get("message") or read_payload.get("error") or ""),
+            )
+        _remote_doctor_mark(payload, "remote_read", "pass")
+        payload["read"] = {
+            "source": read_payload.get("source"),
+            "range": read_payload.get("range"),
+            "has_content": bool(read_payload.get("content")),
+            "citation_preview": str(read_payload.get("citation") or "")[:120],
+        }
+    else:
+        _remote_doctor_mark(payload, "remote_read", "warn", "remote map did not return a read next_action.")
+
+    payload["ok"] = True
+    payload["next_action"] = None
+    return payload
+
+
 def _sort_remote_nodes(rows: list[dict]) -> list[dict]:
     return sorted(
         rows,

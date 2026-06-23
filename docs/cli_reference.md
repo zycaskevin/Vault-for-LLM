@@ -16,6 +16,7 @@ with the daily loop in the README and only use these commands when needed.
 | `vault search "query"` | Search the vault |
 | `vault map read <id> --lines 10-30` | Read a bounded source range for citation |
 | `vault remote smoke --agent-id remote-agent --query "deployment SOP" --json` | Verify Supabase remote reader credentials and the `vault_search_readable` RPC |
+| `vault remote doctor --agent-id remote-agent --query "deployment SOP" --json` | Diagnose the full Supabase remote reader path: search, readable-entry RPCs, Document Map, claims, content, map, and bounded read |
 | `vault remote search "query" --agent-id remote-agent --json` | Search the Supabase read-only memory view through `vault_search_readable` |
 | `vault remote map <id> --compact --json` | Inspect remote synced Document Map rows |
 | `vault remote read <id> --node-uid <node> --json` | Read remote bounded evidence from synced content/claims |
@@ -84,6 +85,9 @@ For MCP remote readers, use `vault-mcp --tool-profile remote` and the sequence
 after applying `docs/supabase_read_policy.sql` in Supabase.
 Remote IDs can be local integers or Supabase UUIDs; pass the ID returned by
 search directly into map/read.
+Use `vault remote doctor --agent-id <agent> --json` when search works but
+map/read fails, or after applying remote-reader SQL. It returns safe status
+checks, counts, and next actions without dumping raw synced content.
 For per-tool MCP examples, see `docs/mcp_tool_reference.md`.
 
 ## Search And Navigation

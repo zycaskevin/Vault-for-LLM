@@ -214,7 +214,13 @@ After applying `docs/supabase_read_policy.sql`, verify the remote reader path:
 export SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 export SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 vault remote smoke --agent-id remote-agent --query "deployment SOP" --json
+vault remote doctor --agent-id remote-agent --query "deployment SOP" --json
 ```
+
+`vault remote smoke` checks the basic search RPC. `vault remote doctor` checks
+the full remote-reader path: search, readable-entry RPCs, Document Map nodes,
+claims, content access, map, and bounded read. It returns status checks and next
+actions without printing raw synced content.
 
 Remote readers must not receive `SUPABASE_SERVICE_ROLE_KEY`.
 

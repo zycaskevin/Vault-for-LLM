@@ -331,6 +331,28 @@ class TestRemoteCli:
         assert payload["search"]["count"] == 1
         assert payload["search"]["results"][0]["next_action"]["tool"] == "vault_remote_map_show"
 
+    def test_remote_doctor_json(self, monkeypatch, capsys):
+        from vault.cli import main
+        from vault import mcp
+
+        monkeypatch.setattr(mcp, "_get_supabase_client", lambda: _RemoteClient())
+
+        main([
+            "remote",
+            "doctor",
+            "--agent-id",
+            "remote-agent",
+            "--query",
+            "Safe",
+            "--json",
+        ])
+
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["ok"] is True
+        assert payload["checks"]["remote_search"] == "pass"
+        assert payload["checks"]["remote_read"] == "pass"
+        assert payload["counts"]["nodes_for_sample"] == 1
+
 
 class TestJsonPrint:
     def test_json_print_basic(self, capsys):

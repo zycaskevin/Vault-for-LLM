@@ -52,8 +52,8 @@ default small and local.
 
 | Feature | Default | Install when | Install command |
 |---|---|---|---|
-| `core` | yes | Always: Markdown, SQLite, keyword search, local CLI. | `python -m pip install vault-for-llm==0.6.61` |
-| `mcp` | yes for MCP-capable agents | The runtime can connect local stdio MCP tools. | `python -m pip install "vault-for-llm[mcp]==0.6.61"` |
+| `core` | yes | Always: Markdown, SQLite, keyword search, local CLI. | `python -m pip install vault-for-llm==0.6.62` |
+| `mcp` | yes for MCP-capable agents | The runtime can connect local stdio MCP tools. | `python -m pip install "vault-for-llm[mcp]==0.6.62"` |
 | `obsidian_import` | no | The user already has an Obsidian vault and wants those notes searchable through Vault. | built into core CLI |
 | `semantic` | no | The user wants embedding-backed semantic or hybrid search. | `python -m pip install "vault-for-llm[semantic]"` |
 | `supabase` | no | The user wants optional remote sync/read paths. | `python -m pip install "vault-for-llm[supabase]"` |
@@ -86,6 +86,7 @@ python -m scripts.sync_to_supabase --db /path/to/project/vault.db --document-map
 
 # after applying docs/supabase_read_policy.sql, non-MCP automation can read remotely
 vault remote smoke --agent-id remote-agent --query "deployment SOP" --json
+vault remote doctor --agent-id remote-agent --query "deployment SOP" --json
 vault remote search "deployment SOP" --agent-id remote-agent --json
 vault remote map 12 --compact --json
 vault remote read 12 --node-uid node_install --json
@@ -113,6 +114,9 @@ vault setup-agent \
 - `remote-reader.env.example` with anon-key placeholders only.
 
 Remote readers should use `SUPABASE_ANON_KEY` or a scoped authenticated token.
+Use `vault remote doctor` after SQL changes or sync runs when you need to
+confirm the complete search -> map -> read path before giving the workflow to
+Coze, n8n, OpenClaw, Claude Code, Codex, or another agent runtime.
 Keep `SUPABASE_SERVICE_ROLE_KEY` only on trusted sync hosts.
 
 `--agent-roster` writes a reviewed multi-agent access matrix and per-agent env

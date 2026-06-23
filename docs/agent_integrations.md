@@ -275,3 +275,6 @@ extra tools are needed. For cross-host Supabase readers, the `remote` profile
 adds `vault_remote_search`, `vault_remote_map_show`, and
 `vault_remote_read_range`; use them in that order so hosted agents search safe
 summaries before asking for bounded evidence.
+
+For per-tool JSON examples and common integration mistakes, see
+[`docs/mcp_tool_reference.md`](mcp_tool_reference.md).

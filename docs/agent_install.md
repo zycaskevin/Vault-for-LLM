@@ -259,6 +259,9 @@ vault-mcp --project-dir ~/Vaults/project-memory --tool-profile core
 `vault-mcp` is local stdio. Do not expose it as an unauthenticated network
 service.
 
+For per-tool examples and agent-facing rules, see
+[`docs/mcp_tool_reference.md`](mcp_tool_reference.md).
+
 ## Smoke Test
 
 After setup, verify the selected project directory:

@@ -57,7 +57,7 @@ Vault-for-LLM 可能不是第一个该拿起来的工具。
 最推荐的方式，是直接把这段交给能执行本机命令的 Agent：
 
 ```text
-帮这个项目安装 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.52。
+帮这个项目安装 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.53。
 先问我要 shared、private、domain-specific 还是 temporary vault。
 询问稳定的 project directory，并为长期任务生成 stable venv script。
 逐项询问 MCP、semantic search、Supabase、Obsidian import、Headroom 压缩、
@@ -70,7 +70,7 @@ Agent 会使用安装精灵：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.52"
+pip install "vault-for-llm[mcp]==0.6.53"
 
 vault setup-agent
 ```
@@ -97,7 +97,7 @@ vault setup-agent \
 ### 手动快速开始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.52"
+pip install "vault-for-llm[mcp]==0.6.53"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -211,7 +211,7 @@ SQLite 仍然是 source of truth。Supabase 是可选的共享层。
 当不同主机、n8n、Coze 或 hosted agent 需要读取共享记忆时，可以同步安全摘要：
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.52"
+pip install "vault-for-llm[supabase]==0.6.53"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

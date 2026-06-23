@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.52.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.53.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,7 +83,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.52"
+pip install "vault-for-llm[mcp]==0.6.53"
 
 vault setup-agent
 ```
@@ -110,7 +110,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.52"
+pip install "vault-for-llm[mcp]==0.6.53"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -236,7 +236,7 @@ Use it when agents on different machines or hosted platforms need to read a
 shared, filtered copy of reviewed project memory.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.52"
+pip install "vault-for-llm[supabase]==0.6.53"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

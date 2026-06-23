@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.6.53] - 2026-06-23
+
+### Added
+
+- Added Dream candidate suggestions so memory-cleanup reports can propose reviewable `memory_candidate` rows instead of only producing static findings.
+- Added policy-gated Dream candidate writes with `dream_write_candidates`; candidate writes require `vault automation run --apply` and stay disabled in conservative mode.
+- Added forgetting review candidates with `forgetting_write_candidates` so expired but still-used or policy-protected memories can enter a review queue without being archived automatically.
+
+### Changed
+
+- Updated automation reports and CLI summaries with Dream and forgetting candidate counts so agents can explain what was suggested, written, skipped, and left for human review.
+- De-duplicated automation-generated candidates by `source_ref` so repeated scheduled runs do not flood the candidate queue.
+
 ## [0.6.52] - 2026-06-23
 
 ### Added

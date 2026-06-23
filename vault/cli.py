@@ -30,8 +30,13 @@ from pathlib import Path
 
 # ── 專案偵測 ─────────────────────────────────────────────
 
+_PROJECT_DIR_OVERRIDE: Path | None = None
+
+
 def find_project_dir() -> Path:
     """往上找含有 vault.db 或 raw/ 的目錄。"""
+    if _PROJECT_DIR_OVERRIDE is not None:
+        return _PROJECT_DIR_OVERRIDE
     cwd = Path.cwd()
     for d in [cwd] + list(cwd.parents):
         if (d / "vault.db").exists() or (d / "raw").is_dir():
@@ -2456,6 +2461,7 @@ def _add_governance_args(parser: argparse.ArgumentParser) -> None:
 
 
 def main(argv: list[str] | None = None):
+    global _PROJECT_DIR_OVERRIDE
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     normalized_argv, explicit_project_dir = _extract_project_dir_arg(raw_argv)
 
@@ -3001,13 +3007,16 @@ def main(argv: list[str] | None = None):
 
     args = parser.parse_args(normalized_argv)
 
+    previous_project_dir_override = _PROJECT_DIR_OVERRIDE
     if explicit_project_dir:
         if args.command == "init":
             args.project_dir = explicit_project_dir
         elif args.command in {"setup-agent", "install-agent"}:
             args.agent_project_dir = explicit_project_dir
         else:
-            os.chdir(explicit_project_dir)
+            project_dir = Path(explicit_project_dir).expanduser().resolve()
+            os.chdir(project_dir)
+            _PROJECT_DIR_OVERRIDE = project_dir
 
     commands = {
         "init": cmd_init,
@@ -3045,10 +3054,13 @@ def main(argv: list[str] | None = None):
         "semantic": cmd_semantic,
     }
 
-    if args.command in commands:
-        commands[args.command](args)
-    else:
-        parser.print_help()
+    try:
+        if args.command in commands:
+            commands[args.command](args)
+        else:
+            parser.print_help()
+    finally:
+        _PROJECT_DIR_OVERRIDE = previous_project_dir_override
 
 
 if __name__ == "__main__":

@@ -42,6 +42,25 @@ def test_extract_project_dir_requires_value():
         _extract_project_dir_arg(["search", "query", "--project-dir"])
 
 
+def test_explicit_project_dir_does_not_climb_to_parent_vault(tmp_path, capsys):
+    import json
+    from vault.cli import main
+
+    parent = tmp_path / "parent-vault"
+    child = parent / "empty-child"
+    main(["init", "--project-dir", str(parent)])
+    capsys.readouterr()
+    child.mkdir()
+
+    main(["--project-dir", str(child), "automation", "doctor", "--pretty"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["project_dir"] == str(child.resolve())
+    checks = {item["name"]: item for item in payload["checks"]}
+    assert checks["vault_db_exists"]["ok"] is False
+    assert checks["raw_dir_exists"]["ok"] is False
+
+
 def test_remove_requires_confirm_and_delete_alias_removes_entry(tmp_path, capsys):
     import json
     import pytest

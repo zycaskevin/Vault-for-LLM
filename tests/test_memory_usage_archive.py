@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from argparse import Namespace
 
 from vault.db import VaultDB
-from vault.search import VaultSearch
+from vault.search import VaultSearch, calc_usage_boost
 
 
 def test_memory_usage_columns_exist_on_fresh_db(tmp_path):
@@ -27,6 +27,31 @@ def test_search_records_access_counts(tmp_path):
         row = db.get_knowledge(kid)
         assert row["access_count"] == 1
         assert row["last_accessed_at"]
+
+
+def test_usage_boost_is_small_and_saturated():
+    recent = datetime.now(timezone.utc).isoformat()
+
+    low = calc_usage_boost({"access_count": 1, "citation_count": 0, "last_accessed_at": recent})
+    high = calc_usage_boost({"access_count": 10000, "citation_count": 10000, "last_accessed_at": recent})
+
+    assert low > 0
+    assert high <= 0.18
+    assert high > low
+
+
+def test_usage_boost_breaks_ties_in_lightweight_rerank(tmp_path):
+    with VaultDB(tmp_path / "vault.db") as db:
+        cold_id = db.add_knowledge("Deploy rollback SOP", "Cloudflare rollback deployment steps")
+        hot_id = db.add_knowledge("Deploy rollback SOP", "Cloudflare rollback deployment steps")
+        for _ in range(8):
+            db.record_knowledge_access([hot_id])
+
+        results = VaultSearch(db).search("Cloudflare rollback", mode="keyword", limit=5)
+
+        assert {row["id"] for row in results[:2]} == {cold_id, hot_id}
+        assert results[0]["id"] == hot_id
+        assert results[0]["_rerank_score"] > results[1]["_rerank_score"]
 
 
 def test_archived_knowledge_is_hidden_from_search_and_list(tmp_path):

@@ -159,7 +159,11 @@ Access is not controlled by layer alone. Use governance metadata for policy:
 - `memory_type`
 - `expires_at`
 
-Searches record lightweight usage counters (`access_count`, `last_accessed_at`).
+Searches record lightweight usage counters (`access_count`, `citation_count`,
+`last_accessed_at`). The default lightweight reranker uses these signals as a
+small, saturated boost, so frequently useful memories can rise slightly without
+overriding source relevance, trust, freshness, or access policy.
+
 Short-lived memories with `expires_at` can be moved to `status: archived`
 instead of deleted:
 

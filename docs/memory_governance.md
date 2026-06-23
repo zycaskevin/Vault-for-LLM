@@ -130,8 +130,11 @@ Vault records lightweight read-side signals on active memories:
   cited or used as evidence.
 - `last_accessed_at`: the most recent retrieval timestamp.
 
-These counters are not a surveillance log. They are coarse maintenance signals
-for ranking, dream reports, and archive review.
+These counters are not a surveillance log and they are not access-control
+rules. They are coarse maintenance signals for ranking, dream reports, and
+archive review. The lightweight reranker applies them as a small saturated
+boost, so a repeatedly useful memory may move up when relevance is otherwise
+similar, but it should not beat a better source just because it is popular.
 
 Short-lived memories should carry `expires_at`. Operators or maintenance agents
 can preview and apply TTL archival:

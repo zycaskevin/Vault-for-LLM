@@ -58,6 +58,37 @@ def calc_freshness(updated_at: str) -> float:
         return 0.5
 
 
+def calc_usage_boost(result: dict) -> float:
+    """Return a small saturated boost from coarse memory usage signals."""
+    from datetime import datetime, timezone
+
+    try:
+        access_count = max(0, int(result.get("access_count") or 0))
+    except (TypeError, ValueError):
+        access_count = 0
+    try:
+        citation_count = max(0, int(result.get("citation_count") or 0))
+    except (TypeError, ValueError):
+        citation_count = 0
+
+    access_boost = min(0.08, math.log1p(access_count) * 0.018)
+    citation_boost = min(0.07, math.log1p(citation_count) * 0.028)
+
+    recency_boost = 0.0
+    last_accessed_at = str(result.get("last_accessed_at") or "").strip()
+    if last_accessed_at:
+        try:
+            dt = datetime.fromisoformat(last_accessed_at.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            days = max(0, (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).days)
+            recency_boost = max(0.0, 1.0 - min(days / 30, 1.0)) * 0.03
+        except Exception:
+            recency_boost = 0.0
+
+    return round(min(0.18, access_boost + citation_boost + recency_boost), 6)
+
+
 def calc_graph_depth(result: dict) -> float:
     """
     計算圖譜深度加成（0~0.2）。
@@ -215,6 +246,9 @@ class LightweightReranker:
             # 10. 圖譜深度加成（來自原有邏輯）
             graph_bonus = calc_graph_depth(doc)
             boost += graph_bonus
+
+            # 11. 使用訊號加成：小幅、飽和，只作 tie-break / stability signal
+            boost += calc_usage_boost(doc)
 
             # 組合最終分數：原始分數 + 加成 - 懲罰
             # 原始分數有較高的基礎權重，rerank 主要做微調
@@ -2101,12 +2135,14 @@ class VaultSearch:
             freshness = max(0.0, min(1.0, freshness))
 
             graph_bonus = calc_graph_depth(r)
+            usage_boost = calc_usage_boost(r)
 
             rerank_score = (
                 base_sim * 0.5
                 + graph_bonus
                 + trust * 0.15
                 + freshness * 0.15
+                + usage_boost
             )
 
             r["_original_score"] = r.get("_score", 0.0)  # 保存 rerank 前的原始分數

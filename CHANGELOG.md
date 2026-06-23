@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.6.55] - 2026-06-23
+
+### Added
+
+- Added schema v10 `memory_feedback_events` so candidate outcomes can become auditable feedback for future automation.
+- Added outcome recording for promoted, rejected, and blocked memory candidates.
+- Added `vault automation eval` to summarize automation feedback by source, memory type, category, acceptance rate, and recommendation.
+
+### Changed
+
+- Documented the automation feedback loop as curation guidance only: it does not auto-promote candidates, hard-delete memory, or override privacy and access policy.
+- Updated install examples and release claim checks for `0.6.55`.
+
 ## [0.6.54] - 2026-06-23
 
 ### Added

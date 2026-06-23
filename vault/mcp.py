@@ -1423,6 +1423,11 @@ TOOLS = [
                 },
                 "limit": {"type": "integer", "default": 50},
                 "write_report": {"type": "boolean", "default": True},
+                "write_candidates": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Write Dream suggestions into the memory candidate queue. Never promotes automatically.",
+                },
                 "backup": {"type": "boolean", "default": True},
             }
         }
@@ -1996,6 +2001,7 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 checks=arguments.get("checks"),
                 limit=arguments.get("limit", 50),
                 write_report=bool(arguments.get("write_report", True)),
+                write_candidates=bool(arguments.get("write_candidates", False)),
                 backup=bool(arguments.get("backup", True)),
             )
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}

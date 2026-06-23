@@ -1759,6 +1759,7 @@ def cmd_dream(args):
             checks=args.checks,
             limit=args.limit,
             write_report=args.write_report,
+            write_candidates=bool(getattr(args, "write_candidates", False)),
             backup=not args.no_backup,
         )
     except Exception as exc:
@@ -2949,6 +2950,7 @@ def main(argv: list[str] | None = None):
                    help="要執行的檢查；預設全部")
     p.add_argument("--limit", "-n", type=int, default=50)
     p.add_argument("--write-report", action="store_true", help="寫入 reports/dream/*.md")
+    p.add_argument("--write-candidates", action="store_true", help="將 Dream 建議寫入候選記憶佇列；不會自動 promote")
     p.add_argument("--no-backup", action="store_true", help="apply_safe 時不建立 DB backup")
     p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 

@@ -304,3 +304,33 @@ def test_mcp_dream_run_report_only(tmp_path):
     with VaultDB(tmp_path / "vault.db") as db:
         after = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge").fetchone()["n"]
     assert after == before
+
+
+def test_mcp_dream_write_candidates_keeps_active_knowledge_unchanged(tmp_path):
+    _set_project_dir(tmp_path)
+    with VaultDB(tmp_path / "vault.db") as db:
+        db.add_knowledge(
+            title="MCP Dream candidate",
+            content_raw="MCP dream should create a review candidate because metadata needs cleanup.",
+            source="test",
+            category="general",
+            tags="",
+            trust=0.3,
+        )
+        before = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge").fetchone()["n"]
+
+    payload = _payload(handle_tool_call(
+        "vault_dream_run",
+        {"mode": "report", "checks": ["metadata"], "limit": 10, "write_candidates": True},
+    ))
+    assert payload["summary"]["candidate_suggestions"] == 1
+    assert payload["summary"]["candidates_written"] == 1
+    assert payload["candidate_results"][0]["status"] == "candidate_created"
+
+    with VaultDB(tmp_path / "vault.db") as db:
+        after = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge").fetchone()["n"]
+        candidates = db.list_memory_candidates()
+    assert after == before
+    assert len(candidates) == 1
+    assert candidates[0]["source"] == "dream"
+    assert candidates[0]["memory_type"] == "dream_suggestion"

@@ -19,6 +19,8 @@ def test_dream_report_missing_db_does_not_create_database(tmp_path):
         "weak": 0,
         "metadata": 0,
         "orphans": 0,
+        "candidate_suggestions": 0,
+        "candidates_written": 0,
         "actions_applied": 0,
     }
     assert "warning" in payload
@@ -54,8 +56,11 @@ def test_dream_report_only_does_not_mutate_active_db_or_raw(tmp_path):
     assert payload["mode"] == "report"
     assert payload["summary"]["metadata"] >= 1
     assert payload["summary"]["duplicates"] >= 1
+    assert payload["summary"]["candidate_suggestions"] >= 1
+    assert payload["summary"]["candidates_written"] == 0
     assert payload["summary"]["actions_applied"] == 0
     assert payload["proposed_actions"]
+    assert payload["candidate_suggestions"]
     assert payload["plan_path"].startswith("reports/dream/plans/")
     report = tmp_path / payload["report_path"]
     assert report.exists()
@@ -66,8 +71,45 @@ def test_dream_report_only_does_not_mutate_active_db_or_raw(tmp_path):
 
     with VaultDB(tmp_path / "vault.db") as db:
         after_rows = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge").fetchone()["n"]
+        candidates = db.conn.execute("SELECT COUNT(*) AS n FROM memory_candidates").fetchone()["n"]
     assert after_rows == before_rows
+    assert candidates == 0
     assert sorted(p.name for p in raw_dir.glob("*.md")) == raw_before
+
+
+def test_dream_write_candidates_creates_review_queue_only(tmp_path):
+    with VaultDB(tmp_path / "vault.db") as db:
+        db.add_knowledge(
+            title="Candidate suggestion item",
+            content_raw="Dream should propose a review candidate because this memory lacks strong metadata.",
+            source="test",
+            category="general",
+            tags="",
+            trust=0.3,
+        )
+        before_rows = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge").fetchone()["n"]
+
+    payload = run_dream(
+        tmp_path,
+        mode="report",
+        checks=["metadata"],
+        limit=5,
+        write_candidates=True,
+    )
+
+    assert payload["summary"]["candidate_suggestions"] == 1
+    assert payload["summary"]["candidates_written"] == 1
+    assert payload["candidate_results"][0]["status"] == "candidate_created"
+    assert "promote" in json.dumps(payload["candidate_results"][0].get("next_action", {}))
+
+    with VaultDB(tmp_path / "vault.db") as db:
+        after_rows = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge").fetchone()["n"]
+        candidates = db.list_memory_candidates()
+    assert after_rows == before_rows
+    assert len(candidates) == 1
+    assert candidates[0]["source"] == "dream"
+    assert candidates[0]["memory_type"] == "dream_suggestion"
+    assert candidates[0]["status"] == "candidate"
 
 
 def test_dream_apply_safe_updates_low_risk_metadata_and_backs_up(tmp_path):
@@ -119,5 +161,7 @@ def test_dream_cli_smoke_writes_report(tmp_path):
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["summary"]["actions_applied"] == 0
+    assert payload["summary"]["candidate_suggestions"] >= 1
+    assert payload["summary"]["candidates_written"] == 0
     assert payload["proposed_actions"]
     assert (tmp_path / payload["report_path"]).exists()

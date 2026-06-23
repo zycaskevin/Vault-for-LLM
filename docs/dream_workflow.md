@@ -36,6 +36,37 @@ Run a subset:
 vault dream --checks freshness dedup metadata --limit 20 --write-report
 ```
 
+## Candidate suggestions
+
+Dream also turns findings into reviewable memory-candidate suggestions. By default those suggestions only appear in the JSON payload and Markdown report:
+
+```json
+{
+  "candidate_suggestions": [
+    {
+      "kind": "metadata_review",
+      "title": "Review weak metadata: Deployment SOP",
+      "source": "dream",
+      "source_ref": "knowledge:42",
+      "memory_type": "dream_suggestion"
+    }
+  ]
+}
+```
+
+To write those suggestions into the candidate queue, opt in explicitly:
+
+```bash
+vault dream --mode report --checks metadata dedup freshness --write-candidates --write-report
+```
+
+This still does not promote anything into active knowledge. The resulting candidates must pass the same privacy, duplicate, metadata, and quality gates as normal `vault remember` proposals, then be reviewed with:
+
+```bash
+vault candidates
+vault promote <candidate_id> --confirm
+```
+
 ## MCP usage
 
 Compatible agents can call:
@@ -48,6 +79,7 @@ Compatible agents can call:
     "checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
     "limit": 50,
     "write_report": true,
+    "write_candidates": false,
     "backup": true
   }
 }
@@ -64,6 +96,8 @@ Return shape:
     "weak": 4,
     "metadata": 5,
     "orphans": 0,
+    "candidate_suggestions": 4,
+    "candidates_written": 0,
     "actions_applied": 0
   },
   "next_action": "Review report, then rerun with apply_safe if desired"
@@ -94,6 +128,8 @@ vault dream --mode report --limit 50 --write-report
 ```
 
 For Hermes cron, use a self-contained prompt or script that runs the same command and reports the new `reports/dream/*.md` path. Do not auto-promote or auto-delete from a scheduled job until reports have been reviewed.
+
+If you want an agent to pre-fill the review queue, schedule `--write-candidates` only after you are comfortable with the report quality. This creates candidates, not active knowledge, and keeps human review available without making humans do every sorting step by hand.
 
 ## Rollback
 

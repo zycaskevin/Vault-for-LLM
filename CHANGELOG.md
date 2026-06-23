@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.6.54] - 2026-06-23
+
+### Added
+
+- Added `vault search --json` and `--pretty` so setup scripts and agents can validate search results without parsing human-readable text.
+- Added an executable `agent-install/local-smoke.sh` template from `vault setup-agent` so installers can verify add, JSON search, candidate memory creation, and candidate listing on the exact configured project vault.
+
+### Changed
+
+- Updated generated setup-agent smoke guidance to prefer structured JSON checks and the local smoke script before optional remote integrations.
+- Updated agent install documentation and integration examples for the `0.6.54` release.
+
 ## [0.6.53] - 2026-06-23
 
 ### Added

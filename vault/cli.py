@@ -1982,6 +1982,8 @@ def cmd_automation(args):
                 project_dir,
                 limit=args.limit,
                 include_content=getattr(args, "include_content", False),
+                write_handoff=getattr(args, "write_handoff", False),
+                handoff_path=getattr(args, "handoff_path", ""),
             )
         elif action == "eval":
             payload = automation_eval(
@@ -2182,6 +2184,8 @@ def cmd_automation(args):
         if summary.get("latest_report_path"):
             review = "review" if summary.get("latest_report_review_required") else "ok"
             print(f"  latest report: {summary.get('latest_report_path')} {review}")
+        if payload.get("inbox_handoff_path"):
+            print(f"  inbox handoff: {payload.get('inbox_handoff_path')}")
         queue = payload.get("review_queue") or []
         if queue:
             print("\n  Review queue:")
@@ -3392,6 +3396,8 @@ def main(argv: list[str] | None = None):
     sp = automation_sub.add_parser("inbox", help="Show the shortest review queue for automation candidates and reports")
     add_automation_common(sp)
     sp.add_argument("--include-content", action="store_true", help="include redacted candidate content in JSON output")
+    sp.add_argument("--write-handoff", action="store_true", help="write reports/automation/inbox-latest.json")
+    sp.add_argument("--handoff-path", default="", help="custom reports/automation/*.json inbox handoff path")
 
     sp = automation_sub.add_parser("eval", help="Evaluate automation feedback and candidate outcomes")
     add_automation_common(sp)

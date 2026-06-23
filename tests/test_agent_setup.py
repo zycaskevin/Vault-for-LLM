@@ -174,7 +174,10 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     workflow = json.loads((tmp_path / "templates" / "n8n-memory-automation.workflow.json").read_text(encoding="utf-8"))
     readme = (tmp_path / "templates" / "README-memory-automation.md").read_text(encoding="utf-8")
 
-    assert "0 3 * * * vault automation cycle" in cron
+    assert "0 3 * * * sh -lc" in cron
+    assert "vault automation cycle" in cron
+    assert "vault automation inbox" in cron
+    assert "--write-handoff" in cron
     assert "--project-dir" in cron
     assert str(project) in cron
     assert "--apply" not in cron
@@ -184,8 +187,11 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert workflow["name"] == "Vault-for-LLM Memory Automation"
     assert workflow["nodes"][1]["name"] == "Vault Memory Automation"
     assert "vault automation cycle" in workflow["nodes"][1]["parameters"]["command"]
+    assert "vault automation inbox" in workflow["nodes"][1]["parameters"]["command"]
+    assert "--write-handoff" in workflow["nodes"][1]["parameters"]["command"]
     assert "vault automation plan" in readme
     assert "scheduled command: `vault automation cycle`" in readme
+    assert "reports/automation/inbox-latest.json" in readme
     assert "apply reversible archival: `false`" in readme
     assert any("memory automation schedule" in step for step in result["next_steps"])
 
@@ -216,10 +222,15 @@ def test_run_agent_setup_can_schedule_automation_cycle(tmp_path):
     workflow = json.loads((tmp_path / "templates" / "n8n-memory-automation.workflow.json").read_text(encoding="utf-8"))
     readme = (tmp_path / "templates" / "README-memory-automation.md").read_text(encoding="utf-8")
 
-    assert "0 3 * * * vault automation cycle" in cron
+    assert "0 3 * * * sh -lc" in cron
+    assert "vault automation cycle" in cron
+    assert "vault automation inbox" in cron
     assert "--apply" in cron
-    assert "<string>cycle</string>" in plist
+    assert "<string>sh</string>" in plist
+    assert "vault automation cycle" in plist
+    assert "vault automation inbox" in plist
     assert "vault automation cycle" in workflow["nodes"][1]["parameters"]["command"]
+    assert "vault automation inbox" in workflow["nodes"][1]["parameters"]["command"]
     assert "scheduled command: `vault automation cycle`" in readme
     assert "`cycle` first writes a bounded learning policy" in readme
     assert result["automation_schedule_templates"]["readme"].endswith("README-memory-automation.md")
@@ -245,7 +256,9 @@ def test_run_agent_setup_memory_automation_apply_is_explicit(tmp_path):
     )
 
     cron = Path(result["automation_schedule_templates"]["cron"]).read_text(encoding="utf-8")
-    assert "*/30 * * * * vault automation run" in cron
+    assert "*/30 * * * * sh -lc" in cron
+    assert "vault automation run" in cron
+    assert "vault automation inbox" in cron
     assert "--mode conservative" in cron
     assert "--apply" in cron
 
@@ -429,7 +442,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.65" in captured.out
+    assert "vault-for-llm 0.6.66" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -597,7 +610,7 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.6.65" in body
+    assert "vault-for-llm[mcp,supabase]==0.6.66" in body
     assert "headroom-ai" in body
     assert "--agent-project-dir" in body
     assert str(project) in body

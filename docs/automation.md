@@ -95,6 +95,16 @@ set of items for a human or trusted agent to inspect. It is read-only, hides
 candidate content by default, and prioritizes privacy-blocked, sensitive,
 duplicate, weak-quality, and automation-generated candidates.
 
+Scheduled agents can persist the same short handoff:
+
+```bash
+vault automation inbox --write-handoff --pretty
+```
+
+This writes `reports/automation/inbox-latest.json`, which is safe for the next
+agent to read before deciding whether to promote, reject, block, or ask for a
+human decision.
+
 Read a specific report:
 
 ```bash
@@ -281,13 +291,18 @@ This writes `agent-install/memory-automation.cron`,
 
 Generated schedules default to `vault automation cycle`, which evaluates
 reviewed candidate outcomes, writes `reports/automation/learning_policy.json`,
-and then runs normal policy-based automation. Use `--automation-command run`
-when you want a maintenance-only schedule without the feedback-learning phase.
+and then runs normal policy-based automation. After a successful scheduled run,
+the generated cron, LaunchAgent, and n8n templates also run
+`vault automation inbox --write-handoff`, producing
+`reports/automation/inbox-latest.json` as the next-agent handoff. Use
+`--automation-command run` when you want a maintenance-only schedule without the
+feedback-learning phase.
 
 The scheduled command should stay explicit about the target vault:
 
 ```bash
 vault automation cycle --project-dir /path/to/project --pretty
+vault automation inbox --project-dir /path/to/project --write-handoff --pretty
 ```
 
 Use `--apply` only after the user has reviewed `automation_policy.yaml` and

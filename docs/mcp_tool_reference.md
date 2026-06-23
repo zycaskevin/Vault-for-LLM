@@ -201,6 +201,42 @@ Typical result fields:
 Agent rule: use this when a candidate should become feedback for automation
 learning but should not enter active knowledge.
 
+### `vault_automation_inbox`
+
+Read the compact automation review queue. This tool is available in the
+`review`, `maintenance`, and `full` MCP tool profiles, but not in `core`.
+
+```json
+{
+  "limit": 5,
+  "include_content": false,
+  "write_handoff": false
+}
+```
+
+Typical result fields:
+
+```json
+{
+  "action": "inbox",
+  "summary": {
+    "pending_candidates": 3,
+    "privacy_blocked": 1,
+    "needs_review": 4
+  },
+  "review_queue": [
+    {
+      "id": "mem_...",
+      "recommended_action": "block_or_redact",
+      "reason": "Privacy gate failed..."
+    }
+  ]
+}
+```
+
+Agent rule: call this before reading full automation reports. It is read-only by
+default and hides candidate content unless `include_content` is explicitly set.
+
 ## Remote Supabase Tools
 
 Remote tools are for a Supabase-synced read replica. Local SQLite remains the

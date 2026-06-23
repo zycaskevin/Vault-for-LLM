@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.50] - 2026-06-23
+
+### Added
+
+- Added a small saturated usage boost to the lightweight reranker so frequently useful memories can break close relevance ties without overriding source relevance, trust, freshness, or access policy.
+- Added usage-aware automation review output that separates expired memories into low-risk archive candidates and expired-but-still-used items that need TTL review.
+- Added human-readable `vault automation plan/run` usage review summaries, including `skipped_used` counts for protected expired memories.
+
 ## [0.6.49] - 2026-06-23
 
 ### Added

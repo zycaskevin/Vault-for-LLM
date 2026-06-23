@@ -133,6 +133,7 @@ def test_run_agent_setup_writes_remote_reader_templates(tmp_path):
 
     assert "vault remote smoke" in shell
     assert "--agent-id remote-agent" in shell
+    assert "--json" in shell
     assert "pricing SOP" in shell
     assert workflow["nodes"][1]["name"] == "Vault Remote Search"
     assert "vault remote search" in workflow["nodes"][1]["parameters"]["command"]
@@ -248,6 +249,7 @@ def test_run_agent_setup_writes_agent_roster_and_validation_pack(tmp_path):
     assert "| profile-agent | profile | private | high | review | True | True | False |" in matrix
     assert "VAULT_AGENT_ROLE=profile" in profile_agent_env
     assert "vault remote smoke" in validate_remote
+    assert "--json" in validate_remote
     assert "pricing SOP" in validate_remote
     assert "content_raw" in validate_coze
     assert any("agent access matrix" in step for step in result["next_steps"])
@@ -319,6 +321,7 @@ def test_setup_agent_accepts_global_project_dir_for_missing_directory(tmp_path, 
     assert payload["project_dir"] == str(project.resolve())
     assert (project / "vault.db").exists()
     assert (project / "raw").is_dir()
+    assert any("vault search" in step and "--json" in step for step in payload["next_steps"])
 
 
 def test_setup_agent_help_exposes_supabase_sync_options(capsys):

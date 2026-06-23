@@ -293,7 +293,8 @@ vault compile --project-dir ~/Vaults/project-memory --no-embed
 
 vault search "installed smoke memory" \
   --project-dir ~/Vaults/project-memory \
-  --limit 5
+  --limit 5 \
+  --json
 
 vault remember "Agent install decision" \
   --project-dir ~/Vaults/project-memory \

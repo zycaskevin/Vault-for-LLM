@@ -1009,6 +1009,7 @@ def write_remote_reader_templates(
                             safe_agent,
                             "--query",
                             safe_query,
+                            "--json",
                         ]
                     ),
                     "",
@@ -1346,7 +1347,7 @@ def write_live_validation_pack(
                     "set -eu",
                     ": \"${SUPABASE_URL:?Set SUPABASE_URL first}\"",
                     ": \"${SUPABASE_ANON_KEY:?Set SUPABASE_ANON_KEY first}\"",
-                    shell_join(["vault", "remote", "smoke", "--agent-id", safe_agent, "--query", safe_query]),
+                    shell_join(["vault", "remote", "smoke", "--agent-id", safe_agent, "--query", safe_query, "--json"]),
                     shell_join(["vault", "remote", "search", safe_query, "--agent-id", safe_agent, "--json"]),
                     "",
                 ]
@@ -2035,7 +2036,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         "automation_schedule_templates": {},
         "stable_venv": {},
         "next_steps": [
-            f"vault search \"test query\" --project-dir {shlex.quote(str(project_path))} --limit 5",
+            f"vault search \"test query\" --project-dir {shlex.quote(str(project_path))} --limit 5 --json",
             f"vault-mcp --project-dir {shlex.quote(str(project_path))} --tool-profile {shlex.quote(config.tool_profile)}",
         ]
         + feature_next_steps,

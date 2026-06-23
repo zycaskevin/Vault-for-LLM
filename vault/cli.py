@@ -1869,6 +1869,15 @@ def cmd_automation(args):
         _json_print(payload, pretty=args.pretty)
         return
 
+    def _print_usage_review(payload):
+        review = payload.get("usage_review") or {}
+        suggestions = review.get("suggestions") or []
+        if not suggestions:
+            return
+        print("\n  Usage review:")
+        for item in suggestions:
+            print(f"    - {item.get('kind')}: {item.get('count')} [{item.get('autonomy')}]")
+
     if action == "plan":
         print("🧭 Automation plan\n")
         print(f"  mode: {payload.get('mode')}")
@@ -1876,6 +1885,7 @@ def cmd_automation(args):
         print(f"  candidates: {payload.get('candidate_count', 0)}")
         usage = payload.get("usage", {})
         print(f"  expired active: {usage.get('expired_active_count', 0)}")
+        _print_usage_review(payload)
         print("\n  Planned actions:")
         for item in payload.get("planned_actions", []):
             enabled = item.get("enabled")
@@ -1896,8 +1906,11 @@ def cmd_automation(args):
         archive = payload.get("archive_expired", {})
         print(
             f"  archive expired: eligible={archive.get('eligible_count', 0)} "
-            f"archived={archive.get('archived_count', 0)} dry_run={archive.get('dry_run')}"
+            f"archived={archive.get('archived_count', 0)} "
+            f"skipped_used={archive.get('skipped_used_count', 0)} "
+            f"dry_run={archive.get('dry_run')}"
         )
+        _print_usage_review(payload)
         dream = payload.get("dream", {})
         print(f"  dream report: {dream.get('report_path', '')}")
         if payload.get("human_review", {}).get("required"):

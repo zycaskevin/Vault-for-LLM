@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from argparse import Namespace
 from datetime import datetime, timedelta, timezone
 import json
 
@@ -73,6 +74,36 @@ def test_automation_run_protects_expired_but_used_memory(tmp_path):
     assert {"kind": "expired_but_used", "count": 1} in payload["human_review"]["items"]
     with VaultDB(project / "vault.db") as db:
         assert db.get_knowledge(expired_id)["status"] == "active"
+
+
+def test_automation_cli_shows_usage_review(tmp_path, monkeypatch, capsys):
+    from vault.cli import cmd_automation
+
+    project = _init_project(tmp_path)
+    expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    with VaultDB(project / "vault.db") as db:
+        expired_id = db.add_knowledge("Still useful expired SOP", "Deployment rollback", expires_at=expired)
+        db.record_knowledge_access([expired_id])
+    monkeypatch.chdir(project)
+
+    cmd_automation(
+        Namespace(
+            automation_action="run",
+            mode="balanced",
+            limit=10,
+            apply=True,
+            no_report=True,
+            write_policy=False,
+            overwrite_policy=False,
+            json=False,
+            pretty=False,
+        )
+    )
+
+    out = capsys.readouterr().out
+    assert "Usage review:" in out
+    assert "review_expired_but_used" in out
+    assert "skipped_used=1" in out
 
 
 def test_automation_run_conservative_apply_stays_dry_run(tmp_path):

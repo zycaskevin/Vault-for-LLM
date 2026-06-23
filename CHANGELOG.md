@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## [0.6.64] - 2026-06-24
+
+### Fixed
+
+- Hardened privacy scanning for standalone `sk-...` API-key shaped tokens, so session-capture previews and candidate-write responses redact these values even when transcripts do not include an `api_key =` label.
+- Added regression coverage for standalone API-key detection and session-capture preview redaction.
+
 ## [0.6.63] - 2026-06-24
 
 ### Added

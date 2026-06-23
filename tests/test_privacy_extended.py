@@ -37,6 +37,12 @@ class TestScanPrivacy:
         assert result["status"] == "fail"
         assert len(result["findings"]) > 0
 
+    def test_scan_privacy_with_standalone_openai_key(self):
+        from vault.privacy import scan_privacy
+        result = scan_privacy("Use sk-proj-1234567890abcdefghij1234567890 only in env vars.")
+        assert result["status"] == "fail"
+        assert any(item["type"] == "openai_api_key" for item in result["findings"])
+
     def test_scan_privacy_with_password(self):
         from vault.privacy import scan_privacy
         result = scan_privacy("password = mysecretpass123")
@@ -93,6 +99,13 @@ class TestRedactSecrets:
         result = redact_secrets(text)
         assert "[REDACTED]" in result
         assert "sk-1234567890abcdefghij" not in result
+
+    def test_redact_secrets_with_standalone_openai_key(self):
+        from vault.privacy import redact_secrets
+        token = "sk-proj-1234567890abcdefghij1234567890"
+        result = redact_secrets(f"Never store {token} in memory.")
+        assert "[REDACTED]" in result
+        assert token not in result
 
     def test_redact_secrets_with_github_token(self):
         from vault.privacy import redact_secrets

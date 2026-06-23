@@ -121,6 +121,28 @@ def test_session_capture_preview_redacts_secret_like_payload(tmp_path):
     assert "runtimevalue123" not in rendered
 
 
+def test_session_capture_preview_redacts_standalone_api_key(tmp_path):
+    transcript = tmp_path / "codex-session.txt"
+    token = "sk-proj-1234567890abcdefghij1234567890"
+    transcript.write_text(
+        f"Fix: session capture previews must redact {token} before showing candidate reports.",
+        encoding="utf-8",
+    )
+
+    with VaultDB(tmp_path / "vault.db") as db:
+        payload = capture_session_candidates(
+            db,
+            transcript,
+            source_system="codex",
+            write_candidates=False,
+            include_content=True,
+        )
+
+    rendered = json.dumps(payload, ensure_ascii=False)
+    assert payload["candidates"][0]["gates"]["privacy"] == "fail"
+    assert token not in rendered
+
+
 def test_session_capture_loads_jsonl_nested_content(tmp_path):
     transcript = tmp_path / "session.jsonl"
     transcript.write_text(

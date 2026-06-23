@@ -1,7 +1,7 @@
 # README Claim Matrix
 
 Generated: 2026-06-23
-Scope: public README feature/capability claims after the v0.6.63 session-capture automation update. Localized README files should mirror the same maturity and non-goal language.
+Scope: public README feature/capability claims after the v0.6.64 session-capture automation update. Localized README files should mirror the same maturity and non-goal language.
 
 ## Maturity Tiers
 
@@ -18,7 +18,7 @@ Scope: public README feature/capability claims after the v0.6.63 session-capture
 | C01 | Vault-for-LLM is local-first project memory for AI agents. | stable | Base storage is Markdown plus SQLite; `vault init/add/compile/search` works locally. | README command smoke passes. |
 | C02 | Vault does not replace models, wikis, Obsidian, or hosted memory systems. | positioning | README and docs frame Vault as the governed layer between human notes and agent access. | Product positioning only. |
 | C03 | Agent-driven install is the recommended path. | usable | `vault setup-agent` and `vault install-agent` generate project setup, optional feature guidance, stable venv scripts, sync templates, and smoke-test next steps. | `tests/test_agent_setup.py` passes; PyPI smoke is part of release closeout. |
-| C04 | Manual quickstart works from PyPI. | stable | `vault-for-llm[mcp]==0.6.63` installs and exposes `vault`. | Clean Python 3.11 PyPI install smoke is part of release closeout. |
+| C04 | Manual quickstart works from PyPI. | stable | `vault-for-llm[mcp]==0.6.64` installs and exposes `vault`. | Clean Python 3.11 PyPI install smoke is part of release closeout. |
 | C05 | MCP lets agents search, read bounded ranges, propose memory, and inspect stats. | usable | `vault-mcp` exposes the core tool profile: `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats`. | MCP tests and README command smoke pass. |
 | C06 | L0-L3 are depth layers, not access-control boundaries by themselves. | stable docs / usable implementation | Schema supports `layer`; governance metadata handles `scope`, `sensitivity`, `owner_agent`, `allowed_agents`, `memory_type`, and expiry. | Access-policy and MCP/read tests pass. |
 | C07 | Usage counters can influence ranking only as a small boost. | usable-alpha | Search uses `access_count`, `citation_count`, and `last_accessed_at` as a saturated rerank signal. | Usage/rerank tests pass. |
@@ -46,14 +46,14 @@ Recent release and README cleanup verification used:
 ```bash
 python scripts/readme_command_smoke.py
 python scripts/public_pr_gate.py
-python scripts/check_release_parity.py --tag v0.6.63
+python scripts/check_release_parity.py --tag v0.6.64
 python -m pytest tests/test_session_capture.py tests/test_agent_setup.py tests/test_automation.py tests/test_cli_project_dir.py tests/test_release_parity.py -q
 ```
 
-For release v0.6.63, clean Python 3.11 PyPI install closeout should verify:
+For release v0.6.64, clean Python 3.11 PyPI install closeout should verify:
 
-- `vault-for-llm[mcp]==0.6.63` installs from PyPI.
-- `vault --version` returns `vault-for-llm 0.6.63`.
+- `vault-for-llm[mcp]==0.6.64` installs from PyPI.
+- `vault --version` returns `vault-for-llm 0.6.64`.
 - `vault capture session <transcript>` previews session-derived candidates and `--write-candidates` writes gated candidates only.
 - `vault setup-agent --automation-schedule all` generates cron, LaunchAgent, n8n, and README templates that default to `vault automation cycle`.
 - `vault automation plan --write-policy`, `vault automation doctor`, report-first `vault automation run`, and `vault automation cycle` work against a fresh project vault.

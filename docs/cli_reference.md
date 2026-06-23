@@ -72,8 +72,9 @@ Multi-agent roster templates are opt-in with `--agent-roster`; each entry uses
 `profile-agent:profile,work-agent:work,remote-agent:remote,n8n:automation`. Live external validation
 files are opt-in with `--validation-pack remote|n8n|coze|all`.
 Memory automation schedule files are opt-in with
-`--automation-schedule cron|launchagent|n8n|all`; generated jobs are report-first
-unless `--automation-apply` is explicitly set.
+`--automation-schedule cron|launchagent|n8n|all`; generated jobs default to
+`vault automation cycle` and stay report-first unless `--automation-apply` is
+explicitly set. Use `--automation-command run` for maintenance-only schedules.
 Manual interactive setup asks for `en`, `zh-Hant`, or `zh-CN`; non-interactive
 agent installs can pass `--language`. Supabase setup guide generation is opt-in
 with `--supabase-setup none|simple|advanced`; keep `simple` as the default path

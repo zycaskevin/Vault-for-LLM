@@ -37,6 +37,7 @@ VALID_AGENT_ROLES = {"work", "profile", "care", "dream", "remote", "automation",
 VALID_SUPABASE_SETUP_MODES = {"none", "simple", "advanced"}
 VALID_SETUP_LANGUAGES = {"en", "zh-Hant", "zh-CN"}
 VALID_AUTOMATION_MODES = {"conservative", "balanced", "autonomous"}
+VALID_AUTOMATION_COMMANDS = {"run", "cycle"}
 PYPI_EXTRA_FEATURES = {"mcp", "semantic", "supabase", "dev"}
 VALID_EMBEDDING_MODELS = {"zh", "en", "mix"}
 DEFAULT_SUPABASE_SYNC_INTERVAL_MINUTES = 24 * 60
@@ -842,17 +843,27 @@ def _normalize_automation_mode(mode: str | None) -> str:
     return value
 
 
-def automation_run_command(
+def _normalize_automation_command(command: str | None) -> str:
+    value = str(command or "cycle").strip().lower()
+    if value not in VALID_AUTOMATION_COMMANDS:
+        allowed = ", ".join(sorted(VALID_AUTOMATION_COMMANDS))
+        raise ValueError(f"unknown automation command '{command}' (expected one of: {allowed})")
+    return value
+
+
+def automation_schedule_command(
     *,
     project_dir: str | Path,
     mode: str = "balanced",
     apply: bool = False,
+    command: str = "cycle",
     vault_executable: str = "vault",
 ) -> list[str]:
-    command = [
+    normalized_command = _normalize_automation_command(command)
+    command_args = [
         vault_executable,
         "automation",
-        "run",
+        normalized_command,
         "--project-dir",
         str(Path(project_dir).expanduser()),
         "--mode",
@@ -860,8 +871,8 @@ def automation_run_command(
         "--pretty",
     ]
     if apply:
-        command.append("--apply")
-    return command
+        command_args.append("--apply")
+    return command_args
 
 
 def write_automation_schedule_templates(
@@ -872,16 +883,19 @@ def write_automation_schedule_templates(
     interval_minutes: int = DEFAULT_AUTOMATION_INTERVAL_MINUTES,
     mode: str = "balanced",
     apply: bool = False,
+    command: str = "cycle",
     vault_executable: str = "vault",
 ) -> dict[str, str]:
     out = Path(output_dir).expanduser().resolve()
     out.mkdir(parents=True, exist_ok=True)
     selected = _normalize_sync_targets(targets)
     normalized_mode = _normalize_automation_mode(mode)
-    command = automation_run_command(
+    normalized_command = _normalize_automation_command(command)
+    command_args = automation_schedule_command(
         project_dir=project_dir,
         mode=normalized_mode,
         apply=apply,
+        command=normalized_command,
         vault_executable=vault_executable,
     )
 
@@ -894,7 +908,7 @@ def write_automation_schedule_templates(
             "\n".join(
                 [
                     "# Vault-for-LLM memory automation",
-                    f"{schedule} {shell_join(command)} >> $HOME/.vault-for-llm/memory-automation.log 2>&1",
+                    f"{schedule} {shell_join(command_args)} >> $HOME/.vault-for-llm/memory-automation.log 2>&1",
                     "",
                 ]
             ),
@@ -905,7 +919,7 @@ def write_automation_schedule_templates(
         path = out / "com.zycaskevin.vault-for-llm.memory-automation.plist"
         path.write_text(
             render_launchagent_plist(
-                command=command,
+                command=command_args,
                 label="com.zycaskevin.vault-for-llm.memory-automation",
                 interval_minutes=interval_minutes,
                 log_basename="memory-automation",
@@ -916,7 +930,7 @@ def write_automation_schedule_templates(
     if "n8n" in selected:
         path = out / "n8n-memory-automation.workflow.json"
         path.write_text(
-            render_n8n_automation_workflow(command=command, interval_minutes=interval_minutes),
+            render_n8n_automation_workflow(command=command_args, interval_minutes=interval_minutes),
             encoding="utf-8",
         )
         written["n8n"] = str(path)
@@ -929,7 +943,7 @@ def write_automation_schedule_templates(
                 "",
                 "Generated command:",
                 "",
-                f"```bash\n{shell_join(command)}\n```",
+                f"```bash\n{shell_join(command_args)}\n```",
                 "",
                 "Recommended first step:",
                 "",
@@ -939,8 +953,10 @@ def write_automation_schedule_templates(
                 "",
                 "Safety defaults:",
                 "",
+                f"- scheduled command: `vault automation {normalized_command}`",
                 f"- mode: `{normalized_mode}`",
                 f"- apply reversible archival: `{str(bool(apply)).lower()}`",
+                "- `cycle` first writes a bounded learning policy from reviewed candidate outcomes, then runs automation",
                 "- automation never hard-deletes memory",
                 "- expired memories with usage are protected and sent to human review",
                 "",
@@ -2063,6 +2079,7 @@ class AgentSetupConfig:
     automation_schedule_targets: str | list[str] = "none"
     automation_interval_minutes: int = DEFAULT_AUTOMATION_INTERVAL_MINUTES
     automation_mode: str = "balanced"
+    automation_command: str = "cycle"
     automation_apply: bool = False
     template_dir: Path | None = None
     allow_private: bool = False
@@ -2250,6 +2267,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
             targets=sorted(automation_targets),
             interval_minutes=config.automation_interval_minutes,
             mode=config.automation_mode,
+            command=config.automation_command,
             apply=config.automation_apply,
         )
         result["next_steps"].append(
@@ -2597,6 +2615,9 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
     automation_mode = argv_config.get("automation_mode") or "balanced"
     if automation_schedule_targets and automation_schedule_targets != "none" and not argv_config.get("automation_mode"):
         automation_mode = _ask("Memory automation mode (conservative/balanced/autonomous)", "balanced")
+    automation_command = argv_config.get("automation_command") or "cycle"
+    if automation_schedule_targets and automation_schedule_targets != "none" and not argv_config.get("automation_command"):
+        automation_command = _ask("Memory automation command (cycle/run)", "cycle")
     automation_apply = bool(argv_config.get("automation_apply", False))
     if automation_schedule_targets and automation_schedule_targets != "none" and "automation_apply" not in argv_config:
         automation_apply = _ask_yes_no("Allow scheduled automation to apply reversible archival?", False)
@@ -2637,6 +2658,7 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
             or DEFAULT_AUTOMATION_INTERVAL_MINUTES
         ),
         automation_mode=_normalize_automation_mode(str(automation_mode)),
+        automation_command=_normalize_automation_command(str(automation_command)),
         automation_apply=automation_apply,
         template_dir=Path(argv_config["template_dir"]) if argv_config.get("template_dir") else None,
         allow_private=bool(argv_config.get("allow_private", False)),

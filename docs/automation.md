@@ -234,10 +234,15 @@ This writes `agent-install/memory-automation.cron`,
 `agent-install/n8n-memory-automation.workflow.json`, and
 `agent-install/README-memory-automation.md`.
 
+Generated schedules default to `vault automation cycle`, which evaluates
+reviewed candidate outcomes, writes `reports/automation/learning_policy.json`,
+and then runs normal policy-based automation. Use `--automation-command run`
+when you want a maintenance-only schedule without the feedback-learning phase.
+
 The scheduled command should stay explicit about the target vault:
 
 ```bash
-vault automation run --project-dir /path/to/project --pretty
+vault automation cycle --project-dir /path/to/project --pretty
 ```
 
 Use `--apply` only after the user has reviewed `automation_policy.yaml` and

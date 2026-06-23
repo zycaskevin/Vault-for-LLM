@@ -2532,6 +2532,7 @@ def cmd_setup_agent(args):
             automation_schedule_targets=args.automation_schedule,
             automation_interval_minutes=args.automation_interval_minutes,
             automation_mode=args.automation_mode,
+            automation_command=args.automation_command,
             automation_apply=bool(args.automation_apply),
             template_dir=Path(args.template_dir).expanduser() if args.template_dir else None,
             allow_private=bool(args.allow_private),
@@ -2577,6 +2578,8 @@ def cmd_setup_agent(args):
             setup_values["automation_schedule_targets"] = args.automation_schedule
         if args.automation_mode != "balanced":
             setup_values["automation_mode"] = args.automation_mode
+        if args.automation_command != "cycle":
+            setup_values["automation_command"] = args.automation_command
         if args.automation_apply:
             setup_values["automation_apply"] = True
         config = interactive_setup(setup_values)
@@ -2841,6 +2844,8 @@ def main(argv: list[str] | None = None):
                         help="memory automation LaunchAgent/n8n 排程間隔分鐘數；cron 預設每日")
         ap.add_argument("--automation-mode", choices=["conservative", "balanced", "autonomous"],
                         default="balanced", help="memory automation policy mode")
+        ap.add_argument("--automation-command", choices=["cycle", "run"],
+                        default="cycle", help="排程使用 cycle 或 run；cycle 會先寫 learning policy 再整理")
         ap.add_argument("--automation-apply", action="store_true",
                         help="讓排程模板加入 --apply；只執行 policy 允許的可逆操作")
         ap.add_argument("--stable-venv",

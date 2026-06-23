@@ -16,7 +16,7 @@ For adjacent systems and design comparisons, see
 ## Fast Prompt For Agents
 
 ```text
-Install Vault-for-LLM for this project with vault-for-llm[mcp]==0.6.58.
+Install Vault-for-LLM for this project with vault-for-llm[mcp]==0.6.59.
 Ask me where the vault database should live, whether it should be private or
 shared, and whether you should use a stable Python virtualenv path instead of a
 temporary one. Enable MCP by default if this agent runtime supports MCP. Ask
@@ -69,7 +69,7 @@ also prefer a stable virtualenv path such as `~/.hermes/venvs/vault-for-llm/`.
 Use the PyPI release unless the user explicitly asks for source development:
 
 ```bash
-python -m pip install "vault-for-llm[mcp]==0.6.58"
+python -m pip install "vault-for-llm[mcp]==0.6.59"
 vault setup-agent
 ```
 
@@ -228,11 +228,15 @@ vault setup-agent \
   --features core,mcp,memory_agents \
   --automation-schedule all \
   --automation-mode balanced \
+  --automation-command cycle \
   --json
 ```
 
 This writes cron, macOS LaunchAgent, n8n, and README templates under
-`agent-install/`. Add `--automation-apply` only after the user reviews
+`agent-install/`. `cycle` is the default scheduled command: it writes bounded
+learning-policy hints from reviewed candidate outcomes before running safe
+automation. Add `--automation-command run` for a simpler maintenance-only
+schedule. Add `--automation-apply` only after the user reviews
 `automation_policy.yaml` and accepts reversible archive actions.
 
 ### Multi-Agent Roster

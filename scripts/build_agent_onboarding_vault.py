@@ -31,6 +31,12 @@ REPO_DOCS = [
         "tags": "mcp,candidate,governance",
     },
     {
+        "path": "docs/mcp_tool_reference.md",
+        "title": "MCP Tool Reference",
+        "category": "mcp",
+        "tags": "mcp,tools,agent-integration",
+    },
+    {
         "path": "docs/document_map_citation_policy.md",
         "title": "Document Map Citation Policy",
         "category": "citation",

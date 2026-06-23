@@ -134,10 +134,12 @@ Recommended core tools:
 - `vault_search`
 - `vault_read_range`
 - `vault_memory_propose`
-- `vault_memory_candidates`
-- `vault_map_show`
+- `vault_stats`
 
-Full MCP and token-budget guidance: [docs/mcp_memory_workflow.md](docs/mcp_memory_workflow.md).
+MCP guides:
+
+- Practical tool reference: [docs/mcp_tool_reference.md](docs/mcp_tool_reference.md)
+- Workflow and token-budget guidance: [docs/mcp_memory_workflow.md](docs/mcp_memory_workflow.md)
 
 ## Memory Model
 
@@ -291,6 +293,7 @@ advanced integrations are powerful, but should be enabled deliberately.
 - Memory automation: [docs/automation.md](docs/automation.md)
 - Memory governance: [docs/memory_governance.md](docs/memory_governance.md)
 - Supabase setup: [docs/supabase_setup.md](docs/supabase_setup.md)
+- MCP tool reference: [docs/mcp_tool_reference.md](docs/mcp_tool_reference.md)
 - MCP workflow: [docs/mcp_memory_workflow.md](docs/mcp_memory_workflow.md)
 - PageIndex / Headroom comparison: [docs/comparisons/pageindex_headroom.md](docs/comparisons/pageindex_headroom.md)
 - Vision notes: [docs/vision.md](docs/vision.md)

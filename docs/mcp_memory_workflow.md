@@ -2,6 +2,9 @@
 
 Vault-for-LLM now exposes a safer agent memory workflow over MCP. Autonomous agents should prefer candidate-first memory tools instead of writing directly to active knowledge.
 
+For per-tool inputs, outputs, and agent integration examples, use
+[`docs/mcp_tool_reference.md`](mcp_tool_reference.md).
+
 ## Tool profiles
 
 Use the smallest MCP tool profile that fits the session:

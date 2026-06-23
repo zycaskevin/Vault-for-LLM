@@ -163,6 +163,29 @@ def _clamp_int(value, *, default: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(parsed, maximum))
 
 
+def _resolve_mcp_transcript_path(value: str, *, allow_absolute_path: bool = False) -> Path:
+    project_dir = Path(DB_PATH).resolve().parent
+    raw = Path(str(value or "")).expanduser()
+    if not str(value or "").strip():
+        raise ValueError("transcript_path is required")
+    if raw.is_absolute():
+        if not allow_absolute_path:
+            raise ValueError("absolute transcript paths require allow_absolute_path=true")
+        path = raw.resolve()
+    else:
+        path = (project_dir / raw).resolve()
+    if not path.exists() or not path.is_file():
+        raise ValueError("transcript_path must point to an existing file")
+    try:
+        path.relative_to(project_dir)
+    except ValueError:
+        if not allow_absolute_path:
+            raise ValueError("transcript_path must stay inside the project directory")
+    if path.stat().st_size > 2 * 1024 * 1024:
+        raise ValueError("transcript_path is too large for MCP capture; use CLI for large exports")
+    return path
+
+
 def _search_field_set(fields) -> set[str] | None:
     if not isinstance(fields, list):
         return None
@@ -1664,6 +1687,74 @@ TOOLS = [
         }
     },
     {
+        "name": "vault_capture_session",
+        "description": "Preview or write reviewable memory candidates from an agent session transcript. Dry-run by default; never promotes active memory.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "transcript_path": {
+                    "type": "string",
+                    "description": "Transcript path. Relative paths resolve under the current Vault project; absolute paths require allow_absolute_path=true.",
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["auto", "jsonl", "markdown", "text"],
+                    "default": "auto",
+                },
+                "source_system": {
+                    "type": "string",
+                    "description": "Source system, for example codex/hermes/openclaw/claude-code.",
+                    "default": "auto",
+                },
+                "agent_id": {"type": "string", "default": ""},
+                "write_candidates": {
+                    "type": "boolean",
+                    "description": "Write gated candidates into memory_candidates. Defaults false for preview-only capture.",
+                    "default": False,
+                },
+                "max_candidates": {
+                    "type": "integer",
+                    "description": "Maximum extracted candidates.",
+                    "default": 20,
+                    "minimum": 1,
+                    "maximum": 100,
+                },
+                "min_score": {
+                    "type": "number",
+                    "description": "Minimum deterministic capture score.",
+                    "default": 0.55,
+                },
+                "scope": {
+                    "type": "string",
+                    "enum": ["private", "project", "shared", "public"],
+                    "default": "project",
+                },
+                "sensitivity": {
+                    "type": "string",
+                    "enum": ["low", "medium", "high", "restricted"],
+                    "default": "low",
+                },
+                "owner_agent": {"type": "string", "default": ""},
+                "allowed_agents": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "default": [],
+                },
+                "include_content": {
+                    "type": "boolean",
+                    "description": "Include redacted full candidate content. Defaults false.",
+                    "default": False,
+                },
+                "allow_absolute_path": {
+                    "type": "boolean",
+                    "description": "Allow reading a transcript outside the current project directory.",
+                    "default": False,
+                },
+            },
+            "required": ["transcript_path"],
+        }
+    },
+    {
         "name": "vault_automation_inbox",
         "description": "Read the compact automation review inbox. Read-only by default; returns the shortest candidate/report queue without raw content unless requested.",
         "inputSchema": {
@@ -1969,6 +2060,7 @@ TOOL_PROFILES = {
         "vault_memory_promote",
         "vault_memory_review",
         "vault_memory_candidates",
+        "vault_capture_session",
         "vault_automation_inbox",
         "vault_dream_run",
         "vault_stats",
@@ -1989,6 +2081,7 @@ TOOL_PROFILES = {
         "vault_memory_promote",
         "vault_memory_review",
         "vault_memory_candidates",
+        "vault_capture_session",
         "vault_automation_inbox",
         "vault_obsidian_import",
         "vault_dream_run",
@@ -2271,6 +2364,39 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     for row in rows
                 ],
             }
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
+
+        elif name == "vault_capture_session":
+            from vault.session_capture import capture_session_candidates
+
+            db = _get_db()
+            try:
+                transcript_path = _resolve_mcp_transcript_path(
+                    str(arguments.get("transcript_path") or ""),
+                    allow_absolute_path=bool(arguments.get("allow_absolute_path", False)),
+                )
+                payload = capture_session_candidates(
+                    db,
+                    transcript_path,
+                    input_format=str(arguments.get("format") or "auto"),
+                    source_system=str(arguments.get("source_system") or "auto"),
+                    agent_id=str(arguments.get("agent_id") or ""),
+                    write_candidates=bool(arguments.get("write_candidates", False)),
+                    max_candidates=_clamp_int(
+                        arguments.get("max_candidates", 20),
+                        default=20,
+                        minimum=1,
+                        maximum=100,
+                    ),
+                    min_score=float(arguments.get("min_score", 0.55) or 0.55),
+                    scope=str(arguments.get("scope") or "project"),
+                    sensitivity=str(arguments.get("sensitivity") or "low"),
+                    owner_agent=str(arguments.get("owner_agent") or ""),
+                    allowed_agents=arguments.get("allowed_agents") or "",
+                    include_content=bool(arguments.get("include_content", False)),
+                )
+            finally:
+                db.close()
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 
         elif name == "vault_automation_inbox":

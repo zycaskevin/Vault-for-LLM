@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.67] - 2026-06-24
+
+### Added
+
+- Added MCP tool `vault_capture_session` to the review and maintenance profiles, giving reviewer agents a preview-first path from session transcripts into gated memory candidates.
+- MCP session capture defaults to dry-run preview, requires `write_candidates=true` before writing `memory_candidates`, and never promotes active knowledge.
+- MCP session capture constrains transcript paths to the current project by default; absolute paths require explicit `allow_absolute_path=true`.
+
 ## [0.6.66] - 2026-06-24
 
 ### Added

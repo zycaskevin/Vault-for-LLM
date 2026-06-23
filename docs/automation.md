@@ -47,6 +47,10 @@ for reusable decisions, pitfalls, workflows, and source-of-truth lines. It does
 not write active knowledge; captured items still pass through privacy,
 duplicate, metadata, and quality gates.
 
+MCP reviewer agents can call `vault_capture_session` for the same extractor.
+The MCP tool is preview-only by default, stays out of the `core` profile, and
+requires `write_candidates=true` before it writes gated candidates.
+
 Preview the current plan:
 
 ```bash

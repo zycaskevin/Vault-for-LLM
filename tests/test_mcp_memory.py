@@ -18,6 +18,7 @@ def test_mcp_memory_tools_are_advertised():
         "vault_memory_promote",
         "vault_memory_review",
         "vault_memory_candidates",
+        "vault_capture_session",
         "vault_automation_inbox",
         "vault_dream_run",
     }.issubset(names)
@@ -42,7 +43,9 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
     review_names = [tool["name"] for tool in select_tools("review")]
     assert "vault_memory_candidates" in review_names
     assert "vault_memory_review" in review_names
+    assert "vault_capture_session" in review_names
     assert "vault_automation_inbox" in review_names
+    assert "vault_capture_session" not in core_names
     assert "vault_automation_inbox" not in core_names
     assert "vault_memory_review" not in core_names
 
@@ -264,6 +267,90 @@ def test_mcp_memory_candidates_lists_review_queue_without_full_payload(tmp_path)
     detailed_item = detailed["candidates"][0]
     assert detailed_item["content"].startswith("MCP candidate queue entries")
     assert detailed_item["gates"]["privacy"]["status"] == "pass"
+
+
+def test_mcp_capture_session_previews_without_writing_candidates(tmp_path):
+    _set_project_dir(tmp_path)
+    transcript = tmp_path / "codex-session.md"
+    transcript.write_text(
+        "\n".join(
+            [
+                "Decision: MCP session capture should dry-run by default because active memory needs review.",
+                "Workflow: Always use the review profile before writing session candidates through MCP.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    payload = _payload(handle_tool_call(
+        "vault_capture_session",
+        {
+            "transcript_path": "codex-session.md",
+            "source_system": "codex",
+            "agent_id": "codex",
+        },
+    ))
+
+    assert payload["status"] == "completed"
+    assert payload["write_candidates"] is False
+    assert payload["written"] == 0
+    assert payload["extracted"] == 2
+    assert payload["candidates"][0]["status"] == "preview"
+    assert "content" not in payload["candidates"][0]
+    with VaultDB(tmp_path / "vault.db") as db:
+        assert db.list_memory_candidates() == []
+
+
+def test_mcp_capture_session_writes_candidates_when_explicit(tmp_path):
+    _set_project_dir(tmp_path)
+    transcript = tmp_path / "hermes-session.jsonl"
+    transcript.write_text(
+        json.dumps(
+            {
+                "role": "assistant",
+                "content": "Decision: Session capture through MCP must remain candidate-first because reviewers need a queue.",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = _payload(handle_tool_call(
+        "vault_capture_session",
+        {
+            "transcript_path": "hermes-session.jsonl",
+            "format": "jsonl",
+            "source_system": "hermes",
+            "agent_id": "review-agent",
+            "write_candidates": True,
+        },
+    ))
+
+    assert payload["write_candidates"] is True
+    assert payload["written"] == 1
+    assert payload["candidates"][0]["candidate_id"].startswith("mem_")
+    with VaultDB(tmp_path / "vault.db") as db:
+        rows = db.list_memory_candidates(limit=10)
+    assert len(rows) == 1
+    assert rows[0]["source"] == "session_capture"
+    assert rows[0]["owner_agent"] == "review-agent"
+
+
+def test_mcp_capture_session_blocks_absolute_paths_by_default(tmp_path):
+    _set_project_dir(tmp_path)
+    transcript = tmp_path.parent / "external-session.md"
+    transcript.write_text(
+        "Decision: External transcript paths should require explicit MCP permission.",
+        encoding="utf-8",
+    )
+
+    payload = handle_tool_call(
+        "vault_capture_session",
+        {
+            "transcript_path": str(transcript),
+        },
+    )
+
+    assert "absolute transcript paths require allow_absolute_path=true" in payload["error"]
 
 
 def test_mcp_automation_inbox_reads_short_queue_without_content(tmp_path):

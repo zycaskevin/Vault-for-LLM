@@ -12,7 +12,7 @@ the model context and fewer ways for an agent to choose the wrong action.
 | Profile | Tools | Best For |
 |---|---|---|
 | `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats` | Daily agent work: find memory, read bounded evidence, propose new memory. |
-| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_dream_run` | A reviewer agent or operator session that approves, rejects, or blocks candidate memories. |
+| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_capture_session`, `vault_automation_inbox`, `vault_dream_run` | A reviewer agent or operator session that captures, approves, rejects, or blocks candidate memories. |
 | `remote` | Core plus `vault_remote_search`, `vault_remote_map_show`, `vault_remote_read_range` | Hosted or cross-host agents reading a Supabase-synced vault. |
 | `maintenance` | Review plus Obsidian import, freshness, convergence, and curation tools | Scheduled maintenance or explicit operator-led cleanup. |
 | `full` | Every MCP tool, including low-level compatibility tools | Trusted local operators and backwards compatibility. |
@@ -200,6 +200,45 @@ Typical result fields:
 
 Agent rule: use this when a candidate should become feedback for automation
 learning but should not enter active knowledge.
+
+### `vault_capture_session`
+
+Extract reviewable candidate memories from an agent session transcript. This is
+the MCP version of `vault capture session`: it previews by default and never
+promotes active knowledge.
+
+```json
+{
+  "transcript_path": "codex-session.jsonl",
+  "format": "auto",
+  "source_system": "codex",
+  "agent_id": "codex",
+  "write_candidates": false,
+  "max_candidates": 20,
+  "min_score": 0.55
+}
+```
+
+Typical result fields:
+
+```json
+{
+  "action": "capture_session",
+  "status": "completed",
+  "write_candidates": false,
+  "extracted": 2,
+  "written": 0,
+  "safety": {
+    "candidate_first": true,
+    "auto_promote": false,
+    "privacy_gate": true
+  }
+}
+```
+
+By default, relative transcript paths are resolved under the current Vault
+project directory. Absolute paths require `allow_absolute_path=true`; use this
+only when the user explicitly points the agent at an exported transcript.
 
 ### `vault_automation_inbox`
 

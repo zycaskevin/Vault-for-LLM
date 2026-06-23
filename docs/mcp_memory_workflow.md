@@ -12,7 +12,7 @@ Use the smallest MCP tool profile that fits the session:
 | Profile | Tools | Use when |
 |---|---|---|
 | `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats` | Daily agent use with fewer tool-schema tokens |
-| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_dream_run` | Reviewing, rejecting, blocking, and promoting candidate memory |
+| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_capture_session`, `vault_automation_inbox`, `vault_dream_run` | Capturing sessions and reviewing, rejecting, blocking, or promoting candidate memory |
 | `remote` | Core plus `vault_remote_search`, `vault_remote_map_show`, `vault_remote_read_range` | Reading a Supabase-synced cross-host memory view |
 | `maintenance` | Review plus Obsidian import and freshness/convergence checks | Scheduled or operator-led curation |
 | `full` | All tools, including compatibility `vault_add` | Backward compatibility or explicit power-user setups |
@@ -32,11 +32,12 @@ selected project directory.
 
 ```text
 1. vault_memory_propose  # candidate-first write with gates
-2. vault_memory_candidates # inspect pending candidates and gate result
-3. vault_memory_review   # reject/block weak candidates when needed
-4. vault_memory_promote  # explicit confirm=true promotion
-5. vault_search          # find active memory later
-6. vault_read_range      # read bounded source range and cite it
+2. vault_capture_session # optional: turn a transcript into candidates, preview first
+3. vault_memory_candidates # inspect pending candidates and gate result
+4. vault_memory_review   # reject/block weak candidates when needed
+5. vault_memory_promote  # explicit confirm=true promotion
+6. vault_search          # find active memory later
+7. vault_read_range      # read bounded source range and cite it
 ```
 
 For shared or multi-agent vaults, pass the agent identity on read tools:

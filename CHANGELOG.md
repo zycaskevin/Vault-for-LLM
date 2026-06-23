@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.6.63] - 2026-06-24
+
+### Added
+
+- Added `vault capture session`, a deterministic transcript-to-candidate extractor for Codex/Hermes/OpenClaw/Claude-style JSONL, Markdown, and text session exports.
+- Added dry-run previews for captured session memories, including gate status, capture score, source reference, and content previews without writing active knowledge.
+- Added opt-in `--write-candidates` support so captured decisions, pitfalls, workflows, and source-of-truth lines enter `memory_candidates` through the existing privacy, duplicate, metadata, and quality gates.
+- Added tests for dry-run capture, candidate writes, nested JSONL content, privacy rejection, and the CLI path.
+
+### Changed
+
+- Updated install examples and release claim checks for `0.6.63`.
+
 ## [0.6.62] - 2026-06-23
 
 ### Added

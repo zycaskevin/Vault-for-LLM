@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.62.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.63.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,7 +83,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.62"
+pip install "vault-for-llm[mcp]==0.6.63"
 
 vault setup-agent
 ```
@@ -110,7 +110,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.62"
+pip install "vault-for-llm[mcp]==0.6.63"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -129,6 +129,16 @@ The intended loop is simple:
 3. **Answer with sources** - keep citations tied to original Vault content.
 4. **Propose memory** - let agents suggest new lessons as candidates.
 5. **Review before promotion** - keep active memory clean and auditable.
+
+Agents can also turn a completed session transcript into reviewable candidates:
+
+```bash
+vault capture session codex-session.jsonl --project-dir ~/Vaults/my-project --pretty
+vault capture session codex-session.jsonl --project-dir ~/Vaults/my-project --write-candidates
+```
+
+The first command is a dry-run preview. The second writes candidate memories
+only; it does not promote active knowledge.
 
 For MCP-capable runtimes:
 
@@ -192,6 +202,11 @@ vault automation run
 vault automation run --apply
 vault automation cycle --apply
 ```
+
+`vault capture session` is the ingestion side of that loop. It scans agent
+transcripts for reusable decisions, pitfalls, workflows, and source-of-truth
+signals, then routes them through the normal candidate gates. Automation and
+Dream can later rank and clean those candidates, but promotion remains explicit.
 
 Balanced automation can pre-fill the memory candidate queue with Dream and
 Forgetting suggestions when `--apply` is used, but it still never promotes
@@ -272,7 +287,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.62"
+pip install "vault-for-llm[supabase]==0.6.63"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

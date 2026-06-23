@@ -16,7 +16,7 @@ For adjacent systems and design comparisons, see
 ## Fast Prompt For Agents
 
 ```text
-Install Vault-for-LLM for this project with vault-for-llm[mcp]==0.6.62.
+Install Vault-for-LLM for this project with vault-for-llm[mcp]==0.6.63.
 Ask me where the vault database should live, whether it should be private or
 shared, and whether you should use a stable Python virtualenv path instead of a
 temporary one. Enable MCP by default if this agent runtime supports MCP. Ask
@@ -69,7 +69,7 @@ also prefer a stable virtualenv path such as `~/.hermes/venvs/vault-for-llm/`.
 Use the PyPI release unless the user explicitly asks for source development:
 
 ```bash
-python -m pip install "vault-for-llm[mcp]==0.6.62"
+python -m pip install "vault-for-llm[mcp]==0.6.63"
 vault setup-agent
 ```
 
@@ -314,6 +314,18 @@ vault remember "Agent install decision" \
 
 vault candidates --project-dir ~/Vaults/project-memory
 ```
+
+After a real agent work session, capture transcript lessons into the same
+candidate queue:
+
+```bash
+vault capture session ~/Downloads/codex-session.jsonl --project-dir ~/Vaults/project-memory --pretty
+vault capture session ~/Downloads/codex-session.jsonl --project-dir ~/Vaults/project-memory --write-candidates
+```
+
+The first command previews the extracted decisions, pitfalls, workflows, and
+source-of-truth lines. The second writes candidates only; it does not promote
+memory, delete rows, or change permissions.
 
 For MCP-capable agents, also verify this flow:
 

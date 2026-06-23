@@ -6,6 +6,7 @@ maintenance while humans keep ownership of the rules and high-impact changes.
 Automation does not hard-delete memory. The first phase is report-first and
 reversible:
 
+- capture useful agent-session lessons as reviewable candidates
 - collect usage and lifecycle counters
 - split expired memories into low-risk archive candidates and used items that
   need TTL review
@@ -28,6 +29,23 @@ reversible:
 Humans review the policy. Agents handle the repetitive work.
 
 ## Commands
+
+Preview candidate extraction from an agent session:
+
+```bash
+vault capture session codex-session.jsonl --pretty
+```
+
+Write extracted session lessons into the candidate queue:
+
+```bash
+vault capture session codex-session.jsonl --write-candidates --pretty
+```
+
+Session capture supports JSONL, Markdown, and plain text transcripts. It looks
+for reusable decisions, pitfalls, workflows, and source-of-truth lines. It does
+not write active knowledge; captured items still pass through privacy,
+duplicate, metadata, and quality gates.
 
 Preview the current plan:
 

@@ -85,7 +85,7 @@ def normalize_governance_metadata(
 class VaultDB:
     """Vault-for-LLM 資料庫層。"""
 
-    SCHEMA_VERSION = 8
+    SCHEMA_VERSION = 9
     KNOWLEDGE_UPDATE_COLUMNS = {
         "title",
         "layer",
@@ -109,6 +109,11 @@ class VaultDB:
         "allowed_agents",
         "memory_type",
         "expires_at",
+        "status",
+        "archived_at",
+        "last_accessed_at",
+        "access_count",
+        "citation_count",
         "updated_at",
     }
     MEMORY_CANDIDATE_UPDATE_COLUMNS = {
@@ -158,6 +163,7 @@ class VaultDB:
         6: "memory_candidate_table",
         7: "memory_candidate_quality_status",
         8: "governance_metadata_columns",
+        9: "memory_usage_and_archive_columns",
     }
 
     @staticmethod
@@ -254,7 +260,12 @@ class VaultDB:
                 owner_agent        TEXT NOT NULL DEFAULT '',
                 allowed_agents     TEXT NOT NULL DEFAULT '[]',
                 memory_type        TEXT NOT NULL DEFAULT 'knowledge',
-                expires_at         TEXT NOT NULL DEFAULT ''
+                expires_at         TEXT NOT NULL DEFAULT '',
+                status             TEXT NOT NULL DEFAULT 'active',
+                archived_at        TEXT NOT NULL DEFAULT '',
+                last_accessed_at   TEXT NOT NULL DEFAULT '',
+                access_count       INTEGER NOT NULL DEFAULT 0,
+                citation_count     INTEGER NOT NULL DEFAULT 0
             )
         """)
         self._ensure_table_columns(
@@ -277,6 +288,11 @@ class VaultDB:
                 "allowed_agents": "TEXT NOT NULL DEFAULT '[]'",
                 "memory_type": "TEXT NOT NULL DEFAULT 'knowledge'",
                 "expires_at": "TEXT NOT NULL DEFAULT ''",
+                "status": "TEXT NOT NULL DEFAULT 'active'",
+                "archived_at": "TEXT NOT NULL DEFAULT ''",
+                "last_accessed_at": "TEXT NOT NULL DEFAULT ''",
+                "access_count": "INTEGER NOT NULL DEFAULT 0",
+                "citation_count": "INTEGER NOT NULL DEFAULT 0",
             },
         )
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_layer ON knowledge(layer)")
@@ -286,6 +302,10 @@ class VaultDB:
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_sensitivity ON knowledge(sensitivity)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_owner_agent ON knowledge(owner_agent)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_memory_type ON knowledge(memory_type)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_expires_at ON knowledge(expires_at)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_status ON knowledge(status)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_last_accessed ON knowledge(last_accessed_at)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_access_count ON knowledge(access_count)")
 
         # ── Schema v3 migration：為現有資料庫加新欄位 ──
         existing_cols = {r[1] for r in c.execute("PRAGMA table_info(knowledge)").fetchall()}
@@ -818,6 +838,7 @@ class VaultDB:
                 FROM knowledge_fts
                 JOIN knowledge k ON k.id = knowledge_fts.rowid
                WHERE knowledge_fts MATCH ? AND {where}
+                 AND COALESCE(k.status, 'active') != 'archived'
                ORDER BY _bm25 ASC, k.trust DESC
                LIMIT ?""",
             params,
@@ -982,10 +1003,13 @@ class VaultDB:
         category: Optional[str] = None,
         min_trust: float = 0.0,
         limit: int = 100,
+        include_archived: bool = False,
     ) -> list[dict]:
         """列出知識，支援分層/分類/信任篩選。"""
         query = "SELECT * FROM knowledge WHERE trust >= ?"
         params: list = [min_trust]
+        if not include_archived:
+            query += " AND COALESCE(status, 'active') != 'archived'"
 
         if layer:
             query += " AND layer=?"
@@ -999,6 +1023,165 @@ class VaultDB:
 
         rows = self.conn.execute(query, params).fetchall()
         return [dict(r) for r in rows]
+
+    @staticmethod
+    def _parse_timestamp(value: str) -> datetime | None:
+        """Parse ISO-like timestamps stored in governance metadata."""
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            try:
+                dt = datetime.fromisoformat(f"{text}T00:00:00+00:00")
+            except ValueError:
+                return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    def record_knowledge_access(
+        self,
+        knowledge_ids: list[int] | tuple[int, ...] | set[int],
+        *,
+        cited: bool = False,
+        accessed_at: str | None = None,
+    ) -> int:
+        """Record retrieval/citation usage counters for active knowledge rows.
+
+        Usage tracking is intentionally lightweight and lossy: failures should not
+        break search. Callers can use it for ranking, dream reports, and archive
+        decisions without making telemetry a hard runtime dependency.
+        """
+        ids = sorted({int(kid) for kid in knowledge_ids if kid})
+        if not ids:
+            return 0
+        now = accessed_at or datetime.now(timezone.utc).isoformat()
+        placeholders = ",".join("?" for _ in ids)
+        citation_sql = ", citation_count = citation_count + 1" if cited else ""
+        cur = self.conn.execute(
+            f"""UPDATE knowledge
+                   SET access_count = access_count + 1,
+                       last_accessed_at = ?
+                       {citation_sql}
+                 WHERE id IN ({placeholders})
+                   AND COALESCE(status, 'active') != 'archived'""",
+            [now, *ids],
+        )
+        self.conn.commit()
+        return int(cur.rowcount or 0)
+
+    def top_used_knowledge(self, limit: int = 10, *, include_archived: bool = False) -> list[dict]:
+        """Return the most frequently retrieved memories."""
+        limit_i = max(1, min(int(limit or 10), 1000))
+        where = ""
+        if not include_archived:
+            where = "WHERE COALESCE(status, 'active') != 'archived'"
+        rows = self.conn.execute(
+            f"""SELECT id, title, layer, category, trust, status,
+                       access_count, citation_count, last_accessed_at, updated_at
+                  FROM knowledge
+                  {where}
+                 ORDER BY access_count DESC, citation_count DESC, last_accessed_at DESC, updated_at DESC
+                 LIMIT ?""",
+            (limit_i,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def usage_stats(self, limit: int = 10) -> dict:
+        """Return memory usage and lifecycle counters for operators/agents."""
+        now = datetime.now(timezone.utc)
+        rows = self.conn.execute(
+            """SELECT status, expires_at, access_count, citation_count
+                 FROM knowledge"""
+        ).fetchall()
+        status_counts: dict[str, int] = {}
+        expired_active = 0
+        total_accesses = 0
+        total_citations = 0
+        for row in rows:
+            status = str(row["status"] or "active")
+            status_counts[status] = status_counts.get(status, 0) + 1
+            total_accesses += int(row["access_count"] or 0)
+            total_citations += int(row["citation_count"] or 0)
+            expires_at = self._parse_timestamp(row["expires_at"])
+            if status != "archived" and expires_at is not None and expires_at <= now:
+                expired_active += 1
+        return {
+            "knowledge_count": len(rows),
+            "status_counts": status_counts,
+            "expired_active_count": expired_active,
+            "total_accesses": total_accesses,
+            "total_citations": total_citations,
+            "top_used": self.top_used_knowledge(limit=limit),
+        }
+
+    def archive_expired_knowledge(
+        self,
+        *,
+        now: str | datetime | None = None,
+        limit: int = 100,
+        dry_run: bool = False,
+    ) -> dict:
+        """Archive active memories whose `expires_at` timestamp is in the past."""
+        if isinstance(now, datetime):
+            now_dt = now.astimezone(timezone.utc) if now.tzinfo else now.replace(tzinfo=timezone.utc)
+            now_text = now_dt.isoformat()
+        elif now:
+            parsed = self._parse_timestamp(str(now))
+            now_dt = parsed or datetime.now(timezone.utc)
+            now_text = now_dt.isoformat()
+        else:
+            now_dt = datetime.now(timezone.utc)
+            now_text = now_dt.isoformat()
+
+        limit_i = max(1, min(int(limit or 100), 10000))
+        rows = self.conn.execute(
+            """SELECT id, title, layer, category, memory_type, expires_at,
+                      access_count, citation_count
+                 FROM knowledge
+                WHERE COALESCE(status, 'active') != 'archived'
+                  AND COALESCE(expires_at, '') != ''
+                ORDER BY expires_at ASC, id ASC
+                LIMIT ?""",
+            (limit_i,),
+        ).fetchall()
+        expired = []
+        for row in rows:
+            expires_at = self._parse_timestamp(row["expires_at"])
+            if expires_at is not None and expires_at <= now_dt:
+                expired.append(dict(row))
+
+        if dry_run or not expired:
+            return {
+                "action": "archive-expired",
+                "dry_run": bool(dry_run),
+                "archived_count": 0,
+                "eligible_count": len(expired),
+                "now": now_text,
+                "items": expired,
+            }
+
+        ids = [int(row["id"]) for row in expired]
+        placeholders = ",".join("?" for _ in ids)
+        self.conn.execute(
+            f"""UPDATE knowledge
+                   SET status='archived',
+                       archived_at=?,
+                       updated_at=?
+                 WHERE id IN ({placeholders})""",
+            [now_text, now_text, *ids],
+        )
+        self.conn.commit()
+        return {
+            "action": "archive-expired",
+            "dry_run": False,
+            "archived_count": len(ids),
+            "eligible_count": len(expired),
+            "now": now_text,
+            "items": expired,
+        }
 
     # ── Memory candidate CRUD ───────────────────────────────
 
@@ -1144,7 +1327,11 @@ class VaultDB:
                 dist = struct.unpack("f", dist)[0]
             id_to_dist[kid] = float(dist)
 
-        where_conditions = ["id IN ({})".format(",".join("?" * len(knowledge_ids))), "trust >= ?"]
+        where_conditions = [
+            "id IN ({})".format(",".join("?" * len(knowledge_ids))),
+            "trust >= ?",
+            "COALESCE(status, 'active') != 'archived'",
+        ]
         params: list = list(knowledge_ids)
         params.append(min_trust)
 
@@ -1192,6 +1379,7 @@ class VaultDB:
             SELECT *, 0.0 AS _score
             FROM knowledge
             WHERE trust >= ?
+              AND COALESCE(status, 'active') != 'archived'
               AND (title LIKE ? ESCAPE '\\' OR content_raw LIKE ? ESCAPE '\\'
                    OR content_aaak LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\'
                    OR category LIKE ? ESCAPE '\\')
@@ -1664,9 +1852,15 @@ class VaultDB:
             skill_count = self.conn.execute("SELECT COUNT(*) FROM skills").fetchone()[0]
         except Exception:
             pass
+        usage = self.usage_stats(limit=5)
 
         return {
             "knowledge_count": k_count,
+            "active_count": int(usage.get("status_counts", {}).get("active", 0)),
+            "archived_count": int(usage.get("status_counts", {}).get("archived", 0)),
+            "expired_active_count": int(usage.get("expired_active_count", 0)),
+            "total_accesses": int(usage.get("total_accesses", 0)),
+            "total_citations": int(usage.get("total_citations", 0)),
             "embedding_count": vec_count,
             "edge_count": edge_count,
             "entity_count": entity_count,

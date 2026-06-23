@@ -658,6 +658,11 @@ def cmd_stats(args):
     print(f"  嵌入筆數:   {stats['embedding_count']}")
     print(f"  圖譜邊數:   {stats.get('edge_count', 0)}")
     print(f"  圖譜實體:   {stats.get('entity_count', 0)}")
+    print(f"  活躍記憶:   {stats.get('active_count', 0)}")
+    print(f"  歸檔記憶:   {stats.get('archived_count', 0)}")
+    print(f"  已到期未歸檔: {stats.get('expired_active_count', 0)}")
+    print(f"  檢索命中次數: {stats.get('total_accesses', 0)}")
+    print(f"  引用次數:   {stats.get('total_citations', 0)}")
     print(f"  向量搜尋:   {'✅' if stats['vec_available'] else '❌'}")
     print(f"  DB 大小:    {stats['db_size_mb']} MB")
     print(f"  DB 路徑:    {stats['db_path']}")
@@ -1762,6 +1767,64 @@ def _json_print(payload: dict, *, pretty: bool = False) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=indent, sort_keys=True))
 
 
+def cmd_usage(args):
+    """Memory usage telemetry and TTL archive workflows."""
+    from vault.db import VaultDB
+
+    action = getattr(args, "usage_action", "")
+    if action not in {"stats", "archive-expired"}:
+        print("error: usage requires action: stats or archive-expired", file=sys.stderr)
+        raise SystemExit(2)
+
+    try:
+        with VaultDB(find_project_dir() / "vault.db") as db:
+            if action == "stats":
+                payload = {
+                    "action": "stats",
+                    **db.usage_stats(limit=args.limit),
+                }
+            else:
+                payload = db.archive_expired_knowledge(
+                    limit=args.limit,
+                    dry_run=not args.apply,
+                )
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+
+    if args.json or args.pretty:
+        _json_print(payload, pretty=args.pretty)
+        return
+
+    if action == "stats":
+        print("📈 Memory usage\n")
+        print(f"  知識筆數:       {payload.get('knowledge_count', 0)}")
+        print(f"  已到期未歸檔:   {payload.get('expired_active_count', 0)}")
+        print(f"  檢索命中次數:   {payload.get('total_accesses', 0)}")
+        print(f"  引用次數:       {payload.get('total_citations', 0)}")
+        status_counts = payload.get("status_counts", {})
+        if status_counts:
+            print("  狀態:")
+            for status, count in sorted(status_counts.items()):
+                print(f"    - {status}: {count}")
+        top_used = payload.get("top_used", [])
+        if top_used:
+            print("\n  Top used:")
+            for row in top_used:
+                print(
+                    f"    #{row.get('id')} {row.get('title')} "
+                    f"(access={row.get('access_count', 0)}, citations={row.get('citation_count', 0)})"
+                )
+        return
+
+    verb = "would archive" if payload.get("dry_run") else "archived"
+    print(f"🗄️  TTL archive {verb}: {payload.get('eligible_count', 0)} eligible")
+    if payload.get("dry_run"):
+        print("   Add --apply to archive these memories.")
+    for row in payload.get("items", [])[: args.limit]:
+        print(f"  #{row.get('id')} {row.get('title')} expires_at={row.get('expires_at')}")
+
+
 def cmd_db(args):
     """SQLite schema migration/status/backup workflows."""
     from vault.db import VaultDB
@@ -2385,6 +2448,19 @@ def main(argv: list[str] | None = None):
     # stats
     p = sub.add_parser("stats", help="統計")
 
+    # usage — retrieval telemetry and TTL archival
+    p = sub.add_parser("usage", help="記憶使用統計與 TTL 歸檔")
+    usage_sub = p.add_subparsers(dest="usage_action")
+    up = usage_sub.add_parser("stats", help="顯示記憶使用統計")
+    up.add_argument("--limit", "-n", type=int, default=10)
+    up.add_argument("--json", action="store_true", help="輸出 JSON")
+    up.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+    up = usage_sub.add_parser("archive-expired", help="歸檔 expires_at 已到期的 active 記憶")
+    up.add_argument("--limit", "-n", type=int, default=100)
+    up.add_argument("--apply", action="store_true", help="實際歸檔；預設只 dry-run")
+    up.add_argument("--json", action="store_true", help="輸出 JSON")
+    up.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
     # install-embedding
     p = sub.add_parser("install-embedding", help="安裝嵌入模型")
     p.add_argument("--model", choices=["zh", "en", "mix"], default="mix")
@@ -2787,6 +2863,7 @@ def main(argv: list[str] | None = None):
         "lint": cmd_lint,
         "doctor": cmd_doctor,
         "stats": cmd_stats,
+        "usage": cmd_usage,
         "install-embedding": cmd_install_embedding,
         "setup-agent": cmd_setup_agent,
         "install-agent": cmd_setup_agent,

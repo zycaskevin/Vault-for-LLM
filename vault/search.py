@@ -71,6 +71,11 @@ def calc_graph_depth(result: dict) -> float:
     return max(0, 0.2 - (dist - 1) * 0.1)
 
 
+def _is_active_memory(row: dict) -> bool:
+    """Return True when a memory should participate in normal retrieval."""
+    return str(row.get("status") or "active").lower() != "archived"
+
+
 class LightweightReranker:
     """
     輕量級重排序器，無需額外模型。
@@ -1635,6 +1640,7 @@ class VaultSearch:
             )
             cached = self._get_from_cache(cache_key)
             if cached is not None:
+                self._record_result_usage(cached)
                 return cached
 
         # ── 安全防線：min_score 範圍驗證 ──
@@ -1817,6 +1823,7 @@ class VaultSearch:
                 results, graph_expand, limit, min_trust, layer, category
             )
 
+        results = [r for r in results if _is_active_memory(r)]
         results = filter_readable_memories(results, read_policy)
 
         # Reranker
@@ -1869,6 +1876,8 @@ class VaultSearch:
         if cache_key is not None:
             self._set_to_cache(cache_key, results)
 
+        self._record_result_usage(results)
+
         if compact:
             return [self._compact_result(r) for r in results]
 
@@ -1878,6 +1887,16 @@ class VaultSearch:
             results = [{k: v for k, v in r.items() if k in field_set} for r in results]
 
         return results
+
+    def _record_result_usage(self, results: list[dict]) -> None:
+        """Best-effort usage telemetry; search must not fail because of it."""
+        if not results or self.db.conn is None:
+            return
+        try:
+            knowledge_ids = [int(r["id"]) for r in results if r.get("id")]
+            self.db.record_knowledge_access(knowledge_ids)
+        except Exception:
+            return
 
     # ── Document Map enrichment ─────────────────────────────
 
@@ -2374,6 +2393,7 @@ class VaultSearch:
             params.extend([pattern] * 5)
 
         where = f"trust >= ? AND ({' OR '.join(conditions)})" if len(terms) > 1 else f"trust >= ? AND {conditions[0]}"
+        where += " AND COALESCE(status, 'active') != 'archived'"
 
         if layer:
             where += " AND layer=?"
@@ -2594,6 +2614,8 @@ class VaultSearch:
                 continue
             knowledge = self.db.get_knowledge(kid)
             if not knowledge:
+                continue
+            if not _is_active_memory(knowledge):
                 continue
             item = dict(knowledge)
             if item.get("trust", 0.0) < min_trust:

@@ -121,6 +121,30 @@ portable for future embodied agents, long-running assistants, or world-model
 workflows: user context, project state, source-grounded knowledge, and safe
 forgetting can live in the same inspectable governance layer.
 
+## Usage And Forgetting Signals
+
+Vault records lightweight read-side signals on active memories:
+
+- `access_count`: how often a memory appears in retrieval results.
+- `citation_count`: reserved for workflows that explicitly mark a memory as
+  cited or used as evidence.
+- `last_accessed_at`: the most recent retrieval timestamp.
+
+These counters are not a surveillance log. They are coarse maintenance signals
+for ranking, dream reports, and archive review.
+
+Short-lived memories should carry `expires_at`. Operators or maintenance agents
+can preview and apply TTL archival:
+
+```bash
+vault usage stats
+vault usage archive-expired
+vault usage archive-expired --apply
+```
+
+Archival changes `status` to `archived`; it does not delete the row. This keeps
+old memories reviewable while keeping normal retrieval focused on active memory.
+
 ## Multi-Agent Sharing
 
 For Hermes Agent, OpenClaw, Codex, Claude Code, n8n, Coze, or other runtimes:

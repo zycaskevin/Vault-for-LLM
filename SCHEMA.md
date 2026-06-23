@@ -92,7 +92,20 @@ Optional fields:
 ```yaml
 updated: "YYYY-MM-DD"
 status: "active|archived|deprecated"
+expires_at: "YYYY-MM-DD"
 ```
+
+Compiled SQLite rows also track maintenance-only usage fields:
+
+| Field | Meaning |
+|---|---|
+| `access_count` | Number of times the memory appeared in local retrieval results |
+| `citation_count` | Number of times a workflow explicitly marked the memory as cited evidence |
+| `last_accessed_at` | Most recent retrieval timestamp |
+| `archived_at` | Timestamp when a row was moved to `status: archived` |
+
+`vault usage archive-expired` moves expired active memories to archived status.
+It does not delete source rows.
 
 ---
 

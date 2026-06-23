@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.46] - 2026-06-23
+
+### Added
+
+- Added memory usage counters on active knowledge rows: `access_count`, `citation_count`, and `last_accessed_at`.
+- Added `vault usage stats` and `vault usage archive-expired` so operators and maintenance agents can inspect retrieval usage and archive expired memories without deleting them.
+- Added schema v9 archive metadata (`status`, `archived_at`) and hid archived memories from normal local search and list results.
+
 ## [0.6.45] - 2026-06-23
 
 ### Security

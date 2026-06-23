@@ -90,6 +90,7 @@ after applying `docs/supabase_read_policy.sql` in Supabase.
 | `vault list` | List knowledge entries |
 | `vault remove <id> --confirm` / `vault delete <id> --confirm` | Delete a knowledge entry by ID |
 | `vault stats` | Show vault statistics |
+| `vault usage stats` / `vault usage archive-expired --apply` | Inspect retrieval usage and archive expired memories without deleting them |
 
 ## Quality And Curation
 
@@ -99,6 +100,7 @@ after applying `docs/supabase_read_policy.sql` in Supabase.
 | `vault dream` | Produce report-first memory curation summaries |
 | `vault candidates --include-gates` | Review candidate-memory queue and gate details before promotion |
 | `vault freshness` | Experimental freshness/review scheduling |
+| `vault usage archive-expired` | Preview TTL-based archive actions; add `--apply` to mark eligible memories archived |
 | `vault dedup` | Detect or merge duplicate entries |
 | `vault converge` | Experimental convergence/self-questioning check |
 | `vault cross-validate` | Experimental cross-model validation |

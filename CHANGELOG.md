@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [0.6.56] - 2026-06-23
+
+### Added
+
+- Added bounded `learning_policy` output to `vault automation eval` so candidate outcome feedback can become machine-readable curation priority hints.
+- Added `vault automation eval --write-learning-policy` to write `reports/automation/learning_policy.json` for future Dream, curator, or scheduled maintenance agents.
+
+### Changed
+
+- Updated install examples and release claim checks for `0.6.56`.
+
 ## [0.6.55] - 2026-06-23
 
 ### Added

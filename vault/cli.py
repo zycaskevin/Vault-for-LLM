@@ -1890,6 +1890,7 @@ def cmd_automation(args):
                 project_dir,
                 limit=args.limit,
                 min_events=args.min_events,
+                write_learning_policy=getattr(args, "write_learning_policy", False),
             )
         else:
             payload = automation_doctor(project_dir, mode=args.mode)
@@ -2055,6 +2056,22 @@ def cmd_automation(args):
                     f"acceptance={item.get('acceptance_rate', 0):.2f} "
                     f"recommendation={item.get('recommendation')}"
                 )
+        learning = payload.get("learning_policy") or {}
+        rules = learning.get("rules") or []
+        if rules:
+            print("  learning policy:")
+            for item in rules[: args.limit]:
+                selector = item.get("selector") or {}
+                print(
+                    f"    - source={selector.get('source') or '(none)'} "
+                    f"type={selector.get('memory_type') or '(none)'} "
+                    f"category={selector.get('category') or '(none)'} "
+                    f"action={item.get('action')} "
+                    f"multiplier={item.get('priority_multiplier')} "
+                    f"confidence={item.get('confidence')}"
+                )
+        if payload.get("learning_policy_path"):
+            print(f"  learning policy written: {payload.get('learning_policy_path')}")
         return
 
     print("🩺 Automation doctor\n")
@@ -3162,6 +3179,11 @@ def main(argv: list[str] | None = None):
     sp = automation_sub.add_parser("eval", help="Evaluate automation feedback and candidate outcomes")
     add_automation_common(sp)
     sp.add_argument("--min-events", type=int, default=5, help="minimum feedback events before a group is considered learnable")
+    sp.add_argument(
+        "--write-learning-policy",
+        action="store_true",
+        help="write reports/automation/learning_policy.json with bounded curation priority hints",
+    )
 
     sp = automation_sub.add_parser("doctor", help="Check automation readiness")
     add_automation_common(sp)

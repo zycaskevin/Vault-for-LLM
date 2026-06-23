@@ -390,6 +390,49 @@ def test_automation_eval_reports_feedback_acceptance(tmp_path):
     assert payload["source_memory_type_scores"][0]["memory_type"] == "dream_suggestion"
     assert payload["source_memory_type_scores"][0]["acceptance_rate"] == 0.5
     assert payload["source_memory_type_scores"][0]["recommendation"] == "keep_observing"
+    assert payload["learning_policy"]["bounds"]["no_auto_promote"] is True
+    assert payload["learning_policy"]["rules"][0]["action"] == "keep_observing"
+
+
+def test_automation_eval_builds_bounded_learning_policy(tmp_path):
+    project = _init_project(tmp_path)
+    with VaultDB(project / "vault.db") as db:
+        for idx in range(3):
+            db.record_memory_feedback(
+                {
+                    "candidate_id": f"good_{idx}",
+                    "source": "dream",
+                    "memory_type": "dream_suggestion",
+                    "category": "memory-curation",
+                    "outcome": "promoted",
+                    "score": 1.0,
+                }
+            )
+        for idx in range(3):
+            db.record_memory_feedback(
+                {
+                    "candidate_id": f"bad_{idx}",
+                    "source": "import",
+                    "memory_type": "raw_note",
+                    "category": "scratch",
+                    "outcome": "rejected",
+                    "score": 0.0,
+                }
+            )
+
+    payload = automation_eval(project, limit=10, min_events=3, write_learning_policy=True)
+
+    rules = payload["learning_policy"]["rules"]
+    by_source = {rule["selector"]["source"]: rule for rule in rules}
+    assert by_source["dream"]["action"] == "prefer_candidates"
+    assert by_source["dream"]["priority_multiplier"] == 1.15
+    assert by_source["import"]["action"] == "downgrade_or_require_review"
+    assert by_source["import"]["priority_multiplier"] == 0.85
+    assert payload["learning_policy"]["bounds"]["priority_multiplier_min"] == 0.85
+    assert payload["learning_policy"]["bounds"]["priority_multiplier_max"] == 1.15
+    assert payload["learning_policy_path"] == "reports/automation/learning_policy.json"
+    written = json.loads((project / payload["learning_policy_path"]).read_text(encoding="utf-8"))
+    assert written["rules"] == rules
 
 
 def test_automation_report_specific_path_must_stay_under_report_dir(tmp_path):

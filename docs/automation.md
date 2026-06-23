@@ -90,6 +90,17 @@ can see which kinds of suggestions humans or trusted agents actually accepted,
 without using that signal to auto-promote, auto-delete, or override privacy
 policy.
 
+For automation agents that need a handoff file, run:
+
+```bash
+vault automation eval --write-learning-policy --pretty
+```
+
+This writes `reports/automation/learning_policy.json`. The file is intentionally
+bounded: it can suggest `prefer_candidates`, `downgrade_or_require_review`,
+`keep_observing`, or `observe`, with priority multipliers capped between `0.85`
+and `1.15`. It is a ranking and review hint, not an authorization policy.
+
 ## Policy
 
 `automation_policy.yaml` controls the automation boundary:
@@ -171,6 +182,9 @@ important review fields are:
 - `memory_feedback_events`: candidate outcome events used by
   `vault automation eval` to show which suggestion sources are earning trust
   over time. These events are audit data, not direct policy changes.
+- `learning_policy`: bounded priority hints derived from feedback events. Use
+  it to guide future Dream or curator ordering, not to auto-promote or bypass
+  access policy.
 
 This gives agents a small, structured handoff: they can summarize the report,
 but the source of truth remains the machine-readable ledger.

@@ -311,14 +311,21 @@ def automation_report(
     }
 
 
-def automation_eval(project_dir: str | Path, *, limit: int = 1000, min_events: int = 5) -> dict[str, Any]:
+def automation_eval(
+    project_dir: str | Path,
+    *,
+    limit: int = 1000,
+    min_events: int = 5,
+    write_learning_policy: bool = False,
+) -> dict[str, Any]:
     """Evaluate automation feedback so curation can improve over time."""
     project = Path(project_dir)
     db_path = project / "vault.db"
+    generated_at = _now()
     if not db_path.exists():
         return {
             "action": "eval",
-            "generated_at": _now(),
+            "generated_at": generated_at,
             "project_dir": str(project),
             "status": "blocked",
             "reason": "vault.db missing",
@@ -353,9 +360,20 @@ def automation_eval(project_dir: str | Path, *, limit: int = 1000, min_events: i
 
     event_count = int(summary.get("event_count") or 0)
     readiness = "learning" if event_count >= min_events else "cold_start"
+    learning_policy = _feedback_learning_policy(
+        groups,
+        generated_at=generated_at,
+        event_count=event_count,
+        min_events=max(1, int(min_events or 1)),
+        readiness=readiness,
+    )
+    learning_policy_path = ""
+    if write_learning_policy:
+        learning_policy_path = _write_learning_policy(project, learning_policy)
+
     return {
         "action": "eval",
-        "generated_at": _now(),
+        "generated_at": generated_at,
         "project_dir": str(project),
         "status": "completed",
         "readiness": readiness,
@@ -363,6 +381,8 @@ def automation_eval(project_dir: str | Path, *, limit: int = 1000, min_events: i
         "min_events": max(1, int(min_events or 1)),
         "outcome_counts": summary.get("outcome_counts", {}),
         "source_memory_type_scores": groups,
+        "learning_policy": learning_policy,
+        "learning_policy_path": learning_policy_path,
         "pending_candidates": {
             "count": len(pending),
             "by_memory_type": pending_by_type,
@@ -375,6 +395,98 @@ def automation_eval(project_dir: str | Path, *, limit: int = 1000, min_events: i
         ),
         "next_action": "Review low-acceptance groups before allowing stronger automation policies.",
     }
+
+
+def _feedback_learning_policy(
+    groups: list[dict[str, Any]],
+    *,
+    generated_at: str,
+    event_count: int,
+    min_events: int,
+    readiness: str,
+) -> dict[str, Any]:
+    """Convert feedback aggregates into bounded, auditable curation hints."""
+    rules = []
+    for group in groups:
+        total = int(group.get("total") or 0)
+        acceptance = float(group.get("acceptance_rate") or 0.0)
+        average_score = float(group.get("average_score") or 0.0)
+        recommendation = str(group.get("recommendation") or "collect_more_feedback")
+        enough_events = total >= min_events
+
+        if not enough_events:
+            priority_multiplier = 1.0
+            confidence = round(min(0.49, total / max(1, min_events) * 0.49), 3)
+            action = "observe"
+            reason = "Not enough reviewed outcomes for this source/type/category group."
+        elif recommendation == "prefer":
+            priority_multiplier = 1.15
+            confidence = _learning_confidence(total, min_events, acceptance)
+            action = "prefer_candidates"
+            reason = "This group has earned a high promotion rate in reviewed outcomes."
+        elif recommendation == "downgrade_or_review_policy":
+            priority_multiplier = 0.85
+            confidence = _learning_confidence(total, min_events, 1.0 - acceptance)
+            action = "downgrade_or_require_review"
+            reason = "This group has a low promotion rate and should stay under review."
+        else:
+            priority_multiplier = 1.0
+            confidence = _learning_confidence(total, min_events, 0.5)
+            action = "keep_observing"
+            reason = "This group has mixed outcomes; keep collecting feedback."
+
+        rules.append(
+            {
+                "selector": {
+                    "source": group.get("source") or "",
+                    "memory_type": group.get("memory_type") or "",
+                    "category": group.get("category") or "",
+                },
+                "total": total,
+                "acceptance_rate": round(acceptance, 4),
+                "average_score": round(average_score, 4),
+                "recommendation": recommendation,
+                "action": action,
+                "priority_multiplier": priority_multiplier,
+                "confidence": confidence,
+                "reason": reason,
+            }
+        )
+
+    rules.sort(key=lambda item: (item["confidence"], item["total"]), reverse=True)
+    return {
+        "version": 1,
+        "generated_at": generated_at,
+        "readiness": readiness,
+        "event_count": int(event_count),
+        "min_events": int(min_events),
+        "rules": rules,
+        "bounds": {
+            "priority_multiplier_min": 0.85,
+            "priority_multiplier_max": 1.15,
+            "no_auto_promote": True,
+            "no_auto_delete": True,
+            "respect_privacy_and_access_policy": True,
+        },
+        "principle": (
+            "Learning policy is a ranking and review hint for future curation; "
+            "it is not an authorization policy."
+        ),
+    }
+
+
+def _learning_confidence(total: int, min_events: int, signal_strength: float) -> float:
+    sample = min(1.0, total / max(1, min_events * 3))
+    signal = max(0.0, min(1.0, signal_strength))
+    return round(0.35 + sample * 0.45 + signal * 0.2, 3)
+
+
+def _write_learning_policy(project: Path, learning_policy: dict[str, Any]) -> str:
+    report_dir = project / "reports" / "automation"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    path = report_dir / "learning_policy.json"
+    path.write_text(json.dumps(learning_policy, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return str(path.relative_to(project))
 
 
 def automation_doctor(project_dir: str | Path, *, mode: str | None = None) -> dict[str, Any]:

@@ -58,7 +58,7 @@ Vault-for-LLM 可能不是第一個該拿起來的工具。
 最推薦的方式，是直接把這段交給能執行本機指令的 Agent：
 
 ```text
-幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.58。
+幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.59。
 先問我要 shared、private、domain-specific 還是 temporary vault。
 詢問穩定的 project directory，並為長期任務產生 stable venv script。
 逐項詢問 MCP、semantic search、Supabase、Obsidian import、Headroom 壓縮、
@@ -71,7 +71,7 @@ Agent 會使用安裝精靈：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.58"
+pip install "vault-for-llm[mcp]==0.6.59"
 
 vault setup-agent
 ```
@@ -98,7 +98,7 @@ vault setup-agent \
 ### 手動快速開始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.58"
+pip install "vault-for-llm[mcp]==0.6.59"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -181,8 +181,10 @@ vault automation cycle --apply
 
 Agent 安裝精靈可以用
 `vault setup-agent --automation-schedule cron|launchagent|n8n|all` 產生 cron、
-LaunchAgent 或 n8n 模板。排程預設是 report-first；只有使用者明確加上
-`--automation-apply`，才會執行 policy 允許的可逆歸檔。
+LaunchAgent 或 n8n 模板。排程預設跑 `vault automation cycle`，讓長期
+Agent 可以先從已審核結果寫出 bounded learning policy，再整理記憶。排程仍然是
+report-first；只有使用者明確加上 `--automation-apply`，才會執行 policy
+允許的可逆歸檔。想要更單純的維護排程，可以加 `--automation-command run`。
 
 自動化細節：[docs/automation.md](docs/automation.md)。
 
@@ -217,7 +219,7 @@ SQLite 仍然是 source of truth。Supabase 是可選的共享層。
 當不同主機、n8n、Coze 或 hosted agent 需要讀取共享記憶時，可以同步安全摘要：
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.58"
+pip install "vault-for-llm[supabase]==0.6.59"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

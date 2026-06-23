@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.59] - 2026-06-23
+
+### Changed
+
+- Changed agent-generated memory automation schedules to use `vault automation cycle` by default, so scheduled jobs evaluate reviewed candidate feedback, write bounded learning-policy hints, and then run safe automation.
+- Added `--automation-command cycle|run` to `vault setup-agent` / `vault install-agent` so users can explicitly choose the scheduled automation command.
+- Updated memory automation templates and setup guidance to describe the default cycle behavior while keeping `--automation-apply` as the separate opt-in for reversible archival and candidate writes.
+
 ## [0.6.58] - 2026-06-23
 
 ### Added

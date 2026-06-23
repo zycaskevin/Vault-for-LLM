@@ -197,6 +197,11 @@ Forgetting suggestions when `--apply` is used, but it still never promotes
 candidates or hard-deletes memory. Use `conservative` mode when scheduled jobs
 should only write reports.
 
+`vault automation eval` reads promoted/rejected/blocked candidate outcomes and
+shows which suggestion sources are earning trust over time. The signal guides
+future curation priority; it does not override review, privacy, or access
+policy.
+
 Agent installers can generate cron, LaunchAgent, or n8n templates with
 `vault setup-agent --automation-schedule cron|launchagent|n8n|all`. Scheduled
 automation is report-first unless the user explicitly opts into `--automation-apply`.

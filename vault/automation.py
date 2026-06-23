@@ -311,6 +311,72 @@ def automation_report(
     }
 
 
+def automation_eval(project_dir: str | Path, *, limit: int = 1000, min_events: int = 5) -> dict[str, Any]:
+    """Evaluate automation feedback so curation can improve over time."""
+    project = Path(project_dir)
+    db_path = project / "vault.db"
+    if not db_path.exists():
+        return {
+            "action": "eval",
+            "generated_at": _now(),
+            "project_dir": str(project),
+            "status": "blocked",
+            "reason": "vault.db missing",
+            "next_action": "Run vault init and create or import memory before automation eval.",
+        }
+
+    with VaultDB(db_path) as db:
+        summary = db.memory_feedback_summary(limit=limit)
+        pending = db.list_memory_candidates(status="candidate", limit=1000)
+
+    groups = []
+    for group in summary.get("groups", []):
+        total = int(group.get("total") or 0)
+        acceptance = float(group.get("acceptance_rate") or 0.0)
+        if total < min_events:
+            recommendation = "collect_more_feedback"
+        elif acceptance >= 0.75:
+            recommendation = "prefer"
+        elif acceptance <= 0.25:
+            recommendation = "downgrade_or_review_policy"
+        else:
+            recommendation = "keep_observing"
+        groups.append({**group, "recommendation": recommendation})
+
+    pending_by_type: dict[str, int] = {}
+    pending_by_source: dict[str, int] = {}
+    for row in pending:
+        memory_type = str(row.get("memory_type") or "knowledge")
+        source = str(row.get("source") or "")
+        pending_by_type[memory_type] = pending_by_type.get(memory_type, 0) + 1
+        pending_by_source[source] = pending_by_source.get(source, 0) + 1
+
+    event_count = int(summary.get("event_count") or 0)
+    readiness = "learning" if event_count >= min_events else "cold_start"
+    return {
+        "action": "eval",
+        "generated_at": _now(),
+        "project_dir": str(project),
+        "status": "completed",
+        "readiness": readiness,
+        "event_count": event_count,
+        "min_events": max(1, int(min_events or 1)),
+        "outcome_counts": summary.get("outcome_counts", {}),
+        "source_memory_type_scores": groups,
+        "pending_candidates": {
+            "count": len(pending),
+            "by_memory_type": pending_by_type,
+            "by_source": pending_by_source,
+        },
+        "recent_events": summary.get("recent_events", []),
+        "principle": (
+            "feedback guides future curation priority; it does not auto-promote, "
+            "auto-delete, or override privacy/access policy"
+        ),
+        "next_action": "Review low-acceptance groups before allowing stronger automation policies.",
+    }
+
+
 def automation_doctor(project_dir: str | Path, *, mode: str | None = None) -> dict[str, Any]:
     project = Path(project_dir)
     policy = load_policy(project, mode=mode)

@@ -6,6 +6,7 @@ import json
 
 from vault.automation import (
     automation_doctor,
+    automation_eval,
     automation_plan,
     automation_report,
     automation_run,
@@ -349,6 +350,48 @@ def test_automation_report_latest_detail_includes_ledger(tmp_path):
     assert payload["detail"]["action_ledger"][0]["status"] == "applied"
 
 
+def test_automation_eval_reports_feedback_acceptance(tmp_path):
+    project = _init_project(tmp_path)
+    with VaultDB(project / "vault.db") as db:
+        db.record_memory_feedback(
+            {
+                "candidate_id": "mem_good",
+                "knowledge_id": 1,
+                "source": "dream",
+                "source_ref": "dream:metadata:1",
+                "memory_type": "dream_suggestion",
+                "category": "memory-curation",
+                "outcome": "promoted",
+                "score": 1.0,
+                "reason": "accepted by reviewer",
+            }
+        )
+        db.record_memory_feedback(
+            {
+                "candidate_id": "mem_bad",
+                "source": "dream",
+                "source_ref": "dream:metadata:2",
+                "memory_type": "dream_suggestion",
+                "category": "memory-curation",
+                "outcome": "rejected",
+                "score": 0.0,
+                "reason": "too vague",
+            }
+        )
+
+    payload = automation_eval(project, limit=10, min_events=2)
+
+    assert payload["action"] == "eval"
+    assert payload["status"] == "completed"
+    assert payload["readiness"] == "learning"
+    assert payload["event_count"] == 2
+    assert payload["outcome_counts"] == {"promoted": 1, "rejected": 1}
+    assert payload["source_memory_type_scores"][0]["source"] == "dream"
+    assert payload["source_memory_type_scores"][0]["memory_type"] == "dream_suggestion"
+    assert payload["source_memory_type_scores"][0]["acceptance_rate"] == 0.5
+    assert payload["source_memory_type_scores"][0]["recommendation"] == "keep_observing"
+
+
 def test_automation_report_specific_path_must_stay_under_report_dir(tmp_path):
     project = _init_project(tmp_path)
     outside = project / "not-automation-report.json"
@@ -390,6 +433,42 @@ def test_automation_cli_report_latest_detail_prints_ledger(tmp_path, monkeypatch
     assert "ledger entries: 1" in out
     assert "action ledger:" in out
     assert "archive_expired applied" in out
+
+
+def test_automation_cli_eval_prints_feedback_scores(tmp_path, monkeypatch, capsys):
+    from vault.cli import cmd_automation
+
+    project = _init_project(tmp_path)
+    with VaultDB(project / "vault.db") as db:
+        db.record_memory_feedback(
+            {
+                "candidate_id": "mem_feedback",
+                "source": "automation",
+                "memory_type": "forgetting_suggestion",
+                "category": "forgetting-review",
+                "outcome": "promoted",
+                "score": 1.0,
+                "reason": "review accepted",
+            }
+        )
+    monkeypatch.chdir(project)
+
+    cmd_automation(
+        Namespace(
+            automation_action="eval",
+            mode=None,
+            limit=10,
+            min_events=1,
+            json=False,
+            pretty=False,
+        )
+    )
+
+    out = capsys.readouterr().out
+    assert "Automation eval" in out
+    assert "feedback events: 1" in out
+    assert "source=automation" in out
+    assert "recommendation=prefer" in out
 
 
 def test_automation_doctor_json_safe(tmp_path):

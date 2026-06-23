@@ -77,6 +77,19 @@ Check readiness for scheduled automation:
 vault automation doctor --pretty
 ```
 
+Evaluate whether automation suggestions are becoming useful:
+
+```bash
+vault automation eval --pretty
+```
+
+`automation eval` reads feedback events from candidate outcomes such as
+promoted, rejected, or blocked suggestions. It reports acceptance rates by
+source, memory type, and category. This is the first learning loop: automation
+can see which kinds of suggestions humans or trusted agents actually accepted,
+without using that signal to auto-promote, auto-delete, or override privacy
+policy.
+
 ## Policy
 
 `automation_policy.yaml` controls the automation boundary:
@@ -155,6 +168,9 @@ important review fields are:
   expired-but-used rows, protected expired rows, and top-used memories.
 - `human_review`: whether a person should inspect the run before stronger
   autonomy.
+- `memory_feedback_events`: candidate outcome events used by
+  `vault automation eval` to show which suggestion sources are earning trust
+  over time. These events are audit data, not direct policy changes.
 
 This gives agents a small, structured handoff: they can summarize the report,
 but the source of truth remains the machine-readable ledger.

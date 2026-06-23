@@ -177,6 +177,15 @@ def test_promotion_writes_raw_and_active_db(tmp_path):
         assert knowledge["content_raw"] == "Promotion writes a raw Markdown note and active knowledge row."
         assert knowledge["layer"] == "L2"
         assert knowledge["source"] == "promote-me.md"
+        feedback = db.list_memory_feedback(limit=10)
+        assert len(feedback) == 1
+        assert feedback[0]["candidate_id"] == result["candidate_id"]
+        assert feedback[0]["knowledge_id"] == promoted["knowledge_id"]
+        assert feedback[0]["source"] == "test"
+        assert feedback[0]["memory_type"] == "knowledge"
+        assert feedback[0]["category"] == "test"
+        assert feedback[0]["outcome"] == "promoted"
+        assert feedback[0]["score"] == 1.0
 
 
 def test_promotion_uses_exact_source_for_similar_filenames(tmp_path):

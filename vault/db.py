@@ -85,7 +85,7 @@ def normalize_governance_metadata(
 class VaultDB:
     """Vault-for-LLM 資料庫層。"""
 
-    SCHEMA_VERSION = 9
+    SCHEMA_VERSION = 10
     KNOWLEDGE_UPDATE_COLUMNS = {
         "title",
         "layer",
@@ -164,6 +164,7 @@ class VaultDB:
         7: "memory_candidate_quality_status",
         8: "governance_metadata_columns",
         9: "memory_usage_and_archive_columns",
+        10: "memory_feedback_events",
     }
 
     @staticmethod
@@ -495,6 +496,32 @@ class VaultDB:
         c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_owner_agent ON memory_candidates(owner_agent)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_memory_type ON memory_candidates(memory_type)")
 
+        # Feedback events give automation a learning loop without letting it
+        # silently rewrite policy. They record outcomes such as promoted,
+        # rejected, or blocked candidate suggestions for later evaluation.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS memory_feedback_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                event_type TEXT NOT NULL DEFAULT 'candidate_outcome',
+                candidate_id TEXT NOT NULL DEFAULT '',
+                knowledge_id INTEGER,
+                source TEXT NOT NULL DEFAULT '',
+                source_ref TEXT NOT NULL DEFAULT '',
+                memory_type TEXT NOT NULL DEFAULT '',
+                category TEXT NOT NULL DEFAULT '',
+                outcome TEXT NOT NULL,
+                score REAL NOT NULL DEFAULT 0.0,
+                reason TEXT NOT NULL DEFAULT '',
+                payload_json TEXT NOT NULL DEFAULT '{}'
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_memory_feedback_candidate ON memory_feedback_events(candidate_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_memory_feedback_outcome ON memory_feedback_events(outcome)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_memory_feedback_source ON memory_feedback_events(source)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_memory_feedback_memory_type ON memory_feedback_events(memory_type)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_memory_feedback_category ON memory_feedback_events(category)")
+
         c.commit()
 
         # 文章追蹤表
@@ -663,6 +690,7 @@ class VaultDB:
             "semantic_vectors",
             "embedding_cache",
             "memory_candidates",
+            "memory_feedback_events",
             "content_log",
             "skills",
             "lint_cache",
@@ -1283,6 +1311,131 @@ class VaultDB:
         params.append(limit)
         rows = self.conn.execute(query, params).fetchall()
         return [dict(r) for r in rows]
+
+    # ── Memory feedback / automation learning ──────────────
+
+    def record_memory_feedback(self, event: dict) -> int:
+        """Record a candidate outcome event for automation evaluation."""
+        now = datetime.now(timezone.utc).isoformat()
+        values = dict(event)
+        values.setdefault("created_at", now)
+        values.setdefault("event_type", "candidate_outcome")
+        values.setdefault("candidate_id", "")
+        values.setdefault("knowledge_id", None)
+        values.setdefault("source", "")
+        values.setdefault("source_ref", "")
+        values.setdefault("memory_type", "")
+        values.setdefault("category", "")
+        values.setdefault("outcome", "")
+        values.setdefault("score", 0.0)
+        values.setdefault("reason", "")
+        payload = values.get("payload_json", "{}")
+        if isinstance(payload, (dict, list)):
+            payload = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        values["payload_json"] = str(payload or "{}")
+        cur = self.conn.execute(
+            """INSERT INTO memory_feedback_events
+               (created_at, event_type, candidate_id, knowledge_id, source, source_ref,
+                memory_type, category, outcome, score, reason, payload_json)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                values["created_at"],
+                values["event_type"],
+                values["candidate_id"],
+                values.get("knowledge_id"),
+                values["source"],
+                values["source_ref"],
+                values["memory_type"],
+                values["category"],
+                values["outcome"],
+                float(values.get("score") or 0.0),
+                values["reason"],
+                values["payload_json"],
+            ),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def list_memory_feedback(
+        self,
+        *,
+        limit: int = 100,
+        source: str = "",
+        memory_type: str = "",
+        outcome: str = "",
+    ) -> list[dict]:
+        query = "SELECT * FROM memory_feedback_events"
+        clauses = []
+        params: list[Any] = []
+        if source:
+            clauses.append("source = ?")
+            params.append(source)
+        if memory_type:
+            clauses.append("memory_type = ?")
+            params.append(memory_type)
+        if outcome:
+            clauses.append("outcome = ?")
+            params.append(outcome)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY created_at DESC, id DESC LIMIT ?"
+        params.append(max(1, min(int(limit or 100), 1000)))
+        rows = self.conn.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+    def memory_feedback_summary(self, *, limit: int = 1000) -> dict:
+        """Return JSON-safe feedback aggregates for automation evaluation."""
+        limit_i = max(1, min(int(limit or 1000), 10000))
+        rows = self.conn.execute(
+            """SELECT * FROM memory_feedback_events
+               ORDER BY created_at DESC, id DESC
+               LIMIT ?""",
+            (limit_i,),
+        ).fetchall()
+        events = [dict(row) for row in rows]
+        outcome_counts: dict[str, int] = {}
+        groups: dict[tuple[str, str, str], dict[str, Any]] = {}
+        for row in events:
+            outcome = str(row.get("outcome") or "unknown")
+            outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
+            key = (
+                str(row.get("source") or ""),
+                str(row.get("memory_type") or ""),
+                str(row.get("category") or ""),
+            )
+            group = groups.setdefault(
+                key,
+                {
+                    "source": key[0],
+                    "memory_type": key[1],
+                    "category": key[2],
+                    "total": 0,
+                    "promoted": 0,
+                    "rejected": 0,
+                    "blocked": 0,
+                    "score_sum": 0.0,
+                },
+            )
+            group["total"] += 1
+            group["score_sum"] += float(row.get("score") or 0.0)
+            if outcome in {"promoted", "rejected", "blocked"}:
+                group[outcome] += 1
+
+        grouped = []
+        for group in groups.values():
+            total = int(group["total"] or 0)
+            promoted = int(group["promoted"] or 0)
+            score_sum = float(group.pop("score_sum", 0.0))
+            group["acceptance_rate"] = promoted / total if total else 0.0
+            group["average_score"] = score_sum / total if total else 0.0
+            grouped.append(group)
+        grouped.sort(key=lambda item: (item["acceptance_rate"], item["total"]), reverse=True)
+        return {
+            "event_count": len(events),
+            "outcome_counts": outcome_counts,
+            "groups": grouped,
+            "recent_events": events[: min(20, limit_i)],
+        }
 
     # ── 向量操作 ────────────────────────────────────────────
 

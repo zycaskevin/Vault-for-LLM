@@ -1848,14 +1848,15 @@ def cmd_automation(args):
     """Policy-based memory automation workflows."""
     from vault.automation import (
         automation_doctor,
+        automation_eval,
         automation_plan,
         automation_report,
         automation_run,
     )
 
     action = getattr(args, "automation_action", "")
-    if action not in {"plan", "run", "report", "doctor"}:
-        print("error: automation requires action: plan, run, report, or doctor", file=sys.stderr)
+    if action not in {"plan", "run", "report", "doctor", "eval"}:
+        print("error: automation requires action: plan, run, report, eval, or doctor", file=sys.stderr)
         raise SystemExit(2)
 
     project_dir = find_project_dir()
@@ -1883,6 +1884,12 @@ def cmd_automation(args):
                 latest=args.latest,
                 detail=args.detail,
                 report_path=args.report_path,
+            )
+        elif action == "eval":
+            payload = automation_eval(
+                project_dir,
+                limit=args.limit,
+                min_events=args.min_events,
             )
         else:
             payload = automation_doctor(project_dir, mode=args.mode)
@@ -2026,6 +2033,28 @@ def cmd_automation(args):
         for item in payload.get("reports", []):
             review = "review" if item.get("human_review", {}).get("required") else "ok"
             print(f"  {item.get('path')} mode={item.get('mode')} status={item.get('status')} {review}")
+        return
+
+    if action == "eval":
+        print("📈 Automation eval\n")
+        print(f"  status: {payload.get('status')}")
+        print(f"  readiness: {payload.get('readiness')}")
+        print(f"  feedback events: {payload.get('event_count', 0)}")
+        print(f"  outcomes: {payload.get('outcome_counts', {})}")
+        pending = payload.get("pending_candidates") or {}
+        print(f"  pending candidates: {pending.get('count', 0)}")
+        groups = payload.get("source_memory_type_scores") or []
+        if groups:
+            print("  source/type scores:")
+            for item in groups[: args.limit]:
+                print(
+                    f"    - source={item.get('source') or '(none)'} "
+                    f"type={item.get('memory_type') or '(none)'} "
+                    f"category={item.get('category') or '(none)'} "
+                    f"total={item.get('total', 0)} "
+                    f"acceptance={item.get('acceptance_rate', 0):.2f} "
+                    f"recommendation={item.get('recommendation')}"
+                )
         return
 
     print("🩺 Automation doctor\n")
@@ -3129,6 +3158,10 @@ def main(argv: list[str] | None = None):
     sp.add_argument("--latest", action="store_true", help="show the latest automation report summary")
     sp.add_argument("--detail", action="store_true", help="include full report detail and ledger")
     sp.add_argument("--report-path", default="", help="read a specific reports/automation/*.json file")
+
+    sp = automation_sub.add_parser("eval", help="Evaluate automation feedback and candidate outcomes")
+    add_automation_common(sp)
+    sp.add_argument("--min-events", type=int, default=5, help="minimum feedback events before a group is considered learnable")
 
     sp = automation_sub.add_parser("doctor", help="Check automation readiness")
     add_automation_common(sp)

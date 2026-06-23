@@ -187,6 +187,43 @@ def _all_gates_pass(result: dict) -> bool:
     return all(gates.get(name) == "pass" for name in ("privacy", "duplicate", "metadata", "quality"))
 
 
+def _record_candidate_feedback(
+    db: VaultDB,
+    candidate: dict,
+    *,
+    outcome: str,
+    reason: str,
+    score: float,
+    knowledge_id: int | None = None,
+    gates: dict | None = None,
+) -> None:
+    """Best-effort feedback event for automation learning."""
+    try:
+        db.record_memory_feedback(
+            {
+                "candidate_id": candidate.get("id", ""),
+                "knowledge_id": knowledge_id,
+                "source": candidate.get("source", ""),
+                "source_ref": candidate.get("source_ref", ""),
+                "memory_type": candidate.get("memory_type", "knowledge"),
+                "category": candidate.get("category", ""),
+                "outcome": outcome,
+                "score": score,
+                "reason": reason,
+                "payload_json": {
+                    "title": candidate.get("title", ""),
+                    "privacy_status": candidate.get("privacy_status", ""),
+                    "duplicate_status": candidate.get("duplicate_status", ""),
+                    "quality_status": candidate.get("quality_status", ""),
+                    "gates": gates or {},
+                },
+            }
+        )
+    except Exception:
+        # Feedback should never block the primary memory workflow.
+        return
+
+
 def create_candidate(db: VaultDB, **kwargs) -> dict:
     meta = normalize_metadata(**kwargs)
     privacy = scan_privacy(
@@ -221,6 +258,15 @@ def create_candidate(db: VaultDB, **kwargs) -> dict:
         "gate_payload_json": json.dumps(gates, ensure_ascii=False, sort_keys=True),
     }
     db.add_memory_candidate(candidate)
+    if rejected:
+        _record_candidate_feedback(
+            db,
+            candidate,
+            outcome="rejected",
+            reason="candidate failed privacy or metadata gate before review",
+            score=0.0,
+            gates=gates,
+        )
     result = {
         "status": "rejected" if rejected else "candidate_created",
         "candidate_id": candidate_id,
@@ -288,6 +334,15 @@ def promote_candidate(db: VaultDB, candidate_id: str, *, confirm: bool = False, 
     gates = _gate_payload(privacy, duplicate, metadata, quality)
     if privacy["status"] == "fail" or metadata["status"] == "fail":
         db.update_memory_candidate(candidate_id, status="rejected", privacy_status=privacy["status"], duplicate_status=duplicate["status"], quality_status=quality["status"], gate_payload_json=json.dumps(gates, ensure_ascii=False, sort_keys=True))
+        blocked_candidate = db.get_memory_candidate(candidate_id) or candidate
+        _record_candidate_feedback(
+            db,
+            blocked_candidate,
+            outcome="blocked",
+            reason="promotion blocked by privacy or metadata gate",
+            score=0.0,
+            gates=gates,
+        )
         return {"status": "blocked", "candidate_id": candidate_id, "knowledge_id": None, "gates": gates}
 
     root = Path(project_dir) if project_dir is not None else db.db_path.parent
@@ -338,6 +393,16 @@ def promote_candidate(db: VaultDB, candidate_id: str, *, confirm: bool = False, 
             VaultCompiler(root, db=db, embed_provider=None)._refresh_document_map(knowledge_id)
 
     db.update_memory_candidate(candidate_id, status="promoted", privacy_status=privacy["status"], duplicate_status=duplicate["status"], quality_status=quality["status"], gate_payload_json=json.dumps(gates, ensure_ascii=False, sort_keys=True), promoted_knowledge_id=knowledge_id)
+    promoted_candidate = db.get_memory_candidate(candidate_id) or candidate
+    _record_candidate_feedback(
+        db,
+        promoted_candidate,
+        outcome="promoted",
+        reason="candidate promoted into active knowledge",
+        score=1.0,
+        knowledge_id=knowledge_id,
+        gates=gates,
+    )
     return {
         "status": "promoted",
         "candidate_id": candidate_id,

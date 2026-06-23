@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from vault.db import VaultDB
-from vault.memory import create_candidate, duplicate_gate, promote_candidate, propose_memory, quality_gate
+from vault.memory import create_candidate, duplicate_gate, promote_candidate, propose_memory, quality_gate, review_candidate
 from vault.privacy import scan_privacy
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -188,6 +188,59 @@ def test_promotion_writes_raw_and_active_db(tmp_path):
         assert feedback[0]["score"] == 1.0
 
 
+def test_review_candidate_rejects_and_records_feedback(tmp_path):
+    with VaultDB(tmp_path / "vault.db") as db:
+        result = create_candidate(
+            db,
+            title="Reject Me",
+            content="This candidate should be rejected and become training feedback.",
+            reason="Exercise explicit candidate rejection feedback.",
+            tags="review,feedback",
+            source="test",
+        )
+        reviewed = review_candidate(
+            db,
+            result["candidate_id"],
+            outcome="rejected",
+            reason="Too vague for durable memory.",
+        )
+        candidate = db.get_memory_candidate(result["candidate_id"])
+        feedback = db.list_memory_feedback(limit=10)
+
+    assert reviewed["status"] == "rejected"
+    assert reviewed["score"] == 0.0
+    assert candidate["status"] == "rejected"
+    assert len(feedback) == 1
+    assert feedback[0]["candidate_id"] == result["candidate_id"]
+    assert feedback[0]["outcome"] == "rejected"
+    assert feedback[0]["reason"] == "Too vague for durable memory."
+
+
+def test_review_candidate_blocks_with_custom_score(tmp_path):
+    with VaultDB(tmp_path / "vault.db") as db:
+        result = create_candidate(
+            db,
+            title="Block Me",
+            content="This candidate should be blocked pending a policy review.",
+            reason="Exercise explicit candidate block feedback.",
+            tags="review,feedback",
+            source="test",
+        )
+        reviewed = review_candidate(
+            db,
+            result["candidate_id"],
+            outcome="blocked",
+            reason="Needs owner approval.",
+            score=0.4,
+        )
+        feedback = db.list_memory_feedback(limit=10)
+
+    assert reviewed["status"] == "blocked"
+    assert reviewed["score"] == 0.4
+    assert feedback[0]["outcome"] == "blocked"
+    assert feedback[0]["score"] == 0.4
+
+
 def test_promotion_uses_exact_source_for_similar_filenames(tmp_path):
     with VaultDB(tmp_path / "vault.db") as db:
         raw = tmp_path / "raw"
@@ -259,6 +312,48 @@ def test_cli_remember_and_promote_smoke(tmp_path):
     assert promoted["status"] == "promoted"
     assert promoted["knowledge_id"]
     assert (tmp_path / "raw" / "cli-memory.md").exists()
+
+
+def test_cli_candidate_review_records_rejection(tmp_path):
+    with VaultDB(tmp_path / "vault.db") as db:
+        created = create_candidate(
+            db,
+            title="CLI reject candidate",
+            content="CLI candidate-review should record rejected feedback.",
+            reason="Review CLI smoke",
+            tags="cli,review",
+            source="test",
+        )
+    env = {"PYTHONPATH": str(REPO_ROOT)}
+
+    reviewed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "vault.cli",
+            "candidate-review",
+            created["candidate_id"],
+            "--outcome",
+            "rejected",
+            "--reason",
+            "Not worth keeping.",
+            "--pretty",
+        ],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert reviewed.returncode == 0, reviewed.stderr
+    payload = json.loads(reviewed.stdout)
+    assert payload["status"] == "rejected"
+    with VaultDB(tmp_path / "vault.db") as db:
+        assert db.get_memory_candidate(created["candidate_id"])["status"] == "rejected"
+        feedback = db.list_memory_feedback(limit=10)
+    assert feedback[0]["outcome"] == "rejected"
+    assert feedback[0]["reason"] == "Not worth keeping."
 
 
 def test_cli_candidates_lists_review_queue_without_full_payload(tmp_path):

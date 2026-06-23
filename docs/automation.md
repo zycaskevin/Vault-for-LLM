@@ -107,6 +107,16 @@ learning action, confidence, and multiplier, then sorted by bounded priority.
 This helps review agents look at the most promising cleanup work first without
 changing the candidate-first safety boundary.
 
+Candidate feedback can come from promotion, from explicit CLI review, or from
+MCP review tools:
+
+```bash
+vault candidate-review mem_123 --outcome rejected --reason "Too vague."
+```
+
+The same path is available to agents as `vault_memory_review`. Both record a
+`memory_feedback_events` row without promoting memory.
+
 Run one full feedback-to-curation cycle:
 
 ```bash
@@ -200,13 +210,18 @@ important review fields are:
   autonomy.
 - `memory_feedback_events`: candidate outcome events used by
   `vault automation eval` to show which suggestion sources are earning trust
-  over time. These events are audit data, not direct policy changes.
+  over time. These events are audit data, not direct policy changes. They can
+  be written by candidate promotion, `vault candidate-review`, or MCP
+  `vault_memory_review`.
 - `learning_policy`: bounded priority hints derived from feedback events. Use
   it to guide future Dream or curator ordering, not to auto-promote or bypass
   access policy.
 - `dream.learning_policy`: whether the Dream run loaded a learning policy and
   how many candidate suggestions received a matching rule. Automation report
   summaries expose the same status so scheduled agents can monitor it cheaply.
+- `consolidation_suggestion`: Dream can write this candidate type for duplicate
+  groups. It asks for a reviewed merge/archive decision and never changes
+  active knowledge by itself.
 
 This gives agents a small, structured handoff: they can summarize the report,
 but the source of truth remains the machine-readable ledger.

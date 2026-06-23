@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.59.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.60.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,7 +83,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.59"
+pip install "vault-for-llm[mcp]==0.6.60"
 
 vault setup-agent
 ```
@@ -110,7 +110,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.59"
+pip install "vault-for-llm[mcp]==0.6.60"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -203,6 +203,15 @@ shows which suggestion sources are earning trust over time. The signal guides
 future curation priority; it does not override review, privacy, or access
 policy.
 
+Rejected and blocked candidates can be recorded directly:
+
+```bash
+vault candidate-review mem_123 --outcome rejected --reason "Too vague to keep."
+```
+
+This is useful for agents because "do not keep this" becomes structured
+feedback instead of disappearing into chat history.
+
 For scheduled agents, `vault automation eval --write-learning-policy` also
 writes `reports/automation/learning_policy.json`. That file contains bounded
 priority hints, such as preferring a suggestion source that is often promoted
@@ -212,6 +221,9 @@ and never authorize auto-promotion, deletion, or privacy bypass.
 Dream and scheduled automation can read that policy on the next run. They use
 it to annotate and sort candidate suggestions, so reviewers see better-ranked
 cleanup work first while the formal promote/reject decision remains explicit.
+When Dream finds duplicate groups, it can also write a
+`consolidation_suggestion` candidate that asks for a reviewed merge/archive
+decision without changing active knowledge by itself.
 `vault automation cycle` runs that feedback-to-curation loop in one command:
 evaluate reviewed outcomes, write the bounded learning policy, then run safe
 automation so Dream can consume the latest hints.
@@ -258,7 +270,7 @@ Use it when agents on different machines or hosted platforms need to read a
 shared, filtered copy of reviewed project memory.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.59"
+pip install "vault-for-llm[supabase]==0.6.60"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

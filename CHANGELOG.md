@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.6.60] - 2026-06-23
+
+### Added
+
+- Added `vault candidate-review` so agents and users can explicitly mark a memory candidate as `rejected` or `blocked` and record the reason as auditable feedback.
+- Added MCP tool `vault_memory_review` to the review, maintenance, and full tool profiles for candidate rejection/blocking without promotion.
+- Added Dream consolidation candidates for duplicate groups. Dream can now propose a `consolidation_suggestion` review item when duplicate memories may deserve a merged replacement, while leaving active knowledge unchanged.
+
+### Changed
+
+- Dream candidate-write results now include `source`, `source_ref`, `memory_type`, and `category` so automation agents can distinguish normal cleanup suggestions from consolidation suggestions.
+- Updated automation, MCP, README, and CLI docs for explicit candidate feedback and consolidation-review candidates.
+
 ## [0.6.59] - 2026-06-23
 
 ### Changed

@@ -106,6 +106,7 @@ For per-tool MCP examples, see `docs/mcp_tool_reference.md`.
 | `vault lint` | Run quality checks |
 | `vault dream` | Produce report-first memory curation summaries |
 | `vault candidates --include-gates` | Review candidate-memory queue and gate details before promotion |
+| `vault candidate-review <id> --outcome rejected --reason "..."` | Record rejected/blocked candidate feedback without promoting memory |
 | `vault automation plan --write-policy` | Create a policy-based maintenance plan and starter `automation_policy.yaml` |
 | `vault automation run` / `vault automation run --apply` | Run report-first memory automation; reports include a dry-run diff and action ledger, and `--apply` only performs policy-allowed reversible actions |
 | `vault automation cycle --apply` | Run one safe feedback-to-curation loop: evaluate reviewed candidate outcomes, write `learning_policy.json`, then run policy-based automation so Dream can consume the latest hints |

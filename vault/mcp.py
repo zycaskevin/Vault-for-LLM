@@ -1356,6 +1356,20 @@ TOOLS = [
         }
     },
     {
+        "name": "vault_memory_review",
+        "description": "Record a rejected or blocked candidate review outcome so automation can learn without promoting memory.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "candidate_id": {"type": "string"},
+                "outcome": {"type": "string", "enum": ["rejected", "blocked"]},
+                "reason": {"type": "string", "description": "Why the candidate was rejected or blocked"},
+                "score": {"type": "number", "description": "Optional 0..1 feedback score"},
+            },
+            "required": ["candidate_id", "outcome", "reason"]
+        }
+    },
+    {
         "name": "vault_memory_candidates",
         "description": "List memory candidates for review. Defaults to pending candidates and omits full raw content unless requested.",
         "inputSchema": {
@@ -1669,6 +1683,7 @@ TOOL_PROFILES = {
         "vault_read_range",
         "vault_memory_propose",
         "vault_memory_promote",
+        "vault_memory_review",
         "vault_memory_candidates",
         "vault_dream_run",
         "vault_stats",
@@ -1687,6 +1702,7 @@ TOOL_PROFILES = {
         "vault_read_range",
         "vault_memory_propose",
         "vault_memory_promote",
+        "vault_memory_review",
         "vault_memory_candidates",
         "vault_obsidian_import",
         "vault_dream_run",
@@ -1922,6 +1938,23 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     project_dir=project_dir,
                     compile=bool(arguments.get("compile", True)),
                     build_map=bool(arguments.get("build_map", True)),
+                )
+            finally:
+                db.close()
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
+
+        elif name == "vault_memory_review":
+            from vault.memory import review_candidate
+
+            db = _get_db()
+            try:
+                score_arg = arguments.get("score", None)
+                payload = review_candidate(
+                    db,
+                    arguments.get("candidate_id", ""),
+                    outcome=arguments.get("outcome", ""),
+                    reason=arguments.get("reason", ""),
+                    score=score_arg if score_arg is not None else None,
                 )
             finally:
                 db.close()

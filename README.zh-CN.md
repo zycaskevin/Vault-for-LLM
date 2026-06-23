@@ -57,7 +57,7 @@ Vault-for-LLM 可能不是第一个该拿起来的工具。
 最推荐的方式，是直接把这段交给能执行本机命令的 Agent：
 
 ```text
-帮这个项目安装 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.59。
+帮这个项目安装 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.60。
 先问我要 shared、private、domain-specific 还是 temporary vault。
 询问稳定的 project directory，并为长期任务生成 stable venv script。
 逐项询问 MCP、semantic search、Supabase、Obsidian import、Headroom 压缩、
@@ -70,7 +70,7 @@ Agent 会使用安装精灵：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.59"
+pip install "vault-for-llm[mcp]==0.6.60"
 
 vault setup-agent
 ```
@@ -97,7 +97,7 @@ vault setup-agent \
 ### 手动快速开始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.59"
+pip install "vault-for-llm[mcp]==0.6.60"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -178,6 +178,16 @@ vault automation cycle --apply
 `learning_policy.json`，再跑一次安全自动化，让 Dream 用最新的整理提示排序候选。
 它仍然不会自动 promote、硬删记忆，或绕过隐私与权限规则。
 
+拒绝或阻挡候选也可以变成结构化反馈：
+
+```bash
+vault candidate-review mem_123 --outcome rejected --reason "太模糊，不值得长期保存。"
+```
+
+这让 Agent 知道「不要记这个」也是一种可学习信号，而不是散落在对话里。
+当 Dream 发现重复记忆时，也可以生成 `consolidation_suggestion`
+候选，请 reviewer 决定是否合并、保留或归档；它不会自己改正式知识库。
+
 Agent 安装精灵可以用
 `vault setup-agent --automation-schedule cron|launchagent|n8n|all` 生成 cron、
 LaunchAgent 或 n8n 模板。排程默认跑 `vault automation cycle`，让长期
@@ -218,7 +228,7 @@ SQLite 仍然是 source of truth。Supabase 是可选的共享层。
 当不同主机、n8n、Coze 或 hosted agent 需要读取共享记忆时，可以同步安全摘要：
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.59"
+pip install "vault-for-llm[supabase]==0.6.60"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

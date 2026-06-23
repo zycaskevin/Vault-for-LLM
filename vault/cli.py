@@ -1692,6 +1692,27 @@ def cmd_promote(args):
     _json_print(payload, pretty=args.pretty)
 
 
+def cmd_candidate_review(args):
+    """Record a rejected/blocked review outcome for a memory candidate."""
+    from vault.db import VaultDB
+    from vault.memory import review_candidate
+
+    project_dir = find_project_dir()
+    try:
+        with VaultDB(project_dir / "vault.db") as db:
+            payload = review_candidate(
+                db,
+                args.candidate_id,
+                outcome=args.outcome,
+                reason=args.reason,
+                score=args.score,
+            )
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+    _json_print(payload, pretty=args.pretty)
+
+
 def _format_memory_candidate(row: dict, *, include_content: bool = False, include_gates: bool = False) -> dict:
     item = {
         "id": row.get("id"),
@@ -2717,6 +2738,13 @@ def main(argv: list[str] | None = None):
     p.add_argument("--no-build-map", action="store_true", help="搭配 --no-compile 時跳過 Document Map 建置")
     p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
+    p = sub.add_parser("candidate-review", help="記錄候選審核結果（rejected/blocked），供自動化學習")
+    p.add_argument("candidate_id", help="memory candidate id")
+    p.add_argument("--outcome", choices=["rejected", "blocked"], required=True)
+    p.add_argument("--reason", required=True, help="為什麼拒絕或阻擋這個候選")
+    p.add_argument("--score", type=float, default=None, help="0..1 feedback score；省略時依 outcome 使用安全預設")
+    p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
     p = sub.add_parser("candidates", help="列出候選記憶（預設只列待審候選）")
     p.add_argument("--status", default="candidate", help="候選狀態，例如 candidate/promoted/rejected")
     p.add_argument("--all", action="store_true", help="列出所有狀態")
@@ -3256,6 +3284,7 @@ def main(argv: list[str] | None = None):
         "add": cmd_add,
         "remember": cmd_remember,
         "promote": cmd_promote,
+        "candidate-review": cmd_candidate_review,
         "candidates": cmd_candidates,
         "compile": cmd_compile,
         "search": cmd_search,

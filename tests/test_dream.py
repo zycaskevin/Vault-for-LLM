@@ -113,6 +113,56 @@ def test_dream_write_candidates_creates_review_queue_only(tmp_path):
     assert candidates[0]["status"] == "candidate"
 
 
+def test_dream_duplicate_group_writes_consolidation_candidate(tmp_path):
+    with VaultDB(tmp_path / "vault.db") as db:
+        first_id = db.add_knowledge(
+            title="Duplicate deployment note",
+            content_raw="Deployment note A should be reviewed with its duplicate before any archive decision.",
+            source="test-a",
+            category="deployment",
+            tags="deploy",
+            trust=0.8,
+        )
+        second_id = db.add_knowledge(
+            title="Duplicate deployment note",
+            content_raw="Deployment note B overlaps with the first deployment note.",
+            source="test-b",
+            category="deployment",
+            tags="deploy",
+            trust=0.8,
+        )
+        before_rows = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge").fetchone()["n"]
+
+    payload = run_dream(
+        tmp_path,
+        mode="report",
+        checks=["dedup"],
+        limit=10,
+        write_candidates=True,
+    )
+
+    assert payload["summary"]["duplicates"] == 1
+    assert payload["summary"]["candidate_suggestions"] == 2
+    assert payload["summary"]["candidates_written"] == 2
+    consolidation = [
+        item for item in payload["candidate_results"]
+        if item.get("memory_type") == "consolidation_suggestion"
+    ]
+    assert len(consolidation) == 1
+    assert consolidation[0]["status"] == "candidate_created"
+    assert consolidation[0]["source_ref"].startswith("consolidate:")
+
+    with VaultDB(tmp_path / "vault.db") as db:
+        after_rows = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge").fetchone()["n"]
+        candidates = db.list_memory_candidates(limit=10)
+    assert after_rows == before_rows == 2
+    by_type = {row["memory_type"]: row for row in candidates}
+    assert by_type["consolidation_suggestion"]["category"] == "consolidation-review"
+    assert by_type["consolidation_suggestion"]["source"] == "dream"
+    assert str(first_id) in by_type["consolidation_suggestion"]["content"]
+    assert str(second_id) in by_type["consolidation_suggestion"]["content"]
+
+
 def test_dream_write_candidates_skips_existing_suggestions(tmp_path):
     with VaultDB(tmp_path / "vault.db") as db:
         db.add_knowledge(

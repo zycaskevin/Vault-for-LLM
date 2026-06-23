@@ -16,6 +16,7 @@ def test_mcp_memory_tools_are_advertised():
     assert {
         "vault_memory_propose",
         "vault_memory_promote",
+        "vault_memory_review",
         "vault_memory_candidates",
         "vault_dream_run",
     }.issubset(names)
@@ -39,9 +40,12 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
 
     review_names = [tool["name"] for tool in select_tools("review")]
     assert "vault_memory_candidates" in review_names
+    assert "vault_memory_review" in review_names
+    assert "vault_memory_review" not in core_names
 
     full_names = {tool["name"] for tool in select_tools("full")}
     assert "vault_add" in full_names
+    assert "vault_memory_review" in full_names
     assert "vault_remote_read_range" in full_names
     assert len(full_names) > len(core_names)
 
@@ -178,6 +182,41 @@ def test_mcp_memory_promote_writes_active_knowledge(tmp_path):
             (promoted["knowledge_id"],),
         ).fetchone()["n"]
         assert nodes >= 1
+
+
+def test_mcp_memory_review_records_rejection_feedback(tmp_path):
+    _set_project_dir(tmp_path)
+    proposed = _payload(handle_tool_call(
+        "vault_memory_propose",
+        {
+            "title": "MCP review candidate",
+            "content": "MCP review should record rejected feedback without promoting active knowledge.",
+            "reason": "Exercise explicit MCP review feedback.",
+            "source": "test",
+            "tags": "mcp,review",
+        },
+    ))
+
+    reviewed = _payload(handle_tool_call(
+        "vault_memory_review",
+        {
+            "candidate_id": proposed["candidate_id"],
+            "outcome": "rejected",
+            "reason": "Too vague for durable memory.",
+        },
+    ))
+
+    assert reviewed["status"] == "rejected"
+    assert reviewed["score"] == 0.0
+    with VaultDB(tmp_path / "vault.db") as db:
+        candidate = db.get_memory_candidate(proposed["candidate_id"])
+        feedback = db.list_memory_feedback(limit=10)
+        active = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge").fetchone()["n"]
+    assert candidate["status"] == "rejected"
+    assert active == 0
+    assert feedback[0]["candidate_id"] == proposed["candidate_id"]
+    assert feedback[0]["outcome"] == "rejected"
+    assert feedback[0]["reason"] == "Too vague for durable memory."
 
 
 def test_mcp_memory_candidates_lists_review_queue_without_full_payload(tmp_path):

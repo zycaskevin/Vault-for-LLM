@@ -225,7 +225,17 @@ def _build_candidate_suggestions(findings: dict[str, list[dict]], limit: int) ->
     suggestions: list[dict] = []
     seen: set[tuple[str, str]] = set()
 
-    def add(kind: str, title: str, content: str, source_ref: str, reason: str, tags: list[str]) -> None:
+    def add(
+        kind: str,
+        title: str,
+        content: str,
+        source_ref: str,
+        reason: str,
+        tags: list[str],
+        *,
+        category: str = "dream-review",
+        memory_type: str = "dream_suggestion",
+    ) -> None:
         key = (kind, source_ref or title)
         if key in seen:
             return
@@ -235,7 +245,7 @@ def _build_candidate_suggestions(findings: dict[str, list[dict]], limit: int) ->
             "title": title[:140],
             "content": content,
             "layer": "L3",
-            "category": "dream-review",
+            "category": category,
             "tags": ["dream", "review", *tags],
             "trust": 0.45,
             "source": "dream",
@@ -245,7 +255,7 @@ def _build_candidate_suggestions(findings: dict[str, list[dict]], limit: int) ->
             "sensitivity": "low",
             "owner_agent": "vault-dream",
             "allowed_agents": "",
-            "memory_type": "dream_suggestion",
+            "memory_type": memory_type,
             "expires_at": "",
         })
 
@@ -282,6 +292,22 @@ def _build_candidate_suggestions(findings: dict[str, list[dict]], limit: int) ->
             "dedup check found repeated title or content hash",
             ["dedup"],
         )
+        if len(ids) >= 2:
+            add(
+                "consolidation_review",
+                f"Consolidate duplicate memory group: {', '.join(ids)}",
+                (
+                    "Dream found a duplicate memory group that may be ready for consolidation. "
+                    f"Review knowledge ids {', '.join(ids)} and decide one of: keep the clearest source, "
+                    "write a merged replacement memory, or archive stale duplicates after review. "
+                    f"Sample titles: {', '.join(titles)}."
+                ),
+                f"consolidate:{group.get('type', 'group')}:{group.get('key', '')}"[:180],
+                "dedup check found a group that may deserve a merged reviewed memory",
+                ["dedup", "consolidation"],
+                category="consolidation-review",
+                memory_type="consolidation_suggestion",
+            )
 
     for item in findings.get("convergence", []):
         kid = int(item.get("id") or 0)
@@ -419,20 +445,26 @@ def _write_candidate_suggestions(db: VaultDB, suggestions: list[dict]) -> list[d
 
     results: list[dict] = []
     for suggestion in suggestions:
+        source = suggestion.get("source") or "dream"
+        memory_type = suggestion.get("memory_type") or "dream_suggestion"
         existing = db.conn.execute(
             """SELECT id, status FROM memory_candidates
-               WHERE source = 'dream'
+               WHERE source = ?
                  AND source_ref = ?
-                 AND memory_type = 'dream_suggestion'
+                 AND memory_type = ?
                  AND status IN ('candidate', 'approved')
                ORDER BY created_at DESC
                LIMIT 1""",
-            (suggestion.get("source_ref", ""),),
+            (source, suggestion.get("source_ref", ""), memory_type),
         ).fetchone()
         if existing:
             results.append({
                 "title": suggestion["title"],
                 "kind": suggestion["kind"],
+                "source": source,
+                "source_ref": suggestion.get("source_ref", ""),
+                "memory_type": memory_type,
+                "category": suggestion.get("category", ""),
                 "status": "skipped_existing",
                 "candidate_id": existing["id"],
                 "existing_status": existing["status"],
@@ -446,6 +478,10 @@ def _write_candidate_suggestions(db: VaultDB, suggestions: list[dict]) -> list[d
         results.append({
             "title": suggestion["title"],
             "kind": suggestion["kind"],
+            "source": source,
+            "source_ref": suggestion.get("source_ref", ""),
+            "memory_type": memory_type,
+            "category": suggestion.get("category", ""),
             "learning": suggestion.get("learning", {}),
             "learning_priority": suggestion.get("learning_priority", 1.0),
             **result,

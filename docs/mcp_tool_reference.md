@@ -12,7 +12,7 @@ the model context and fewer ways for an agent to choose the wrong action.
 | Profile | Tools | Best For |
 |---|---|---|
 | `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats` | Daily agent work: find memory, read bounded evidence, propose new memory. |
-| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_dream_run` | A reviewer agent or operator session that approves candidate memories. |
+| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_dream_run` | A reviewer agent or operator session that approves, rejects, or blocks candidate memories. |
 | `remote` | Core plus `vault_remote_search`, `vault_remote_map_show`, `vault_remote_read_range` | Hosted or cross-host agents reading a Supabase-synced vault. |
 | `maintenance` | Review plus Obsidian import, freshness, convergence, and curation tools | Scheduled maintenance or explicit operator-led cleanup. |
 | `full` | Every MCP tool, including low-level compatibility tools | Trusted local operators and backwards compatibility. |
@@ -175,6 +175,31 @@ Promote a reviewed candidate into active knowledge.
 ```
 
 Agent rule: only reviewer/operator agents should receive this tool.
+
+### `vault_memory_review`
+
+Record a rejected or blocked review outcome without promoting memory.
+
+```json
+{
+  "candidate_id": "mem_...",
+  "outcome": "rejected",
+  "reason": "Too vague for durable project memory."
+}
+```
+
+Typical result fields:
+
+```json
+{
+  "status": "rejected",
+  "candidate_id": "mem_...",
+  "score": 0.0
+}
+```
+
+Agent rule: use this when a candidate should become feedback for automation
+learning but should not enter active knowledge.
 
 ## Remote Supabase Tools
 

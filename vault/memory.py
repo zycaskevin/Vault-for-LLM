@@ -224,6 +224,58 @@ def _record_candidate_feedback(
         return
 
 
+def review_candidate(
+    db: VaultDB,
+    candidate_id: str,
+    *,
+    outcome: str,
+    reason: str = "",
+    score: float | None = None,
+) -> dict:
+    """Record a non-promotion review outcome for a memory candidate."""
+    normalized_outcome = str(outcome or "").strip().lower()
+    if normalized_outcome not in {"rejected", "blocked"}:
+        raise ValueError("candidate review outcome must be rejected or blocked")
+    candidate = db.get_memory_candidate(candidate_id)
+    if not candidate:
+        raise KeyError(f"candidate not found: {candidate_id}")
+    if candidate.get("status") == "promoted":
+        return {
+            "status": "already_promoted",
+            "candidate_id": candidate_id,
+            "outcome": "promoted",
+            "promoted_knowledge_id": candidate.get("promoted_knowledge_id"),
+            "candidate": candidate,
+        }
+
+    review_reason = reason.strip() or f"candidate review marked {normalized_outcome}"
+    if score is None:
+        score_value = 0.0 if normalized_outcome == "rejected" else 0.25
+    else:
+        try:
+            score_value = max(0.0, min(1.0, float(score)))
+        except (TypeError, ValueError):
+            score_value = 0.0
+    db.update_memory_candidate(candidate_id, status=normalized_outcome)
+    reviewed = db.get_memory_candidate(candidate_id) or candidate
+    _record_candidate_feedback(
+        db,
+        reviewed,
+        outcome=normalized_outcome,
+        reason=review_reason,
+        score=score_value,
+    )
+    return {
+        "status": normalized_outcome,
+        "candidate_id": candidate_id,
+        "outcome": normalized_outcome,
+        "score": score_value,
+        "reason": review_reason,
+        "candidate": reviewed,
+        "next_action": "Run vault automation eval or vault automation cycle so future curation can learn from this review.",
+    }
+
+
 def create_candidate(db: VaultDB, **kwargs) -> dict:
     meta = normalize_metadata(**kwargs)
     privacy = scan_privacy(

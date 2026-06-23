@@ -27,11 +27,13 @@ DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
     "conservative": {
         "mode": "conservative",
         "auto_archive_expired": False,
+        "protect_used_expired": True,
         "auto_apply_safe_metadata": False,
         "write_reports": True,
         "dream_checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
         "review_thresholds": {
             "expired_active": 1,
+            "used_expired": 1,
             "pending_candidates": 1,
             "duplicate_groups": 1,
             "weak_metadata": 1,
@@ -40,11 +42,13 @@ DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
     "balanced": {
         "mode": "balanced",
         "auto_archive_expired": True,
+        "protect_used_expired": True,
         "auto_apply_safe_metadata": False,
         "write_reports": True,
         "dream_checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
         "review_thresholds": {
             "expired_active": 5,
+            "used_expired": 1,
             "pending_candidates": 10,
             "duplicate_groups": 1,
             "weak_metadata": 10,
@@ -53,11 +57,13 @@ DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
     "autonomous": {
         "mode": "autonomous",
         "auto_archive_expired": True,
+        "protect_used_expired": True,
         "auto_apply_safe_metadata": False,
         "write_reports": True,
         "dream_checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
         "review_thresholds": {
             "expired_active": 20,
+            "used_expired": 5,
             "pending_candidates": 50,
             "duplicate_groups": 5,
             "weak_metadata": 25,
@@ -112,8 +118,16 @@ def automation_plan(
     if db_exists:
         with VaultDB(project / "vault.db") as db:
             usage = db.usage_stats(limit=limit)
+            archive_preview = db.archive_expired_knowledge(
+                limit=limit,
+                dry_run=True,
+                skip_used=bool(policy.get("protect_used_expired", True)),
+            )
             candidate_count = len(db.list_memory_candidates(status="candidate", limit=1000))
+    else:
+        archive_preview = {}
     actions = _planned_actions(project, policy, usage, candidate_count)
+    usage_review = _usage_review(policy, usage, archive_preview)
     policy_path = ""
     if write_policy_file:
         policy_path = write_policy(project, mode=mode_name, overwrite=overwrite_policy)
@@ -125,9 +139,10 @@ def automation_plan(
         "policy_path": policy_path or (POLICY_FILE if (project / POLICY_FILE).exists() else ""),
         "db_exists": db_exists,
         "usage": usage,
+        "usage_review": usage_review,
         "candidate_count": candidate_count,
         "planned_actions": actions,
-        "human_review": _review_summary(policy, usage, candidate_count, {}),
+        "human_review": _review_summary(policy, usage, candidate_count, {}, usage_review),
     }
 
 
@@ -164,7 +179,12 @@ def automation_run(
         candidates = db.list_memory_candidates(status="candidate", limit=1000)
         archive_allowed = bool(policy.get("auto_archive_expired", False))
         archive_apply = bool(apply and archive_allowed)
-        archive_result = db.archive_expired_knowledge(limit=limit, dry_run=not archive_apply)
+        archive_result = db.archive_expired_knowledge(
+            limit=limit,
+            dry_run=not archive_apply,
+            skip_used=bool(policy.get("protect_used_expired", True)),
+        )
+        usage_review_before = _usage_review(policy, before_usage, archive_result)
 
     dream = run_dream(
         project,
@@ -186,14 +206,16 @@ def automation_run(
         "status": "completed",
         "policy": {
             "auto_archive_expired": archive_allowed,
+            "protect_used_expired": bool(policy.get("protect_used_expired", True)),
             "auto_apply_safe_metadata": bool(policy.get("auto_apply_safe_metadata", False)),
         },
         "usage_before": before_usage,
         "usage_after": after_usage,
+        "usage_review": usage_review_before,
         "candidate_count": len(candidates),
         "archive_expired": archive_result,
         "dream": dream,
-        "human_review": _review_summary(policy, after_usage, len(candidates), dream),
+        "human_review": _review_summary(policy, after_usage, len(candidates), dream, usage_review_before),
         "next_action": "Review human_review and report_path; adjust automation_policy.yaml before stronger autonomy.",
     }
     if apply and not archive_allowed:
@@ -307,7 +329,7 @@ def _planned_actions(
             "autonomy": "policy-gated",
             "enabled": bool(policy.get("auto_archive_expired", False)),
             "command": "vault usage archive-expired --apply --json",
-            "reason": "Archival is reversible and never hard-deletes rows.",
+            "reason": "Archival is reversible and never hard-deletes rows; automation protects expired memories that still show usage.",
         },
         {
             "id": "dream_report",
@@ -340,11 +362,77 @@ def _planned_actions(
     ]
 
 
+def _compact_memory_item(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": row.get("id"),
+        "title": row.get("title", ""),
+        "layer": row.get("layer", ""),
+        "category": row.get("category", ""),
+        "expires_at": row.get("expires_at", ""),
+        "access_count": int(row.get("access_count") or 0),
+        "citation_count": int(row.get("citation_count") or 0),
+    }
+
+
+def _usage_review(
+    policy: dict[str, Any],
+    usage: dict[str, Any],
+    archive_preview: dict[str, Any],
+) -> dict[str, Any]:
+    """Summarize usage-aware maintenance suggestions for agents/operators."""
+    archive_items = [_compact_memory_item(row) for row in archive_preview.get("items", [])]
+    skipped_used = [_compact_memory_item(row) for row in archive_preview.get("skipped_used", [])]
+    top_used = [_compact_memory_item(row) for row in usage.get("top_used", [])[:5]]
+
+    suggestions = []
+    if archive_items:
+        suggestions.append(
+            {
+                "kind": "archive_expired_unused",
+                "count": len(archive_items),
+                "autonomy": "policy-gated",
+                "reason": "Expired memories with no protected usage signal can be archived when policy and --apply allow it.",
+            }
+        )
+    if skipped_used:
+        suggestions.append(
+            {
+                "kind": "review_expired_but_used",
+                "count": len(skipped_used),
+                "autonomy": "human-review",
+                "reason": "These memories are expired but still retrieved or cited; review TTL before archiving.",
+            }
+        )
+    if top_used:
+        suggestions.append(
+            {
+                "kind": "protect_top_used",
+                "count": len(top_used),
+                "autonomy": "ranking-signal",
+                "reason": "Frequently retrieved memories should stay source-checked and may deserve stronger summaries or citations.",
+            }
+        )
+
+    return {
+        "action": "usage-review",
+        "protect_used_expired": bool(policy.get("protect_used_expired", True)),
+        "expired_archiveable_count": len(archive_items),
+        "expired_used_review_count": len(skipped_used),
+        "top_used_count": len(top_used),
+        "archiveable_expired": archive_items,
+        "expired_but_used": skipped_used,
+        "top_used": top_used,
+        "suggestions": suggestions,
+        "principle": "usage helps agents prioritize maintenance; it does not override access policy or source quality",
+    }
+
+
 def _review_summary(
     policy: dict[str, Any],
     usage: dict[str, Any],
     candidate_count: int,
     dream: dict[str, Any],
+    usage_review: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     thresholds = policy.get("review_thresholds") or {}
     dream_summary = dream.get("summary", {}) if isinstance(dream, dict) else {}
@@ -352,6 +440,9 @@ def _review_summary(
     expired = int(usage.get("expired_active_count", 0) or 0)
     if expired >= int(thresholds.get("expired_active", 1)):
         items.append({"kind": "expired_active", "count": expired})
+    used_expired = int((usage_review or {}).get("expired_used_review_count", 0) or 0)
+    if used_expired >= int(thresholds.get("used_expired", 1)):
+        items.append({"kind": "expired_but_used", "count": used_expired})
     if candidate_count >= int(thresholds.get("pending_candidates", 1)):
         items.append({"kind": "pending_candidates", "count": candidate_count})
     duplicates = int(dream_summary.get("duplicates", 0) or 0)

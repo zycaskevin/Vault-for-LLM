@@ -7,6 +7,8 @@ Automation does not hard-delete memory. The first phase is report-first and
 reversible:
 
 - collect usage and lifecycle counters
+- split expired memories into low-risk archive candidates and used items that
+  need TTL review
 - preview expired-memory archival
 - optionally archive expired memories when policy and `--apply` both allow it
 - run a Dream report for stale, duplicate, weak, or orphaned knowledge
@@ -67,6 +69,7 @@ vault automation doctor --pretty
 ```yaml
 mode: balanced
 auto_archive_expired: true
+protect_used_expired: true
 auto_apply_safe_metadata: false
 write_reports: true
 dream_checks:
@@ -77,6 +80,7 @@ dream_checks:
   - orphans
 review_thresholds:
   expired_active: 5
+  used_expired: 1
   pending_candidates: 10
   duplicate_groups: 1
   weak_metadata: 10
@@ -85,6 +89,12 @@ review_thresholds:
 Phase 1 intentionally keeps `auto_apply_safe_metadata` off. Dream reports can
 suggest metadata cleanup, but scheduled automation should not rewrite memory
 content, promote private memories, change sharing permissions, or delete rows.
+
+`protect_used_expired` keeps automation from archiving memories that are expired
+but still have retrieval or citation usage. Those rows appear in
+`usage_review.expired_but_used` and `human_review.items` so the user can decide
+whether the TTL is wrong, the memory should be summarized, or the source should
+move to a longer-lived layer.
 
 ## Scheduled Use
 

@@ -33,6 +33,7 @@ def test_automation_plan_writes_default_policy(tmp_path):
     assert (project / "automation_policy.yaml").exists()
     policy = load_policy(project)
     assert policy["auto_archive_expired"] is True
+    assert policy["protect_used_expired"] is True
     assert any(item["id"] == "ttl_archive_apply" for item in payload["planned_actions"])
 
 
@@ -54,6 +55,24 @@ def test_automation_run_balanced_apply_archives_expired_memory(tmp_path):
     with VaultDB(project / "vault.db") as db:
         assert db.get_knowledge(expired_id)["status"] == "archived"
         assert db.get_knowledge(future_id)["status"] == "active"
+
+
+def test_automation_run_protects_expired_but_used_memory(tmp_path):
+    project = _init_project(tmp_path)
+    expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    with VaultDB(project / "vault.db") as db:
+        expired_id = db.add_knowledge("Still useful expired SOP", "Deployment rollback", expires_at=expired)
+        db.record_knowledge_access([expired_id])
+
+    payload = automation_run(project, mode="balanced", apply=True, limit=10, write_reports=False)
+
+    assert payload["archive_expired"]["archived_count"] == 0
+    assert payload["archive_expired"]["skipped_used_count"] == 1
+    assert payload["usage_review"]["expired_used_review_count"] == 1
+    assert payload["human_review"]["required"] is True
+    assert {"kind": "expired_but_used", "count": 1} in payload["human_review"]["items"]
+    with VaultDB(project / "vault.db") as db:
+        assert db.get_knowledge(expired_id)["status"] == "active"
 
 
 def test_automation_run_conservative_apply_stays_dry_run(tmp_path):

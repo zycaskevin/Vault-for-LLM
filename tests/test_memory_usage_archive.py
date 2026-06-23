@@ -87,6 +87,23 @@ def test_archive_expired_knowledge_dry_run_then_apply(tmp_path):
         assert db.get_knowledge(future_id)["status"] == "active"
 
 
+def test_archive_expired_can_skip_used_rows(tmp_path):
+    now = datetime.now(timezone.utc)
+    expired = (now - timedelta(days=1)).isoformat()
+
+    with VaultDB(tmp_path / "vault.db") as db:
+        unused_id = db.add_knowledge("Unused expired", "Short lived", expires_at=expired)
+        used_id = db.add_knowledge("Used expired", "Still useful", expires_at=expired)
+        db.record_knowledge_access([used_id])
+
+        applied = db.archive_expired_knowledge(now=now, dry_run=False, skip_used=True)
+
+        assert applied["archived_count"] == 1
+        assert applied["skipped_used_count"] == 1
+        assert db.get_knowledge(unused_id)["status"] == "archived"
+        assert db.get_knowledge(used_id)["status"] == "active"
+
+
 def test_usage_cli_archive_expired(tmp_path, monkeypatch, capsys):
     from vault.cli import cmd_usage
 

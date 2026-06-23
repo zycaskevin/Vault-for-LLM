@@ -1123,6 +1123,7 @@ class VaultDB:
         now: str | datetime | None = None,
         limit: int = 100,
         dry_run: bool = False,
+        skip_used: bool = False,
     ) -> dict:
         """Archive active memories whose `expires_at` timestamp is in the past."""
         if isinstance(now, datetime):
@@ -1152,18 +1153,28 @@ class VaultDB:
             expires_at = self._parse_timestamp(row["expires_at"])
             if expires_at is not None and expires_at <= now_dt:
                 expired.append(dict(row))
+        skipped_used = []
+        archiveable = []
+        for row in expired:
+            usage_count = int(row.get("access_count") or 0) + int(row.get("citation_count") or 0)
+            if skip_used and usage_count > 0:
+                skipped_used.append(row)
+            else:
+                archiveable.append(row)
 
-        if dry_run or not expired:
+        if dry_run or not archiveable:
             return {
                 "action": "archive-expired",
                 "dry_run": bool(dry_run),
                 "archived_count": 0,
                 "eligible_count": len(expired),
+                "skipped_used_count": len(skipped_used),
                 "now": now_text,
-                "items": expired,
+                "items": archiveable,
+                "skipped_used": skipped_used,
             }
 
-        ids = [int(row["id"]) for row in expired]
+        ids = [int(row["id"]) for row in archiveable]
         placeholders = ",".join("?" for _ in ids)
         self.conn.execute(
             f"""UPDATE knowledge
@@ -1179,8 +1190,10 @@ class VaultDB:
             "dry_run": False,
             "archived_count": len(ids),
             "eligible_count": len(expired),
+            "skipped_used_count": len(skipped_used),
             "now": now_text,
-            "items": expired,
+            "items": archiveable,
+            "skipped_used": skipped_used,
         }
 
     # ── Memory candidate CRUD ───────────────────────────────

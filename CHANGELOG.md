@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [0.6.58] - 2026-06-23
+
+### Added
+
+- Added `vault automation cycle`, a safe closed-loop command that evaluates reviewed candidate outcomes, writes a bounded learning policy, then runs policy-based automation so Dream can consume the latest curation hints.
+- Added human-readable cycle output with feedback count, learning-rule count, Dream learning-policy status, candidate writes, report path, and safety principle.
+
+### Changed
+
+- Updated install examples and release claim checks for `0.6.58`.
+
 ## [0.6.57] - 2026-06-23
 
 ### Added

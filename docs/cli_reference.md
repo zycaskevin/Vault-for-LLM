@@ -107,6 +107,7 @@ For per-tool MCP examples, see `docs/mcp_tool_reference.md`.
 | `vault candidates --include-gates` | Review candidate-memory queue and gate details before promotion |
 | `vault automation plan --write-policy` | Create a policy-based maintenance plan and starter `automation_policy.yaml` |
 | `vault automation run` / `vault automation run --apply` | Run report-first memory automation; reports include a dry-run diff and action ledger, and `--apply` only performs policy-allowed reversible actions |
+| `vault automation cycle --apply` | Run one safe feedback-to-curation loop: evaluate reviewed candidate outcomes, write `learning_policy.json`, then run policy-based automation so Dream can consume the latest hints |
 | `vault automation report` / `vault automation eval --write-learning-policy` / `vault automation doctor` | Review automation reports, evaluate candidate-outcome feedback into bounded curation hints, and check scheduled-job readiness |
 | `vault freshness` | Experimental freshness/review scheduling |
 | `vault usage archive-expired` | Preview TTL-based archive actions; add `--apply` to mark eligible memories archived |

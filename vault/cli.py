@@ -1847,6 +1847,7 @@ def cmd_usage(args):
 def cmd_automation(args):
     """Policy-based memory automation workflows."""
     from vault.automation import (
+        automation_cycle,
         automation_doctor,
         automation_eval,
         automation_plan,
@@ -1855,8 +1856,8 @@ def cmd_automation(args):
     )
 
     action = getattr(args, "automation_action", "")
-    if action not in {"plan", "run", "report", "doctor", "eval"}:
-        print("error: automation requires action: plan, run, report, eval, or doctor", file=sys.stderr)
+    if action not in {"plan", "run", "cycle", "report", "doctor", "eval"}:
+        print("error: automation requires action: plan, run, cycle, report, eval, or doctor", file=sys.stderr)
         raise SystemExit(2)
 
     project_dir = find_project_dir()
@@ -1875,6 +1876,15 @@ def cmd_automation(args):
                 mode=args.mode,
                 apply=args.apply,
                 limit=args.limit,
+                write_reports=not args.no_report,
+            )
+        elif action == "cycle":
+            payload = automation_cycle(
+                project_dir,
+                mode=args.mode,
+                apply=args.apply,
+                limit=args.limit,
+                min_events=args.min_events,
                 write_reports=not args.no_report,
             )
         elif action == "report":
@@ -1987,6 +1997,35 @@ def cmd_automation(args):
             )
         if payload.get("human_review", {}).get("required"):
             print("  review: required")
+        return
+
+    if action == "cycle":
+        summary = payload.get("summary") or {}
+        print("🔁 Automation cycle\n")
+        print(f"  status: {payload.get('status')}")
+        print(f"  mode: {payload.get('mode') or args.mode or '(policy)'}")
+        print(f"  apply: {payload.get('apply')}")
+        print(f"  feedback events: {summary.get('feedback_events', 0)}")
+        print(f"  learning rules: {summary.get('learning_rules', 0)}")
+        print(f"  learning policy: {summary.get('learning_policy_path') or '(not written)'}")
+        print(
+            "  dream learning: "
+            f"{summary.get('dream_learning_policy_status') or '(none)'} "
+            f"rules={summary.get('dream_learning_policy_applied_rules', 0)}"
+        )
+        print(
+            "  candidates: "
+            f"before={summary.get('candidate_count_before', 0)} "
+            f"after={summary.get('candidate_count_after', 0)} "
+            f"written={summary.get('candidates_written', 0)}"
+        )
+        if summary.get("automation_report_path"):
+            print(f"  report: {summary.get('automation_report_path')}")
+        if payload.get("human_review", {}).get("required"):
+            print("\n  Human review required for:")
+            for item in payload["human_review"].get("items", []):
+                print(f"    - {item.get('kind')}: {item.get('count')}")
+        print(f"\n  principle: {payload.get('principle')}")
         return
 
     if action == "report":
@@ -3169,6 +3208,12 @@ def main(argv: list[str] | None = None):
     add_automation_common(sp)
     sp.add_argument("--apply", action="store_true", help="apply policy-allowed reversible actions")
     sp.add_argument("--no-report", action="store_true", help="do not write reports/automation JSON or dream report")
+
+    sp = automation_sub.add_parser("cycle", help="Evaluate feedback, write learning policy, then run safe automation")
+    add_automation_common(sp)
+    sp.add_argument("--apply", action="store_true", help="apply policy-allowed reversible actions")
+    sp.add_argument("--no-report", action="store_true", help="do not write reports/automation JSON or dream report")
+    sp.add_argument("--min-events", type=int, default=5, help="minimum feedback events before a group is considered learnable")
 
     sp = automation_sub.add_parser("report", help="List recent automation reports")
     add_automation_common(sp)

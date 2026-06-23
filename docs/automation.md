@@ -107,6 +107,19 @@ learning action, confidence, and multiplier, then sorted by bounded priority.
 This helps review agents look at the most promising cleanup work first without
 changing the candidate-first safety boundary.
 
+Run one full feedback-to-curation cycle:
+
+```bash
+vault automation cycle --apply --pretty
+```
+
+`automation cycle` is the one-command version of the learning loop. It first
+runs `automation eval --write-learning-policy`, then runs policy-based
+automation so Dream can consume the freshly written learning policy. The cycle
+is still bounded: it can write review candidates and reversible archive actions
+only when policy plus `--apply` allow them. It never promotes candidates,
+hard-deletes memory, or overrides privacy/access policy.
+
 ## Policy
 
 `automation_policy.yaml` controls the automation boundary:

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import json
 
 from vault.automation import (
+    automation_cycle,
     automation_doctor,
     automation_eval,
     automation_plan,
@@ -406,7 +407,7 @@ def test_automation_eval_reports_feedback_acceptance(tmp_path):
                 "source": "dream",
                 "source_ref": "dream:metadata:1",
                 "memory_type": "dream_suggestion",
-                "category": "memory-curation",
+                "category": "dream-review",
                 "outcome": "promoted",
                 "score": 1.0,
                 "reason": "accepted by reviewer",
@@ -418,7 +419,7 @@ def test_automation_eval_reports_feedback_acceptance(tmp_path):
                 "source": "dream",
                 "source_ref": "dream:metadata:2",
                 "memory_type": "dream_suggestion",
-                "category": "memory-curation",
+                "category": "dream-review",
                 "outcome": "rejected",
                 "score": 0.0,
                 "reason": "too vague",
@@ -449,7 +450,7 @@ def test_automation_eval_builds_bounded_learning_policy(tmp_path):
                     "candidate_id": f"good_{idx}",
                     "source": "dream",
                     "memory_type": "dream_suggestion",
-                    "category": "memory-curation",
+                    "category": "dream-review",
                     "outcome": "promoted",
                     "score": 1.0,
                 }
@@ -479,6 +480,59 @@ def test_automation_eval_builds_bounded_learning_policy(tmp_path):
     assert payload["learning_policy_path"] == "reports/automation/learning_policy.json"
     written = json.loads((project / payload["learning_policy_path"]).read_text(encoding="utf-8"))
     assert written["rules"] == rules
+
+
+def test_automation_cycle_writes_learning_policy_and_runs_dream(tmp_path):
+    project = _init_project(tmp_path)
+    with VaultDB(project / "vault.db") as db:
+        for idx in range(3):
+            db.record_memory_feedback(
+                {
+                    "candidate_id": f"dream_good_{idx}",
+                    "source": "dream",
+                    "memory_type": "dream_suggestion",
+                    "category": "dream-review",
+                    "outcome": "promoted",
+                    "score": 1.0,
+                }
+            )
+        db.add_knowledge(
+            "Cycle weak metadata",
+            "Automation cycle should turn reviewed feedback into Dream review priority hints.",
+            category="general",
+            tags="",
+            trust=0.3,
+        )
+        before_active = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge WHERE status = 'active'").fetchone()["n"]
+
+    payload = automation_cycle(project, mode="balanced", apply=True, limit=10, min_events=3, write_reports=True)
+
+    assert payload["action"] == "cycle"
+    assert payload["status"] == "completed"
+    assert payload["eval"]["learning_policy_path"] == "reports/automation/learning_policy.json"
+    assert payload["summary"]["learning_policy_path"] == "reports/automation/learning_policy.json"
+    assert payload["summary"]["learning_rules"] >= 1
+    assert payload["summary"]["dream_learning_policy_status"] == "loaded"
+    assert payload["summary"]["dream_learning_policy_applied_rules"] >= 1
+    assert payload["summary"]["candidates_written"] >= 1
+    assert payload["summary"]["automation_report_path"].startswith("reports/automation/")
+    assert (project / payload["summary"]["learning_policy_path"]).exists()
+    assert (project / payload["summary"]["automation_report_path"]).exists()
+    assert "does not auto-promote" in payload["principle"]
+    with VaultDB(project / "vault.db") as db:
+        assert db.conn.execute("SELECT COUNT(*) AS n FROM knowledge WHERE status = 'active'").fetchone()["n"] == before_active
+        candidates = db.list_memory_candidates(limit=20)
+    assert any(item["memory_type"] == "dream_suggestion" for item in candidates)
+
+
+def test_automation_cycle_blocks_without_vault_db(tmp_path):
+    payload = automation_cycle(tmp_path, min_events=1)
+
+    assert payload["action"] == "cycle"
+    assert payload["status"] == "blocked"
+    assert payload["phase"] == "eval"
+    assert payload["summary"]["feedback_events"] == 0
+    assert "vault init" in payload["next_action"]
 
 
 def test_automation_report_specific_path_must_stay_under_report_dir(tmp_path):
@@ -558,6 +612,51 @@ def test_automation_cli_eval_prints_feedback_scores(tmp_path, monkeypatch, capsy
     assert "feedback events: 1" in out
     assert "source=automation" in out
     assert "recommendation=prefer" in out
+
+
+def test_automation_cli_cycle_prints_learning_summary(tmp_path, monkeypatch, capsys):
+    from vault.cli import cmd_automation
+
+    project = _init_project(tmp_path)
+    with VaultDB(project / "vault.db") as db:
+        for idx in range(2):
+            db.record_memory_feedback(
+                {
+                    "candidate_id": f"dream_cli_{idx}",
+                    "source": "dream",
+                    "memory_type": "dream_suggestion",
+                    "category": "dream-review",
+                    "outcome": "promoted",
+                    "score": 1.0,
+                }
+            )
+        db.add_knowledge(
+            "CLI cycle weak metadata",
+            "CLI cycle should show learning-policy and Dream learning status.",
+            category="general",
+            tags="",
+            trust=0.3,
+        )
+    monkeypatch.chdir(project)
+
+    cmd_automation(
+        Namespace(
+            automation_action="cycle",
+            mode="balanced",
+            limit=10,
+            min_events=2,
+            apply=True,
+            no_report=False,
+            json=False,
+            pretty=False,
+        )
+    )
+
+    out = capsys.readouterr().out
+    assert "Automation cycle" in out
+    assert "learning policy: reports/automation/learning_policy.json" in out
+    assert "dream learning: loaded" in out
+    assert "does not auto-promote" in out
 
 
 def test_automation_doctor_json_safe(tmp_path):

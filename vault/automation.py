@@ -264,6 +264,93 @@ def automation_run(
     return payload
 
 
+def automation_cycle(
+    project_dir: str | Path,
+    *,
+    mode: str | None = None,
+    apply: bool = False,
+    limit: int = 50,
+    min_events: int = 5,
+    write_reports: bool | None = None,
+) -> dict[str, Any]:
+    """Run one closed automation learning cycle.
+
+    The cycle is intentionally composed from existing safe phases:
+    feedback evaluation writes a bounded learning-policy handoff, then the
+    normal automation run consumes that handoff through Dream. It never promotes
+    candidates, hard-deletes memory, or bypasses access/privacy policy.
+    """
+    project = Path(project_dir)
+    generated_at = _now()
+    evaluation = automation_eval(
+        project,
+        limit=max(int(limit or 50), int(min_events or 1), 1),
+        min_events=min_events,
+        write_learning_policy=True,
+    )
+    if evaluation.get("status") == "blocked":
+        return {
+            "action": "cycle",
+            "generated_at": generated_at,
+            "project_dir": str(project),
+            "status": "blocked",
+            "phase": "eval",
+            "eval": evaluation,
+            "run": {},
+            "summary": {
+                "feedback_events": int(evaluation.get("event_count") or 0),
+                "learning_rules": 0,
+                "learning_policy_path": "",
+                "dream_learning_policy_status": "",
+                "dream_learning_policy_applied_rules": 0,
+                "candidate_count_before": 0,
+                "candidate_count_after": 0,
+                "candidates_written": 0,
+            },
+            "principle": _cycle_principle(),
+            "next_action": evaluation.get("next_action", "Initialize the vault before running automation cycle."),
+        }
+
+    run = automation_run(
+        project,
+        mode=mode,
+        apply=apply,
+        limit=limit,
+        write_reports=write_reports,
+    )
+    dream = run.get("dream") or {}
+    dream_learning = dream.get("learning_policy") or {}
+    dream_summary = dream.get("summary") or {}
+    learning_policy = evaluation.get("learning_policy") or {}
+    summary = {
+        "feedback_events": int(evaluation.get("event_count") or 0),
+        "learning_rules": len(learning_policy.get("rules") or []),
+        "learning_readiness": evaluation.get("readiness", ""),
+        "learning_policy_path": evaluation.get("learning_policy_path", ""),
+        "dream_learning_policy_status": dream_learning.get("status", ""),
+        "dream_learning_policy_applied_rules": int(dream_learning.get("applied_rules") or 0),
+        "candidate_count_before": int(run.get("candidate_count_before") or 0),
+        "candidate_count_after": int(run.get("candidate_count_after") or 0),
+        "candidates_written": int(dream_summary.get("candidates_written") or 0)
+        + int((run.get("forgetting") or {}).get("candidates_written") or 0),
+        "automation_report_path": run.get("report_path", ""),
+    }
+    return {
+        "action": "cycle",
+        "generated_at": generated_at,
+        "project_dir": str(project),
+        "status": run.get("status", "completed"),
+        "mode": run.get("mode", ""),
+        "apply": bool(apply),
+        "eval": evaluation,
+        "run": run,
+        "summary": summary,
+        "human_review": run.get("human_review", {}),
+        "principle": _cycle_principle(),
+        "next_action": "Review candidate queue and automation report before approving stronger memory changes.",
+    }
+
+
 def automation_report(
     project_dir: str | Path,
     *,
@@ -487,6 +574,13 @@ def _write_learning_policy(project: Path, learning_policy: dict[str, Any]) -> st
     path = report_dir / "learning_policy.json"
     path.write_text(json.dumps(learning_policy, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return str(path.relative_to(project))
+
+
+def _cycle_principle() -> str:
+    return (
+        "cycle updates bounded curation hints and candidate ordering only; "
+        "it does not auto-promote candidates, hard-delete memory, or override privacy/access policy"
+    )
 
 
 def automation_doctor(project_dir: str | Path, *, mode: str | None = None) -> dict[str, Any]:

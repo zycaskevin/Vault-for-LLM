@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.47] - 2026-06-23
+
+### Added
+
+- Added incremental semantic rebuild support with `vault semantic rebuild --changed-only`, so missing or stale `semantic_vectors` can be refreshed without rebuilding the whole vault.
+- Added `--changed-only` support to semantic smoke/startup/daemon rebuild paths, plus `--limit` / `--semantic-limit` controls for bounded maintenance runs.
+- Reported `changed_only`, `candidate_rows`, and `skipped_rows` in semantic rebuild payloads so agents can tell whether an index pass did real work.
+
 ## [0.6.46] - 2026-06-23
 
 ### Added

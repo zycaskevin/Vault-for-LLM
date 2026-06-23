@@ -30,6 +30,9 @@ class SemanticIndexStats:
     claim_vectors: int
     provider_id: str
     dimension: int
+    changed_only: bool = False
+    candidate_rows: int = 0
+    skipped_rows: int = 0
 
 
 @dataclass(frozen=True)
@@ -414,6 +417,8 @@ def rebuild_semantic_index(
     *,
     require_semantic: bool = False,
     allow_hash: bool = True,
+    changed_only: bool = False,
+    limit: int | None = None,
 ) -> SemanticIndexStats:
     """Rebuild deterministic node/claim vectors for one row or the whole DB."""
     provider = validate_embedding_provider(
@@ -421,7 +426,14 @@ def rebuild_semantic_index(
         require_semantic=require_semantic,
         allow_hash=allow_hash,
     )
-    rows = _knowledge_rows(db, knowledge_id)
+    source_rows = _knowledge_rows(db, knowledge_id)
+    rows = source_rows
+    if changed_only:
+        rows = _changed_knowledge_rows(db, source_rows, provider)
+    candidate_count = len(rows)
+    if limit is not None:
+        limit_i = max(0, int(limit))
+        rows = rows[:limit_i]
     now = datetime.now(timezone.utc).isoformat()
     node_count = 0
     claim_count = 0
@@ -439,13 +451,17 @@ def rebuild_semantic_index(
         claim_count += len(claim_items)
 
     db.conn.commit()
-    _refresh_semantic_vec_indexes(db, provider, ("node", "claim"))
+    if rows:
+        _refresh_semantic_vec_indexes(db, provider, ("node", "claim"))
     return SemanticIndexStats(
         knowledge_rows=len(rows),
         node_vectors=node_count,
         claim_vectors=claim_count,
         provider_id=provider_id(provider),
         dimension=provider_dimension(provider),
+        changed_only=bool(changed_only),
+        candidate_rows=candidate_count,
+        skipped_rows=max(0, len(source_rows) - candidate_count),
     )
 
 
@@ -799,10 +815,85 @@ def _serialize_float32(vector: list[float], dimension: int) -> bytes:
 
 def _knowledge_rows(db: VaultDB, knowledge_id: int | None) -> list[Any]:
     if knowledge_id is not None:
-        rows = db.conn.execute("SELECT id FROM knowledge WHERE id=?", (knowledge_id,)).fetchall()
+        rows = db.conn.execute("SELECT id, updated_at FROM knowledge WHERE id=?", (knowledge_id,)).fetchall()
     else:
-        rows = db.conn.execute("SELECT id FROM knowledge ORDER BY id").fetchall()
+        rows = db.conn.execute("SELECT id, updated_at FROM knowledge ORDER BY id").fetchall()
     return list(rows)
+
+
+def _changed_knowledge_rows(
+    db: VaultDB,
+    rows: list[Any],
+    provider: SemanticEmbeddingProvider,
+) -> list[Any]:
+    """Return rows whose stored semantic vectors are missing or stale."""
+    changed = []
+    for row in rows:
+        knowledge_id = int(row["id"])
+        if _semantic_vectors_need_refresh(
+            db,
+            knowledge_id,
+            provider,
+            knowledge_updated_at=str(row["updated_at"] or ""),
+        ):
+            changed.append(row)
+    return changed
+
+
+def _semantic_vectors_need_refresh(
+    db: VaultDB,
+    knowledge_id: int,
+    provider: SemanticEmbeddingProvider,
+    *,
+    knowledge_updated_at: str = "",
+) -> bool:
+    """Best-effort freshness check for node + claim vectors."""
+    vector_rows = db.conn.execute(
+        """SELECT vector_kind, item_uid, content_hash, updated_at
+             FROM semantic_vectors
+            WHERE knowledge_id=? AND provider_id=? AND dimension=?""",
+        (knowledge_id, provider.provider_id, provider.dim),
+    ).fetchall()
+    if not vector_rows:
+        return True
+
+    knowledge_updated = _parse_dt(knowledge_updated_at)
+    if knowledge_updated is not None:
+        vector_times = [
+            dt
+            for dt in (_parse_dt(row["updated_at"]) for row in vector_rows if row["updated_at"])
+            if dt is not None
+        ]
+        if not vector_times or max(vector_times) < knowledge_updated:
+            return True
+
+    for vector_kind, items in (
+        ("node", _node_items(db, knowledge_id)),
+        ("claim", _claim_items(db, knowledge_id)),
+    ):
+        current = {(item["item_uid"], item["content_hash"]) for item in items}
+        stored = {
+            (row["item_uid"], row["content_hash"])
+            for row in vector_rows
+            if row["vector_kind"] == vector_kind
+        }
+        if current != stored:
+            return True
+
+    return False
+
+
+def _parse_dt(value: str) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def _delete_vectors_for_knowledge(

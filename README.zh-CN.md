@@ -449,6 +449,7 @@ vault dream --mode report --limit 50 --write-report
 
 ```bash
 vault semantic rebuild --persist-cache
+vault semantic rebuild --changed-only --persist-cache
 vault search "what caused the bug" --mode semantic
 vault search "what caused the bug" --mode hybrid
 vault semantic smoke --qa-file benchmarks/search_qa/basic.en.json --mode semantic --pretty

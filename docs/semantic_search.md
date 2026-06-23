@@ -47,8 +47,17 @@ vault semantic rebuild --persist-cache --pretty
 Useful options:
 
 - `--knowledge-id <id>` rebuilds one knowledge row.
+- `--changed-only` rebuilds only rows whose semantic vectors are missing,
+  stale, or out of sync with current Document Map node/claim hashes.
+- `--limit <n>` bounds a changed-only maintenance run.
 - `--db-path <path>` targets a specific SQLite DB.
 - `--persist-cache` uses the durable `embedding_cache` table during the rebuild.
+
+For daily or startup maintenance, prefer an incremental pass:
+
+```bash
+vault semantic rebuild --changed-only --persist-cache --pretty
+```
 
 ## Search with the stored semantic index
 
@@ -92,6 +101,7 @@ Smoke combines rebuild, query warmup, and Search QA snapshot generation:
 vault semantic smoke \
   --qa-file benchmarks/search_qa/basic.en.json \
   --mode keyword \
+  --changed-only \
   --limit 10 \
   --persist-cache \
   --pretty
@@ -132,6 +142,8 @@ One-shot startup hook:
 ```bash
 vault semantic startup \
   --qa-file benchmarks/search_qa/basic.en.json \
+  --rebuild \
+  --changed-only \
   --smoke \
   --pretty
 ```

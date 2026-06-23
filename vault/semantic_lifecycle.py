@@ -55,6 +55,8 @@ def run_semantic_startup(
     older_than_days: int | None = None,
     max_rows: int | None = None,
     knowledge_id: int | None = None,
+    changed_only: bool = False,
+    semantic_limit: int | None = None,
     provider: Any | None = None,
 ) -> dict[str, Any]:
     """Run one semantic startup cycle and return a JSON-serializable summary.
@@ -106,6 +108,8 @@ def run_semantic_startup(
                     knowledge_id=knowledge_id,
                     require_semantic=not allow_hash,
                     allow_hash=allow_hash,
+                    changed_only=changed_only,
+                    limit=semantic_limit,
                 )
                 payload["rebuild"] = {
                     "knowledge_rows": int(stats.knowledge_rows),
@@ -114,6 +118,14 @@ def run_semantic_startup(
                     "provider_id": stats.provider_id,
                     "dimension": int(stats.dimension),
                 }
+                if stats.changed_only:
+                    payload["rebuild"].update(
+                        {
+                            "changed_only": True,
+                            "candidate_rows": int(stats.candidate_rows),
+                            "skipped_rows": int(stats.skipped_rows),
+                        }
+                    )
 
             if queries:
                 lifecycle_provider.encode(queries)

@@ -204,6 +204,64 @@ def test_rebuild_semantic_index_removes_stale_vectors_after_update(tmp_path: Pat
         db.close()
 
 
+def test_rebuild_semantic_index_changed_only_updates_stale_rows(tmp_path: Path):
+    db = VaultDB(tmp_path / "vault.db").connect()
+    provider = DeterministicHashEmbeddingProvider(dim=8)
+    try:
+        first_id = db.add_knowledge(
+            "Semantic Index Guide",
+            RAW_V1,
+            content_aaak=AAAK_V1,
+            category="search",
+            tags="semantic,index,claim",
+            trust=0.9,
+        )
+        second_id = db.add_knowledge(
+            "Stable Entry",
+            "# Stable Entry\n\nStable claim.",
+            content_aaak="TITLE: Stable Entry\nCLAIMS:\n- [C1] Stable claim. (L2)",
+            category="search",
+            trust=0.9,
+        )
+
+        full = rebuild_semantic_index(db, provider)
+        assert full.knowledge_rows == 2
+
+        unchanged = rebuild_semantic_index(db, provider, changed_only=True)
+        assert unchanged.changed_only is True
+        assert unchanged.knowledge_rows == 0
+        assert unchanged.candidate_rows == 0
+        assert unchanged.skipped_rows == 2
+
+        db.update_knowledge(first_id, content_raw=RAW_V2, content_aaak=AAAK_V2)
+        changed = rebuild_semantic_index(db, provider, changed_only=True)
+
+        assert changed.changed_only is True
+        assert changed.knowledge_rows == 1
+        assert changed.candidate_rows == 1
+        assert changed.skipped_rows == 1
+
+        rows = db.conn.execute(
+            """SELECT knowledge_id, vector_kind, source_text
+                 FROM semantic_vectors
+                WHERE vector_kind='claim'
+                ORDER BY knowledge_id, source_text"""
+        ).fetchall()
+        by_kid = {}
+        for row in rows:
+            by_kid.setdefault(row["knowledge_id"], []).append(row["source_text"])
+
+        assert first_id in by_kid
+        assert second_id in by_kid
+        assert by_kid[first_id] == [
+            "Deterministic hash embeddings are public-safe test doubles.",
+            "Node vectors replace stale semantic rows after rebuild.",
+        ]
+        assert by_kid[second_id] == ["Stable claim."]
+    finally:
+        db.close()
+
+
 def test_semantic_index_search_preserves_citation_metadata(tmp_path: Path):
     db = VaultDB(tmp_path / "vault.db").connect()
     provider = DeterministicHashEmbeddingProvider(dim=8)

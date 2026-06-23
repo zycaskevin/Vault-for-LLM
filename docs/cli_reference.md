@@ -122,6 +122,7 @@ after applying `docs/supabase_read_policy.sql` in Supabase.
 | `vault install-embedding` | Install a local embedding model |
 | `vault config set embedding.provider ollama` | Configure an embedding provider |
 | `vault semantic rebuild` | Rebuild semantic vector rows after configuring a real embedding provider |
+| `vault semantic rebuild --changed-only --persist-cache` | Refresh only missing or stale semantic vector rows |
 | `vault semantic warm` | Precompute QA query embeddings without writing vector rows |
 | `vault semantic smoke` | Rebuild, warm, and run a Search QA smoke snapshot |
 | `vault semantic cache-stats` / `vault semantic cache-prune` | Inspect or prune the durable embedding cache |

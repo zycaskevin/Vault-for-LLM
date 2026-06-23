@@ -1876,6 +1876,9 @@ def _semantic_stats_payload(stats, provider) -> dict:
         "knowledge_rows": int(stats.knowledge_rows),
         "node_vectors": int(stats.node_vectors),
         "claim_vectors": int(stats.claim_vectors),
+        "changed_only": bool(getattr(stats, "changed_only", False)),
+        "candidate_rows": int(getattr(stats, "candidate_rows", stats.knowledge_rows)),
+        "skipped_rows": int(getattr(stats, "skipped_rows", 0)),
     }
 
 
@@ -1972,6 +1975,8 @@ def cmd_semantic(args):
                 "semantic_vector_kind": args.semantic_vector_kind,
                 "older_than_days": args.older_than_days,
                 "max_rows": args.max_rows,
+                "changed_only": getattr(args, "changed_only", False),
+                "semantic_limit": getattr(args, "semantic_limit", None),
             }
             if action == "startup":
                 payload = run_semantic_startup(**lifecycle_kwargs)
@@ -2019,6 +2024,8 @@ def cmd_semantic(args):
                             knowledge_id=args.knowledge_id,
                             require_semantic=not args.allow_hash,
                             allow_hash=args.allow_hash,
+                            changed_only=getattr(args, "changed_only", False),
+                            limit=getattr(args, "limit", None),
                         )
                         payload = {"action": "rebuild", **_semantic_stats_payload(stats, provider)}
                         payload["persistent_cache"] = _persistent_cache_payload(provider)
@@ -2034,6 +2041,8 @@ def cmd_semantic(args):
                             knowledge_id=args.knowledge_id,
                             require_semantic=not args.allow_hash,
                             allow_hash=args.allow_hash,
+                            changed_only=getattr(args, "changed_only", False),
+                            limit=getattr(args, "limit", None),
                         )
                     payload = {"action": "rebuild", **_semantic_stats_payload(stats, provider)}
                 finally:
@@ -2089,6 +2098,8 @@ def cmd_semantic(args):
                         knowledge_id=args.knowledge_id,
                         require_semantic=not args.allow_hash,
                         allow_hash=args.allow_hash,
+                        changed_only=getattr(args, "changed_only", False),
+                        limit=getattr(args, "semantic_limit", None),
                     )
                     if queries:
                         provider.encode(queries)
@@ -2105,6 +2116,8 @@ def cmd_semantic(args):
                         knowledge_id=args.knowledge_id,
                         require_semantic=not args.allow_hash,
                         allow_hash=args.allow_hash,
+                        changed_only=getattr(args, "changed_only", False),
+                        limit=getattr(args, "semantic_limit", None),
                     )
                 if queries:
                     provider.encode(queries)
@@ -2135,6 +2148,14 @@ def cmd_semantic(args):
             "qa": {"aggregate": qa_snapshot["aggregate"]},
             "output_written": bool(args.output),
         }
+        if getattr(stats, "changed_only", False):
+            payload["rebuild"].update(
+                {
+                    "changed_only": True,
+                    "candidate_rows": int(getattr(stats, "candidate_rows", stats.knowledge_rows)),
+                    "skipped_rows": int(getattr(stats, "skipped_rows", 0)),
+                }
+            )
         if cache_payload is not None:
             payload["persistent_cache"] = cache_payload
         if args.output:
@@ -2788,6 +2809,8 @@ def main(argv: list[str] | None = None):
     sp = semantic_sub.add_parser("rebuild", help="重建 semantic_vectors")
     add_semantic_common(sp)
     sp.add_argument("--knowledge-id", type=int, help="只重建指定 knowledge id")
+    sp.add_argument("--changed-only", action="store_true", help="只重建缺失或已過期的 semantic vectors")
+    sp.add_argument("--limit", "-n", type=int, help="最多重建幾筆 changed knowledge rows")
     sp.add_argument("--persist-cache", action="store_true", help="使用 durable embedding_cache 快取")
 
     sp = semantic_sub.add_parser("warm", help="預熱 QA 查詢 embedding cache（不寫入向量列）")
@@ -2799,6 +2822,8 @@ def main(argv: list[str] | None = None):
     add_semantic_common(sp)
     sp.add_argument("--qa-file", required=True, help="Search QA Set JSON 路徑")
     sp.add_argument("--knowledge-id", type=int, help="只重建指定 knowledge id")
+    sp.add_argument("--changed-only", action="store_true", help="只重建缺失或已過期的 semantic vectors")
+    sp.add_argument("--semantic-limit", type=int, help="最多重建幾筆 changed knowledge rows")
     sp.add_argument("--mode", choices=["auto", "keyword", "vector", "semantic", "hybrid"], default="keyword")
     sp.add_argument("--semantic-vector-kind", choices=["claim", "node"], default="claim",
                     help="stored semantic_vectors kind for semantic/hybrid smoke")
@@ -2821,6 +2846,8 @@ def main(argv: list[str] | None = None):
         sp.add_argument("--db-path", help="SQLite DB 路徑（預設 project_dir/vault.db）")
         sp.add_argument("--no-persist-cache", action="store_true", help="停用預設 durable embedding cache")
         sp.add_argument("--rebuild", action="store_true", help="在啟動流程中重建 semantic_vectors")
+        sp.add_argument("--changed-only", action="store_true", help="搭配 --rebuild，只重建缺失或已過期的 semantic vectors")
+        sp.add_argument("--semantic-limit", type=int, help="搭配 --rebuild，最多重建幾筆 changed knowledge rows")
         sp.add_argument("--smoke", action="store_true", help="若提供 --qa-file，執行 Search QA smoke aggregate")
         sp.add_argument("--mode", choices=["auto", "keyword", "vector", "semantic", "hybrid"], default="keyword")
         sp.add_argument("--semantic-vector-kind", choices=["claim", "node"], default="claim",

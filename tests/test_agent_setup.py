@@ -1,4 +1,6 @@
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -322,6 +324,41 @@ def test_setup_agent_accepts_global_project_dir_for_missing_directory(tmp_path, 
     assert (project / "vault.db").exists()
     assert (project / "raw").is_dir()
     assert any("vault search" in step and "--json" in step for step in payload["next_steps"])
+
+
+def test_run_agent_setup_writes_executable_local_smoke(tmp_path):
+    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+
+    project = tmp_path / "agent-project"
+    result = run_agent_setup(
+        AgentSetupConfig(
+            project_dir=project,
+            scope="shared",
+            agent="codex",
+            features=["core", "mcp"],
+            template_dir=tmp_path / "templates",
+        )
+    )
+
+    script = Path(result["local_smoke"]["script"])
+    body = script.read_text(encoding="utf-8")
+    assert script.exists()
+    assert os.access(script, os.X_OK)
+    assert "$VAULT search" in body
+    assert "--json" in body
+    assert "$VAULT remember" in body
+    assert "$VAULT candidates" in body
+    assert any("local-smoke.sh" in step for step in result["next_steps"])
+
+    env = {
+        **os.environ,
+        "VAULT": f"{sys.executable} -m vault.cli",
+        "PYTHON": sys.executable,
+    }
+    completed = subprocess.run([str(script)], capture_output=True, text=True, check=False, env=env)
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "local_smoke=ok" in completed.stdout
 
 
 def test_setup_agent_help_exposes_supabase_sync_options(capsys):

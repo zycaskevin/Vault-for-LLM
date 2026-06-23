@@ -282,7 +282,14 @@ For per-tool examples and agent-facing rules, see
 
 ## Smoke Test
 
-After setup, verify the selected project directory:
+After setup, run the generated local smoke script first:
+
+```bash
+sh ~/Vaults/project-memory/agent-install/local-smoke.sh
+```
+
+It verifies `add`, machine-readable `search --json`, `remember`, and
+`candidates` without promoting or deleting memory. The equivalent manual flow is:
 
 ```bash
 vault add "Vault install smoke" \

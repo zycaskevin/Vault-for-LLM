@@ -1912,6 +1912,85 @@ def write_sync_templates(
     return written
 
 
+def render_local_smoke_script(*, project_dir: str | Path, vault_executable: str = "vault") -> str:
+    project = shlex.quote(str(Path(project_dir).expanduser()))
+    return "\n".join(
+        [
+            "#!/usr/bin/env sh",
+            "set -eu",
+            f"PROJECT_DIR={project}",
+            f"VAULT=${{VAULT:-{shlex.quote(vault_executable)}}}",
+            "PYTHON=${PYTHON:-python3}",
+            "SMOKE_ID=\"$(date +%Y%m%d%H%M%S)-$$\"",
+            "TITLE=\"Vault local smoke ${SMOKE_ID}\"",
+            "CANDIDATE_TITLE=\"Vault local smoke candidate ${SMOKE_ID}\"",
+            "CONTENT=\"Vault-for-LLM local smoke ${SMOKE_ID}: add/search-json/remember/candidates works.\"",
+            "",
+            "$VAULT add \"$TITLE\" \\",
+            "  --project-dir \"$PROJECT_DIR\" \\",
+            "  --content \"$CONTENT\" \\",
+            "  --category setup \\",
+            "  --tags smoke,setup \\",
+            "  --trust 0.9 \\",
+            "  --source setup-agent >/dev/null",
+            "",
+            "SEARCH_JSON=\"$($VAULT search \"$TITLE\" --project-dir \"$PROJECT_DIR\" --keyword-only --limit 5 --json)\"",
+            "export SEARCH_JSON TITLE",
+            "$PYTHON - <<'PY'",
+            "import json, os",
+            "payload = json.loads(os.environ['SEARCH_JSON'])",
+            "title = os.environ['TITLE']",
+            "if payload.get('count', 0) < 1:",
+            "    raise SystemExit(f'search returned no results: {payload!r}')",
+            "if not any(item.get('title') == title for item in payload.get('results', [])):",
+            "    raise SystemExit(f'search did not return smoke title: {payload!r}')",
+            "PY",
+            "",
+            "$VAULT remember \"$CANDIDATE_TITLE\" \\",
+            "  --project-dir \"$PROJECT_DIR\" \\",
+            "  --content \"Candidate-only smoke memory created during agent setup validation.\" \\",
+            "  --reason \"Verify candidate memory workflow after agent installation.\" \\",
+            "  --mode candidate \\",
+            "  --category setup \\",
+            "  --tags smoke,setup \\",
+            "  --source setup-agent \\",
+            "  --source-ref \"local-smoke:${SMOKE_ID}\" >/dev/null",
+            "",
+            "CANDIDATES_JSON=\"$($VAULT candidates --project-dir \"$PROJECT_DIR\" --pretty)\"",
+            "export CANDIDATES_JSON CANDIDATE_TITLE",
+            "$PYTHON - <<'PY'",
+            "import json, os",
+            "payload = json.loads(os.environ['CANDIDATES_JSON'])",
+            "title = os.environ['CANDIDATE_TITLE']",
+            "if payload.get('count', 0) < 1:",
+            "    raise SystemExit(f'candidate list is empty: {payload!r}')",
+            "if not any(item.get('title') == title for item in payload.get('candidates', [])):",
+            "    raise SystemExit(f'candidate list did not include smoke candidate: {payload!r}')",
+            "PY",
+            "",
+            "echo \"local_smoke=ok\"",
+            "",
+        ]
+    )
+
+
+def write_local_smoke_template(
+    *,
+    output_dir: str | Path,
+    project_dir: str | Path,
+    vault_executable: str = "vault",
+) -> dict[str, str]:
+    out = Path(output_dir).expanduser().resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    script_path = out / "local-smoke.sh"
+    script_path.write_text(
+        render_local_smoke_script(project_dir=project_dir, vault_executable=vault_executable),
+        encoding="utf-8",
+    )
+    script_path.chmod(0o755)
+    return {"script": str(script_path)}
+
+
 def _normalize_sync_targets(targets: str | list[str]) -> set[str]:
     if isinstance(targets, str):
         selected = {part.strip() for part in targets.split(",") if part.strip()}
@@ -2034,6 +2113,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         "live_validation_pack": {},
         "memory_agents": {},
         "automation_schedule_templates": {},
+        "local_smoke": {},
         "stable_venv": {},
         "next_steps": [
             f"vault search \"test query\" --project-dir {shlex.quote(str(project_path))} --limit 5 --json",
@@ -2041,13 +2121,18 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         ]
         + feature_next_steps,
     }
+    template_dir = config.template_dir or (project_path / "agent-install")
+    result["local_smoke"] = write_local_smoke_template(
+        output_dir=template_dir,
+        project_dir=project_path,
+    )
+    result["next_steps"].insert(0, f"Run local smoke test: {result['local_smoke']['script']}")
     if environment_warnings:
         result["next_steps"].append(
             "Move temporary Python virtualenvs to a stable path such as ~/.hermes/venvs/vault-for-llm/ before relying on scheduled jobs."
         )
 
     if "memory_agents" in features:
-        template_dir = config.template_dir or (project_path / "agent-install")
         result["memory_agents"] = write_memory_agents_guide(
             output_dir=template_dir,
             project_dir=project_path,
@@ -2059,7 +2144,6 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         )
 
     if config.stable_venv_path:
-        template_dir = config.template_dir or (project_path / "agent-install")
         result["stable_venv"] = write_stable_venv_template(
             output_dir=template_dir,
             project_dir=project_path,
@@ -2095,7 +2179,6 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
 
         targets = _normalize_sync_targets(config.sync_targets)
         if targets:
-            template_dir = config.template_dir or (project_path / "agent-install")
             result["sync_templates"] = write_sync_templates(
                 output_dir=template_dir,
                 project_dir=project_path,
@@ -2105,7 +2188,6 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
             )
 
     if "supabase" in features:
-        template_dir = config.template_dir or (project_path / "agent-install")
         result["supabase_setup"] = write_supabase_setup_guide(
             output_dir=template_dir,
             project_dir=project_path,
@@ -2120,7 +2202,6 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
 
     supabase_targets = _normalize_sync_targets(config.supabase_sync_targets)
     if "supabase" in features and supabase_targets:
-        template_dir = config.template_dir or (project_path / "agent-install")
         result["supabase_sync_templates"] = write_supabase_sync_templates(
             output_dir=template_dir,
             project_dir=project_path,
@@ -2130,7 +2211,6 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
 
     remote_reader_targets = _normalize_remote_reader_targets(config.remote_reader_targets)
     if "supabase" in features and remote_reader_targets:
-        template_dir = config.template_dir or (project_path / "agent-install")
         result["remote_reader_templates"] = write_remote_reader_templates(
             output_dir=template_dir,
             agent=config.agent,
@@ -2143,7 +2223,6 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
             )
 
     if config.agent_roster:
-        template_dir = config.template_dir or (project_path / "agent-install")
         result["agent_roster"] = write_agent_roster_templates(
             output_dir=template_dir,
             project_dir=project_path,
@@ -2154,7 +2233,6 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
 
     validation_targets = _normalize_validation_pack_targets(config.validation_pack_targets)
     if validation_targets:
-        template_dir = config.template_dir or (project_path / "agent-install")
         result["live_validation_pack"] = write_live_validation_pack(
             output_dir=template_dir,
             agent=config.agent,
@@ -2166,7 +2244,6 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
 
     automation_targets = _normalize_sync_targets(config.automation_schedule_targets)
     if automation_targets:
-        template_dir = config.template_dir or (project_path / "agent-install")
         result["automation_schedule_templates"] = write_automation_schedule_templates(
             output_dir=template_dir,
             project_dir=project_path,

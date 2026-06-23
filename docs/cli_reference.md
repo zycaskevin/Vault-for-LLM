@@ -44,7 +44,7 @@ changed notes without duplicating unchanged ones.
 
 | Command | Purpose |
 |---|---|
-| `vault setup-agent` | Ask for scope, setup language, optional features, Obsidian import, sync templates, and smoke-test next steps |
+| `vault setup-agent` | Ask for scope, setup language, optional features, Obsidian import, sync templates, and generate `agent-install/local-smoke.sh` |
 | `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,obsidian_import` | Agent-friendly scripted install |
 | `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,semantic,supabase,headroom --language en --install-optional-deps --install-embedding-model mix --supabase-setup simple --json` | Install selected optional dependencies and configure a local semantic model |
 | `vault setup-agent --non-interactive --agent profile-agent --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,memory_agents --language zh-Hant --json` | Generate Profile / Dream / Forgetting agent guidance with report-only and candidate-only defaults |

@@ -1345,6 +1345,7 @@ def cmd_map(args):
 def cmd_remote(args):
     """Supabase remote read workflow: search / map / read."""
     from vault.mcp import (
+        _vault_remote_doctor_payload,
         _vault_remote_map_show_payload,
         _vault_remote_read_range_payload,
         _vault_remote_search_payload,
@@ -1407,8 +1408,16 @@ def cmd_remote(args):
             payload["next_action"] = search_payload.get("next_action") or {
                 "message": "Set SUPABASE_URL and SUPABASE_ANON_KEY, apply docs/supabase_read_policy.sql, then retry."
             }
+    elif action == "doctor":
+        payload = _vault_remote_doctor_payload(
+            query=args.query or "",
+            agent_id=args.agent_id or "",
+            include_private=bool(args.include_private),
+            max_sensitivity=args.max_sensitivity or "medium",
+            limit=args.limit,
+        )
     else:
-        print("用法: vault remote {search|map|read|smoke}")
+        print("用法: vault remote {search|map|read|smoke|doctor}")
         return
 
     if args.json or args.pretty:
@@ -1442,6 +1451,19 @@ def cmd_remote(args):
         message = payload.get("search", {}).get("message", "")
         print(f"remote smoke: failed ({error}) {message}", file=sys.stderr)
         raise SystemExit(2)
+
+    if action == "doctor":
+        if payload.get("ok"):
+            print("remote doctor: ok")
+        else:
+            print(f"remote doctor: failed ({payload.get('failure_mode')})", file=sys.stderr)
+        for name, result in (payload.get("checks") or {}).items():
+            print(f"  - {name}: {result}")
+        if payload.get("next_action"):
+            print(f"next: {payload['next_action']}")
+        if not payload.get("ok"):
+            raise SystemExit(2)
+        return
 
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
@@ -3021,6 +3043,14 @@ def main(argv: list[str] | None = None):
     add_remote_output_args(rp)
 
     rp = remote_sub.add_parser("smoke", help="檢查 Supabase remote reader RPC 是否可用")
+    rp.add_argument("--query", default="deployment SOP", help="測試查詢文字")
+    rp.add_argument("--agent-id", default="", help="Agent 身份，用於 owner/allowed_agents 過濾")
+    rp.add_argument("--include-private", action="store_true", help="允許讀取此 agent 被授權的 private 記憶")
+    rp.add_argument("--max-sensitivity", choices=["low", "medium", "high", "restricted"], default="medium")
+    rp.add_argument("--limit", "-n", type=_positive_int, default=3)
+    add_remote_output_args(rp)
+
+    rp = remote_sub.add_parser("doctor", help="診斷 Supabase remote reader search/map/read 閉環")
     rp.add_argument("--query", default="deployment SOP", help="測試查詢文字")
     rp.add_argument("--agent-id", default="", help="Agent 身份，用於 owner/allowed_agents 過濾")
     rp.add_argument("--include-private", action="store_true", help="允許讀取此 agent 被授權的 private 記憶")

@@ -135,6 +135,17 @@ def _remote_fake_client():
             ],
         }
     rpcs = {
+        "vault_search_readable": [
+            {
+                "id": 42,
+                "title": "Example",
+                "summary": "Safe remote summary",
+                "source": "raw/example.md",
+                "scope": "project",
+                "sensitivity": "medium",
+                "memory_type": "knowledge",
+            }
+        ],
         "vault_get_readable": [
             {
                 "id": 42,
@@ -621,6 +632,87 @@ def test_vault_remote_search_preserves_supabase_uuid_next_action():
 def test_vault_remote_search_tool_is_in_remote_profile():
     remote_tools = {tool["name"] for tool in vault_mcp.select_tools("remote")}
     assert "vault_remote_search" in remote_tools
+
+
+def test_vault_remote_doctor_checks_full_remote_reader_path():
+    fake = _remote_fake_client()
+    payload = vault_mcp._vault_remote_doctor_payload(
+        "Example",
+        agent_id="remote-agent",
+        max_sensitivity="medium",
+        sb_client=fake,
+    )
+
+    assert payload["ok"] is True
+    assert payload["checks"]["remote_search"] == "pass"
+    assert payload["checks"]["remote_get"] == "pass"
+    assert payload["checks"]["remote_nodes_rpc"] == "pass"
+    assert payload["checks"]["remote_claims_rpc"] == "pass"
+    assert payload["checks"]["remote_content_rpc"] == "pass"
+    assert payload["checks"]["document_map_nodes"] == "pass"
+    assert payload["checks"]["remote_read"] == "pass"
+    assert payload["counts"]["search_results"] == 1
+    assert payload["counts"]["nodes_for_sample"] == 2
+    assert payload["read"]["has_content"] is True
+    assert "content" not in payload["read"]
+
+
+def test_vault_remote_doctor_reports_missing_document_map_rows():
+    fake = _remote_fake_client()
+    fake.rpcs["vault_nodes_readable"] = []
+    fake.rpcs["vault_claims_readable"] = []
+
+    payload = vault_mcp._vault_remote_doctor_payload(
+        "Example",
+        agent_id="remote-agent",
+        max_sensitivity="medium",
+        sb_client=fake,
+    )
+
+    assert payload["ok"] is False
+    assert payload["failure_mode"] == "missing_document_map_rows"
+    assert payload["checks"]["document_map_nodes"] == "fail"
+    assert "Document Map" in payload["next_action"]
+
+
+def test_vault_remote_doctor_reports_missing_rpc():
+    fake = _remote_fake_client()
+    del fake.rpcs["vault_nodes_readable"]
+
+    payload = vault_mcp._vault_remote_doctor_payload(
+        "Example",
+        agent_id="remote-agent",
+        max_sensitivity="medium",
+        sb_client=fake,
+    )
+
+    assert payload["ok"] is False
+    assert payload["failure_mode"] == "missing_nodes_rpc"
+    assert payload["checks"]["remote_nodes_rpc"] == "fail"
+    assert "supabase_read_policy.sql" in payload["next_action"]
+
+
+def test_vault_remote_doctor_redacts_rpc_error_details():
+    class PartlyExplodingClient(_FakeSupabaseClient):
+        def rpc(self, function_name: str, params: dict):
+            if function_name == "vault_nodes_readable":
+                raise RuntimeError(
+                    "https://demo.supabase.co failed with api_key=super-secret-token-value"
+                )
+            return super().rpc(function_name, params)
+
+    fake = _remote_fake_client()
+    client = PartlyExplodingClient(fake.tables, fake.rpcs)
+    payload = vault_mcp._vault_remote_doctor_payload(
+        "Example",
+        agent_id="remote-agent",
+        sb_client=client,
+    )
+
+    detail = payload["details"]["remote_nodes_rpc"]
+    assert "super-secret-token-value" not in detail
+    assert "demo.supabase.co" not in detail
+    assert "[SUPABASE_PROJECT]" in detail
 
 
 def test_vault_remote_read_range_uses_content_raw_when_available():

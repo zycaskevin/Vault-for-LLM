@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.6.62] - 2026-06-23
+
+### Added
+
+- Added `vault remote doctor`, a read-only Supabase remote-reader health check that verifies search, UUID/integer IDs, guarded readable-entry RPCs, Document Map nodes, claims, content access, map, and bounded read in one command.
+- Added structured failure modes and next actions for remote-reader setup issues, so hosted agents can report whether the missing piece is search RPC, readable-entry RPC, Document Map rows, claims, content, or bounded reads.
+- Added test coverage for the successful remote doctor path, missing Document Map rows, missing guarded RPCs, and CLI JSON output.
+
+### Changed
+
+- Updated install examples and release claim checks for `0.6.62`.
+
 ## [0.6.61] - 2026-06-23
 
 ### Fixed

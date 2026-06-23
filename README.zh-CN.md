@@ -265,6 +265,14 @@ L0-L3 的稳定骨架，再用 `scope`、`sensitivity`、`owner_agent`、
 决定哪些要私有、哪些可共享、哪些能同步到 Supabase 或 Obsidian。详见
 [`docs/memory_governance.md`](docs/memory_governance.md)。
 
+搜索会记录轻量使用统计（`access_count`、`last_accessed_at`）。短期记忆若设置
+`expires_at`，可以到期后移到 `status: archived`，不用直接删除：
+
+```bash
+vault usage stats
+vault usage archive-expired --apply
+```
+
 使用者人格侧写不要整包塞进 L0：最小身份放 L0，稳定工作偏好放 L1，近期状态
 或照顾摘要放 L2 并加过期时间，深层分析或原始私密互动放 private L3 或独立
 private vault。

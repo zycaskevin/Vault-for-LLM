@@ -76,7 +76,7 @@
   "agent_setup_wizard": {
     "cli": "vault setup-agent",
     "alias": "vault install-agent",
-    "install_command": "python -m pip install \"vault-for-llm[mcp]==0.6.45\"",
+    "install_command": "python -m pip install \"vault-for-llm[mcp]==0.6.46\"",
     "non_interactive_example": "vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir /path/to/project --features core,mcp,obsidian_import --obsidian-vault /path/to/ObsidianVault --import-obsidian --obsidian-sync all",
     "non_interactive_with_optional_deps": "vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir /path/to/project --features core,mcp,semantic,supabase,headroom --language en --install-optional-deps --install-embedding-model mix --write-stable-venv-script --supabase-setup simple --supabase-sync cron --remote-reader all --agent-roster profile-agent:profile,work-agent:work,remote-agent:remote,n8n:automation --validation-pack all --json",
     "stable_venv_default": "~/.hermes/venvs/vault-for-llm",
@@ -90,7 +90,7 @@
       "prompt": "Install the core local Markdown + SQLite + keyword search workflow?",
       "when_to_install": "Always. This is the minimal local-first Vault workflow.",
       "install_commands": [
-        "python -m pip install vault-for-llm==0.6.45"
+        "python -m pip install vault-for-llm==0.6.46"
       ],
       "post_install": [
         "vault init --project-dir /path/to/project",
@@ -104,7 +104,7 @@
       "prompt": "Configure local stdio MCP tools for this agent?",
       "when_to_install": "Use when the runtime supports MCP, such as Hermes Agent, Codex surfaces with MCP, OpenCode, Claude Code, OpenClaw generic MCP, or other MCP hosts.",
       "install_commands": [
-        "python -m pip install \"vault-for-llm[mcp]==0.6.45\""
+        "python -m pip install \"vault-for-llm[mcp]==0.6.46\""
       ],
       "post_install": [
         "vault-mcp --project-dir /path/to/project --tool-profile core"
@@ -192,6 +192,8 @@
         "Review /path/to/project/agent-install/README-memory-agents.md.",
         "Keep Profile agents candidate-only by default.",
         "Keep Dream / Forgetting agents report-only by default.",
+        "Use vault usage stats to inspect coarse retrieval signals before proposing cleanup.",
+        "Use vault usage archive-expired as a dry-run first; add --apply only under a user-approved policy.",
         "Do not promote, delete, or sync private profile memory without user-approved policy."
       ],
       "notes": "This feature writes guidance only. It does not install a model, start a scheduler, promote memory, or delete entries."
@@ -293,7 +295,7 @@
     },
     "dedicated_memory_agents": {
       "profile_agent": "Maintains stable user profile, preferences, care summaries, and agent-specific boundaries without exposing raw private chats.",
-      "dream_forgetting_agent": "Runs dream reports, deduplication, stale-memory review, promotion/archive suggestions, and expiry recommendations for low-value context."
+      "dream_forgetting_agent": "Runs dream reports, usage review, TTL archive previews, deduplication, stale-memory review, promotion/archive suggestions, and expiry recommendations for low-value context."
     },
     "sharing_rule": "Share reviewed project knowledge and short summaries; keep raw private conversations, persona files, and high-sensitivity profile notes local unless the user explicitly approves wider sharing.",
     "obsidian_rule": "Preserve layer plus governance metadata in frontmatter; adding metadata is compatible with import/export.",

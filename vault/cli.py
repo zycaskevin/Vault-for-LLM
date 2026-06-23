@@ -1931,14 +1931,15 @@ def cmd_automation(args):
         automation_cycle,
         automation_doctor,
         automation_eval,
+        automation_inbox,
         automation_plan,
         automation_report,
         automation_run,
     )
 
     action = getattr(args, "automation_action", "")
-    if action not in {"plan", "run", "cycle", "report", "doctor", "eval"}:
-        print("error: automation requires action: plan, run, cycle, report, eval, or doctor", file=sys.stderr)
+    if action not in {"plan", "run", "cycle", "report", "inbox", "doctor", "eval"}:
+        print("error: automation requires action: plan, run, cycle, report, inbox, eval, or doctor", file=sys.stderr)
         raise SystemExit(2)
 
     project_dir = find_project_dir()
@@ -1975,6 +1976,12 @@ def cmd_automation(args):
                 latest=args.latest,
                 detail=args.detail,
                 report_path=args.report_path,
+            )
+        elif action == "inbox":
+            payload = automation_inbox(
+                project_dir,
+                limit=args.limit,
+                include_content=getattr(args, "include_content", False),
             )
         elif action == "eval":
             payload = automation_eval(
@@ -2154,6 +2161,42 @@ def cmd_automation(args):
         for item in payload.get("reports", []):
             review = "review" if item.get("human_review", {}).get("required") else "ok"
             print(f"  {item.get('path')} mode={item.get('mode')} status={item.get('status')} {review}")
+        return
+
+    if action == "inbox":
+        summary = payload.get("summary") or {}
+        print("📥 Automation inbox\n")
+        print(f"  status: {payload.get('status')}")
+        print(
+            "  candidates: "
+            f"pending={summary.get('pending_candidates', 0)} "
+            f"rejected={summary.get('rejected_candidates', 0)} "
+            f"privacy_blocked={summary.get('privacy_blocked', 0)} "
+            f"needs_review={summary.get('needs_review', 0)}"
+        )
+        print(
+            "  gates: "
+            f"duplicate_review={summary.get('duplicate_review', 0)} "
+            f"quality_review={summary.get('quality_review', 0)}"
+        )
+        if summary.get("latest_report_path"):
+            review = "review" if summary.get("latest_report_review_required") else "ok"
+            print(f"  latest report: {summary.get('latest_report_path')} {review}")
+        queue = payload.get("review_queue") or []
+        if queue:
+            print("\n  Review queue:")
+            for item in queue:
+                print(
+                    f"    - {item.get('id')} priority={item.get('priority')} "
+                    f"action={item.get('recommended_action')} "
+                    f"source={item.get('source') or '(none)'} "
+                    f"type={item.get('memory_type') or '(none)'}"
+                )
+                print(f"      {item.get('title')}")
+                print(f"      reason: {item.get('reason')}")
+        else:
+            print("\n  Review queue: empty")
+        print(f"\n  principle: {summary.get('principle')}")
         return
 
     if action == "eval":
@@ -3345,6 +3388,10 @@ def main(argv: list[str] | None = None):
     sp.add_argument("--latest", action="store_true", help="show the latest automation report summary")
     sp.add_argument("--detail", action="store_true", help="include full report detail and ledger")
     sp.add_argument("--report-path", default="", help="read a specific reports/automation/*.json file")
+
+    sp = automation_sub.add_parser("inbox", help="Show the shortest review queue for automation candidates and reports")
+    add_automation_common(sp)
+    sp.add_argument("--include-content", action="store_true", help="include redacted candidate content in JSON output")
 
     sp = automation_sub.add_parser("eval", help="Evaluate automation feedback and candidate outcomes")
     add_automation_common(sp)

@@ -83,6 +83,18 @@ Show the latest report as a review handoff:
 vault automation report --latest --detail --pretty
 ```
 
+Show the shortest review inbox:
+
+```bash
+vault automation inbox --limit 5 --pretty
+```
+
+`automation inbox` is the daily review surface for the closed loop. It reads the
+candidate queue and latest automation report, then ranks the smallest useful
+set of items for a human or trusted agent to inspect. It is read-only, hides
+candidate content by default, and prioritizes privacy-blocked, sensitive,
+duplicate, weak-quality, and automation-generated candidates.
+
 Read a specific report:
 
 ```bash

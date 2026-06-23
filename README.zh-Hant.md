@@ -58,7 +58,7 @@ Vault-for-LLM 可能不是第一個該拿起來的工具。
 最推薦的方式，是直接把這段交給能執行本機指令的 Agent：
 
 ```text
-幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.64。
+幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.65。
 先問我要 shared、private、domain-specific 還是 temporary vault。
 詢問穩定的 project directory，並為長期任務產生 stable venv script。
 逐項詢問 MCP、semantic search、Supabase、Obsidian import、Headroom 壓縮、
@@ -71,7 +71,7 @@ Agent 會使用安裝精靈：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.64"
+pip install "vault-for-llm[mcp]==0.6.65"
 
 vault setup-agent
 ```
@@ -98,7 +98,7 @@ vault setup-agent \
 ### 手動快速開始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.64"
+pip install "vault-for-llm[mcp]==0.6.65"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -182,6 +182,7 @@ vault automation plan --write-policy
 vault automation run
 vault automation run --apply
 vault automation cycle --apply
+vault automation inbox --limit 5
 ```
 
 `vault capture session` 是這個閉環的入口。它會從 Agent transcript 裡找出可重用的
@@ -191,6 +192,10 @@ automation 可以排序與整理，但 promotion 仍然需要明確審核。
 `vault automation cycle` 會先評估已審核的候選結果，寫出 bounded
 `learning_policy.json`，再跑一次安全自動化，讓 Dream 用最新的整理提示排序候選。
 它仍然不會自動 promote、硬刪記憶，或繞過隱私與權限規則。
+
+`vault automation inbox` 是這個閉環的短版審核入口。它不會修改記憶，只會把
+privacy blocked、敏感、重複、品質不足、automation 產生的候選排出優先順序；
+預設不顯示原始內容，只給人或可信任 Agent 一個最小必要的 review queue。
 
 拒絕或阻擋候選也可以變成結構化回饋：
 
@@ -243,7 +248,7 @@ SQLite 仍然是 source of truth。Supabase 是可選的共享層。
 Remote reader 應該直接把搜尋結果的 `id` 傳給 map/read；它可能是整數，也可能是 Supabase UUID。
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.64"
+pip install "vault-for-llm[supabase]==0.6.65"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

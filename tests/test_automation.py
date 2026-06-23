@@ -8,12 +8,14 @@ from vault.automation import (
     automation_cycle,
     automation_doctor,
     automation_eval,
+    automation_inbox,
     automation_plan,
     automation_report,
     automation_run,
     load_policy,
 )
 from vault.db import VaultDB
+from vault.memory import create_candidate
 
 
 def _init_project(tmp_path):
@@ -657,6 +659,110 @@ def test_automation_cli_cycle_prints_learning_summary(tmp_path, monkeypatch, cap
     assert "learning policy: reports/automation/learning_policy.json" in out
     assert "dream learning: loaded" in out
     assert "does not auto-promote" in out
+
+
+def test_automation_inbox_prioritizes_privacy_blocked_candidates(tmp_path):
+    project = _init_project(tmp_path)
+    token = "sk-proj-1234567890abcdefghij1234567890"
+    with VaultDB(project / "vault.db") as db:
+        safe = create_candidate(
+            db,
+            title="Decision: keep session capture candidate-first",
+            content="Decision: session capture should stay candidate-first because active memory needs review.",
+            reason="Reusable automation decision.",
+            source="session_capture",
+            source_ref="codex:session:1",
+            memory_type="session_lesson",
+            category="decision",
+            tags="session-capture,decision",
+        )
+        blocked = create_candidate(
+            db,
+            title="Fix: redact standalone API keys",
+            content=f"Fix: never show {token} in session capture reports because secrets must stay out.",
+            reason="Privacy regression guard.",
+            source="session_capture",
+            source_ref="codex:session:2",
+            memory_type="session_lesson",
+            category="error",
+            tags="session-capture,privacy",
+        )
+
+    payload = automation_inbox(project, limit=2)
+    rendered = json.dumps(payload, ensure_ascii=False)
+
+    assert payload["action"] == "inbox"
+    assert payload["status"] == "completed"
+    assert payload["summary"]["pending_candidates"] == 1
+    assert payload["summary"]["rejected_candidates"] == 1
+    assert payload["summary"]["privacy_blocked"] == 1
+    assert payload["review_queue"][0]["id"] == blocked["candidate_id"]
+    assert payload["review_queue"][0]["recommended_action"] == "block_or_redact"
+    assert payload["review_queue"][1]["id"] == safe["candidate_id"]
+    assert "content" not in payload["review_queue"][0]
+    assert token not in rendered
+    assert payload["safety"]["read_only"] is True
+    assert payload["safety"]["auto_promote"] is False
+
+
+def test_automation_inbox_can_include_redacted_content(tmp_path):
+    project = _init_project(tmp_path)
+    token = "sk-proj-1234567890abcdefghij1234567890"
+    with VaultDB(project / "vault.db") as db:
+        create_candidate(
+            db,
+            title="Fix: redact content",
+            content=f"Fix: redact {token} before returning inbox content.",
+            reason="Privacy regression guard.",
+            source="session_capture",
+            source_ref="codex:session:3",
+            memory_type="session_lesson",
+            category="error",
+            tags="session-capture,privacy",
+        )
+
+    payload = automation_inbox(project, limit=1, include_content=True)
+    item = payload["review_queue"][0]
+
+    assert "content" in item
+    assert "[REDACTED]" in item["content"]
+    assert token not in json.dumps(payload)
+
+
+def test_automation_cli_inbox_prints_short_review_queue(tmp_path, monkeypatch, capsys):
+    from vault.cli import cmd_automation
+
+    project = _init_project(tmp_path)
+    with VaultDB(project / "vault.db") as db:
+        create_candidate(
+            db,
+            title="Workflow: review inbox daily",
+            content="Workflow: automation inbox should show a short queue because humans should review only the necessary memory decisions.",
+            reason="Daily review workflow decision.",
+            source="session_capture",
+            source_ref="codex:session:4",
+            memory_type="session_lesson",
+            category="workflow",
+            tags="session-capture,workflow",
+        )
+    monkeypatch.chdir(project)
+
+    cmd_automation(
+        Namespace(
+            automation_action="inbox",
+            mode=None,
+            limit=5,
+            include_content=False,
+            json=False,
+            pretty=False,
+        )
+    )
+
+    out = capsys.readouterr().out
+    assert "Automation inbox" in out
+    assert "pending=1" in out
+    assert "Review queue:" in out
+    assert "review_for_promotion" in out
 
 
 def test_automation_doctor_json_safe(tmp_path):

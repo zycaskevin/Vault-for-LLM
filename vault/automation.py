@@ -17,6 +17,7 @@ import yaml
 
 from .db import VaultDB
 from .dream import run_dream
+from .privacy import redact_secrets
 
 AUTOMATION_MODES = {"conservative", "balanced", "autonomous"}
 DEFAULT_MODE = "balanced"
@@ -398,6 +399,78 @@ def automation_report(
     }
 
 
+def automation_inbox(
+    project_dir: str | Path,
+    *,
+    limit: int = 5,
+    candidate_scan_limit: int = 1000,
+    include_content: bool = False,
+) -> dict[str, Any]:
+    """Build a compact review inbox for the memory automation loop.
+
+    The inbox is intentionally read-only. It helps humans and agents review the
+    smallest useful set of memory decisions without exposing raw candidate
+    content unless explicitly requested.
+    """
+    project = Path(project_dir)
+    generated_at = _now()
+    db_path = project / "vault.db"
+    if not db_path.exists():
+        return {
+            "action": "inbox",
+            "generated_at": generated_at,
+            "project_dir": str(project),
+            "status": "blocked",
+            "reason": "vault.db missing",
+            "summary": {
+                "pending_candidates": 0,
+                "rejected_candidates": 0,
+                "privacy_blocked": 0,
+                "needs_review": 0,
+                "review_budget": max(1, int(limit or 5)),
+            },
+            "review_queue": [],
+            "latest_report": {},
+            "next_action": "Run vault init and capture/import memory before checking the automation inbox.",
+        }
+
+    limit_i = max(1, min(int(limit or 5), 50))
+    scan_limit = max(limit_i, min(int(candidate_scan_limit or 1000), 5000))
+    with VaultDB(db_path) as db:
+        candidates = db.list_memory_candidates(status=None, limit=scan_limit)
+
+    candidate_items = [_candidate_inbox_item(row, include_content=include_content) for row in candidates]
+    candidate_items.sort(key=lambda item: (-int(item["priority"]), item["created_at"], item["id"]), reverse=False)
+    # The reverse=False ordering above keeps high priority first because the key
+    # negates priority, then keeps older unresolved items ahead within a tie.
+
+    latest_path = _resolve_report_path(project, project / "reports" / "automation", latest=True)
+    latest_report = {}
+    if latest_path is not None:
+        latest_report = _report_summary(project, latest_path, _read_report(latest_path))
+
+    summary = _inbox_summary(candidate_items, latest_report, review_budget=limit_i)
+    return {
+        "action": "inbox",
+        "generated_at": generated_at,
+        "project_dir": str(project),
+        "status": "completed",
+        "summary": summary,
+        "review_queue": candidate_items[:limit_i],
+        "latest_report": latest_report,
+        "safety": {
+            "read_only": True,
+            "auto_promote": False,
+            "hard_delete": False,
+            "content_hidden_by_default": not include_content,
+        },
+        "next_action": (
+            "Review the top queue items. Use `vault promote` for approved candidates "
+            "or `vault candidate-review` for rejected/blocked feedback."
+        ),
+    }
+
+
 def automation_eval(
     project_dir: str | Path,
     *,
@@ -627,6 +700,193 @@ def automation_doctor(project_dir: str | Path, *, mode: str | None = None) -> di
         "mode": _normalize_mode(str(policy.get("mode") or DEFAULT_MODE)),
         "ok": ok,
         "checks": checks,
+    }
+
+
+def _candidate_inbox_item(row: dict[str, Any], *, include_content: bool = False) -> dict[str, Any]:
+    status = str(row.get("status") or "")
+    privacy = str(row.get("privacy_status") or "")
+    duplicate = str(row.get("duplicate_status") or "")
+    quality = str(row.get("quality_status") or "")
+    sensitivity = str(row.get("sensitivity") or "")
+    scope = str(row.get("scope") or "")
+    source = str(row.get("source") or "")
+    memory_type = str(row.get("memory_type") or "")
+    priority = _candidate_review_priority(
+        status=status,
+        privacy=privacy,
+        duplicate=duplicate,
+        quality=quality,
+        sensitivity=sensitivity,
+        scope=scope,
+        source=source,
+        memory_type=memory_type,
+    )
+    item = {
+        "id": row.get("id", ""),
+        "title": row.get("title", ""),
+        "status": status,
+        "priority": priority,
+        "recommended_action": _candidate_recommended_action(
+            status=status,
+            privacy=privacy,
+            duplicate=duplicate,
+            quality=quality,
+            sensitivity=sensitivity,
+        ),
+        "reason": _candidate_review_reason(
+            status=status,
+            privacy=privacy,
+            duplicate=duplicate,
+            quality=quality,
+            sensitivity=sensitivity,
+            source=source,
+            memory_type=memory_type,
+        ),
+        "source": source,
+        "source_ref": row.get("source_ref", ""),
+        "memory_type": memory_type,
+        "category": row.get("category", ""),
+        "layer": row.get("layer", ""),
+        "trust": float(row.get("trust") or 0.0),
+        "scope": scope,
+        "sensitivity": sensitivity,
+        "owner_agent": row.get("owner_agent", ""),
+        "created_at": row.get("created_at", ""),
+        "updated_at": row.get("updated_at", ""),
+        "gates": {
+            "privacy": privacy,
+            "duplicate": duplicate,
+            "quality": quality,
+        },
+    }
+    if include_content:
+        item["content"] = redact_secrets(str(row.get("content") or ""))
+    return item
+
+
+def _candidate_review_priority(
+    *,
+    status: str,
+    privacy: str,
+    duplicate: str,
+    quality: str,
+    sensitivity: str,
+    scope: str,
+    source: str,
+    memory_type: str,
+) -> int:
+    priority = 0
+    if privacy == "fail":
+        priority += 100
+    if status in {"candidate", "rejected", "blocked"}:
+        priority += 30
+    if sensitivity in {"high", "restricted"} or scope == "private":
+        priority += 20
+    if duplicate and duplicate not in {"pass", "unique"}:
+        priority += 18
+    if quality and quality != "pass":
+        priority += 12
+    if source in {"session_capture", "automation", "dream"}:
+        priority += 8
+    if memory_type in {"forgetting_suggestion", "consolidation_suggestion", "dream_suggestion"}:
+        priority += 5
+    return priority
+
+
+def _candidate_recommended_action(
+    *,
+    status: str,
+    privacy: str,
+    duplicate: str,
+    quality: str,
+    sensitivity: str,
+) -> str:
+    if privacy == "fail":
+        return "block_or_redact"
+    if sensitivity in {"high", "restricted"}:
+        return "manual_review"
+    if duplicate and duplicate not in {"pass", "unique"}:
+        return "merge_or_reject_duplicate"
+    if quality and quality != "pass":
+        return "clarify_or_reject"
+    if status == "candidate":
+        return "review_for_promotion"
+    if status in {"rejected", "blocked"}:
+        return "feedback_recorded"
+    return "inspect"
+
+
+def _candidate_review_reason(
+    *,
+    status: str,
+    privacy: str,
+    duplicate: str,
+    quality: str,
+    sensitivity: str,
+    source: str,
+    memory_type: str,
+) -> str:
+    if privacy == "fail":
+        return "Privacy gate failed; keep this out of active memory unless redacted and re-submitted."
+    if sensitivity in {"high", "restricted"}:
+        return "Sensitive candidate; require explicit review before promotion."
+    if duplicate and duplicate not in {"pass", "unique"}:
+        return "Duplicate gate suggests this should be merged or rejected instead of promoted as-is."
+    if quality and quality != "pass":
+        return "Quality gate suggests the candidate is too weak, vague, or underspecified."
+    if source == "session_capture":
+        return "Captured from an agent session; promote only if it is reusable project knowledge."
+    if memory_type.endswith("_suggestion"):
+        return "Automation suggestion; use it as review guidance, not as a direct memory mutation."
+    if status == "candidate":
+        return "Pending candidate with passing gates."
+    return "Candidate outcome is already recorded; use it as automation feedback."
+
+
+def _inbox_summary(
+    items: list[dict[str, Any]],
+    latest_report: dict[str, Any],
+    *,
+    review_budget: int,
+) -> dict[str, Any]:
+    pending = [item for item in items if item.get("status") == "candidate"]
+    rejected = [item for item in items if item.get("status") == "rejected"]
+    privacy_blocked = [item for item in items if (item.get("gates") or {}).get("privacy") == "fail"]
+    duplicate_review = [
+        item for item in items
+        if (item.get("gates") or {}).get("duplicate") not in {"", "pass", "unique"}
+    ]
+    quality_review = [
+        item for item in items
+        if (item.get("gates") or {}).get("quality") not in {"", "pass"}
+    ]
+    needs_review = [
+        item for item in items
+        if item.get("status") == "candidate" or item.get("recommended_action") not in {"feedback_recorded"}
+    ]
+    by_source: dict[str, int] = {}
+    by_action: dict[str, int] = {}
+    for item in items:
+        source = str(item.get("source") or "unknown")
+        action = str(item.get("recommended_action") or "inspect")
+        by_source[source] = by_source.get(source, 0) + 1
+        by_action[action] = by_action.get(action, 0) + 1
+    return {
+        "pending_candidates": len(pending),
+        "rejected_candidates": len(rejected),
+        "privacy_blocked": len(privacy_blocked),
+        "duplicate_review": len(duplicate_review),
+        "quality_review": len(quality_review),
+        "needs_review": len(needs_review),
+        "review_budget": int(review_budget),
+        "shown": min(len(items), int(review_budget)),
+        "by_source": by_source,
+        "by_recommended_action": by_action,
+        "latest_report_path": latest_report.get("path", ""),
+        "latest_report_review_required": bool((latest_report.get("human_review") or {}).get("required")),
+        "latest_report_items": (latest_report.get("human_review") or {}).get("items", []),
+        "principle": "show the smallest review queue first; do not expose raw content or mutate memory by default",
     }
 
 

@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.65] - 2026-06-24
+
+### Added
+
+- Added `vault automation inbox`, a compact read-only review queue for candidate memories and the latest automation report.
+- The inbox prioritizes privacy-blocked, sensitive, duplicate, weak-quality, and automation-generated candidates while hiding candidate content by default.
+- Added CLI and regression coverage for the inbox summary, redacted optional content output, and human-readable review queue.
+
 ## [0.6.64] - 2026-06-24
 
 ### Fixed

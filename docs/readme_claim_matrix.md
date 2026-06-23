@@ -1,7 +1,7 @@
 # README Claim Matrix
 
 Generated: 2026-06-23
-Scope: public README feature/capability claims after the v0.6.64 session-capture automation update. Localized README files should mirror the same maturity and non-goal language.
+Scope: public README feature/capability claims after the v0.6.65 session-capture automation update. Localized README files should mirror the same maturity and non-goal language.
 
 ## Maturity Tiers
 
@@ -18,13 +18,13 @@ Scope: public README feature/capability claims after the v0.6.64 session-capture
 | C01 | Vault-for-LLM is local-first project memory for AI agents. | stable | Base storage is Markdown plus SQLite; `vault init/add/compile/search` works locally. | README command smoke passes. |
 | C02 | Vault does not replace models, wikis, Obsidian, or hosted memory systems. | positioning | README and docs frame Vault as the governed layer between human notes and agent access. | Product positioning only. |
 | C03 | Agent-driven install is the recommended path. | usable | `vault setup-agent` and `vault install-agent` generate project setup, optional feature guidance, stable venv scripts, sync templates, and smoke-test next steps. | `tests/test_agent_setup.py` passes; PyPI smoke is part of release closeout. |
-| C04 | Manual quickstart works from PyPI. | stable | `vault-for-llm[mcp]==0.6.64` installs and exposes `vault`. | Clean Python 3.11 PyPI install smoke is part of release closeout. |
+| C04 | Manual quickstart works from PyPI. | stable | `vault-for-llm[mcp]==0.6.65` installs and exposes `vault`. | Clean Python 3.11 PyPI install smoke is part of release closeout. |
 | C05 | MCP lets agents search, read bounded ranges, propose memory, and inspect stats. | usable | `vault-mcp` exposes the core tool profile: `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats`. | MCP tests and README command smoke pass. |
 | C06 | L0-L3 are depth layers, not access-control boundaries by themselves. | stable docs / usable implementation | Schema supports `layer`; governance metadata handles `scope`, `sensitivity`, `owner_agent`, `allowed_agents`, `memory_type`, and expiry. | Access-policy and MCP/read tests pass. |
 | C07 | Usage counters can influence ranking only as a small boost. | usable-alpha | Search uses `access_count`, `citation_count`, and `last_accessed_at` as a saturated rerank signal. | Usage/rerank tests pass. |
 | C08 | Expired memory can be archived instead of deleted. | usable-alpha | `vault usage archive-expired` and automation use `status=archived`; normal search/list hide archived rows. | Usage/archive tests pass. |
 | C09 | Agent session transcripts can be captured into reviewable memory candidates. | usable-alpha | `vault capture session` parses JSONL, Markdown, and text transcripts for reusable decisions, pitfalls, workflows, and source-of-truth lines. It defaults to dry-run preview and writes only `memory_candidates` when `--write-candidates` is set. | `tests/test_session_capture.py` covers preview, writes, nested JSONL, privacy rejection, and CLI dispatch. |
-| C10 | Policy-based automation is report-first by default and candidate-only when it writes. | usable-alpha | `vault automation plan/run/cycle/report/eval/doctor`; reports include a dry-run diff and action ledger. Balanced policy can pre-fill Dream and Forgetting suggestions as memory candidates only when `--apply` is used, while `automation eval` and `automation cycle` turn promoted/rejected/blocked candidate feedback into bounded curation hints. `vault candidate-review` and MCP `vault_memory_review` let reviewers record rejected/blocked feedback without promotion. Dream can write duplicate-group `consolidation_suggestion` candidates for reviewed merge/archive decisions. Automation never promotes candidates or hard-deletes rows. Generated schedule templates default to `vault automation cycle`, can opt down to `run`, and omit `--apply` unless explicitly requested. | Automation tests, Dream/MCP tests, PyPI setup-agent smoke, and full pytest passed before release. |
+| C10 | Policy-based automation is report-first by default and candidate-only when it writes. | usable-alpha | `vault automation plan/run/cycle/report/inbox/eval/doctor`; reports include a dry-run diff and action ledger. `automation inbox` provides a compact read-only review queue that hides candidate content by default and prioritizes privacy-blocked, sensitive, duplicate, weak-quality, and automation-generated candidates. Balanced policy can pre-fill Dream and Forgetting suggestions as memory candidates only when `--apply` is used, while `automation eval` and `automation cycle` turn promoted/rejected/blocked candidate feedback into bounded curation hints. `vault candidate-review` and MCP `vault_memory_review` let reviewers record rejected/blocked feedback without promotion. Dream can write duplicate-group `consolidation_suggestion` candidates for reviewed merge/archive decisions. Automation never promotes candidates or hard-deletes rows. Generated schedule templates default to `vault automation cycle`, can opt down to `run`, and omit `--apply` unless explicitly requested. | Automation tests, Dream/MCP tests, PyPI setup-agent smoke, and full pytest passed before release. |
 | C11 | Profile / Dream / Forgetting agents are guidance-first, not autonomous deletion. | usable-alpha docs | `setup-agent --features memory_agents` writes conservative guidance; automation policy remains user-owned. | Agent setup tests pass. |
 | C12 | Supabase is optional sharing infrastructure, not required for core use. | advanced optional | Optional `[supabase]` extra, sync script, guarded RPC/RLS templates, remote-reader templates. | Supabase template tests and remote-reader tests pass; core smoke runs without Supabase. |
 | C13 | Obsidian import/export is supported. | usable | CLI supports `vault import obsidian` and `vault export obsidian`; importer skips generated and hidden folders. | Obsidian import/export tests pass. |
@@ -46,16 +46,17 @@ Recent release and README cleanup verification used:
 ```bash
 python scripts/readme_command_smoke.py
 python scripts/public_pr_gate.py
-python scripts/check_release_parity.py --tag v0.6.64
+python scripts/check_release_parity.py --tag v0.6.65
 python -m pytest tests/test_session_capture.py tests/test_agent_setup.py tests/test_automation.py tests/test_cli_project_dir.py tests/test_release_parity.py -q
 ```
 
-For release v0.6.64, clean Python 3.11 PyPI install closeout should verify:
+For release v0.6.65, clean Python 3.11 PyPI install closeout should verify:
 
-- `vault-for-llm[mcp]==0.6.64` installs from PyPI.
-- `vault --version` returns `vault-for-llm 0.6.64`.
+- `vault-for-llm[mcp]==0.6.65` installs from PyPI.
+- `vault --version` returns `vault-for-llm 0.6.65`.
 - `vault capture session <transcript>` previews session-derived candidates and `--write-candidates` writes gated candidates only.
 - `vault setup-agent --automation-schedule all` generates cron, LaunchAgent, n8n, and README templates that default to `vault automation cycle`.
 - `vault automation plan --write-policy`, `vault automation doctor`, report-first `vault automation run`, and `vault automation cycle` work against a fresh project vault.
+- `vault automation inbox --limit 5` shows a compact read-only review queue without raw content by default.
 - `vault candidate-review` and MCP `vault_memory_review` record rejected/blocked feedback events.
 - Dream can write `consolidation_suggestion` candidates for duplicate groups without changing active knowledge.

@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.64.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.65.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,7 +83,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.64"
+pip install "vault-for-llm[mcp]==0.6.65"
 
 vault setup-agent
 ```
@@ -110,7 +110,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.64"
+pip install "vault-for-llm[mcp]==0.6.65"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -201,6 +201,7 @@ vault automation plan --write-policy
 vault automation run
 vault automation run --apply
 vault automation cycle --apply
+vault automation inbox --limit 5
 ```
 
 `vault capture session` is the ingestion side of that loop. It scans agent
@@ -242,6 +243,11 @@ decision without changing active knowledge by itself.
 `vault automation cycle` runs that feedback-to-curation loop in one command:
 evaluate reviewed outcomes, write the bounded learning policy, then run safe
 automation so Dream can consume the latest hints.
+
+`vault automation inbox` is the short review surface for that loop. It does not
+mutate memory. It ranks privacy-blocked, sensitive, duplicate, weak-quality, and
+automation-generated candidates, hides raw content by default, and shows only the
+smallest useful queue for a human or trusted agent to review.
 
 Agent installers can generate cron, LaunchAgent, or n8n templates with
 `vault setup-agent --automation-schedule cron|launchagent|n8n|all`. Scheduled
@@ -287,7 +293,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.64"
+pip install "vault-for-llm[supabase]==0.6.65"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

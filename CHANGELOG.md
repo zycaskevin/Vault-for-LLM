@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.49] - 2026-06-23
+
+### Added
+
+- Added `vault automation plan/run/report/doctor` as a policy-based memory maintenance layer.
+- Added `automation_policy.yaml` defaults for `conservative`, `balanced`, and `autonomous` modes so agents can do routine cleanup while humans keep policy ownership.
+- Added report-first automation that collects usage stats, previews or applies reversible TTL archival, runs Dream reports, and writes `reports/automation/*.json`.
+
 ## [0.6.48] - 2026-06-23
 
 ### Added

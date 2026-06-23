@@ -1825,6 +1825,99 @@ def cmd_usage(args):
         print(f"  #{row.get('id')} {row.get('title')} expires_at={row.get('expires_at')}")
 
 
+def cmd_automation(args):
+    """Policy-based memory automation workflows."""
+    from vault.automation import (
+        automation_doctor,
+        automation_plan,
+        automation_report,
+        automation_run,
+    )
+
+    action = getattr(args, "automation_action", "")
+    if action not in {"plan", "run", "report", "doctor"}:
+        print("error: automation requires action: plan, run, report, or doctor", file=sys.stderr)
+        raise SystemExit(2)
+
+    project_dir = find_project_dir()
+    try:
+        if action == "plan":
+            payload = automation_plan(
+                project_dir,
+                mode=args.mode,
+                limit=args.limit,
+                write_policy_file=args.write_policy,
+                overwrite_policy=args.overwrite_policy,
+            )
+        elif action == "run":
+            payload = automation_run(
+                project_dir,
+                mode=args.mode,
+                apply=args.apply,
+                limit=args.limit,
+                write_reports=not args.no_report,
+            )
+        elif action == "report":
+            payload = automation_report(project_dir, limit=args.limit)
+        else:
+            payload = automation_doctor(project_dir, mode=args.mode)
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+
+    if args.json or args.pretty:
+        _json_print(payload, pretty=args.pretty)
+        return
+
+    if action == "plan":
+        print("🧭 Automation plan\n")
+        print(f"  mode: {payload.get('mode')}")
+        print(f"  policy: {payload.get('policy_path') or '(not written)'}")
+        print(f"  candidates: {payload.get('candidate_count', 0)}")
+        usage = payload.get("usage", {})
+        print(f"  expired active: {usage.get('expired_active_count', 0)}")
+        print("\n  Planned actions:")
+        for item in payload.get("planned_actions", []):
+            enabled = item.get("enabled")
+            suffix = "" if enabled is None else f" enabled={enabled}"
+            print(f"    - {item.get('id')} [{item.get('autonomy')}]{suffix}")
+        if payload.get("human_review", {}).get("required"):
+            print("\n  Human review suggested for:")
+            for item in payload["human_review"].get("items", []):
+                print(f"    - {item.get('kind')}: {item.get('count')}")
+        return
+
+    if action == "run":
+        print("🤖 Automation run\n")
+        print(f"  status: {payload.get('status')}")
+        print(f"  mode: {payload.get('mode')}")
+        print(f"  apply: {payload.get('apply')}")
+        print(f"  report: {payload.get('report_path', '')}")
+        archive = payload.get("archive_expired", {})
+        print(
+            f"  archive expired: eligible={archive.get('eligible_count', 0)} "
+            f"archived={archive.get('archived_count', 0)} dry_run={archive.get('dry_run')}"
+        )
+        dream = payload.get("dream", {})
+        print(f"  dream report: {dream.get('report_path', '')}")
+        if payload.get("human_review", {}).get("required"):
+            print("  review: required")
+        return
+
+    if action == "report":
+        print("📋 Automation reports\n")
+        for item in payload.get("reports", []):
+            review = "review" if item.get("human_review", {}).get("required") else "ok"
+            print(f"  {item.get('path')} mode={item.get('mode')} status={item.get('status')} {review}")
+        return
+
+    print("🩺 Automation doctor\n")
+    print(f"  ok: {payload.get('ok')}")
+    for item in payload.get("checks", []):
+        icon = "✅" if item.get("ok") else "❌"
+        print(f"  {icon} {item.get('name')}: {item.get('detail')}")
+
+
 def cmd_db(args):
     """SQLite schema migration/status/backup workflows."""
     from vault.db import VaultDB
@@ -2866,6 +2959,33 @@ def main(argv: list[str] | None = None):
     sp.add_argument("--repeat", type=int, default=1, help="迭代次數；0=forever（只限 supervisor 管理）")
     sp.add_argument("--interval", type=float, default=60.0, help="迭代間隔秒數；測試可用 0")
 
+    # automation — policy-based memory maintenance
+    p = sub.add_parser("automation", help="Policy-based memory automation workflows")
+    automation_sub = p.add_subparsers(dest="automation_action", help="Automation 子命令")
+
+    def add_automation_common(sp):
+        sp.add_argument("--mode", choices=["conservative", "balanced", "autonomous"],
+                        help="override automation policy mode")
+        sp.add_argument("--limit", "-n", type=int, default=50)
+        sp.add_argument("--json", action="store_true", help="輸出 JSON")
+        sp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    sp = automation_sub.add_parser("plan", help="Preview maintenance actions and review pressure")
+    add_automation_common(sp)
+    sp.add_argument("--write-policy", action="store_true", help="write automation_policy.yaml if missing")
+    sp.add_argument("--overwrite-policy", action="store_true", help="overwrite automation_policy.yaml")
+
+    sp = automation_sub.add_parser("run", help="Run report-first automation; --apply only performs policy-allowed reversible actions")
+    add_automation_common(sp)
+    sp.add_argument("--apply", action="store_true", help="apply policy-allowed reversible actions")
+    sp.add_argument("--no-report", action="store_true", help="do not write reports/automation JSON or dream report")
+
+    sp = automation_sub.add_parser("report", help="List recent automation reports")
+    add_automation_common(sp)
+
+    sp = automation_sub.add_parser("doctor", help="Check automation readiness")
+    add_automation_common(sp)
+
     args = parser.parse_args(normalized_argv)
 
     if explicit_project_dir:
@@ -2891,6 +3011,7 @@ def main(argv: list[str] | None = None):
         "doctor": cmd_doctor,
         "stats": cmd_stats,
         "usage": cmd_usage,
+        "automation": cmd_automation,
         "install-embedding": cmd_install_embedding,
         "setup-agent": cmd_setup_agent,
         "install-agent": cmd_setup_agent,

@@ -1,0 +1,409 @@
+"""Policy-based memory automation workflows.
+
+Automation is intentionally reversible by default. Agents should do the daily
+maintenance labor, while humans keep policy ownership and rollback paths.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import json
+import os
+from pathlib import Path
+import sys
+from typing import Any
+
+import yaml
+
+from .db import VaultDB
+from .dream import run_dream
+
+AUTOMATION_MODES = {"conservative", "balanced", "autonomous"}
+DEFAULT_MODE = "balanced"
+POLICY_FILE = "automation_policy.yaml"
+
+
+DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
+    "conservative": {
+        "mode": "conservative",
+        "auto_archive_expired": False,
+        "auto_apply_safe_metadata": False,
+        "write_reports": True,
+        "dream_checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
+        "review_thresholds": {
+            "expired_active": 1,
+            "pending_candidates": 1,
+            "duplicate_groups": 1,
+            "weak_metadata": 1,
+        },
+    },
+    "balanced": {
+        "mode": "balanced",
+        "auto_archive_expired": True,
+        "auto_apply_safe_metadata": False,
+        "write_reports": True,
+        "dream_checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
+        "review_thresholds": {
+            "expired_active": 5,
+            "pending_candidates": 10,
+            "duplicate_groups": 1,
+            "weak_metadata": 10,
+        },
+    },
+    "autonomous": {
+        "mode": "autonomous",
+        "auto_archive_expired": True,
+        "auto_apply_safe_metadata": False,
+        "write_reports": True,
+        "dream_checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
+        "review_thresholds": {
+            "expired_active": 20,
+            "pending_candidates": 50,
+            "duplicate_groups": 5,
+            "weak_metadata": 25,
+        },
+    },
+}
+
+
+def default_policy(mode: str = DEFAULT_MODE) -> dict[str, Any]:
+    mode = _normalize_mode(mode)
+    return json.loads(json.dumps(DEFAULT_POLICIES[mode]))
+
+
+def load_policy(project_dir: str | Path, *, mode: str | None = None) -> dict[str, Any]:
+    project = Path(project_dir)
+    base = default_policy(mode or DEFAULT_MODE)
+    path = project / POLICY_FILE
+    if not path.exists():
+        return base
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(loaded, dict):
+        raise ValueError(f"{POLICY_FILE} must contain a YAML object")
+    loaded_mode = loaded.get("mode") or mode or DEFAULT_MODE
+    base = default_policy(str(loaded_mode))
+    return _deep_merge(base, loaded)
+
+
+def write_policy(project_dir: str | Path, *, mode: str = DEFAULT_MODE, overwrite: bool = False) -> str:
+    project = Path(project_dir)
+    path = project / POLICY_FILE
+    if path.exists() and not overwrite:
+        return str(path.relative_to(project))
+    payload = default_policy(mode)
+    path.write_text(yaml.safe_dump(payload, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    return str(path.relative_to(project))
+
+
+def automation_plan(
+    project_dir: str | Path,
+    *,
+    mode: str | None = None,
+    limit: int = 50,
+    write_policy_file: bool = False,
+    overwrite_policy: bool = False,
+) -> dict[str, Any]:
+    project = Path(project_dir)
+    policy = load_policy(project, mode=mode)
+    mode_name = _normalize_mode(str(policy.get("mode") or DEFAULT_MODE))
+    usage: dict[str, Any] = {}
+    candidate_count = 0
+    db_exists = (project / "vault.db").exists()
+    if db_exists:
+        with VaultDB(project / "vault.db") as db:
+            usage = db.usage_stats(limit=limit)
+            candidate_count = len(db.list_memory_candidates(status="candidate", limit=1000))
+    actions = _planned_actions(project, policy, usage, candidate_count)
+    policy_path = ""
+    if write_policy_file:
+        policy_path = write_policy(project, mode=mode_name, overwrite=overwrite_policy)
+    return {
+        "action": "plan",
+        "mode": mode_name,
+        "generated_at": _now(),
+        "project_dir": str(project),
+        "policy_path": policy_path or (POLICY_FILE if (project / POLICY_FILE).exists() else ""),
+        "db_exists": db_exists,
+        "usage": usage,
+        "candidate_count": candidate_count,
+        "planned_actions": actions,
+        "human_review": _review_summary(policy, usage, candidate_count, {}),
+    }
+
+
+def automation_run(
+    project_dir: str | Path,
+    *,
+    mode: str | None = None,
+    apply: bool = False,
+    limit: int = 50,
+    write_reports: bool | None = None,
+) -> dict[str, Any]:
+    project = Path(project_dir)
+    policy = load_policy(project, mode=mode)
+    mode_name = _normalize_mode(str(policy.get("mode") or DEFAULT_MODE))
+    report_enabled = bool(policy.get("write_reports", True)) if write_reports is None else bool(write_reports)
+    db_path = project / "vault.db"
+    if not db_path.exists():
+        payload = {
+            "action": "run",
+            "mode": mode_name,
+            "generated_at": _now(),
+            "project_dir": str(project),
+            "apply": bool(apply),
+            "status": "blocked",
+            "reason": "vault.db missing",
+            "next_action": "Run vault init and vault compile before automation run.",
+        }
+        if report_enabled:
+            payload["report_path"] = _write_report(project, payload)
+        return payload
+
+    with VaultDB(db_path) as db:
+        before_usage = db.usage_stats(limit=limit)
+        candidates = db.list_memory_candidates(status="candidate", limit=1000)
+        archive_allowed = bool(policy.get("auto_archive_expired", False))
+        archive_apply = bool(apply and archive_allowed)
+        archive_result = db.archive_expired_knowledge(limit=limit, dry_run=not archive_apply)
+
+    dream = run_dream(
+        project,
+        mode="report",
+        checks=policy.get("dream_checks") or None,
+        limit=limit,
+        write_report=report_enabled,
+        backup=False,
+    )
+    with VaultDB(db_path) as db:
+        after_usage = db.usage_stats(limit=limit)
+
+    payload = {
+        "action": "run",
+        "mode": mode_name,
+        "generated_at": _now(),
+        "project_dir": str(project),
+        "apply": bool(apply),
+        "status": "completed",
+        "policy": {
+            "auto_archive_expired": archive_allowed,
+            "auto_apply_safe_metadata": bool(policy.get("auto_apply_safe_metadata", False)),
+        },
+        "usage_before": before_usage,
+        "usage_after": after_usage,
+        "candidate_count": len(candidates),
+        "archive_expired": archive_result,
+        "dream": dream,
+        "human_review": _review_summary(policy, after_usage, len(candidates), dream),
+        "next_action": "Review human_review and report_path; adjust automation_policy.yaml before stronger autonomy.",
+    }
+    if apply and not archive_allowed:
+        payload["warning"] = "apply requested, but policy auto_archive_expired is false"
+    if report_enabled:
+        payload["report_path"] = _write_report(project, payload)
+    return payload
+
+
+def automation_report(project_dir: str | Path, *, limit: int = 5) -> dict[str, Any]:
+    project = Path(project_dir)
+    report_dir = project / "reports" / "automation"
+    reports = sorted(report_dir.glob("*.json"), reverse=True)[: max(1, int(limit or 5))]
+    items = []
+    for path in reports:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            data = {}
+        items.append(
+            {
+                "path": str(path.relative_to(project)),
+                "generated_at": data.get("generated_at", ""),
+                "mode": data.get("mode", ""),
+                "status": data.get("status", ""),
+                "human_review": data.get("human_review", {}),
+            }
+        )
+    return {
+        "action": "report",
+        "generated_at": _now(),
+        "project_dir": str(project),
+        "report_count": len(items),
+        "reports": items,
+    }
+
+
+def automation_doctor(project_dir: str | Path, *, mode: str | None = None) -> dict[str, Any]:
+    project = Path(project_dir)
+    policy = load_policy(project, mode=mode)
+    checks = []
+
+    checks.append(_check("project_dir_exists", project.exists(), str(project)))
+    checks.append(_check("project_dir_not_tmp", not _is_tmp_path(project), "stable path recommended"))
+    checks.append(_check("vault_db_exists", (project / "vault.db").exists(), "run vault init/compile first"))
+    checks.append(_check("raw_dir_exists", (project / "raw").is_dir(), "raw/ stores Markdown source notes"))
+    checks.append(_check("policy_file_exists", (project / POLICY_FILE).exists(), "optional: vault automation plan --write-policy"))
+    checks.append(_check("python_version_supported", sys.version_info >= (3, 10), sys.version.split()[0]))
+    checks.append(_check("venv_not_tmp", not _is_tmp_path(Path(sys.prefix)), "scheduled jobs should use stable venv"))
+
+    if (project / "vault.db").exists():
+        try:
+            with VaultDB(project / "vault.db") as db:
+                schema = db.schema_status()
+                schema_ok = not bool(schema.get("needs_migration")) and not bool(schema.get("tables_missing"))
+                checks.append(
+                    _check(
+                        "schema_ok",
+                        schema_ok,
+                        f"version={schema.get('current_version')} missing={len(schema.get('tables_missing', []))}",
+                    )
+                )
+                provider = db.get_config("embedding_provider", "auto")
+                checks.append(_check("embedding_provider_configured", bool(provider), provider))
+        except Exception as exc:
+            checks.append(_check("db_open", False, str(exc)))
+
+    supabase_selected = any(
+        os.environ.get(name)
+        for name in ("SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY")
+    )
+    checks.append(_check("supabase_env_optional", True, "configured" if supabase_selected else "not configured"))
+
+    ok = all(item["ok"] for item in checks if item["name"] not in {"policy_file_exists"})
+    return {
+        "action": "doctor",
+        "generated_at": _now(),
+        "project_dir": str(project),
+        "mode": _normalize_mode(str(policy.get("mode") or DEFAULT_MODE)),
+        "ok": ok,
+        "checks": checks,
+    }
+
+
+def _planned_actions(
+    project: Path,
+    policy: dict[str, Any],
+    usage: dict[str, Any],
+    candidate_count: int,
+) -> list[dict[str, Any]]:
+    expired = int(usage.get("expired_active_count", 0) or 0)
+    mode = _normalize_mode(str(policy.get("mode") or DEFAULT_MODE))
+    return [
+        {
+            "id": "usage_stats",
+            "risk": "low",
+            "autonomy": "automatic",
+            "command": "vault usage stats --json",
+            "reason": "Collect coarse retrieval and lifecycle counters.",
+        },
+        {
+            "id": "ttl_archive_preview",
+            "risk": "low",
+            "autonomy": "automatic-preview",
+            "command": "vault usage archive-expired --json",
+            "reason": f"{expired} active memories are past expires_at.",
+        },
+        {
+            "id": "ttl_archive_apply",
+            "risk": "medium",
+            "autonomy": "policy-gated",
+            "enabled": bool(policy.get("auto_archive_expired", False)),
+            "command": "vault usage archive-expired --apply --json",
+            "reason": "Archival is reversible and never hard-deletes rows.",
+        },
+        {
+            "id": "dream_report",
+            "risk": "low",
+            "autonomy": "automatic-report",
+            "command": "vault dream --mode report --write-report --pretty",
+            "reason": "Find stale, duplicate, weak, and orphaned knowledge without mutation.",
+        },
+        {
+            "id": "candidate_review_digest",
+            "risk": "low",
+            "autonomy": "digest-only",
+            "command": "vault candidates --status candidate --json",
+            "reason": f"{candidate_count} candidate memories are waiting for policy or review.",
+        },
+        {
+            "id": "semantic_incremental",
+            "risk": "medium",
+            "autonomy": "operator-triggered",
+            "command": "vault semantic rebuild --changed-only --persist-cache --pretty",
+            "reason": "Useful after semantic provider setup; not run automatically by phase 1.",
+        },
+        {
+            "id": "backup_verify",
+            "risk": "low",
+            "autonomy": "recommended",
+            "command": "vault db backup --verify",
+            "reason": f"{mode} mode should keep a recent verified backup before stronger automation.",
+        },
+    ]
+
+
+def _review_summary(
+    policy: dict[str, Any],
+    usage: dict[str, Any],
+    candidate_count: int,
+    dream: dict[str, Any],
+) -> dict[str, Any]:
+    thresholds = policy.get("review_thresholds") or {}
+    dream_summary = dream.get("summary", {}) if isinstance(dream, dict) else {}
+    items = []
+    expired = int(usage.get("expired_active_count", 0) or 0)
+    if expired >= int(thresholds.get("expired_active", 1)):
+        items.append({"kind": "expired_active", "count": expired})
+    if candidate_count >= int(thresholds.get("pending_candidates", 1)):
+        items.append({"kind": "pending_candidates", "count": candidate_count})
+    duplicates = int(dream_summary.get("duplicates", 0) or 0)
+    if duplicates >= int(thresholds.get("duplicate_groups", 1)):
+        items.append({"kind": "duplicate_groups", "count": duplicates})
+    weak_metadata = int(dream_summary.get("metadata", 0) or 0)
+    if weak_metadata >= int(thresholds.get("weak_metadata", 1)):
+        items.append({"kind": "weak_metadata", "count": weak_metadata})
+    return {
+        "required": bool(items),
+        "items": items,
+        "principle": "humans approve policy and high-impact changes; agents handle routine reports and reversible cleanup",
+    }
+
+
+def _write_report(project: Path, payload: dict[str, Any]) -> str:
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
+    path = project / "reports" / "automation" / f"{stamp}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return str(path.relative_to(project))
+
+
+def _normalize_mode(mode: str) -> str:
+    value = str(mode or DEFAULT_MODE).strip().lower()
+    if value not in AUTOMATION_MODES:
+        raise ValueError(f"automation mode must be one of: {', '.join(sorted(AUTOMATION_MODES))}")
+    return value
+
+
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    out = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = _deep_merge(out[key], value)
+        else:
+            out[key] = value
+    out["mode"] = _normalize_mode(str(out.get("mode") or DEFAULT_MODE))
+    return out
+
+
+def _check(name: str, ok: bool, detail: str = "") -> dict[str, Any]:
+    return {"name": name, "ok": bool(ok), "detail": detail}
+
+
+def _is_tmp_path(path: Path) -> bool:
+    try:
+        resolved = path.expanduser().resolve()
+    except Exception:
+        resolved = path.expanduser()
+    return str(resolved).startswith(("/tmp/", "/private/tmp/", "/var/folders/"))
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()

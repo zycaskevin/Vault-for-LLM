@@ -99,6 +99,9 @@ after applying `docs/supabase_read_policy.sql` in Supabase.
 | `vault lint` | Run quality checks |
 | `vault dream` | Produce report-first memory curation summaries |
 | `vault candidates --include-gates` | Review candidate-memory queue and gate details before promotion |
+| `vault automation plan --write-policy` | Create a policy-based maintenance plan and starter `automation_policy.yaml` |
+| `vault automation run` / `vault automation run --apply` | Run report-first memory automation; `--apply` only performs policy-allowed reversible actions |
+| `vault automation report` / `vault automation doctor` | Review automation reports and scheduled-job readiness |
 | `vault freshness` | Experimental freshness/review scheduling |
 | `vault usage archive-expired` | Preview TTL-based archive actions; add `--apply` to mark eligible memories archived |
 | `vault dedup` | Detect or merge duplicate entries |

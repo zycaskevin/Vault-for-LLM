@@ -68,8 +68,7 @@ class _FakeSupabaseClient:
 
 
 def _remote_fake_client():
-    return _FakeSupabaseClient(
-        {
+    tables = {
             vault_mcp.REMOTE_NODE_TABLE: [
                 {
                     "knowledge_id": 42,
@@ -123,12 +122,43 @@ def _remote_fake_client():
             ],
             vault_mcp.REMOTE_KNOWLEDGE_TABLE: [
                 {
+                    "id": 42,
                     "title": "Example",
+                    "scope": "project",
+                    "sensitivity": "medium",
+                    "owner_agent": "",
+                    "allowed_agents": [],
+                    "memory_type": "knowledge",
                     "content_hash": "doc-hash",
                     "content_raw": RAW_CONTENT,
                 }
             ],
         }
+    rpcs = {
+        "vault_get_readable": [
+            {
+                "id": 42,
+                "title": "Example",
+                "scope": "project",
+                "sensitivity": "medium",
+                "owner_agent": "",
+                "allowed_agents": [],
+                "memory_type": "knowledge",
+            }
+        ],
+        "vault_nodes_readable": tables[vault_mcp.REMOTE_NODE_TABLE],
+        "vault_claims_readable": tables[vault_mcp.REMOTE_CLAIM_TABLE],
+        "vault_content_readable": [
+            {
+                "title": "Example",
+                "content_hash": "doc-hash",
+                "content_raw": RAW_CONTENT,
+            }
+        ],
+    }
+    return _FakeSupabaseClient(
+        tables,
+        rpcs,
     )
 
 
@@ -422,7 +452,13 @@ def test_mcp_server_info_uses_public_vault_name(capsys, monkeypatch):
 
 
 def test_vault_remote_map_show_uses_synced_supabase_nodes():
-    payload = vault_mcp._vault_remote_map_show_payload(42, sb_client=_remote_fake_client())
+    fake = _remote_fake_client()
+    payload = vault_mcp._vault_remote_map_show_payload(
+        42,
+        agent_id="remote-agent",
+        max_sensitivity="medium",
+        sb_client=fake,
+    )
 
     assert payload["entry_id"] == 42
     assert payload["title"] == "Example"
@@ -430,6 +466,13 @@ def test_vault_remote_map_show_uses_synced_supabase_nodes():
     assert [node["node_uid"] for node in payload["nodes"]] == ["root", "title-tool"]
     assert payload["next_action"]["tool"] == "vault_remote_read_range"
     assert payload["next_action"]["arguments"]["node_uid"] == "title-tool"
+    assert payload["next_action"]["arguments"]["agent_id"] == "remote-agent"
+    assert ("vault_get_readable", {
+        "p_agent_id": "remote-agent",
+        "p_include_private": False,
+        "p_max_sensitivity": "medium",
+        "p_knowledge_id": 42,
+    }) in fake.rpc_calls
 
     compact = vault_mcp._vault_remote_map_show_payload(
         42,
@@ -443,6 +486,22 @@ def test_vault_remote_map_show_uses_synced_supabase_nodes():
         "line_start": 3,
         "line_end": 4,
     }
+
+
+def test_vault_remote_map_show_denies_unreadable_entry():
+    fake = _remote_fake_client()
+    fake.rpcs["vault_get_readable"] = []
+
+    payload = vault_mcp._vault_remote_map_show_payload(
+        42,
+        agent_id="other-agent",
+        max_sensitivity="low",
+        sb_client=fake,
+    )
+
+    assert payload["error"] == "not_found"
+    assert payload["failure_mode"] == "not_found"
+    assert not any(call[0] == "vault_nodes_readable" for call in fake.rpc_calls)
 
 
 def test_vault_remote_search_uses_readable_rpc_without_raw_content():
@@ -488,6 +547,8 @@ def test_vault_remote_search_uses_readable_rpc_without_raw_content():
     assert result["summary"] == "Safe remote summary"
     assert "content_raw" not in result
     assert result["next_action"]["tool"] == "vault_remote_map_show"
+    assert result["next_action"]["arguments"]["agent_id"] == "remote-agent"
+    assert result["next_action"]["arguments"]["max_sensitivity"] == "medium"
 
 
 def test_vault_remote_search_tool_is_in_remote_profile():
@@ -496,10 +557,13 @@ def test_vault_remote_search_tool_is_in_remote_profile():
 
 
 def test_vault_remote_read_range_uses_content_raw_when_available():
+    fake = _remote_fake_client()
     payload = vault_mcp._vault_remote_read_range_payload(
         42,
         node_uid="title-tool",
-        sb_client=_remote_fake_client(),
+        agent_id="remote-agent",
+        max_sensitivity="medium",
+        sb_client=fake,
     )
 
     assert payload["entry_id"] == 42
@@ -515,11 +579,34 @@ def test_vault_remote_read_range_uses_content_raw_when_available():
     assert payload["path"] == "Title/Tool-gated Reading"
     assert payload["content_hash"] == "node-hash"
     assert payload["next_action"]["tool"] == "final_answer"
+    assert ("vault_content_readable", {
+        "p_agent_id": "remote-agent",
+        "p_include_private": False,
+        "p_max_sensitivity": "medium",
+        "p_knowledge_id": 42,
+    }) in fake.rpc_calls
+
+
+def test_vault_remote_read_range_denies_unreadable_entry_before_content_lookup():
+    fake = _remote_fake_client()
+    fake.rpcs["vault_get_readable"] = []
+
+    payload = vault_mcp._vault_remote_read_range_payload(
+        42,
+        node_uid="title-tool",
+        agent_id="other-agent",
+        max_sensitivity="low",
+        sb_client=fake,
+    )
+
+    assert payload["error"] == "not_found"
+    assert not any(call[0] == "vault_nodes_readable" for call in fake.rpc_calls)
+    assert not any(call[0] == "vault_content_readable" for call in fake.rpc_calls)
 
 
 def test_vault_remote_read_range_falls_back_to_claim_rows_and_bounds_ranges():
     fake = _remote_fake_client()
-    fake.tables[vault_mcp.REMOTE_KNOWLEDGE_TABLE] = []
+    fake.rpcs["vault_content_readable"] = []
 
     payload = vault_mcp._vault_remote_read_range_payload(
         42,
@@ -552,7 +639,7 @@ def test_vault_remote_read_range_falls_back_to_claim_rows_and_bounds_ranges():
 
 def test_vault_remote_read_range_claim_fallback_hashes_returned_content():
     fake = _remote_fake_client()
-    fake.tables[vault_mcp.REMOTE_KNOWLEDGE_TABLE] = []
+    fake.rpcs["vault_content_readable"] = []
 
     payload = vault_mcp._vault_remote_read_range_payload(
         42,

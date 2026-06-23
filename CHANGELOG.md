@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## [0.6.45] - 2026-06-23
+
+### Security
+
+- Hardened remote Supabase Document Map and `read_range` MCP paths so they must pass through guarded read-policy RPCs before returning nodes, claims, or raw content.
+- Added `vault_get_readable`, `vault_nodes_readable`, `vault_claims_readable`, and `vault_content_readable` to the advanced Supabase policy template.
+- Revoked direct anon/authenticated reads from synced Document Map node and claim tables in the Supabase policy template.
+- Preserved remote `agent_id`, `include_private`, and `max_sensitivity` policy arguments across search -> map -> read tool guidance.
+
 ## [0.6.44] - 2026-06-23
 
 ### Fixed

@@ -873,27 +873,23 @@ class TestVaultRemoteReadRangePayloadValidation:
         from vault.mcp import _vault_remote_read_range_payload
         # Should not raise error, just defaults to 80
         mock_client = MagicMock()
-        # Make it return no nodes/claims to trigger that error path
-        mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
         result = _vault_remote_read_range_payload(1, max_lines="invalid", sb_client=mock_client)
-        # Should get to the no_document_map_nodes error, not validation error
-        assert result["error"] == "no_document_map_nodes"
+        # Should get past max_lines validation and stop at the read-policy gate.
+        assert result["error"] == "not_found"
 
     def test_max_lines_zero_defaults(self):
         """Test max_lines=0 defaults to 80."""
         from vault.mcp import _vault_remote_read_range_payload
         mock_client = MagicMock()
-        mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
         result = _vault_remote_read_range_payload(1, max_lines=0, sb_client=mock_client)
-        assert result["error"] == "no_document_map_nodes"
+        assert result["error"] == "not_found"
 
     def test_max_lines_negative_defaults(self):
         """Test negative max_lines defaults to 80."""
         from vault.mcp import _vault_remote_read_range_payload
         mock_client = MagicMock()
-        mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
         result = _vault_remote_read_range_payload(1, max_lines=-5, sb_client=mock_client)
-        assert result["error"] == "no_document_map_nodes"
+        assert result["error"] == "not_found"
 
     def test_no_supabase_client(self):
         """Test when sb_client is None and _get_supabase_client returns None."""
@@ -906,15 +902,23 @@ class TestVaultRemoteReadRangePayloadValidation:
         """Test exception during remote read returns error."""
         from vault.mcp import _vault_remote_read_range_payload
         mock_client = MagicMock()
-        mock_client.table.side_effect = Exception("Connection failed")
+        mock_client.rpc.side_effect = Exception("Connection failed")
         result = _vault_remote_read_range_payload(1, sb_client=mock_client)
-        assert result["error"] == "remote_read_failed"
+        assert result["error"] == "remote_policy_missing"
 
     def test_no_nodes_no_claims(self):
         """Test when both nodes and claims are empty."""
         from vault.mcp import _vault_remote_read_range_payload
         mock_client = MagicMock()
-        mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
+        get_response = MagicMock()
+        get_response.data = [{"id": 42, "title": "Example"}]
+        empty_response = MagicMock()
+        empty_response.data = []
+        mock_client.rpc.return_value.execute.side_effect = [
+            get_response,
+            empty_response,
+            empty_response,
+        ]
         result = _vault_remote_read_range_payload(42, sb_client=mock_client)
         assert result["error"] == "no_document_map_nodes"
         assert result["knowledge_id"] == 42

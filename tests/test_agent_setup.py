@@ -89,7 +89,10 @@ def test_run_agent_setup_writes_supabase_sync_templates(tmp_path):
     assert "security definer" in policy
     assert "allowed_agents" in policy
     assert "? p_agent_id" in policy
-    assert "content_raw" not in policy
+    search_policy = policy.split(
+        "create or replace function public.vault_search_readable", 1
+    )[1].split("create or replace function public.vault_get_readable", 1)[0]
+    assert "content_raw" not in search_policy
     assert "scripts.sync_to_supabase" in cron
     assert "--db" in cron
     assert str(project / "vault.db") in cron
@@ -279,7 +282,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.44" in captured.out
+    assert "vault-for-llm 0.6.45" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -447,7 +450,7 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.6.44" in body
+    assert "vault-for-llm[mcp,supabase]==0.6.45" in body
     assert "headroom-ai" in body
     assert "--agent-project-dir" in body
     assert str(project) in body
@@ -599,6 +602,12 @@ def test_checked_in_supabase_read_policy_matches_generated_template():
 
     assert checked_in == SUPABASE_READ_POLICY_SQL
     assert "vault_search_readable" in checked_in
+    assert "vault_get_readable" in checked_in
+    assert "vault_nodes_readable" in checked_in
+    assert "vault_claims_readable" in checked_in
+    assert "vault_content_readable" in checked_in
     assert "revoke all on table public.vault_knowledge from anon, authenticated" in checked_in
+    assert "revoke all on table public.vault_knowledge_nodes from anon, authenticated" in checked_in
+    assert "revoke all on table public.vault_knowledge_claims from anon, authenticated" in checked_in
     assert "grant execute on function public.vault_search_readable" in checked_in
-    assert "content_raw" not in checked_in
+    assert "content_raw" not in checked_in.split("create or replace function public.vault_search_readable", 1)[1].split("create or replace function public.vault_get_readable", 1)[0]

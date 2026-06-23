@@ -36,11 +36,16 @@ def test_automation_plan_writes_default_policy(tmp_path):
     assert policy["auto_archive_expired"] is True
     assert policy["protect_used_expired"] is True
     assert policy["dream_write_candidates"] is True
+    assert policy["forgetting_write_candidates"] is True
     assert any(item["id"] == "ttl_archive_apply" for item in payload["planned_actions"])
     dream_candidate_action = next(
         item for item in payload["planned_actions"] if item["id"] == "dream_candidate_suggestions"
     )
     assert dream_candidate_action["enabled"] is True
+    forgetting_candidate_action = next(
+        item for item in payload["planned_actions"] if item["id"] == "forgetting_candidate_suggestions"
+    )
+    assert forgetting_candidate_action["enabled"] is True
 
 
 def test_automation_run_balanced_apply_archives_expired_memory(tmp_path):
@@ -82,11 +87,19 @@ def test_automation_run_protects_expired_but_used_memory(tmp_path):
     assert payload["archive_expired"]["skipped_used_count"] == 1
     assert payload["dry_run_diff"]["skipped_usage_count"] == 1
     assert payload["usage_review"]["expired_used_review_count"] == 1
+    assert payload["forgetting"]["candidates_written"] == 1
     assert payload["action_ledger"][0]["status"] == "skipped_usage"
     assert payload["human_review"]["required"] is True
     assert {"kind": "expired_but_used", "count": 1} in payload["human_review"]["items"]
+    assert {"kind": "forgetting_candidate_suggestions", "count": 1} in payload["human_review"]["items"]
     with VaultDB(project / "vault.db") as db:
         assert db.get_knowledge(expired_id)["status"] == "active"
+        forgetting_candidates = [
+            item for item in db.list_memory_candidates(limit=20)
+            if item["memory_type"] == "forgetting_suggestion"
+        ]
+    assert len(forgetting_candidates) == 1
+    assert forgetting_candidates[0]["source"] == "automation"
 
 
 def test_automation_cli_shows_usage_review(tmp_path, monkeypatch, capsys):
@@ -254,6 +267,7 @@ def test_automation_apply_does_not_touch_private_or_high_sensitivity_memory(tmp_
     assert payload["archive_expired"]["archived_count"] == 0
     assert payload["archive_expired"]["skipped_protected_count"] == 2
     assert payload["usage_review"]["expired_protected_count"] == 2
+    assert payload["forgetting"]["candidates_written"] == 2
     assert payload["dry_run_diff"]["skipped_policy_count"] == 2
     assert payload["dry_run_diff"]["permission_changes"] is False
     assert {item["status"] for item in payload["action_ledger"]} == {"skipped_policy"}
@@ -261,6 +275,48 @@ def test_automation_apply_does_not_touch_private_or_high_sensitivity_memory(tmp_
     with VaultDB(project / "vault.db") as db:
         assert db.get_knowledge(private_id)["status"] == "active"
         assert db.get_knowledge(high_id)["status"] == "active"
+        forgetting_candidates = [
+            item for item in db.list_memory_candidates(limit=20)
+            if item["memory_type"] == "forgetting_suggestion"
+        ]
+    assert len(forgetting_candidates) == 2
+
+
+def test_automation_run_without_apply_does_not_write_forgetting_candidates(tmp_path):
+    project = _init_project(tmp_path)
+    expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    with VaultDB(project / "vault.db") as db:
+        expired_id = db.add_knowledge("Used expired no apply", "Keep report-only without apply.", expires_at=expired)
+        db.record_knowledge_access([expired_id])
+
+    payload = automation_run(project, mode="balanced", apply=False, limit=10, write_reports=False)
+
+    assert payload["policy"]["forgetting_write_candidates"] is True
+    assert payload["policy"]["forgetting_write_candidates_requires_apply"] is True
+    assert payload["forgetting"]["candidates_written"] == 0
+    with VaultDB(project / "vault.db") as db:
+        assert [
+            item for item in db.list_memory_candidates(limit=20)
+            if item["memory_type"] == "forgetting_suggestion"
+        ] == []
+
+
+def test_automation_forgetting_candidates_skip_existing(tmp_path):
+    project = _init_project(tmp_path)
+    expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    with VaultDB(project / "vault.db") as db:
+        expired_id = db.add_knowledge("Recurring forgetting", "Repeated forgetting candidates should be skipped.", expires_at=expired)
+        db.record_knowledge_access([expired_id])
+
+    first = automation_run(project, mode="balanced", apply=True, limit=10, write_reports=True)
+    second = automation_run(project, mode="balanced", apply=True, limit=10, write_reports=True)
+    latest = automation_report(project, latest=True, detail=False)
+
+    assert first["forgetting"]["candidates_written"] == 1
+    assert second["forgetting"]["candidates_written"] == 0
+    assert second["forgetting"]["candidates_skipped_existing"] == 1
+    assert latest["report"]["forgetting_candidates_written"] == 0
+    assert latest["report"]["forgetting_candidates_skipped_existing"] == 1
 
 
 def test_automation_report_lists_recent_runs(tmp_path):

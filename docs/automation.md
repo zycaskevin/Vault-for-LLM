@@ -92,6 +92,7 @@ protected_sensitivities:
   - restricted
 auto_apply_safe_metadata: false
 dream_write_candidates: true
+forgetting_write_candidates: true
 write_reports: true
 dream_checks:
   - freshness
@@ -118,6 +119,12 @@ and still never promotes candidates into active knowledge. Repeated apply runs
 skip an existing Dream candidate with the same `source_ref`, so scheduled jobs
 do not keep adding duplicate review items.
 
+`forgetting_write_candidates` works the same way for lifecycle review. When
+`--apply` is used, automation can create candidate-only suggestions for expired
+memories that were not archived because they are still used or protected by
+scope/sensitivity policy. These candidates use `memory_type:
+forgetting_suggestion`, never delete rows, and never change permissions.
+
 `protect_used_expired` keeps automation from archiving memories that are expired
 but still have retrieval or citation usage. Those rows appear in
 `usage_review.expired_but_used` and `human_review.items` so the user can decide
@@ -142,6 +149,8 @@ important review fields are:
   status, after status, risk, and reason.
 - `dream.summary`: counts Dream findings, candidate suggestions,
   `candidates_written`, and `candidates_skipped_existing`.
+- `forgetting`: counts candidate-only forgetting suggestions written or skipped
+  because an equivalent review candidate already exists.
 - `usage_review`: operator-facing buckets such as archiveable expired rows,
   expired-but-used rows, protected expired rows, and top-used memories.
 - `human_review`: whether a person should inspect the run before stronger

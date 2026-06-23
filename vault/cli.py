@@ -1956,6 +1956,14 @@ def cmd_automation(args):
                 f"written={dream_summary.get('candidates_written', 0)} "
                 f"skipped_existing={dream_summary.get('candidates_skipped_existing', 0)}"
             )
+        forgetting = payload.get("forgetting") or {}
+        if forgetting:
+            print(
+                "  forgetting candidates: "
+                f"suggested={forgetting.get('candidate_suggestions', 0)} "
+                f"written={forgetting.get('candidates_written', 0)} "
+                f"skipped_existing={forgetting.get('candidates_skipped_existing', 0)}"
+            )
         if payload.get("human_review", {}).get("required"):
             print("  review: required")
         return
@@ -1984,6 +1992,11 @@ def cmd_automation(args):
                 f"  dream candidates: suggested={item.get('dream_candidate_suggestions', 0)} "
                 f"written={item.get('dream_candidates_written', 0)} "
                 f"skipped_existing={item.get('dream_candidates_skipped_existing', 0)}"
+            )
+            print(
+                f"  forgetting candidates: suggested={item.get('forgetting_candidate_suggestions', 0)} "
+                f"written={item.get('forgetting_candidates_written', 0)} "
+                f"skipped_existing={item.get('forgetting_candidates_skipped_existing', 0)}"
             )
             detail = payload.get("detail") or {}
             ledger = detail.get("action_ledger") or []

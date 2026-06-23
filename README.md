@@ -192,10 +192,10 @@ vault automation run
 vault automation run --apply
 ```
 
-Balanced automation can pre-fill the memory candidate queue with Dream
-suggestions when `--apply` is used, but it still never promotes candidates or
-hard-deletes memory. Use `conservative` mode when scheduled jobs should only
-write reports.
+Balanced automation can pre-fill the memory candidate queue with Dream and
+Forgetting suggestions when `--apply` is used, but it still never promotes
+candidates or hard-deletes memory. Use `conservative` mode when scheduled jobs
+should only write reports.
 
 Agent installers can generate cron, LaunchAgent, or n8n templates with
 `vault setup-agent --automation-schedule cron|launchagent|n8n|all`. Scheduled

@@ -32,6 +32,7 @@ DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
         "protected_sensitivities": ["high", "restricted"],
         "auto_apply_safe_metadata": False,
         "dream_write_candidates": False,
+        "forgetting_write_candidates": False,
         "write_reports": True,
         "dream_checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
         "review_thresholds": {
@@ -50,6 +51,7 @@ DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
         "protected_sensitivities": ["high", "restricted"],
         "auto_apply_safe_metadata": False,
         "dream_write_candidates": True,
+        "forgetting_write_candidates": True,
         "write_reports": True,
         "dream_checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
         "review_thresholds": {
@@ -68,6 +70,7 @@ DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
         "protected_sensitivities": ["high", "restricted"],
         "auto_apply_safe_metadata": False,
         "dream_write_candidates": True,
+        "forgetting_write_candidates": True,
         "write_reports": True,
         "dream_checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
         "review_thresholds": {
@@ -201,6 +204,11 @@ def automation_run(
         usage_review_before = _usage_review(policy, before_usage, archive_result)
         archive_ledger = _archive_action_ledger(archive_result, applied=archive_apply)
         dry_run_diff = _dry_run_diff(archive_ledger, apply_requested=bool(apply), archive_allowed=archive_allowed)
+        forgetting_results = (
+            _write_forgetting_candidates(db, usage_review_before)
+            if bool(apply and policy.get("forgetting_write_candidates", False))
+            else []
+        )
 
     dream = run_dream(
         project,
@@ -215,6 +223,7 @@ def automation_run(
         after_usage = db.usage_stats(limit=limit)
         candidate_count_after = len(db.list_memory_candidates(status="candidate", limit=1000))
 
+    forgetting = _forgetting_summary(forgetting_results)
     payload = {
         "action": "run",
         "mode": mode_name,
@@ -230,6 +239,8 @@ def automation_run(
             "auto_apply_safe_metadata": bool(policy.get("auto_apply_safe_metadata", False)),
             "dream_write_candidates": bool(policy.get("dream_write_candidates", False)),
             "dream_write_candidates_requires_apply": True,
+            "forgetting_write_candidates": bool(policy.get("forgetting_write_candidates", False)),
+            "forgetting_write_candidates_requires_apply": True,
         },
         "usage_before": before_usage,
         "usage_after": after_usage,
@@ -240,8 +251,10 @@ def automation_run(
         "archive_expired": archive_result,
         "action_ledger": archive_ledger,
         "dry_run_diff": dry_run_diff,
+        "forgetting": forgetting,
+        "forgetting_results": forgetting_results,
         "dream": dream,
-        "human_review": _review_summary(policy, after_usage, candidate_count_after, dream, usage_review_before),
+        "human_review": _review_summary(policy, after_usage, candidate_count_after, dream, usage_review_before, forgetting),
         "next_action": "Review human_review and report_path; adjust automation_policy.yaml before stronger autonomy.",
     }
     if apply and not archive_allowed:
@@ -392,6 +405,14 @@ def _planned_actions(
             "reason": "Pre-fill the review queue with Dream suggestions. This creates candidates only and never promotes active knowledge.",
         },
         {
+            "id": "forgetting_candidate_suggestions",
+            "risk": "low",
+            "autonomy": "policy-gated-candidate-write",
+            "enabled": bool(policy.get("forgetting_write_candidates", False)),
+            "command": "vault automation run --apply --pretty",
+            "reason": "Pre-fill review candidates for expired memories that policy skipped because they are still used or protected.",
+        },
+        {
             "id": "candidate_review_digest",
             "risk": "low",
             "autonomy": "digest-only",
@@ -496,12 +517,105 @@ def _usage_review(
     }
 
 
+def _forgetting_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "candidate_suggestions": len(results),
+        "candidates_written": len([item for item in results if item.get("status") != "skipped_existing"]),
+        "candidates_skipped_existing": len([item for item in results if item.get("status") == "skipped_existing"]),
+    }
+
+
+def _write_forgetting_candidates(db: VaultDB, usage_review: dict[str, Any]) -> list[dict[str, Any]]:
+    """Write candidate-only forgetting suggestions for skipped lifecycle items."""
+    from .memory import create_candidate
+
+    suggestions: list[dict[str, Any]] = []
+
+    def add(row: dict[str, Any], *, kind: str, reason: str, tags: list[str]) -> None:
+        kid = int(row.get("id") or 0)
+        if kid <= 0:
+            return
+        title = str(row.get("title") or f"knowledge:{kid}").strip() or f"knowledge:{kid}"
+        suggestions.append(
+            {
+                "kind": kind,
+                "title": f"Review forgetting policy: {title}"[:140],
+                "content": (
+                    f"Forgetting automation skipped knowledge #{kid} because {reason}. "
+                    f"Review whether to extend expires_at, summarize it, lower recall priority, or archive it manually. "
+                    f"Current scope={row.get('scope', '')}, sensitivity={row.get('sensitivity', '')}, "
+                    f"access_count={row.get('access_count', 0)}, citation_count={row.get('citation_count', 0)}."
+                ),
+                "layer": "L3",
+                "category": "forgetting-review",
+                "tags": ["forgetting", "review", *tags],
+                "trust": 0.45,
+                "source": "automation",
+                "source_ref": f"forgetting:{kind}:knowledge:{kid}",
+                "reason": reason,
+                "scope": "project",
+                "sensitivity": "low",
+                "owner_agent": "vault-forgetting",
+                "allowed_agents": "",
+                "memory_type": "forgetting_suggestion",
+                "expires_at": "",
+            }
+        )
+
+    for row in usage_review.get("expired_but_used", []) or []:
+        add(
+            row,
+            kind="expired_but_used",
+            reason="it is expired but still has retrieval or citation usage",
+            tags=["expired", "used"],
+        )
+    for row in usage_review.get("expired_protected", []) or []:
+        add(
+            row,
+            kind="expired_protected",
+            reason="its scope or sensitivity is protected by automation_policy.yaml",
+            tags=["expired", "protected"],
+        )
+
+    results: list[dict[str, Any]] = []
+    for suggestion in suggestions:
+        existing = db.conn.execute(
+            """SELECT id, status FROM memory_candidates
+               WHERE source = 'automation'
+                 AND source_ref = ?
+                 AND memory_type = 'forgetting_suggestion'
+                 AND status IN ('candidate', 'approved')
+               ORDER BY created_at DESC
+               LIMIT 1""",
+            (suggestion["source_ref"],),
+        ).fetchone()
+        if existing:
+            results.append({
+                "title": suggestion["title"],
+                "kind": suggestion["kind"],
+                "status": "skipped_existing",
+                "candidate_id": existing["id"],
+                "existing_status": existing["status"],
+            })
+            continue
+        meta = dict(suggestion)
+        kind = meta.pop("kind")
+        result = create_candidate(db, **meta)
+        results.append({
+            "title": suggestion["title"],
+            "kind": kind,
+            **result,
+        })
+    return results
+
+
 def _review_summary(
     policy: dict[str, Any],
     usage: dict[str, Any],
     candidate_count: int,
     dream: dict[str, Any],
     usage_review: dict[str, Any] | None = None,
+    forgetting: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     thresholds = policy.get("review_thresholds") or {}
     dream_summary = dream.get("summary", {}) if isinstance(dream, dict) else {}
@@ -526,6 +640,9 @@ def _review_summary(
     candidate_suggestions = int(dream_summary.get("candidate_suggestions", 0) or 0)
     if candidate_suggestions:
         items.append({"kind": "dream_candidate_suggestions", "count": candidate_suggestions})
+    forgetting_suggestions = int((forgetting or {}).get("candidate_suggestions", 0) or 0)
+    if forgetting_suggestions:
+        items.append({"kind": "forgetting_candidate_suggestions", "count": forgetting_suggestions})
     return {
         "required": bool(items),
         "items": items,
@@ -553,6 +670,7 @@ def _report_summary(project: Path, path: Path, data: dict[str, Any]) -> dict[str
     diff = data.get("dry_run_diff") or {}
     ledger = data.get("action_ledger") or []
     archive = data.get("archive_expired") or {}
+    forgetting = data.get("forgetting") or {}
     return {
         "path": str(path.relative_to(project)),
         "generated_at": data.get("generated_at", ""),
@@ -565,6 +683,9 @@ def _report_summary(project: Path, path: Path, data: dict[str, Any]) -> dict[str
         "dream_candidate_suggestions": int(((data.get("dream") or {}).get("summary") or {}).get("candidate_suggestions") or 0),
         "dream_candidates_written": int(((data.get("dream") or {}).get("summary") or {}).get("candidates_written") or 0),
         "dream_candidates_skipped_existing": int(((data.get("dream") or {}).get("summary") or {}).get("candidates_skipped_existing") or 0),
+        "forgetting_candidate_suggestions": int(forgetting.get("candidate_suggestions") or 0),
+        "forgetting_candidates_written": int(forgetting.get("candidates_written") or 0),
+        "forgetting_candidates_skipped_existing": int(forgetting.get("candidates_skipped_existing") or 0),
         "archived_count": int(archive.get("archived_count") or 0),
         "eligible_count": int(archive.get("eligible_count") or 0),
         "skipped_used_count": int(archive.get("skipped_used_count") or 0),

@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [0.6.96] - 2026-06-24
+
+### Added
+
+- Added `automation inbox` review digest cards that summarize the latest automation report's human-review items before the raw candidate queue.
+- `automation brief` now uses the same digest for its 5% human-review section, so daily startup and inbox review share one compact decision surface.
+
+### Changed
+
+- CLI inbox output now prints the review digest first, including recommended action and safe action, then falls back to the detailed candidate queue.
+
 ## [0.6.95] - 2026-06-24
 
 ### Added

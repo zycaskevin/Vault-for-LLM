@@ -143,9 +143,14 @@ vault automation inbox --include-transcripts --write-handoff --pretty
 
 `automation inbox` is the daily review surface for the closed loop. It reads the
 candidate queue and latest automation report, then ranks the smallest useful
-set of items for a human or trusted agent to inspect. It is read-only, hides
-candidate content by default, and prioritizes privacy-blocked, sensitive,
-duplicate, weak-quality, and automation-generated candidates.
+set of items for a human or trusted agent to inspect. The `review_digest` field
+comes first: it converts report-level items such as protected expired memory,
+expired-but-used memory, cold-store summaries, auto-promote previews, and Dream
+or Forgetting suggestions into compact decision cards with `recommended_action`
+and `safe_action`. The detailed `review_queue` still follows for candidate-level
+work. The inbox is read-only, hides candidate content by default, and
+prioritizes privacy-blocked, sensitive, duplicate, weak-quality, and
+automation-generated candidates.
 
 Use `--include-transcripts` when a scheduled or reviewer agent should also see
 metadata-only hints for uncaptured session exports. The inbox still does not
@@ -380,7 +385,11 @@ important review fields are:
   startup, showing promoted/skipped reasons without raw candidate content.
 - `automation brief`: a single read-only intelligence view for startup and
   dashboards: learning hints, memory weights, forgetting pressure, shared agent
-  health, and the 5% human-review queue.
+  health, and the 5% human-review digest.
+- `automation inbox`: the shortest daily review surface. It starts with
+  `review_digest` cards from the latest report's `human_review.items`, then
+  shows the candidate queue. This lets humans review policy-level decisions
+  before opening raw candidate content.
 - `cold-store-expired`: explicit summarize-then-cold-store action for expired
   memories that are still used. It is dry-run-first, skips protected rows, and
   retains original content.

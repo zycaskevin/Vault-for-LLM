@@ -2431,6 +2431,19 @@ def cmd_automation(args):
             print(f"  latest report: {summary.get('latest_report_path')} {review}")
         if payload.get("inbox_handoff_path"):
             print(f"  inbox handoff: {payload.get('inbox_handoff_path')}")
+        digest = payload.get("review_digest") or {}
+        digest_items = digest.get("items") or []
+        if digest_items:
+            print("\n  Review digest:")
+            for item in digest_items:
+                label = item.get("id") or item.get("kind") or "review"
+                count = item.get("count", 1)
+                print(
+                    f"    - {label} priority={item.get('priority', 0)} "
+                    f"count={count} action={item.get('recommended_action')}"
+                )
+                print(f"      {item.get('title')}")
+                print(f"      safe: {item.get('safe_action')}")
         queue = payload.get("review_queue") or []
         if queue:
             print("\n  Review queue:")

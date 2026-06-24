@@ -33,6 +33,7 @@ Humans review the policy. Agents handle the repetitive work.
 Preview candidate extraction from an agent session:
 
 ```bash
+vault capture discover --pretty
 vault capture session codex-session.jsonl --pretty
 ```
 
@@ -42,14 +43,16 @@ Write extracted session lessons into the candidate queue:
 vault capture session codex-session.jsonl --write-candidates --pretty
 ```
 
+Discovery lists likely transcript exports without reading transcript contents.
 Session capture supports JSONL, Markdown, and plain text transcripts. It looks
 for reusable decisions, pitfalls, workflows, and source-of-truth lines. It does
 not write active knowledge; captured items still pass through privacy,
 duplicate, metadata, and quality gates.
 
-MCP reviewer agents can call `vault_capture_session` for the same extractor.
-The MCP tool is preview-only by default, stays out of the `core` profile, and
-requires `write_candidates=true` before it writes gated candidates.
+MCP reviewer agents can call `vault_capture_discover` and
+`vault_capture_session` for the same extractor. These MCP tools stay out of the
+`core` profile. Capture is preview-only by default and requires
+`write_candidates=true` before it writes gated candidates.
 
 Preview the current plan:
 

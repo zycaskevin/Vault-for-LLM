@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.67.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.68.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,7 +83,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.67"
+pip install "vault-for-llm[mcp]==0.6.68"
 
 vault setup-agent
 ```
@@ -110,7 +110,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.67"
+pip install "vault-for-llm[mcp]==0.6.68"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -133,11 +133,13 @@ The intended loop is simple:
 Agents can also turn a completed session transcript into reviewable candidates:
 
 ```bash
+vault capture discover --project-dir ~/Vaults/my-project --pretty
 vault capture session codex-session.jsonl --project-dir ~/Vaults/my-project --pretty
 vault capture session codex-session.jsonl --project-dir ~/Vaults/my-project --write-candidates
 ```
 
-The first command is a dry-run preview. The second writes candidate memories
+Discovery lists likely transcript files without reading their contents. Session
+capture previews by default. `--write-candidates` writes candidate memories
 only; it does not promote active knowledge.
 
 For MCP-capable runtimes:
@@ -153,9 +155,10 @@ Recommended core tools:
 - `vault_memory_propose`
 - `vault_stats`
 
-Reviewer or maintenance agents can use `vault_capture_session` from the MCP
-`review` profile to run the same session-capture flow. It previews by default;
-`write_candidates=true` is required before anything enters the candidate queue.
+Reviewer or maintenance agents can use `vault_capture_discover` and
+`vault_capture_session` from the MCP `review` profile to run the same
+session-capture flow. Capture previews by default; `write_candidates=true` is
+required before anything enters the candidate queue.
 
 MCP guides:
 
@@ -208,12 +211,14 @@ vault automation cycle --apply
 vault automation inbox --limit 5
 ```
 
-`vault capture session` is the ingestion side of that loop. It scans agent
-transcripts for reusable decisions, pitfalls, workflows, and source-of-truth
-signals, then routes them through the normal candidate gates. Automation and
-Dream can later rank and clean those candidates, but promotion remains explicit.
-MCP review agents can call `vault_capture_session` for the same preview-first
-flow without adding that heavier tool to the everyday `core` profile.
+`vault capture discover` and `vault capture session` are the ingestion side of
+that loop. Discovery finds likely transcript files without reading their
+contents. Capture scans the chosen transcript for reusable decisions, pitfalls,
+workflows, and source-of-truth signals, then routes them through the normal
+candidate gates. Automation and Dream can later rank and clean those
+candidates, but promotion remains explicit. MCP review agents can call
+`vault_capture_discover` and `vault_capture_session` for the same preview-first
+flow without adding those heavier tools to the everyday `core` profile.
 
 Balanced automation can pre-fill the memory candidate queue with Dream and
 Forgetting suggestions when `--apply` is used, but it still never promotes
@@ -301,7 +306,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.67"
+pip install "vault-for-llm[supabase]==0.6.68"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

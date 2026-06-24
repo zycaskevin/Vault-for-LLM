@@ -1,7 +1,7 @@
 import json
 
 from vault.db import VaultDB
-from vault.session_capture import capture_session_candidates, load_session_units
+from vault.session_capture import capture_session_candidates, discover_session_transcripts, load_session_units
 
 
 def test_session_capture_preview_does_not_write_candidates(tmp_path):
@@ -166,6 +166,72 @@ def test_session_capture_loads_jsonl_nested_content(tmp_path):
     assert "nested JSONL" in units[0].text
 
 
+def test_discover_session_transcripts_finds_project_exports_without_content(tmp_path):
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    transcript = sessions / "codex-session.jsonl"
+    secret_phrase = "password" + "=" + "runtimevalue123"
+    transcript.write_text(
+        json.dumps(
+            {
+                "role": "assistant",
+                "content": f"Decision: discovery should not read {secret_phrase} from transcript content.",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = discover_session_transcripts(tmp_path, limit=5)
+    rendered = json.dumps(payload, ensure_ascii=False)
+
+    assert payload["status"] == "completed"
+    assert payload["read_contents"] is False
+    assert payload["count"] == 1
+    item = payload["transcripts"][0]
+    assert item["capture_path"] == "sessions/codex-session.jsonl"
+    assert item["source_system"] == "codex"
+    assert item["format"] == "jsonl"
+    assert "session-like filename" in item["reasons"]
+    assert "runtimevalue123" not in rendered
+
+
+def test_discover_session_transcripts_skips_external_dirs_by_default(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    (external / "hermes-session.md").write_text(
+        "Decision: external discovery requires explicit permission.",
+        encoding="utf-8",
+    )
+
+    payload = discover_session_transcripts(project, search_dirs=[external])
+
+    assert payload["count"] == 0
+    assert payload["scanned_roots"] == []
+
+
+def test_discover_session_transcripts_can_allow_external_dirs(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    (external / "hermes-session.md").write_text(
+        "Decision: external discovery can be explicitly allowed.",
+        encoding="utf-8",
+    )
+
+    payload = discover_session_transcripts(
+        project,
+        search_dirs=[external],
+        allow_absolute_paths=True,
+    )
+
+    assert payload["count"] == 1
+    assert payload["transcripts"][0]["path_scope"] == "absolute"
+    assert payload["transcripts"][0]["source_system"] == "hermes"
+
+
 def test_capture_session_cli_writes_candidates(tmp_path, capsys):
     from vault.cli import main
 
@@ -199,3 +265,24 @@ def test_capture_session_cli_writes_candidates(tmp_path, capsys):
     assert payload["status"] == "completed"
     assert payload["written"] == 1
     assert payload["candidates"][0]["candidate_id"].startswith("mem_")
+
+
+def test_capture_discover_cli_lists_project_transcripts(tmp_path, capsys):
+    from vault.cli import main
+
+    project = tmp_path / "project"
+    sessions = project / "sessions"
+    sessions.mkdir(parents=True)
+    with VaultDB(project / "vault.db"):
+        pass
+    (sessions / "openclaw-session.txt").write_text(
+        "Workflow: discovery should list this session export before capture.",
+        encoding="utf-8",
+    )
+
+    main(["capture", "discover", "--project-dir", str(project), "--pretty"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["action"] == "discover_session_transcripts"
+    assert payload["count"] == 1
+    assert payload["transcripts"][0]["capture_path"] == "sessions/openclaw-session.txt"

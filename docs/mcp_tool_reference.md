@@ -12,7 +12,7 @@ the model context and fewer ways for an agent to choose the wrong action.
 | Profile | Tools | Best For |
 |---|---|---|
 | `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats` | Daily agent work: find memory, read bounded evidence, propose new memory. |
-| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_capture_session`, `vault_automation_inbox`, `vault_dream_run` | A reviewer agent or operator session that captures, approves, rejects, or blocks candidate memories. |
+| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_capture_discover`, `vault_capture_session`, `vault_automation_inbox`, `vault_dream_run` | A reviewer agent or operator session that discovers/captures, approves, rejects, or blocks candidate memories. |
 | `remote` | Core plus `vault_remote_search`, `vault_remote_map_show`, `vault_remote_read_range` | Hosted or cross-host agents reading a Supabase-synced vault. |
 | `maintenance` | Review plus Obsidian import, freshness, convergence, and curation tools | Scheduled maintenance or explicit operator-led cleanup. |
 | `full` | Every MCP tool, including low-level compatibility tools | Trusted local operators and backwards compatibility. |
@@ -200,6 +200,41 @@ Typical result fields:
 
 Agent rule: use this when a candidate should become feedback for automation
 learning but should not enter active knowledge.
+
+### `vault_capture_discover`
+
+Find likely agent session transcript exports without reading transcript
+contents. Use this before `vault_capture_session` when the path is unknown.
+
+```json
+{
+  "search_dirs": ["sessions", "exports"],
+  "source_system": "auto",
+  "limit": 10,
+  "max_depth": 3,
+  "max_file_mb": 5.0
+}
+```
+
+Typical result fields:
+
+```json
+{
+  "action": "discover_session_transcripts",
+  "read_contents": false,
+  "transcripts": [
+    {
+      "capture_path": "sessions/codex-session.jsonl",
+      "source_system": "codex",
+      "format": "jsonl",
+      "score": 0.9
+    }
+  ]
+}
+```
+
+By default, search directories are resolved under the current Vault project.
+External absolute search directories require `allow_absolute_paths=true`.
 
 ### `vault_capture_session`
 

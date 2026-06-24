@@ -18,6 +18,7 @@ def test_mcp_memory_tools_are_advertised():
         "vault_memory_promote",
         "vault_memory_review",
         "vault_memory_candidates",
+        "vault_capture_discover",
         "vault_capture_session",
         "vault_automation_inbox",
         "vault_dream_run",
@@ -43,8 +44,10 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
     review_names = [tool["name"] for tool in select_tools("review")]
     assert "vault_memory_candidates" in review_names
     assert "vault_memory_review" in review_names
+    assert "vault_capture_discover" in review_names
     assert "vault_capture_session" in review_names
     assert "vault_automation_inbox" in review_names
+    assert "vault_capture_discover" not in core_names
     assert "vault_capture_session" not in core_names
     assert "vault_automation_inbox" not in core_names
     assert "vault_memory_review" not in core_names
@@ -267,6 +270,58 @@ def test_mcp_memory_candidates_lists_review_queue_without_full_payload(tmp_path)
     detailed_item = detailed["candidates"][0]
     assert detailed_item["content"].startswith("MCP candidate queue entries")
     assert detailed_item["gates"]["privacy"]["status"] == "pass"
+
+
+def test_mcp_capture_discover_lists_project_transcripts_without_content(tmp_path):
+    _set_project_dir(tmp_path)
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    token = "sk-proj-1234567890abcdefghij1234567890"
+    transcript = sessions / "codex-session.jsonl"
+    transcript.write_text(
+        json.dumps(
+            {
+                "role": "assistant",
+                "content": f"Decision: discovery must not expose {token} from transcript content.",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    discovered = _payload(handle_tool_call("vault_capture_discover", {"limit": 5}))
+    rendered = json.dumps(discovered, ensure_ascii=False)
+
+    assert discovered["action"] == "discover_session_transcripts"
+    assert discovered["read_contents"] is False
+    assert discovered["count"] == 1
+    assert discovered["transcripts"][0]["capture_path"] == "sessions/codex-session.jsonl"
+    assert discovered["transcripts"][0]["source_system"] == "codex"
+    assert token not in rendered
+
+
+def test_mcp_capture_discover_result_can_feed_capture_session(tmp_path):
+    _set_project_dir(tmp_path)
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    (sessions / "codex-session.md").write_text(
+        "Decision: discovered capture paths should feed MCP session capture because agents need a two-step loop.",
+        encoding="utf-8",
+    )
+
+    discovered = _payload(handle_tool_call("vault_capture_discover", {}))
+    capture_path = discovered["transcripts"][0]["capture_path"]
+    captured = _payload(handle_tool_call(
+        "vault_capture_session",
+        {
+            "transcript_path": capture_path,
+            "source_system": "codex",
+        },
+    ))
+
+    assert captured["status"] == "completed"
+    assert captured["write_candidates"] is False
+    assert captured["extracted"] == 1
+    assert captured["candidates"][0]["status"] == "preview"
 
 
 def test_mcp_capture_session_previews_without_writing_candidates(tmp_path):

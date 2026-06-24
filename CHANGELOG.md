@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.68] - 2026-06-24
+
+### Added
+
+- Added `vault capture discover`, a privacy-safe transcript discovery command that ranks likely JSONL/Markdown/text session exports without reading their contents.
+- Added MCP tool `vault_capture_discover` to the review and maintenance profiles so agents can find likely transcripts before calling `vault_capture_session`.
+- Discovery returns `capture_path`, source-system hints, format hints, size, modified time, and next-command guidance while keeping transcript content out of the payload.
+
 ## [0.6.67] - 2026-06-24
 
 ### Added

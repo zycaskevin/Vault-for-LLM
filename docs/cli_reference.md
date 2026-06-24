@@ -10,6 +10,7 @@ with the daily loop in the README and only use these commands when needed.
 | `vault init` | Initialize a project vault |
 | `vault setup-agent` / `vault install-agent` | Run the agent installer wizard and optional Obsidian sync template generator |
 | `vault remember "Title" --content "..." --reason "..."` | Propose candidate memory for review |
+| `vault capture discover --pretty` | List likely session transcript exports without reading transcript contents |
 | `vault capture session codex-session.jsonl --pretty` | Preview candidate memories extracted from an agent session transcript |
 | `vault capture session codex-session.jsonl --write-candidates` | Write extracted session lessons into the candidate queue, not active knowledge |
 | `vault candidates` | List pending candidate memories without dumping full raw content |

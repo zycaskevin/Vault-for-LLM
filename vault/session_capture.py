@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,21 @@ from .privacy import redact_secrets, scan_privacy
 
 _MAX_UNIT_CHARS = 900
 _MIN_UNIT_CHARS = 35
+_DISCOVERY_SUFFIXES = {".jsonl", ".md", ".markdown", ".txt", ".log"}
+_DISCOVERY_SKIP_DIRS = {
+    ".git",
+    ".hg",
+    ".svn",
+    ".venv",
+    "venv",
+    "node_modules",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".obsidian",
+    ".trash",
+}
 
 
 @dataclass(frozen=True)
@@ -37,6 +53,17 @@ class CaptureRule:
     tags: tuple[str, ...]
     pattern: re.Pattern[str]
     reason: str
+
+
+@dataclass(frozen=True)
+class DiscoveredTranscript:
+    path: Path
+    source_system: str
+    input_format: str
+    size_bytes: int
+    modified_at: str
+    score: float
+    reasons: tuple[str, ...]
 
 
 CAPTURE_RULES: tuple[CaptureRule, ...] = (
@@ -69,6 +96,82 @@ CAPTURE_RULES: tuple[CaptureRule, ...] = (
         "Session line identifies source-of-truth or canonical context.",
     ),
 )
+
+
+def discover_session_transcripts(
+    project_dir: str | Path,
+    *,
+    search_dirs: list[str | Path] | None = None,
+    source_system: str = "auto",
+    limit: int = 10,
+    max_depth: int = 3,
+    max_file_mb: float = 5.0,
+    allow_absolute_paths: bool = False,
+) -> dict[str, Any]:
+    """Find likely session transcript exports without reading their contents."""
+    root = Path(project_dir).expanduser().resolve()
+    limit = max(1, min(int(limit or 10), 100))
+    max_depth = max(0, min(int(max_depth or 3), 8))
+    try:
+        max_bytes = max(1, int(float(max_file_mb or 5.0) * 1024 * 1024))
+    except (TypeError, ValueError):
+        max_bytes = 5 * 1024 * 1024
+    roots = _discovery_roots(root, search_dirs=search_dirs, allow_absolute_paths=allow_absolute_paths)
+
+    seen: set[Path] = set()
+    candidates: list[DiscoveredTranscript] = []
+    skipped = {"missing": 0, "outside_project": 0, "too_large": 0, "unsupported": 0}
+    for base in roots:
+        if not base.exists() or not base.is_dir():
+            skipped["missing"] += 1
+            continue
+        for path in _iter_discovery_files(base, max_depth=max_depth):
+            resolved = path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            suffix = resolved.suffix.lower()
+            if suffix not in _DISCOVERY_SUFFIXES:
+                skipped["unsupported"] += 1
+                continue
+            try:
+                resolved.relative_to(root)
+            except ValueError:
+                if not allow_absolute_paths:
+                    skipped["outside_project"] += 1
+                    continue
+            stat = resolved.stat()
+            if stat.st_size > max_bytes:
+                skipped["too_large"] += 1
+                continue
+            discovered = _score_discovered_transcript(
+                resolved,
+                root=root,
+                stat_size=stat.st_size,
+                stat_mtime=stat.st_mtime,
+                source_system=source_system,
+            )
+            if discovered.score < 0.35:
+                continue
+            candidates.append(discovered)
+
+    candidates.sort(key=lambda item: (-item.score, item.path.name.lower(), str(item.path)))
+    selected = candidates[:limit]
+    return {
+        "action": "discover_session_transcripts",
+        "status": "completed",
+        "project_dir": str(root),
+        "source_system": str(source_system or "auto"),
+        "limit": limit,
+        "max_depth": max_depth,
+        "max_file_mb": max_file_mb,
+        "read_contents": False,
+        "count": len(selected),
+        "scanned_roots": [str(path) for path in roots],
+        "skipped": skipped,
+        "transcripts": [_format_discovered_transcript(item, root=root) for item in selected],
+        "next_action": "Run `vault capture session <path> --pretty` to preview a selected transcript.",
+    }
 
 
 def capture_session_candidates(
@@ -204,6 +307,151 @@ def load_session_units(path: Path, *, input_format: str = "auto") -> list[Sessio
             units.extend(_units_from_json_object(obj, ref=f"jsonl:{index}"))
         return _dedupe_units(units)
     return _dedupe_units(_split_text_units(text, ref="text"))
+
+
+def _discovery_roots(
+    project_dir: Path,
+    *,
+    search_dirs: list[str | Path] | None,
+    allow_absolute_paths: bool,
+) -> list[Path]:
+    if search_dirs:
+        roots: list[Path] = []
+        for raw in search_dirs:
+            if raw is None:
+                continue
+            path = Path(raw).expanduser()
+            resolved = path.resolve() if path.is_absolute() else (project_dir / path).resolve()
+            if path.is_absolute() and not allow_absolute_paths:
+                continue
+            roots.append(resolved)
+        return _dedupe_paths(roots)
+
+    defaults = [
+        project_dir,
+        project_dir / "sessions",
+        project_dir / "transcripts",
+        project_dir / "exports",
+        project_dir / "agent-sessions",
+        project_dir / "reports",
+    ]
+    return _dedupe_paths(defaults)
+
+
+def _dedupe_paths(paths: list[Path]) -> list[Path]:
+    seen: set[Path] = set()
+    deduped: list[Path] = []
+    for path in paths:
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        deduped.append(resolved)
+    return deduped
+
+
+def _iter_discovery_files(root: Path, *, max_depth: int) -> list[Path]:
+    files: list[Path] = []
+    stack: list[tuple[Path, int]] = [(root, 0)]
+    while stack:
+        current, depth = stack.pop()
+        try:
+            entries = sorted(current.iterdir(), key=lambda item: item.name.lower())
+        except (OSError, PermissionError):
+            continue
+        for entry in entries:
+            name = entry.name
+            if entry.is_symlink():
+                continue
+            if entry.is_dir():
+                if name.startswith(".") or name in _DISCOVERY_SKIP_DIRS:
+                    continue
+                if depth < max_depth:
+                    stack.append((entry, depth + 1))
+                continue
+            if entry.is_file():
+                files.append(entry)
+    return files
+
+
+def _score_discovered_transcript(
+    path: Path,
+    *,
+    root: Path,
+    stat_size: int,
+    stat_mtime: float,
+    source_system: str,
+) -> DiscoveredTranscript:
+    reasons: list[str] = []
+    name = path.name.lower()
+    text = str(path).lower()
+    score = 0.0
+    if path.suffix.lower() == ".jsonl":
+        score += 0.25
+        reasons.append("jsonl export")
+    elif path.suffix.lower() in {".md", ".markdown", ".txt"}:
+        score += 0.15
+        reasons.append("text transcript format")
+    if re.search(r"(session|transcript|conversation|chat|export|handoff)", name):
+        score += 0.30
+        reasons.append("session-like filename")
+    if re.search(r"(codex|hermes|openclaw|claude|opencode)", text):
+        score += 0.20
+        reasons.append("agent-like path")
+    if str(source_system or "auto").lower() not in {"", "auto"}:
+        wanted = str(source_system).lower()
+        if wanted in text:
+            score += 0.20
+            reasons.append(f"matches source_system={wanted}")
+        else:
+            score -= 0.15
+    if stat_size < 512:
+        score -= 0.15
+    elif stat_size <= 1024 * 1024:
+        score += 0.10
+        reasons.append("reasonable size")
+    try:
+        path.relative_to(root)
+        score += 0.05
+        reasons.append("inside project")
+    except ValueError:
+        pass
+
+    detected_source = _detect_source_system(path, source_system)
+    modified = datetime.fromtimestamp(stat_mtime, tz=timezone.utc).isoformat()
+    return DiscoveredTranscript(
+        path=path,
+        source_system=detected_source,
+        input_format=_resolve_input_format(path, "auto"),
+        size_bytes=stat_size,
+        modified_at=modified,
+        score=round(max(0.0, min(score, 1.0)), 3),
+        reasons=tuple(reasons),
+    )
+
+
+def _format_discovered_transcript(item: DiscoveredTranscript, *, root: Path) -> dict[str, Any]:
+    try:
+        capture_path = str(item.path.relative_to(root))
+        path_scope = "project"
+    except ValueError:
+        capture_path = str(item.path)
+        path_scope = "absolute"
+    return {
+        "path": str(item.path),
+        "capture_path": capture_path,
+        "path_scope": path_scope,
+        "source_system": item.source_system,
+        "format": item.input_format,
+        "size_bytes": item.size_bytes,
+        "modified_at": item.modified_at,
+        "score": item.score,
+        "reasons": list(item.reasons),
+        "next_command": f"vault capture session {json.dumps(capture_path)} --pretty",
+    }
 
 
 def _resolve_input_format(path: Path, input_format: str) -> str:

@@ -1811,8 +1811,28 @@ def cmd_candidates(args):
 
 def cmd_capture(args):
     """Capture agent/session artifacts into reviewable memory candidates."""
+    if args.capture_action == "discover":
+        from vault.session_capture import discover_session_transcripts
+
+        project_dir = find_project_dir()
+        try:
+            payload = discover_session_transcripts(
+                project_dir,
+                search_dirs=args.search_dir or None,
+                source_system=args.source_system,
+                limit=args.limit,
+                max_depth=args.max_depth,
+                max_file_mb=args.max_file_mb,
+                allow_absolute_paths=bool(args.allow_absolute_paths),
+            )
+        except Exception as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            raise SystemExit(2) from exc
+        _json_print(payload, pretty=args.pretty)
+        return
+
     if args.capture_action != "session":
-        print("用法: vault capture session <transcript>", file=sys.stderr)
+        print("用法: vault capture session <transcript> 或 vault capture discover", file=sys.stderr)
         raise SystemExit(2)
     from vault.db import VaultDB
     from vault.session_capture import capture_session_candidates
@@ -2863,6 +2883,14 @@ def main(argv: list[str] | None = None):
     # capture — agent/session artifacts into candidate memory
     p = sub.add_parser("capture", help="從 agent/session artifact 擷取候選記憶")
     capture_sub = p.add_subparsers(dest="capture_action", help="Capture 子命令")
+    sp = capture_sub.add_parser("discover", help="尋找可能的 session transcript 檔案")
+    sp.add_argument("--search-dir", action="append", default=[], help="搜尋目錄；相對路徑以 project-dir 為基準，可重複")
+    sp.add_argument("--source-system", default="auto", help="偏好的來源系統，例如 codex/hermes/openclaw/claude-code")
+    sp.add_argument("--limit", type=int, default=10)
+    sp.add_argument("--max-depth", type=int, default=3)
+    sp.add_argument("--max-file-mb", type=float, default=5.0)
+    sp.add_argument("--allow-absolute-paths", action="store_true", help="允許搜尋 project-dir 以外的絕對路徑")
+    sp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
     sp = capture_sub.add_parser("session", help="從 session transcript 擷取候選記憶")
     sp.add_argument("transcript", help="JSONL、Markdown 或文字 transcript 檔案")
     sp.add_argument("--format", choices=["auto", "jsonl", "markdown", "text"], default="auto")

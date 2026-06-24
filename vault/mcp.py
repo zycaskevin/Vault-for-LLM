@@ -1755,6 +1755,50 @@ TOOLS = [
         }
     },
     {
+        "name": "vault_capture_discover",
+        "description": "Discover likely session transcript files without reading transcript contents. Use before vault_capture_session when the transcript path is unknown.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "search_dirs": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional search directories. Relative paths resolve under the current Vault project.",
+                    "default": [],
+                },
+                "source_system": {
+                    "type": "string",
+                    "description": "Preferred source system, for example codex/hermes/openclaw/claude-code.",
+                    "default": "auto",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum transcript candidates to return.",
+                    "default": 10,
+                    "minimum": 1,
+                    "maximum": 50,
+                },
+                "max_depth": {
+                    "type": "integer",
+                    "description": "Maximum directory depth to scan.",
+                    "default": 3,
+                    "minimum": 0,
+                    "maximum": 8,
+                },
+                "max_file_mb": {
+                    "type": "number",
+                    "description": "Skip transcript-like files larger than this size.",
+                    "default": 5.0,
+                },
+                "allow_absolute_paths": {
+                    "type": "boolean",
+                    "description": "Allow search directories outside the current project.",
+                    "default": False,
+                },
+            },
+        }
+    },
+    {
         "name": "vault_automation_inbox",
         "description": "Read the compact automation review inbox. Read-only by default; returns the shortest candidate/report queue without raw content unless requested.",
         "inputSchema": {
@@ -2060,6 +2104,7 @@ TOOL_PROFILES = {
         "vault_memory_promote",
         "vault_memory_review",
         "vault_memory_candidates",
+        "vault_capture_discover",
         "vault_capture_session",
         "vault_automation_inbox",
         "vault_dream_run",
@@ -2081,6 +2126,7 @@ TOOL_PROFILES = {
         "vault_memory_promote",
         "vault_memory_review",
         "vault_memory_candidates",
+        "vault_capture_discover",
         "vault_capture_session",
         "vault_automation_inbox",
         "vault_obsidian_import",
@@ -2397,6 +2443,23 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 )
             finally:
                 db.close()
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
+
+        elif name == "vault_capture_discover":
+            from vault.session_capture import discover_session_transcripts
+
+            search_dirs = arguments.get("search_dirs") or []
+            if not isinstance(search_dirs, list):
+                search_dirs = []
+            payload = discover_session_transcripts(
+                Path(DB_PATH).resolve().parent,
+                search_dirs=[str(item) for item in search_dirs if str(item).strip()] or None,
+                source_system=str(arguments.get("source_system") or "auto"),
+                limit=_clamp_int(arguments.get("limit", 10), default=10, minimum=1, maximum=50),
+                max_depth=_clamp_int(arguments.get("max_depth", 3), default=3, minimum=0, maximum=8),
+                max_file_mb=float(arguments.get("max_file_mb", 5.0) or 5.0),
+                allow_absolute_paths=bool(arguments.get("allow_absolute_paths", False)),
+            )
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 
         elif name == "vault_automation_inbox":

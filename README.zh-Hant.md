@@ -58,7 +58,7 @@ Vault-for-LLM 可能不是第一個該拿起來的工具。
 最推薦的方式，是直接把這段交給能執行本機指令的 Agent：
 
 ```text
-幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.67。
+幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.68。
 先問我要 shared、private、domain-specific 還是 temporary vault。
 詢問穩定的 project directory，並為長期任務產生 stable venv script。
 逐項詢問 MCP、semantic search、Supabase、Obsidian import、Headroom 壓縮、
@@ -71,7 +71,7 @@ Agent 會使用安裝精靈：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.67"
+pip install "vault-for-llm[mcp]==0.6.68"
 
 vault setup-agent
 ```
@@ -98,7 +98,7 @@ vault setup-agent \
 ### 手動快速開始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.67"
+pip install "vault-for-llm[mcp]==0.6.68"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -121,11 +121,13 @@ vault search "cache key" --project-dir ~/Vaults/demo
 Agent 也可以把一次工作 session 轉成候選記憶：
 
 ```bash
+vault capture discover --project-dir ~/Vaults/my-project --pretty
 vault capture session codex-session.jsonl --project-dir ~/Vaults/my-project --pretty
 vault capture session codex-session.jsonl --project-dir ~/Vaults/my-project --write-candidates
 ```
 
-第一個指令只預覽；第二個只寫入候選記憶，不會自動提升成正式知識。
+Discovery 只列出可能的 transcript 檔案，不讀取內容。Session capture
+預設只預覽；`--write-candidates` 只寫入候選記憶，不會自動提升成正式知識。
 
 MCP-capable runtime 可以啟動：
 
@@ -141,8 +143,8 @@ vault-mcp --project-dir ~/Vaults/my-project --tool-profile core
 - `vault_stats`
 
 負責 review 或維護的 Agent 可以在 MCP `review` profile 使用
-`vault_capture_session` 跑同一套 session capture。它預設只預覽；
-必須明確設定 `write_candidates=true`，才會寫入候選記憶。
+`vault_capture_discover` 和 `vault_capture_session` 跑同一套 session capture。
+Capture 預設只預覽；必須明確設定 `write_candidates=true`，才會寫入候選記憶。
 
 MCP 文件：
 
@@ -254,7 +256,7 @@ SQLite 仍然是 source of truth。Supabase 是可選的共享層。
 Remote reader 應該直接把搜尋結果的 `id` 傳給 map/read；它可能是整數，也可能是 Supabase UUID。
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.67"
+pip install "vault-for-llm[supabase]==0.6.68"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

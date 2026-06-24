@@ -205,8 +205,21 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert "next agent startup command: `vault automation handoff`" in readme
     assert "reports/automation/inbox-latest.json" in readme
     assert "apply reversible archival: `false`" in readme
+    mcp_startup = result["mcp_startup"]
+    mcp_json = json.loads(Path(mcp_startup["json"]).read_text(encoding="utf-8"))
+    mcp_readme = Path(mcp_startup["readme"]).read_text(encoding="utf-8")
+    assert mcp_json["mcp_server"]["tool_profile"] == "core"
+    assert [step["tool"] for step in mcp_json["startup_sequence"][:2]] == [
+        "vault_update_status",
+        "vault_automation_handoff",
+    ]
+    assert mcp_json["safety"]["check_pypi_default"] is False
+    assert mcp_json["safety"]["auto_promote_memory"] is False
+    assert "vault_update_status" in mcp_readme
+    assert "vault_automation_handoff" in mcp_readme
     assert any("memory automation schedule" in step for step in result["next_steps"])
     assert any("vault automation handoff --project-dir" in step for step in result["next_steps"])
+    assert any("MCP startup guide" in step for step in result["next_steps"])
 
 
 def test_run_agent_setup_can_schedule_automation_cycle(tmp_path):
@@ -479,6 +492,8 @@ def test_run_agent_setup_writes_executable_local_smoke(tmp_path):
     assert "--json" in body
     assert "$VAULT remember" in body
     assert "$VAULT candidates" in body
+    assert "vault_update_status" in body
+    assert "vault_automation_handoff" in body
     assert any("local-smoke.sh" in step for step in result["next_steps"])
 
     env = {
@@ -527,7 +542,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.79" in captured.out
+    assert "vault-for-llm 0.6.80" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -695,7 +710,7 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.6.79" in body
+    assert "vault-for-llm[mcp,supabase]==0.6.80" in body
     assert "headroom-ai" in body
     assert "--agent-project-dir" in body
     assert str(project) in body

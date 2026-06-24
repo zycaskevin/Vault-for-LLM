@@ -1532,6 +1532,128 @@ def write_memory_layout_manifest(
     return {"manifest": str(manifest_path), "readme": str(readme_path)}
 
 
+def write_mcp_startup_guide(
+    *,
+    output_dir: str | Path,
+    project_dir: str | Path,
+    tool_profile: str,
+    agent: str,
+) -> dict[str, str]:
+    out = Path(output_dir).expanduser().resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    project_path = Path(project_dir).expanduser().resolve()
+    safe_agent = _safe_slug(agent, default="generic")
+    payload = {
+        "version": 1,
+        "agent": safe_agent,
+        "project_dir": str(project_path),
+        "db_path": str(project_path / "vault.db"),
+        "mcp_server": {
+            "command": "vault-mcp",
+            "args": [
+                "--project-dir",
+                str(project_path),
+                "--tool-profile",
+                tool_profile,
+            ],
+            "tool_profile": tool_profile,
+        },
+        "startup_sequence": [
+            {
+                "tool": "vault_update_status",
+                "arguments": {
+                    "latest_version": "",
+                    "check_pypi": False,
+                    "write_status": False,
+                },
+                "purpose": "Read installed version, local Agent registry, shared/private vault paths, and startup commands.",
+            },
+            {
+                "tool": "vault_automation_handoff",
+                "arguments": {
+                    "source": "auto",
+                    "handoff_path": "",
+                },
+                "purpose": "Read the latest compact handoff when one exists.",
+            },
+            {
+                "tool": "vault_search",
+                "arguments": {
+                    "query": "<user task or handoff keyword>",
+                    "limit": 5,
+                    "compact": True,
+                },
+                "purpose": "Search only when the handoff or task needs more context.",
+            },
+            {
+                "tool": "vault_read_range",
+                "arguments": {
+                    "knowledge_id": "<id from search>",
+                    "line_start": 1,
+                    "line_end": 20,
+                },
+                "purpose": "Read bounded evidence before citing Vault memory.",
+            },
+            {
+                "tool": "vault_memory_propose",
+                "arguments": {
+                    "title": "<short durable lesson>",
+                    "content": "<reviewable memory>",
+                    "reason": "<why this is worth remembering>",
+                },
+                "purpose": "Propose new durable memory as a candidate, not active knowledge.",
+            },
+        ],
+        "safety": {
+            "local_stdio_only": True,
+            "check_pypi_default": False,
+            "handoff_read_only": True,
+            "auto_promote_memory": False,
+            "read_raw_transcripts_by_default": False,
+        },
+    }
+    json_path = out / "mcp-startup.json"
+    json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    readme_path = out / "README-mcp-startup.md"
+    readme_path.write_text(
+        "\n".join(
+            [
+                "# MCP Startup Guide",
+                "",
+                "Use this guide when an MCP-capable Agent connects to this Vault project.",
+                "",
+                "Server:",
+                "",
+                "```bash",
+                f"vault-mcp --project-dir {shlex.quote(str(project_path))} --tool-profile {shlex.quote(tool_profile)}",
+                "```",
+                "",
+                "Startup sequence:",
+                "",
+                "1. `vault_update_status`",
+                "2. `vault_automation_handoff`",
+                "3. `vault_search` only when more context is needed",
+                "4. `vault_read_range` before citing memory",
+                "5. `vault_memory_propose` for new durable lessons",
+                "",
+                "Default safety:",
+                "",
+                "- keep `check_pypi=false` unless the user asks for a live update check",
+                "- handoff reads are read-only and stay under `reports/automation`",
+                "- do not read raw transcript contents by default",
+                "- do not auto-promote memory",
+                "- tool profiles reduce schema size but are not an authorization boundary",
+                "",
+                f"Machine-readable startup file: `{json_path.name}`",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return {"json": str(json_path), "readme": str(readme_path)}
+
+
 def _normalize_validation_pack_targets(raw: str | list[str] | None) -> set[str]:
     if raw is None:
         return set()
@@ -2196,6 +2318,24 @@ def render_local_smoke_script(*, project_dir: str | Path, vault_executable: str 
             "    raise SystemExit(f'candidate list did not include smoke candidate: {payload!r}')",
             "PY",
             "",
+            "export PROJECT_DIR",
+            "$PYTHON - <<'PY'",
+            "import json, os",
+            "from vault.mcp import _set_project_dir, handle_tool_call, select_tools",
+            "_set_project_dir(os.environ['PROJECT_DIR'])",
+            "core = [tool['name'] for tool in select_tools('core')]",
+            "required = {'vault_update_status', 'vault_automation_handoff'}",
+            "missing = sorted(required - set(core))",
+            "if missing:",
+            "    raise SystemExit(f'MCP core profile missing startup tools: {missing}')",
+            "status = json.loads(handle_tool_call('vault_update_status', {})['result'])",
+            "if 'installed_version' not in status or 'startup_commands' not in status:",
+            "    raise SystemExit(f'invalid update status payload: {status!r}')",
+            "handoff = json.loads(handle_tool_call('vault_automation_handoff', {})['result'])",
+            "if handoff.get('action') != 'handoff' or not handoff.get('safety', {}).get('read_only'):",
+            "    raise SystemExit(f'invalid handoff payload: {handoff!r}')",
+            "PY",
+            "",
             "echo \"local_smoke=ok\"",
             "",
         ]
@@ -2365,6 +2505,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         "local_smoke": {},
         "stable_venv": {},
         "memory_layout_files": {},
+        "mcp_startup": {},
         "agent_registry": {},
         "next_steps": [
             f"vault search \"test query\" --project-dir {shlex.quote(str(project_path))} --limit 5 --json",
@@ -2392,6 +2533,13 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         private_project_dir=private_project_path,
     )
     result["next_steps"].append(f"Review memory layout manifest: {result['memory_layout_files']['manifest']}")
+    result["mcp_startup"] = write_mcp_startup_guide(
+        output_dir=template_dir,
+        project_dir=project_path,
+        tool_profile=config.tool_profile,
+        agent=config.agent,
+    )
+    result["next_steps"].append(f"Review MCP startup guide: {result['mcp_startup']['readme']}")
     result["local_smoke"] = write_local_smoke_template(
         output_dir=template_dir,
         project_dir=project_path,

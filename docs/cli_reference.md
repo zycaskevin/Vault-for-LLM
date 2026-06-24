@@ -50,6 +50,7 @@ changed notes without duplicating unchanged ones.
 |---|---|
 | `vault setup-agent` | Ask for scope, setup language, optional features, Obsidian import, sync templates, and generate `agent-install/local-smoke.sh` |
 | `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,obsidian_import` | Agent-friendly scripted install |
+| `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --memory-layout hybrid --features core,mcp --json` | Create a shared project vault plus private Agent vault and write `hybrid-vault-layout.json` |
 | `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,semantic,supabase,headroom --language en --install-optional-deps --install-embedding-model mix --supabase-setup simple --json` | Install selected optional dependencies and configure a local semantic model |
 | `vault setup-agent --non-interactive --agent profile-agent --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,memory_agents --language zh-Hant --json` | Generate Profile / Dream / Forgetting agent guidance with report-only and candidate-only defaults |
 | `vault setup-agent --non-interactive --agent profile-agent --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase --language zh-Hant --install-optional-deps --supabase-setup simple --supabase-sync cron --remote-reader all --json` | Generate guided Supabase setup, daily sync templates, and shell/n8n/Coze remote reader templates |
@@ -61,7 +62,7 @@ changed notes without duplicating unchanged ones.
 | `vault update-status --check-pypi --write-status --json` | Check PyPI for the latest release and write `~/.vault-for-llm/update-status.json` |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.6.77` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.6.78` | Show the same registry/update status without contacting the network |
 
 `vault install-agent` is an alias for `vault setup-agent`.
 Interactive setup asks before installing optional dependencies. Non-interactive
@@ -70,6 +71,9 @@ with `--install-embedding-model zh|en|mix`.
 `vault setup-agent` also registers the Agent in
 `~/.vault-for-llm/agent-registry.json`, so other local runtimes can discover the
 same project vault and startup handoff path through `vault update-status`.
+The default memory layout is `hybrid`: setup creates the shared project vault
+plus a private Agent vault under `~/Vaults/agents/<agent>/private-memory`, then
+writes `agent-install/hybrid-vault-layout.json`.
 Use `--write-stable-venv-script` for the default long-lived venv path, or
 `--stable-venv PATH` when the user chooses a custom stable virtualenv.
 Memory-agent guidance is opt-in with `--features memory_agents`; it writes

@@ -2721,6 +2721,8 @@ def cmd_setup_agent(args):
             project_dir=project_dir,
             scope=scope,
             agent=args.agent,
+            memory_layout=args.memory_layout,
+            agent_private_dir=Path(args.agent_private_dir).expanduser() if args.agent_private_dir else None,
             features=normalize_features(args.features),
             language=args.language,
             tool_profile=args.tool_profile,
@@ -2759,6 +2761,8 @@ def cmd_setup_agent(args):
             "agent": args.agent,
             "scope": args.scope,
             "project_dir": args.agent_project_dir,
+            "memory_layout": args.memory_layout,
+            "agent_private_dir": args.agent_private_dir,
             "features": args.features,
             "language": args.language,
             "tool_profile": args.tool_profile,
@@ -2811,6 +2815,9 @@ def cmd_setup_agent(args):
     print(f"  project_dir: {payload['project_dir']}")
     print(f"  db_path: {payload['db_path']}")
     print(f"  features: {', '.join(payload['features'])}")
+    print(f"  memory_layout: {payload['memory_layout']}")
+    if payload.get("agent_private_dir"):
+        print(f"  agent_private_dir: {payload['agent_private_dir']}")
     print(f"  language: {payload['language']}")
     if payload.get("obsidian"):
         obsidian = payload["obsidian"]
@@ -2865,6 +2872,10 @@ def cmd_setup_agent(args):
         print("  stable_venv:")
         for name, path in payload["stable_venv"].items():
             print(f"    {name}: {path}")
+    if payload.get("memory_layout_files"):
+        print("  memory_layout_files:")
+        for name, path in payload["memory_layout_files"].items():
+            print(f"    {name}: {path}")
     print("Next steps:")
     for step in payload["next_steps"]:
         print(f"  {step}")
@@ -2885,6 +2896,8 @@ def cmd_agent(args):
             features=features,
             tool_profile=args.tool_profile,
             source=args.source,
+            memory_layout=args.memory_layout,
+            private_project_dir=Path(args.agent_private_dir).expanduser() if args.agent_private_dir else None,
         )
         if args.json or args.pretty:
             _json_print(payload, pretty=args.pretty)
@@ -2893,6 +2906,9 @@ def cmd_agent(args):
         print("Agent registered")
         print(f"  agent: {agent['agent_id']}")
         print(f"  project_dir: {agent['project_dir']}")
+        if agent.get("private_project_dir"):
+            print(f"  private_project_dir: {agent['private_project_dir']}")
+        print(f"  memory_layout: {agent['memory_layout']}")
         print(f"  scope: {agent['scope']}")
         print(f"  registry: {payload['registry_path']}")
         return
@@ -2957,10 +2973,12 @@ def _print_update_status(payload: dict) -> None:
     print(f"  agents: {payload['agent_count']}")
     for agent in payload.get("agents", []):
         print(
-            "    {agent_id}: scope={scope} project={project_dir}".format(
+            "    {agent_id}: layout={memory_layout} scope={scope} project={project_dir}".format(
                 **agent
             )
         )
+        if agent.get("private_project_dir"):
+            print(f"      private: {agent['private_project_dir']}")
     print("Startup commands:")
     for command in payload.get("startup_commands", []):
         print(f"  {command}")
@@ -3173,6 +3191,9 @@ def main(argv: list[str] | None = None):
     ap.add_argument("--features", default="core,mcp", help="已啟用功能 CSV")
     ap.add_argument("--tool-profile", choices=["core", "review", "remote", "maintenance", "full"],
                     default="core", help="建議 MCP tool profile")
+    ap.add_argument("--memory-layout", choices=["hybrid", "shared", "private"], default="shared",
+                    help="登記的記憶庫布局")
+    ap.add_argument("--agent-private-dir", help="hybrid/private layout 的 Agent 私有 vault 目錄")
     ap.add_argument("--source", default="manual", help="登記來源，例如 manual/setup-agent")
     ap.add_argument("--json", action="store_true", help="輸出 JSON")
     ap.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
@@ -3199,6 +3220,10 @@ def main(argv: list[str] | None = None):
                         help="互動式安裝與產生文件的語言；非互動模式預設 en")
         ap.add_argument("--tool-profile", choices=["core", "review", "remote", "maintenance", "full"],
                         default="core", help="建議的 MCP tool profile")
+        ap.add_argument("--memory-layout", choices=["hybrid", "shared", "private"], default="hybrid",
+                        help="記憶庫布局：hybrid=shared project vault + private Agent vault")
+        ap.add_argument("--agent-private-dir",
+                        help="hybrid/private layout 使用的 Agent 私有 vault 目錄")
         ap.add_argument("--install-optional-deps", action="store_true",
                         help="立即安裝已選功能需要的 Python optional dependencies")
         ap.add_argument("--install-embedding-model", choices=["zh", "en", "mix"],

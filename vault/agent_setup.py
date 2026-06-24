@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -39,6 +40,7 @@ VALID_SUPABASE_SETUP_MODES = {"none", "simple", "advanced"}
 VALID_SETUP_LANGUAGES = {"en", "zh-Hant", "zh-CN"}
 VALID_AUTOMATION_MODES = {"conservative", "balanced", "autonomous"}
 VALID_AUTOMATION_COMMANDS = {"run", "cycle"}
+VALID_MEMORY_LAYOUTS = {"shared", "private", "hybrid"}
 PYPI_EXTRA_FEATURES = {"mcp", "semantic", "supabase", "dev"}
 VALID_EMBEDDING_MODELS = {"zh", "en", "mix"}
 DEFAULT_SUPABASE_SYNC_INTERVAL_MINUTES = 24 * 60
@@ -429,6 +431,12 @@ def default_project_dir(scope: str, *, agent: str = "generic") -> Path:
     if agent == "openclaw":
         return home / ".openclaw" / "workspace" / "vault-project"
     return home / ".vault-for-llm" / "agent-private"
+
+
+def default_agent_private_dir(agent: str = "generic") -> Path:
+    root = os.environ.get("VAULT_AGENT_PRIVATE_ROOT", "").strip()
+    base = Path(root).expanduser() if root else Path.home() / "Vaults" / "agents"
+    return base / _safe_slug(agent, default="generic") / "private-memory"
 
 
 def normalize_features(raw: str | list[str] | None) -> list[str]:
@@ -1458,6 +1466,72 @@ def write_agent_roster_templates(
     }
 
 
+def write_memory_layout_manifest(
+    *,
+    output_dir: str | Path,
+    agent: str,
+    memory_layout: str,
+    shared_project_dir: str | Path,
+    private_project_dir: str | Path | None = None,
+) -> dict[str, str]:
+    out = Path(output_dir).expanduser().resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    safe_agent = _safe_slug(agent, default="generic")
+    shared_path = Path(shared_project_dir).expanduser().resolve()
+    private_path = Path(private_project_dir).expanduser().resolve() if private_project_dir else None
+    payload: dict[str, Any] = {
+        "version": 1,
+        "agent": safe_agent,
+        "memory_layout": memory_layout,
+        "shared_project_dir": str(shared_path),
+        "shared_db_path": str(shared_path / "vault.db"),
+        "private_project_dir": str(private_path) if private_path else "",
+        "private_db_path": str(private_path / "vault.db") if private_path else "",
+        "rules": {
+            "shared": "Reviewed project knowledge, SOPs, fixes, release process, benchmark evidence, and safety rules.",
+            "private": "Agent identity, private preferences, personal notes, and agent-specific working style. Local-only by default.",
+        },
+        "startup_commands": [
+            "vault update-status",
+            f"vault automation handoff --project-dir {shared_path}",
+        ],
+    }
+    manifest_path = out / "hybrid-vault-layout.json"
+    manifest_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    readme_path = out / "README-hybrid-vault-layout.md"
+    readme_path.write_text(
+        "\n".join(
+            [
+                "# Hybrid Vault Layout",
+                "",
+                "This setup separates shared project memory from private Agent memory.",
+                "",
+                f"- Agent: `{safe_agent}`",
+                f"- Layout: `{memory_layout}`",
+                f"- Shared project vault: `{shared_path}`",
+                f"- Private Agent vault: `{private_path or ''}`",
+                "",
+                "Shared project memory is for reviewed project knowledge, SOPs, fixes, release process, benchmark evidence, and safety rules.",
+                "Private Agent memory is local-only by default and is for identity, private preferences, personal notes, and agent-specific working style.",
+                "",
+                "Startup:",
+                "",
+                "```bash",
+                "vault update-status",
+                f"vault automation handoff --project-dir {shlex.quote(str(shared_path))}",
+                "```",
+                "",
+                "This manifest is a coordination file. It is not an authorization policy and does not sync private memory.",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    return {"manifest": str(manifest_path), "readme": str(readme_path)}
+
+
 def _normalize_validation_pack_targets(raw: str | list[str] | None) -> set[str]:
     if raw is None:
         return set()
@@ -2192,11 +2266,21 @@ def _normalize_setup_language(language: str | None) -> str:
     return value
 
 
+def _normalize_memory_layout(layout: str | None) -> str:
+    value = str(layout or "hybrid").strip().lower()
+    if value not in VALID_MEMORY_LAYOUTS:
+        allowed = ", ".join(sorted(VALID_MEMORY_LAYOUTS))
+        raise ValueError(f"unknown memory layout '{layout}' (expected one of: {allowed})")
+    return value
+
+
 @dataclass
 class AgentSetupConfig:
     project_dir: Path
     scope: str = "private"
     agent: str = "generic"
+    memory_layout: str = "hybrid"
+    agent_private_dir: Path | None = None
     features: list[str] = field(default_factory=lambda: list(DEFAULT_FEATURES))
     language: str = "en"
     tool_profile: str = "core"
@@ -2232,6 +2316,10 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
     project_path = ensure_project(config.project_dir)
     features = normalize_features(config.features)
     language = _normalize_setup_language(config.language)
+    memory_layout = _normalize_memory_layout(config.memory_layout)
+    private_project_path: Path | None = None
+    if memory_layout in {"hybrid", "private"}:
+        private_project_path = ensure_project(config.agent_private_dir or default_agent_private_dir(config.agent))
     optional_dependency_install = None
     if config.install_optional_deps:
         optional_dependency_install = install_optional_dependencies(features)
@@ -2255,6 +2343,8 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         "project_dir": str(project_path),
         "scope": config.scope,
         "agent": config.agent,
+        "memory_layout": memory_layout,
+        "agent_private_dir": str(private_project_path) if private_project_path else "",
         "features": features,
         "language": language,
         "tool_profile": config.tool_profile,
@@ -2274,6 +2364,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         "automation_schedule_templates": {},
         "local_smoke": {},
         "stable_venv": {},
+        "memory_layout_files": {},
         "agent_registry": {},
         "next_steps": [
             f"vault search \"test query\" --project-dir {shlex.quote(str(project_path))} --limit 5 --json",
@@ -2288,9 +2379,19 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         features=features,
         tool_profile=config.tool_profile,
         source="setup-agent",
+        memory_layout=memory_layout,
+        private_project_dir=private_project_path,
     )
     result["next_steps"].insert(0, "Check local agent registry and update status: vault update-status")
     template_dir = config.template_dir or (project_path / "agent-install")
+    result["memory_layout_files"] = write_memory_layout_manifest(
+        output_dir=template_dir,
+        agent=config.agent,
+        memory_layout=memory_layout,
+        shared_project_dir=project_path,
+        private_project_dir=private_project_path,
+    )
+    result["next_steps"].append(f"Review memory layout manifest: {result['memory_layout_files']['manifest']}")
     result["local_smoke"] = write_local_smoke_template(
         output_dir=template_dir,
         project_dir=project_path,
@@ -2717,9 +2818,16 @@ def optional_feature_next_steps(
 def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
     agent = str(argv_config.get("agent") or _ask("Agent/runtime", "generic"))
     scope = str(argv_config.get("scope") or _ask("Vault scope (shared/private/domain/temporary)", "private"))
+    memory_layout = str(
+        argv_config.get("memory_layout")
+        or _ask("Memory layout (hybrid/shared/private)", "hybrid")
+    )
     project_dir = argv_config.get("project_dir")
     if not project_dir:
         project_dir = _ask("Vault project directory", str(default_project_dir(scope, agent=agent)))
+    agent_private_dir = argv_config.get("agent_private_dir")
+    if not agent_private_dir and _normalize_memory_layout(memory_layout) in {"hybrid", "private"}:
+        agent_private_dir = _ask("Agent private vault directory", str(default_agent_private_dir(agent)))
     language = argv_config.get("language")
     if language is None:
         language = _ask("Setup language / 安裝語言 (en/zh-Hant/zh-CN)", "en")
@@ -2815,6 +2923,8 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
         project_dir=Path(project_dir),
         scope=scope,
         agent=agent,
+        memory_layout=memory_layout,
+        agent_private_dir=Path(agent_private_dir).expanduser() if agent_private_dir else None,
         features=features,
         language=_normalize_setup_language(str(language)),
         tool_profile=str(argv_config.get("tool_profile") or "core"),

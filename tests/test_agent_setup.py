@@ -10,6 +10,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def isolate_agent_registry(tmp_path, monkeypatch):
     monkeypatch.setenv("VAULT_AGENT_REGISTRY_DIR", str(tmp_path / "agent-registry"))
+    monkeypatch.setenv("VAULT_AGENT_PRIVATE_ROOT", str(tmp_path / "agent-private-root"))
 
 
 def test_run_agent_setup_imports_obsidian_and_writes_templates(tmp_path):
@@ -526,7 +527,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.77" in captured.out
+    assert "vault-for-llm 0.6.78" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -694,7 +695,7 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.6.77" in body
+    assert "vault-for-llm[mcp,supabase]==0.6.78" in body
     assert "headroom-ai" in body
     assert "--agent-project-dir" in body
     assert str(project) in body
@@ -732,11 +733,13 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
     from vault.agent_setup import interactive_setup
 
     answers = iter(
-        [
-            "profile-agent",
-            "private",
-            str(tmp_path / "agent-project"),
-            "zh-Hant",  # setup language
+            [
+                "profile-agent",
+                "private",
+                "hybrid",
+                str(tmp_path / "agent-project"),
+                str(tmp_path / "profile-private"),
+                "zh-Hant",  # setup language
             "yes",  # MCP
             "yes",  # semantic
             "yes",  # Supabase
@@ -770,6 +773,8 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
     config = interactive_setup({})
 
     assert config.language == "zh-Hant"
+    assert config.memory_layout == "hybrid"
+    assert config.agent_private_dir == tmp_path / "profile-private"
     assert config.features == ["core", "mcp", "semantic", "supabase", "headroom"]
     assert config.install_optional_deps is True
     assert config.install_embedding_model is None
@@ -808,11 +813,13 @@ def test_interactive_setup_does_not_ask_optional_deps_for_core_mcp_only(tmp_path
     import vault.agent_setup as agent_setup
 
     answers = iter(
-        [
-            "codex",
-            "private",
-            str(tmp_path / "agent-project"),
-            "en",
+            [
+                "codex",
+                "private",
+                "hybrid",
+                str(tmp_path / "agent-project"),
+                str(tmp_path / "codex-private"),
+                "en",
             "yes",  # MCP
             "no",  # semantic
             "no",  # Supabase
@@ -836,6 +843,8 @@ def test_interactive_setup_does_not_ask_optional_deps_for_core_mcp_only(tmp_path
     config = agent_setup.interactive_setup({})
 
     assert config.features == ["core", "mcp"]
+    assert config.memory_layout == "hybrid"
+    assert config.agent_private_dir == tmp_path / "codex-private"
     assert config.install_optional_deps is False
     assert not any("optional Python dependencies" in prompt for prompt in prompts)
 

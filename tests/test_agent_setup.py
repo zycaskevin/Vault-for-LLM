@@ -223,11 +223,16 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert mcp_json["startup_sequence"][0]["arguments"]["agent_id"] == "automation-agent"
     assert mcp_json["startup_sequence"][0]["fallback_arguments"]["check_pypi"] is False
     assert mcp_json["startup_sequence"][0]["fallback_arguments"]["agent_id"] == "automation-agent"
+    assert mcp_json["startup_sequence"][1]["result_contract"]["read_first"] == [
+        "fleet_health_content",
+        "content",
+    ]
     assert mcp_json["safety"]["check_pypi_default"] is False
     assert mcp_json["safety"]["auto_promote_memory"] is False
     assert mcp_json["safety"]["read_existing_update_status_first"] is True
     assert "vault_update_status" in mcp_readme
     assert "vault_automation_handoff" in mcp_readme
+    assert "fleet_health_content" in mcp_readme
     update_status = result["update_status_templates"]
     update_contract = json.loads(Path(update_status["contract"]).read_text(encoding="utf-8"))
     update_readme = Path(update_status["readme"]).read_text(encoding="utf-8")
@@ -263,20 +268,27 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert adapter_contract["startup_sequence"][0]["mcp"]["arguments"]["read_status"] is True
     assert adapter_contract["startup_sequence"][0]["mcp"]["arguments"]["agent_id"] == "automation-agent"
     assert adapter_contract["startup_sequence"][0]["fallback"]["mcp"]["arguments"]["check_pypi"] is False
+    assert adapter_contract["handoff_contract"]["read_order"] == ["fleet_health_content", "content"]
+    assert adapter_contract["startup_sequence"][1]["result_contract"]["do_not_replace_content"] is True
     assert any(step["name"] == "check_update_distribution_when_needed" for step in adapter_contract["startup_sequence"])
     assert adapter_contract["safety"]["auto_upgrade"] is False
     assert adapter_contract["safety"]["candidate_first_memory"] is True
     assert "update-status -> automation handoff -> search/read/propose" in adapter_readme
+    assert "fleet_health_content" in adapter_readme
     assert "MCP doctor" in adapter_readme
     assert "no auto-upgrade" in adapter_readme
     assert "doctor=true" in codex_template
+    assert "fleet_health_content" in codex_template
     assert "vault update-status --read-status --agent automation-agent --json" in codex_template
     assert "latest-context.md" in openclaw_template
     assert runtime_playbook["mcp"]["doctor"]["arguments"]["doctor"] is True
     assert runtime_playbook["mcp"]["doctor"]["arguments"]["agent_id"] == "automation-agent"
+    assert runtime_playbook["mcp"]["handoff"]["read_order"] == ["fleet_health_content", "content"]
+    assert runtime_playbook["safety"]["fleet_health_preface_read_only"] is True
     assert runtime_playbook["safety"]["auto_upgrade"] is False
     assert sorted(runtime_playbook["runtime_targets"]) == ["claude_code", "codex", "hermes", "openclaw"]
     assert "Runtime Update Playbook" in runtime_playbook_readme
+    assert "fleet health" in runtime_playbook_readme
     assert "one shared project vault" in runtime_playbook_readme
     assert "not an auto-upgrader" in runtime_playbook_readme
     assert "README-runtime-update-playbook.md" in adapter_readme
@@ -790,7 +802,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.105" in captured.out
+    assert "vault-for-llm 0.6.106" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -958,7 +970,7 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.6.105" in body
+    assert "vault-for-llm[mcp,supabase]==0.6.106" in body
     assert "headroom-ai" in body
     assert "--agent-project-dir" in body
     assert str(project) in body

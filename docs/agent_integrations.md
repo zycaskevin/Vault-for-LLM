@@ -51,6 +51,8 @@ Use runtime-specific adapters only for convenience. The durable contract is:
 `adapter-startup-contract.json`. These templates all use the same sequence:
 update-status -> automation handoff -> search/read only when needed -> propose
 candidate memory.
+The handoff step is fleet-aware: when `fleet_health_content` is present, agents
+read that shared health preface first, then the selected cycle/inbox `content`.
 The same install pack writes `README-runtime-update-playbook.md` and
 `runtime-update-playbook.json` so every runtime can follow the same startup,
 post-upgrade, and stale-notice behavior.

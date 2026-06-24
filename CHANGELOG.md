@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.6.106] - 2026-06-25
+
+### Changed
+
+- `vault setup-agent` generated MCP startup files now document the fleet-aware handoff result contract: read `fleet_health_content` first when present, then the selected `content` handoff.
+- Generated Agent adapter startup contracts for Codex, Claude Code, OpenClaw, and Hermes now include a machine-readable `handoff_contract` and per-step `result_contract`.
+- Runtime update playbooks now explicitly treat fleet health as a read-only startup preface for shared multi-Agent automation health.
+
+### Safety
+
+- Startup templates keep the existing boundaries: no auto-upgrade, no raw transcript reads by default, no automatic memory promotion, and one shared project vault can coexist with private per-Agent memory.
+
 ## [0.6.105] - 2026-06-25
 
 ### Changed

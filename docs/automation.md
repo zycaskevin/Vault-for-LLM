@@ -94,6 +94,7 @@ Show the shortest review inbox:
 
 ```bash
 vault automation inbox --limit 5 --pretty
+vault automation inbox --include-transcripts --write-handoff --pretty
 ```
 
 `automation inbox` is the daily review surface for the closed loop. It reads the
@@ -101,6 +102,11 @@ candidate queue and latest automation report, then ranks the smallest useful
 set of items for a human or trusted agent to inspect. It is read-only, hides
 candidate content by default, and prioritizes privacy-blocked, sensitive,
 duplicate, weak-quality, and automation-generated candidates.
+
+Use `--include-transcripts` when a scheduled or reviewer agent should also see
+metadata-only hints for uncaptured session exports. The inbox still does not
+read transcript contents; it only includes the same `capture_path` hints as
+`vault capture discover`.
 
 Scheduled agents can persist the same short handoff:
 

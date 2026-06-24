@@ -405,6 +405,8 @@ def automation_inbox(
     limit: int = 5,
     candidate_scan_limit: int = 1000,
     include_content: bool = False,
+    include_transcripts: bool = False,
+    transcript_limit: int = 5,
     write_handoff: bool = False,
     handoff_path: str | Path = "",
 ) -> dict[str, Any]:
@@ -430,8 +432,10 @@ def automation_inbox(
                 "privacy_blocked": 0,
                 "needs_review": 0,
                 "review_budget": max(1, int(limit or 5)),
+                "uncaptured_transcripts": 0,
             },
             "review_queue": [],
+            "transcript_discovery": {},
             "latest_report": {},
             "inbox_handoff_path": "",
             "next_action": "Run vault init and capture/import memory before checking the automation inbox.",
@@ -455,7 +459,21 @@ def automation_inbox(
     if latest_path is not None:
         latest_report = _report_summary(project, latest_path, _read_report(latest_path))
 
-    summary = _inbox_summary(candidate_items, latest_report, review_budget=limit_i)
+    transcript_discovery = {}
+    if include_transcripts:
+        from vault.session_capture import discover_session_transcripts
+
+        transcript_discovery = discover_session_transcripts(
+            project,
+            limit=max(1, min(int(transcript_limit or 5), 20)),
+        )
+
+    summary = _inbox_summary(
+        candidate_items,
+        latest_report,
+        transcript_discovery=transcript_discovery,
+        review_budget=limit_i,
+    )
     payload = {
         "action": "inbox",
         "generated_at": generated_at,
@@ -463,6 +481,7 @@ def automation_inbox(
         "status": "completed",
         "summary": summary,
         "review_queue": candidate_items[:limit_i],
+        "transcript_discovery": transcript_discovery,
         "latest_report": latest_report,
         "inbox_handoff_path": "",
         "safety": {
@@ -470,6 +489,7 @@ def automation_inbox(
             "auto_promote": False,
             "hard_delete": False,
             "content_hidden_by_default": not include_content,
+            "transcript_discovery_reads_contents": False,
         },
         "next_action": (
             "Review the top queue items. Use `vault promote` for approved candidates "
@@ -880,6 +900,7 @@ def _inbox_summary(
     items: list[dict[str, Any]],
     latest_report: dict[str, Any],
     *,
+    transcript_discovery: dict[str, Any] | None = None,
     review_budget: int,
 ) -> dict[str, Any]:
     pending = [item for item in items if item.get("status") == "candidate"]
@@ -904,6 +925,7 @@ def _inbox_summary(
         action = str(item.get("recommended_action") or "inspect")
         by_source[source] = by_source.get(source, 0) + 1
         by_action[action] = by_action.get(action, 0) + 1
+    discovery = transcript_discovery or {}
     return {
         "pending_candidates": len(pending),
         "rejected_candidates": len(rejected),
@@ -918,6 +940,8 @@ def _inbox_summary(
         "latest_report_path": latest_report.get("path", ""),
         "latest_report_review_required": bool((latest_report.get("human_review") or {}).get("required")),
         "latest_report_items": (latest_report.get("human_review") or {}).get("items", []),
+        "uncaptured_transcripts": int(discovery.get("count") or 0),
+        "transcript_discovery_reads_contents": bool(discovery.get("read_contents", False)),
         "principle": "show the smallest review queue first; do not expose raw content or mutate memory by default",
     }
 

@@ -2002,6 +2002,8 @@ def cmd_automation(args):
                 project_dir,
                 limit=args.limit,
                 include_content=getattr(args, "include_content", False),
+                include_transcripts=getattr(args, "include_transcripts", False),
+                transcript_limit=getattr(args, "transcript_limit", 5),
                 write_handoff=getattr(args, "write_handoff", False),
                 handoff_path=getattr(args, "handoff_path", ""),
             )
@@ -2201,6 +2203,11 @@ def cmd_automation(args):
             f"duplicate_review={summary.get('duplicate_review', 0)} "
             f"quality_review={summary.get('quality_review', 0)}"
         )
+        print(
+            "  transcripts: "
+            f"uncaptured={summary.get('uncaptured_transcripts', 0)} "
+            f"read_contents={summary.get('transcript_discovery_reads_contents', False)}"
+        )
         if summary.get("latest_report_path"):
             review = "review" if summary.get("latest_report_review_required") else "ok"
             print(f"  latest report: {summary.get('latest_report_path')} {review}")
@@ -2220,6 +2227,16 @@ def cmd_automation(args):
                 print(f"      reason: {item.get('reason')}")
         else:
             print("\n  Review queue: empty")
+        transcripts = (payload.get("transcript_discovery") or {}).get("transcripts") or []
+        if transcripts:
+            print("\n  Transcript candidates:")
+            for item in transcripts[: args.limit]:
+                print(
+                    f"    - {item.get('capture_path')} "
+                    f"source={item.get('source_system')} "
+                    f"format={item.get('format')} "
+                    f"score={item.get('score')}"
+                )
         print(f"\n  principle: {summary.get('principle')}")
         return
 
@@ -3424,6 +3441,8 @@ def main(argv: list[str] | None = None):
     sp = automation_sub.add_parser("inbox", help="Show the shortest review queue for automation candidates and reports")
     add_automation_common(sp)
     sp.add_argument("--include-content", action="store_true", help="include redacted candidate content in JSON output")
+    sp.add_argument("--include-transcripts", action="store_true", help="include metadata-only transcript discovery hints")
+    sp.add_argument("--transcript-limit", type=int, default=5, help="maximum transcript discovery hints")
     sp.add_argument("--write-handoff", action="store_true", help="write reports/automation/inbox-latest.json")
     sp.add_argument("--handoff-path", default="", help="custom reports/automation/*.json inbox handoff path")
 

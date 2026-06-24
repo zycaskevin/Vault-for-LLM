@@ -1821,6 +1821,18 @@ TOOLS = [
                     "description": "Write reports/automation/inbox-latest.json for scheduled handoff.",
                     "default": False,
                 },
+                "include_transcripts": {
+                    "type": "boolean",
+                    "description": "Include metadata-only transcript discovery hints. Defaults false.",
+                    "default": False,
+                },
+                "transcript_limit": {
+                    "type": "integer",
+                    "description": "Maximum transcript discovery hints to include.",
+                    "default": 5,
+                    "minimum": 1,
+                    "maximum": 20,
+                },
             },
         }
     },
@@ -2470,6 +2482,13 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 Path(DB_PATH).resolve().parent,
                 limit=limit,
                 include_content=bool(arguments.get("include_content", False)),
+                include_transcripts=bool(arguments.get("include_transcripts", False)),
+                transcript_limit=_clamp_int(
+                    arguments.get("transcript_limit", 5),
+                    default=5,
+                    minimum=1,
+                    maximum=20,
+                ),
                 write_handoff=bool(arguments.get("write_handoff", False)),
             )
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}

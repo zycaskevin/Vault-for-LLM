@@ -754,6 +754,46 @@ def test_automation_inbox_writes_handoff_under_reports(tmp_path):
     assert written["summary"]["pending_candidates"] == 1
 
 
+def test_automation_inbox_can_include_transcript_discovery_hints(tmp_path):
+    project = _init_project(tmp_path)
+    sessions = project / "sessions"
+    sessions.mkdir()
+    token = "sk-proj-1234567890abcdefghij1234567890"
+    (sessions / "codex-session.md").write_text(
+        f"Decision: automation inbox discovery must not expose {token} from transcript content.",
+        encoding="utf-8",
+    )
+
+    default_payload = automation_inbox(project)
+    payload = automation_inbox(project, include_transcripts=True, transcript_limit=3)
+    rendered = json.dumps(payload, ensure_ascii=False)
+
+    assert default_payload["summary"]["uncaptured_transcripts"] == 0
+    assert default_payload["transcript_discovery"] == {}
+    assert payload["summary"]["uncaptured_transcripts"] == 1
+    assert payload["summary"]["transcript_discovery_reads_contents"] is False
+    assert payload["transcript_discovery"]["read_contents"] is False
+    assert payload["transcript_discovery"]["transcripts"][0]["capture_path"] == "sessions/codex-session.md"
+    assert token not in rendered
+
+
+def test_automation_inbox_handoff_can_include_transcript_discovery(tmp_path):
+    project = _init_project(tmp_path)
+    sessions = project / "sessions"
+    sessions.mkdir()
+    (sessions / "hermes-session.jsonl").write_text(
+        '{"role":"assistant","content":"Decision: scheduled inbox handoff should show uncaptured transcripts."}\n',
+        encoding="utf-8",
+    )
+
+    payload = automation_inbox(project, include_transcripts=True, write_handoff=True)
+    path = project / payload["inbox_handoff_path"]
+    written = json.loads(path.read_text(encoding="utf-8"))
+
+    assert written["summary"]["uncaptured_transcripts"] == 1
+    assert written["transcript_discovery"]["transcripts"][0]["capture_path"] == "sessions/hermes-session.jsonl"
+
+
 def test_automation_inbox_handoff_path_must_stay_under_reports(tmp_path):
     project = _init_project(tmp_path)
 
@@ -789,6 +829,8 @@ def test_automation_cli_inbox_prints_short_review_queue(tmp_path, monkeypatch, c
             mode=None,
             limit=5,
             include_content=False,
+            include_transcripts=False,
+            transcript_limit=5,
             json=False,
             pretty=False,
         )

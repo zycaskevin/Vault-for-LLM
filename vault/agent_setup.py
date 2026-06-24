@@ -890,8 +890,10 @@ def automation_inbox_handoff_command(
     project_dir: str | Path,
     vault_executable: str = "vault",
     limit: int = 5,
+    include_transcripts: bool = False,
+    transcript_limit: int = 5,
 ) -> list[str]:
-    return [
+    command = [
         vault_executable,
         "automation",
         "inbox",
@@ -902,6 +904,15 @@ def automation_inbox_handoff_command(
         "--write-handoff",
         "--pretty",
     ]
+    if include_transcripts:
+        command.extend(
+            [
+                "--include-transcripts",
+                "--transcript-limit",
+                str(max(1, min(int(transcript_limit or 5), 20))),
+            ]
+        )
+    return command
 
 
 def automation_schedule_with_inbox_command(
@@ -911,6 +922,8 @@ def automation_schedule_with_inbox_command(
     apply: bool = False,
     command: str = "cycle",
     vault_executable: str = "vault",
+    include_transcripts: bool = False,
+    transcript_limit: int = 5,
 ) -> list[str]:
     primary = automation_schedule_command(
         project_dir=project_dir,
@@ -919,7 +932,12 @@ def automation_schedule_with_inbox_command(
         command=command,
         vault_executable=vault_executable,
     )
-    inbox = automation_inbox_handoff_command(project_dir=project_dir, vault_executable=vault_executable)
+    inbox = automation_inbox_handoff_command(
+        project_dir=project_dir,
+        vault_executable=vault_executable,
+        include_transcripts=include_transcripts,
+        transcript_limit=transcript_limit,
+    )
     return ["sh", "-lc", f"{shell_join(primary)} && {shell_join(inbox)}"]
 
 
@@ -933,6 +951,8 @@ def write_automation_schedule_templates(
     apply: bool = False,
     command: str = "cycle",
     vault_executable: str = "vault",
+    include_transcripts: bool = False,
+    transcript_limit: int = 5,
 ) -> dict[str, str]:
     out = Path(output_dir).expanduser().resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -952,8 +972,15 @@ def write_automation_schedule_templates(
         apply=apply,
         command=normalized_command,
         vault_executable=vault_executable,
+        include_transcripts=include_transcripts,
+        transcript_limit=transcript_limit,
     )
-    inbox_args = automation_inbox_handoff_command(project_dir=project_dir, vault_executable=vault_executable)
+    inbox_args = automation_inbox_handoff_command(
+        project_dir=project_dir,
+        vault_executable=vault_executable,
+        include_transcripts=include_transcripts,
+        transcript_limit=transcript_limit,
+    )
 
     written: dict[str, str] = {}
     if "cron" in selected:
@@ -1020,6 +1047,8 @@ def write_automation_schedule_templates(
                 "- automation never hard-deletes memory",
                 "- expired memories with usage are protected and sent to human review",
                 "- scheduled runs write `reports/automation/inbox-latest.json` as the next-agent handoff",
+                f"- uncaptured transcript hints in scheduled handoff: `{str(bool(include_transcripts)).lower()}`",
+                "- transcript discovery is metadata-only and does not read transcript contents",
                 "",
                 "Review `automation_policy.yaml` before enabling a scheduled job.",
                 "Keep the Python virtualenv and project directory in stable paths, not `/tmp`.",
@@ -2142,6 +2171,8 @@ class AgentSetupConfig:
     automation_mode: str = "balanced"
     automation_command: str = "cycle"
     automation_apply: bool = False
+    automation_include_transcripts: bool = False
+    automation_transcript_limit: int = 5
     template_dir: Path | None = None
     allow_private: bool = False
     stable_venv_path: Path | None = None
@@ -2330,6 +2361,8 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
             mode=config.automation_mode,
             command=config.automation_command,
             apply=config.automation_apply,
+            include_transcripts=config.automation_include_transcripts,
+            transcript_limit=config.automation_transcript_limit,
         )
         result["next_steps"].append(
             f"Review memory automation schedule: {result['automation_schedule_templates']['readme']}"
@@ -2682,6 +2715,17 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
     automation_apply = bool(argv_config.get("automation_apply", False))
     if automation_schedule_targets and automation_schedule_targets != "none" and "automation_apply" not in argv_config:
         automation_apply = _ask_yes_no("Allow scheduled automation to apply reversible archival?", False)
+    automation_include_transcripts = bool(argv_config.get("automation_include_transcripts", False))
+    if (
+        automation_schedule_targets
+        and automation_schedule_targets != "none"
+        and "automation_include_transcripts" not in argv_config
+    ):
+        automation_include_transcripts = _ask_yes_no(
+            "Include metadata-only uncaptured transcript hints in scheduled inbox handoff?",
+            False,
+        )
+    automation_transcript_limit = int(argv_config.get("automation_transcript_limit") or 5)
 
     stable_venv_path = argv_config.get("stable_venv_path")
     if not stable_venv_path and argv_config.get("write_stable_venv_script"):
@@ -2721,6 +2765,8 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
         automation_mode=_normalize_automation_mode(str(automation_mode)),
         automation_command=_normalize_automation_command(str(automation_command)),
         automation_apply=automation_apply,
+        automation_include_transcripts=automation_include_transcripts,
+        automation_transcript_limit=automation_transcript_limit,
         template_dir=Path(argv_config["template_dir"]) if argv_config.get("template_dir") else None,
         allow_private=bool(argv_config.get("allow_private", False)),
         stable_venv_path=Path(stable_venv_path).expanduser() if stable_venv_path else None,

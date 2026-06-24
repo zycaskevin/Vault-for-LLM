@@ -294,7 +294,8 @@ vault setup-agent \
   --agent-project-dir /path/to/project \
   --features core,mcp,memory_agents \
   --automation-schedule all \
-  --automation-mode balanced
+  --automation-mode balanced \
+  --automation-include-transcripts
 ```
 
 This writes `agent-install/memory-automation.cron`,
@@ -311,11 +312,17 @@ the generated cron, LaunchAgent, and n8n templates also run
 `--automation-command run` when you want a maintenance-only schedule without the
 feedback-learning phase.
 
+Add `--automation-include-transcripts` when the scheduled handoff should also
+show uncaptured transcript exports for the next reviewer. This only passes
+metadata through to `automation inbox`; it does not read transcript contents or
+write candidates.
+
 The scheduled command should stay explicit about the target vault:
 
 ```bash
 vault automation cycle --project-dir /path/to/project --pretty
 vault automation inbox --project-dir /path/to/project --write-handoff --pretty
+vault automation inbox --project-dir /path/to/project --write-handoff --include-transcripts --pretty
 ```
 
 Use `--apply` only after the user has reviewed `automation_policy.yaml` and

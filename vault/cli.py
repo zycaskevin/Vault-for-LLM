@@ -2699,6 +2699,8 @@ def cmd_setup_agent(args):
             automation_mode=args.automation_mode,
             automation_command=args.automation_command,
             automation_apply=bool(args.automation_apply),
+            automation_include_transcripts=bool(args.automation_include_transcripts),
+            automation_transcript_limit=args.automation_transcript_limit,
             template_dir=Path(args.template_dir).expanduser() if args.template_dir else None,
             allow_private=bool(args.allow_private),
             stable_venv_path=(
@@ -2724,6 +2726,7 @@ def cmd_setup_agent(args):
             "sync_interval_minutes": args.sync_interval_minutes,
             "supabase_sync_interval_minutes": args.supabase_sync_interval_minutes,
             "automation_interval_minutes": args.automation_interval_minutes,
+            "automation_transcript_limit": args.automation_transcript_limit,
             "template_dir": args.template_dir,
             "allow_private": args.allow_private,
             "stable_venv_path": args.stable_venv,
@@ -2747,6 +2750,8 @@ def cmd_setup_agent(args):
             setup_values["automation_command"] = args.automation_command
         if args.automation_apply:
             setup_values["automation_apply"] = True
+        if args.automation_include_transcripts:
+            setup_values["automation_include_transcripts"] = True
         config = interactive_setup(setup_values)
 
     payload = run_agent_setup(config)
@@ -3046,6 +3051,10 @@ def main(argv: list[str] | None = None):
                         default="cycle", help="排程使用 cycle 或 run；cycle 會先寫 learning policy 再整理")
         ap.add_argument("--automation-apply", action="store_true",
                         help="讓排程模板加入 --apply；只執行 policy 允許的可逆操作")
+        ap.add_argument("--automation-include-transcripts", action="store_true",
+                        help="讓排程 handoff opt-in 加入未 capture transcript 的 metadata-only 候選清單")
+        ap.add_argument("--automation-transcript-limit", type=int, default=5,
+                        help="排程 handoff 最多列出的 transcript 候選數（預設 5，上限 20）")
         ap.add_argument("--stable-venv",
                         help="產生穩定 Python virtualenv bootstrap 腳本，建議 ~/.hermes/venvs/vault-for-llm")
         ap.add_argument("--write-stable-venv-script", action="store_true",

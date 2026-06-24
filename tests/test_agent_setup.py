@@ -4,6 +4,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def isolate_agent_registry(tmp_path, monkeypatch):
+    monkeypatch.setenv("VAULT_AGENT_REGISTRY_DIR", str(tmp_path / "agent-registry"))
+
 
 def test_run_agent_setup_imports_obsidian_and_writes_templates(tmp_path):
     from vault.agent_setup import AgentSetupConfig, run_agent_setup
@@ -519,7 +526,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.76" in captured.out
+    assert "vault-for-llm 0.6.77" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -687,7 +694,7 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.6.76" in body
+    assert "vault-for-llm[mcp,supabase]==0.6.77" in body
     assert "headroom-ai" in body
     assert "--agent-project-dir" in body
     assert str(project) in body

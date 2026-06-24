@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from vault import __version__
+from vault.agent_registry import register_agent
 from vault.db import VaultDB
 from vault.import_obsidian import sync_obsidian_vault
 
@@ -2273,12 +2274,22 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         "automation_schedule_templates": {},
         "local_smoke": {},
         "stable_venv": {},
+        "agent_registry": {},
         "next_steps": [
             f"vault search \"test query\" --project-dir {shlex.quote(str(project_path))} --limit 5 --json",
             f"vault-mcp --project-dir {shlex.quote(str(project_path))} --tool-profile {shlex.quote(config.tool_profile)}",
         ]
         + feature_next_steps,
     }
+    result["agent_registry"] = register_agent(
+        agent=config.agent,
+        project_dir=project_path,
+        scope=config.scope,
+        features=features,
+        tool_profile=config.tool_profile,
+        source="setup-agent",
+    )
+    result["next_steps"].insert(0, "Check local agent registry and update status: vault update-status")
     template_dir = config.template_dir or (project_path / "agent-install")
     result["local_smoke"] = write_local_smoke_template(
         output_dir=template_dir,

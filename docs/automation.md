@@ -113,6 +113,7 @@ vault automation review-summary --write-summary
 vault automation review-feedback --kind memory_importance --card-id 12 \
   --decision accept --reason "Correctly protected an expired but cited memory" \
   --write-learning-policy
+vault automation learning-health --write-health
 ```
 
 `automation brief` is the daily startup surface for the memory loop. It joins
@@ -150,6 +151,11 @@ content.
 apply the recommended lifecycle action. With `--write-learning-policy`, the
 event immediately refreshes `reports/automation/learning_policy.json`, so
 future review-summary cards can be ranked by repeated outcomes.
+
+`automation learning-health` is the dashboard-safe view of that feedback loop.
+It summarizes accepted/rejected/deferred outcomes, active learning rules, and
+short health cards without raw feedback reasons. With `--write-health`, it
+writes `reports/automation/learning-health-latest.json` plus `.md`.
 
 When that brief recommends `summarize_then_cold_store`, run a dry-run first:
 
@@ -430,6 +436,8 @@ important review fields are:
   derived from brief/inbox/report signals without raw candidate content.
 - `automation review-feedback`: feedback-only accept/reject/defer events for
   review-summary cards, used by `automation eval` as bounded ranking hints.
+- `automation learning-health`: read-only health cards for the learning loop,
+  including cold-start, healthy, watch, or needs-review status.
 - `automation inbox`: the shortest daily review surface. It starts with
   `review_digest` cards from the latest report's `human_review.items`, then
   shows the candidate queue. This lets humans review policy-level decisions

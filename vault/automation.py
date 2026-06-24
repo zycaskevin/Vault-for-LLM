@@ -1142,6 +1142,96 @@ def automation_eval(
     }
 
 
+def automation_learning_health(
+    project_dir: str | Path,
+    *,
+    limit: int = 5,
+    min_events: int = 5,
+    write_health: bool = False,
+    health_path: str | Path = "",
+) -> dict[str, Any]:
+    """Return a short health panel for automation feedback learning."""
+    project = Path(project_dir)
+    generated_at = _now()
+    evaluation = automation_eval(
+        project,
+        limit=1000,
+        min_events=max(1, int(min_events or 1)),
+        write_learning_policy=False,
+    )
+    if evaluation.get("status") == "blocked":
+        return {
+            "action": "learning-health",
+            "generated_at": generated_at,
+            "project_dir": str(project),
+            "status": "blocked",
+            "reason": evaluation.get("reason", "automation eval blocked"),
+            "health_path": "",
+            "health_markdown_path": "",
+            "next_action": evaluation.get("next_action", "Initialize the vault before checking learning health."),
+        }
+
+    limit_i = max(1, min(int(limit or 5), 20))
+    learning_policy = evaluation.get("learning_policy") or {}
+    rules = learning_policy.get("rules") or []
+    outcome_counts = evaluation.get("outcome_counts") or {}
+    event_count = int(evaluation.get("event_count") or 0)
+    accepted_count = int(outcome_counts.get("accepted") or 0) + int(outcome_counts.get("promoted") or 0)
+    rejected_count = int(outcome_counts.get("rejected") or 0) + int(outcome_counts.get("blocked") or 0)
+    deferred_count = int(outcome_counts.get("deferred") or 0)
+    positive_rate = accepted_count / event_count if event_count else 0.0
+    rule_counts = _learning_health_rule_counts(rules)
+    status = _learning_health_status(
+        readiness=str(evaluation.get("readiness") or ""),
+        event_count=event_count,
+        min_events=max(1, int(min_events or 1)),
+        rule_counts=rule_counts,
+    )
+    payload = {
+        "action": "learning-health",
+        "generated_at": generated_at,
+        "project_dir": str(project),
+        "status": status,
+        "summary": {
+            "readiness": evaluation.get("readiness", ""),
+            "event_count": event_count,
+            "min_events": max(1, int(min_events or 1)),
+            "positive_rate": round(positive_rate, 4),
+            "accepted_or_promoted": accepted_count,
+            "rejected_or_blocked": rejected_count,
+            "deferred": deferred_count,
+            "active_rules": len(rules),
+            "prefer_rules": rule_counts["prefer"],
+            "downgrade_rules": rule_counts["downgrade"],
+            "observe_rules": rule_counts["observe"],
+        },
+        "outcome_counts": outcome_counts,
+        "cards": _learning_health_cards(evaluation, rules, limit=limit_i),
+        "top_rules": _learning_health_top_rules(rules, limit=limit_i),
+        "safety": {
+            "read_only": True,
+            "writes_active_memory": False,
+            "writes_candidates": False,
+            "hard_delete": False,
+            "applies_learning_policy": False,
+            "includes_raw_feedback_reasons": False,
+            "learning_is_ranking_hint_only": True,
+        },
+        "health_path": "",
+        "health_markdown_path": "",
+        "next_action": _learning_health_next_action(status),
+    }
+    if write_health:
+        payload["health_path"] = _write_learning_health(project, payload, health_path=health_path)
+        payload["health_markdown_path"] = _write_learning_health_markdown(
+            project,
+            payload,
+            health_path=payload["health_path"],
+        )
+        _write_learning_health(project, payload, health_path=payload["health_path"])
+    return payload
+
+
 def _feedback_learning_policy(
     groups: list[dict[str, Any]],
     *,
@@ -1224,6 +1314,140 @@ def _learning_confidence(total: int, min_events: int, signal_strength: float) ->
     sample = min(1.0, total / max(1, min_events * 3))
     signal = max(0.0, min(1.0, signal_strength))
     return round(0.35 + sample * 0.45 + signal * 0.2, 3)
+
+
+def _learning_health_rule_counts(rules: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {"prefer": 0, "downgrade": 0, "observe": 0}
+    for rule in rules:
+        action = str(rule.get("action") or "")
+        if action == "prefer_candidates":
+            counts["prefer"] += 1
+        elif action == "downgrade_or_require_review":
+            counts["downgrade"] += 1
+        else:
+            counts["observe"] += 1
+    return counts
+
+
+def _learning_health_status(
+    *,
+    readiness: str,
+    event_count: int,
+    min_events: int,
+    rule_counts: dict[str, int],
+) -> str:
+    if readiness != "learning" or event_count < min_events:
+        return "cold_start"
+    if rule_counts.get("downgrade", 0) > rule_counts.get("prefer", 0):
+        return "needs_review"
+    if rule_counts.get("downgrade", 0):
+        return "watch"
+    return "healthy"
+
+
+def _learning_health_cards(evaluation: dict[str, Any], rules: list[dict[str, Any]], *, limit: int = 5) -> list[dict[str, Any]]:
+    cards: list[dict[str, Any]] = []
+    outcome_counts = evaluation.get("outcome_counts") or {}
+    event_count = int(evaluation.get("event_count") or 0)
+    if event_count == 0:
+        cards.append(
+            {
+                "kind": "cold_start",
+                "priority": 80,
+                "title": "No reviewed feedback yet",
+                "reason": "Automation needs accepted/rejected/deferred review outcomes before it can learn.",
+                "safe_action": "Start with review-summary cards and record feedback on only the obvious decisions.",
+            }
+        )
+    elif str(evaluation.get("readiness") or "") != "learning":
+        cards.append(
+            {
+                "kind": "collect_more_feedback",
+                "priority": 76,
+                "title": "Learning is still warming up",
+                "reason": f"{event_count} feedback events are available; more reviewed outcomes are needed.",
+                "safe_action": "Keep decisions feedback-only until the minimum event threshold is met.",
+            }
+        )
+    deferred = int(outcome_counts.get("deferred") or 0)
+    if deferred:
+        cards.append(
+            {
+                "kind": "deferred_review",
+                "priority": 68,
+                "title": "Some review cards were deferred",
+                "reason": f"{deferred} decisions were deferred and should not be treated as approval.",
+                "safe_action": "Keep deferred groups observable; do not convert them into auto-approval.",
+            }
+        )
+    for rule in rules:
+        selector = rule.get("selector") or {}
+        action = str(rule.get("action") or "")
+        if action == "downgrade_or_require_review":
+            cards.append(
+                {
+                    "kind": "downgrade_rule",
+                    "priority": 90,
+                    "title": _learning_selector_title(selector),
+                    "reason": rule.get("reason", ""),
+                    "safe_action": "Keep this group under review and inspect examples before widening automation.",
+                    "confidence": float(rule.get("confidence") or 0.0),
+                    "priority_multiplier": float(rule.get("priority_multiplier") or 1.0),
+                }
+            )
+        elif action == "prefer_candidates":
+            cards.append(
+                {
+                    "kind": "prefer_rule",
+                    "priority": 72,
+                    "title": _learning_selector_title(selector),
+                    "reason": rule.get("reason", ""),
+                    "safe_action": "Let ranking move these review cards earlier, but keep mutations policy-gated.",
+                    "confidence": float(rule.get("confidence") or 0.0),
+                    "priority_multiplier": float(rule.get("priority_multiplier") or 1.0),
+                }
+            )
+    cards.sort(key=lambda item: (-int(item.get("priority") or 0), -float(item.get("confidence") or 0.0), item.get("title", "")))
+    return cards[: max(1, min(int(limit or 5), 20))]
+
+
+def _learning_health_top_rules(rules: list[dict[str, Any]], *, limit: int = 5) -> list[dict[str, Any]]:
+    items = []
+    for rule in rules:
+        selector = rule.get("selector") or {}
+        items.append(
+            {
+                "source": selector.get("source", ""),
+                "memory_type": selector.get("memory_type", ""),
+                "category": selector.get("category", ""),
+                "action": rule.get("action", ""),
+                "total": int(rule.get("total") or 0),
+                "acceptance_rate": float(rule.get("acceptance_rate") or 0.0),
+                "average_score": float(rule.get("average_score") or 0.0),
+                "priority_multiplier": float(rule.get("priority_multiplier") or 1.0),
+                "confidence": float(rule.get("confidence") or 0.0),
+                "reason": rule.get("reason", ""),
+            }
+        )
+    items.sort(key=lambda item: (-float(item["confidence"]), -int(item["total"]), item["source"]))
+    return items[: max(1, min(int(limit or 5), 20))]
+
+
+def _learning_selector_title(selector: dict[str, Any]) -> str:
+    source = str(selector.get("source") or "(any source)")
+    memory_type = str(selector.get("memory_type") or "(any type)")
+    category = str(selector.get("category") or "(any category)")
+    return f"{source} / {memory_type} / {category}"
+
+
+def _learning_health_next_action(status: str) -> str:
+    if status == "cold_start":
+        return "Collect more review feedback before trusting learned ranking hints."
+    if status == "needs_review":
+        return "Inspect downgrade cards before widening automation policy or promotion rules."
+    if status == "watch":
+        return "Keep learned ranking enabled, but review downgraded groups in the next brief."
+    return "Use learning-health as a startup/dashboard signal; keep mutation policies separate."
 
 
 def _write_learning_policy(project: Path, learning_policy: dict[str, Any]) -> str:
@@ -1985,6 +2209,106 @@ def _write_review_summary_markdown(project: Path, payload: dict[str, Any], *, su
         "- no raw candidate content",
         "- no promotion, archive, or deletion",
         "- importance is a ranking hint only",
+        "",
+        f"Next action: {_md_text(payload.get('next_action', ''))}",
+    ]
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return _relative_to_project(project, path)
+
+
+def _write_learning_health(project: Path, payload: dict[str, Any], *, health_path: str | Path = "") -> str:
+    report_dir = project / "reports" / "automation"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    if health_path:
+        raw = Path(health_path)
+        path = raw if raw.is_absolute() else project / raw
+        try:
+            resolved = path.expanduser().resolve()
+            allowed = report_dir.expanduser().resolve()
+        except Exception as exc:
+            raise ValueError(f"unable to resolve automation learning health path: {exc}") from exc
+        if allowed != resolved and allowed not in resolved.parents:
+            raise ValueError("automation learning health path must stay under reports/automation")
+        path = resolved
+    else:
+        path = report_dir / "learning-health-latest.json"
+    data = dict(payload)
+    data["health_path"] = _relative_to_project(project, path)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return _relative_to_project(project, path)
+
+
+def _write_learning_health_markdown(project: Path, payload: dict[str, Any], *, health_path: str | Path) -> str:
+    json_path = project / health_path if not Path(health_path).is_absolute() else Path(health_path)
+    path = json_path.with_suffix(".md")
+    summary = payload.get("summary") or {}
+    cards = payload.get("cards") or []
+    rules = payload.get("top_rules") or []
+    lines = [
+        "# Vault Automation Learning Health",
+        "",
+        f"- generated: `{_md_text(payload.get('generated_at', ''))}`",
+        f"- status: `{_md_text(payload.get('status', ''))}`",
+        f"- readiness: `{_md_text(summary.get('readiness', ''))}`",
+        f"- events: `{int(summary.get('event_count') or 0)}`",
+        f"- positive rate: `{float(summary.get('positive_rate') or 0.0)}`",
+        f"- prefer / downgrade / observe: `{int(summary.get('prefer_rules') or 0)}` / `{int(summary.get('downgrade_rules') or 0)}` / `{int(summary.get('observe_rules') or 0)}`",
+        "",
+        "## Cards",
+        "",
+    ]
+    if cards:
+        lines += [
+            _md_row(["priority", "kind", "title", "why", "safe action"]),
+            _md_row(["---", "---", "---", "---", "---"]),
+        ]
+        for card in cards:
+            lines.append(
+                _md_row(
+                    [
+                        card.get("priority", ""),
+                        card.get("kind", ""),
+                        card.get("title", ""),
+                        card.get("reason", ""),
+                        card.get("safe_action", ""),
+                    ]
+                )
+            )
+    else:
+        lines.append("No learning-health cards.")
+    lines += [
+        "",
+        "## Top Rules",
+        "",
+    ]
+    if rules:
+        lines += [
+            _md_row(["source", "type", "category", "action", "confidence", "multiplier"]),
+            _md_row(["---", "---", "---", "---", "---", "---"]),
+        ]
+        for rule in rules:
+            lines.append(
+                _md_row(
+                    [
+                        rule.get("source", ""),
+                        rule.get("memory_type", ""),
+                        rule.get("category", ""),
+                        rule.get("action", ""),
+                        rule.get("confidence", ""),
+                        rule.get("priority_multiplier", ""),
+                    ]
+                )
+            )
+    else:
+        lines.append("No learned rules yet.")
+    lines += [
+        "",
+        "## Safety",
+        "",
+        "- read-only health panel",
+        "- no raw feedback reasons",
+        "- no promotion, archive, or deletion",
+        "- learning is a ranking hint only",
         "",
         f"Next action: {_md_text(payload.get('next_action', ''))}",
     ]

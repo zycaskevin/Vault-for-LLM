@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [0.6.102] - 2026-06-25
+
+### Added
+
+- Added `vault automation learning-health`, a read-only dashboard surface for accepted/rejected/deferred automation feedback and bounded learning-policy rules.
+- Learning health can write `reports/automation/learning-health-latest.json` and `.md` for dashboards, startup handoffs, and scheduled review.
+
+### Changed
+
+- Automation learning now has a compact health status (`cold_start`, `healthy`, `watch`, or `needs_review`) before humans inspect full eval output.
+
 ## [0.6.101] - 2026-06-24
 
 ### Added

@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## [0.6.83] - 2026-06-24
+
+### Added
+
+- `vault update-status` and `vault agent status` now accept `--agent <id>` to add a focused startup check for the current Agent runtime.
+- MCP `vault_update_status` now accepts `agent_id`, returning `current_agent_notice`, `current_agent_needs_attention`, and a `startup_checklist` without adding another MCP tool.
+- `vault setup-agent` now writes MCP startup and update-status contracts with the configured Agent id, so each runtime can see its own upgrade/restart advice first.
+- Added a decision record for the Agent-focused startup check.
+
 ## [0.6.82] - 2026-06-24
 
 ### Added

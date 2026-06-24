@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.82.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.83.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,7 +83,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.82"
+pip install "vault-for-llm[mcp]==0.6.83"
 
 vault setup-agent
 ```
@@ -105,6 +105,12 @@ Use `vault update-status --read-status` or MCP `read_status=true` to read that
 shared machine notice without recomputing or contacting PyPI. `setup-agent`
 writes `agent-install/README-update-status.md`, cron, LaunchAgent, and a JSON
 contract so every local Agent can follow the same startup rule.
+Pass `--agent <id>` or MCP `agent_id` when a runtime wants its own focused
+startup checklist:
+
+```bash
+vault update-status --read-status --agent codex
+```
 
 The default memory layout is hybrid: shared project memory stays in the project
 vault, while each Agent gets a private local vault for identity, preferences,
@@ -139,7 +145,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.82"
+pip install "vault-for-llm[mcp]==0.6.83"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -365,7 +371,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.82"
+pip install "vault-for-llm[supabase]==0.6.83"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

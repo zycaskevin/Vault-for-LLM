@@ -1926,6 +1926,11 @@ TOOLS = [
                     "description": "Read existing ~/.vault-for-llm/update-status.json without recomputing. Defaults false.",
                     "default": False,
                 },
+                "agent_id": {
+                    "type": "string",
+                    "description": "Optional Agent/runtime id for a focused startup checklist.",
+                    "default": "",
+                },
                 "write_status": {
                     "type": "boolean",
                     "description": "Write ~/.vault-for-llm/update-status.json. Defaults false.",
@@ -2619,7 +2624,7 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
             return {"result": json.dumps(stats, ensure_ascii=False, indent=2)}
 
         elif name == "vault_update_status":
-            from vault.agent_registry import build_update_status, read_update_status, write_update_status
+            from vault.agent_registry import build_update_status, focus_update_status_for_agent, read_update_status, write_update_status
 
             if bool(arguments.get("read_status", False)) and bool(arguments.get("write_status", False)):
                 payload = {
@@ -2627,8 +2632,9 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     "error": "read_status cannot be combined with write_status",
                 }
                 return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
+            agent_id = str(arguments.get("agent_id") or "")
             if bool(arguments.get("read_status", False)):
-                payload = read_update_status()
+                payload = read_update_status(agent_id=agent_id)
             else:
                 payload = build_update_status(
                     latest_version=str(arguments.get("latest_version") or ""),
@@ -2636,6 +2642,8 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 )
             if bool(arguments.get("write_status", False)) and not bool(arguments.get("read_status", False)):
                 payload["status_path"] = str(write_update_status(payload))
+            if agent_id and not bool(arguments.get("read_status", False)):
+                payload = focus_update_status_for_agent(payload, agent_id)
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 
         elif name == "vault_converge":

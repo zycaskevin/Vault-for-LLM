@@ -2887,7 +2887,7 @@ def cmd_setup_agent(args):
 
 def cmd_agent(args):
     """Local agent registry commands."""
-    from vault.agent_registry import build_update_status, list_agents, read_update_status, register_agent
+    from vault.agent_registry import build_update_status, focus_update_status_for_agent, list_agents, read_update_status, register_agent
 
     action = getattr(args, "agent_action", None)
     if action == "register":
@@ -2936,7 +2936,7 @@ def cmd_agent(args):
         if args.read_status and args.write_status:
             raise SystemExit("--read-status cannot be combined with --write-status")
         if args.read_status:
-            payload = read_update_status()
+            payload = read_update_status(agent_id=args.agent or "")
         else:
             payload = build_update_status(
                 latest_version=args.latest_version,
@@ -2946,6 +2946,8 @@ def cmd_agent(args):
             from vault.agent_registry import write_update_status
 
             payload["status_path"] = str(write_update_status(payload))
+        if args.agent and not args.read_status:
+            payload = focus_update_status_for_agent(payload, args.agent)
         if args.json or args.pretty:
             _json_print(payload, pretty=args.pretty)
             return
@@ -2957,12 +2959,12 @@ def cmd_agent(args):
 
 def cmd_update_status(args):
     """Show local Vault runtime update and agent registry status."""
-    from vault.agent_registry import build_update_status, read_update_status, write_update_status
+    from vault.agent_registry import build_update_status, focus_update_status_for_agent, read_update_status, write_update_status
 
     if args.read_status and args.write_status:
         raise SystemExit("--read-status cannot be combined with --write-status")
     if args.read_status:
-        payload = read_update_status()
+        payload = read_update_status(agent_id=args.agent or "")
     else:
         payload = build_update_status(
             latest_version=args.latest_version,
@@ -2970,6 +2972,8 @@ def cmd_update_status(args):
         )
     if args.write_status and not args.read_status:
         payload["status_path"] = str(write_update_status(payload))
+    if args.agent and not args.read_status:
+        payload = focus_update_status_for_agent(payload, args.agent)
     if args.json or args.pretty:
         _json_print(payload, pretty=args.pretty)
         return
@@ -2981,8 +2985,14 @@ def _print_update_status(payload: dict) -> None:
         print("Vault update status")
         print(f"  status_path: {payload.get('status_path', '')}")
         print(f"  missing: {payload.get('missing')}")
+        if payload.get("startup_agent_id"):
+            print(f"  startup_agent: {payload['startup_agent_id']}")
         if payload.get("message"):
             print(f"  message: {payload['message']}")
+        if payload.get("startup_checklist"):
+            print("Startup checklist:")
+            for step in payload["startup_checklist"]:
+                print(f"  {step}")
         return
     print("Vault update status")
     print(f"  installed_version: {payload['installed_version']}")
@@ -2990,6 +3000,13 @@ def _print_update_status(payload: dict) -> None:
     print(f"  update_available: {payload['update_available']}")
     if payload.get("latest_version_error"):
         print(f"  latest_version_error: {payload['latest_version_error']}")
+    if payload.get("startup_agent_id"):
+        print(f"  startup_agent: {payload['startup_agent_id']}")
+        print(f"  startup_agent_registered: {payload.get('startup_agent_registered', False)}")
+        print(f"  current_agent_needs_attention: {payload.get('current_agent_needs_attention', False)}")
+        action = payload.get("current_agent_recommended_action")
+        if action:
+            print(f"  current_agent_recommended_action: {action}")
     print(f"  registry: {payload['registry_path']}")
     print(f"  agents: {payload['agent_count']}")
     for agent in payload.get("agents", []):
@@ -3020,6 +3037,10 @@ def _print_update_status(payload: dict) -> None:
     print("Next steps:")
     for step in payload.get("next_steps", []):
         print(f"  {step}")
+    if payload.get("startup_checklist"):
+        print("Startup checklist:")
+        for step in payload["startup_checklist"]:
+            print(f"  {step}")
 
 # ── CLI 入口 ─────────────────────────────────────────────
 
@@ -3211,6 +3232,7 @@ def main(argv: list[str] | None = None):
     p.add_argument("--check-pypi", action="store_true", help="連線 PyPI 查詢最新版本")
     p.add_argument("--read-status", action="store_true", help="讀取既有 ~/.vault-for-llm/update-status.json，不重新計算")
     p.add_argument("--write-status", action="store_true", help="寫入 ~/.vault-for-llm/update-status.json")
+    p.add_argument("--agent", default="", help="聚焦特定 Agent/runtime 的啟動檢查")
     p.add_argument("--json", action="store_true", help="輸出 JSON")
     p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
@@ -3243,6 +3265,7 @@ def main(argv: list[str] | None = None):
     ap.add_argument("--check-pypi", action="store_true", help="連線 PyPI 查詢最新版本")
     ap.add_argument("--read-status", action="store_true", help="讀取既有 ~/.vault-for-llm/update-status.json，不重新計算")
     ap.add_argument("--write-status", action="store_true", help="寫入 ~/.vault-for-llm/update-status.json")
+    ap.add_argument("--agent", default="", help="聚焦特定 Agent/runtime 的啟動檢查")
     ap.add_argument("--json", action="store_true", help="輸出 JSON")
     ap.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 

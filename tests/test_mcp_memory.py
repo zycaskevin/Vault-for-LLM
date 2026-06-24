@@ -127,12 +127,17 @@ def test_mcp_update_status_reports_agent_registry(tmp_path, monkeypatch):
             "vault_update_status",
             {
                 "read_status": True,
+                "agent_id": "codex",
             },
         )
     )
     assert read_payload["ok"] is True
     assert read_payload["action"] == "read_status"
     assert read_payload["agent_update_notices"][0]["latest_known_version"] == "9.9.9"
+    assert read_payload["startup_agent_id"] == "codex"
+    assert read_payload["startup_agent_registered"] is True
+    assert read_payload["current_agent_needs_attention"] is True
+    assert any("vault automation handoff" in step for step in read_payload["startup_checklist"])
 
     conflict_payload = _payload(
         handle_tool_call(

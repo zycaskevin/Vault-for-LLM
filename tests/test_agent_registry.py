@@ -55,13 +55,24 @@ def test_agent_register_and_update_status_cli(tmp_path, monkeypatch, capsys):
     assert "9.9.9" in notice["recommended_action"]
     assert (tmp_path / "registry" / "update-status.json").exists()
 
-    main(["update-status", "--read-status", "--json"])
+    main(["update-status", "--latest-version", "9.9.9", "--write-status", "--agent", "codex", "--json"])
+    focused_write = json.loads(capsys.readouterr().out)
+    stored_status = json.loads((tmp_path / "registry" / "update-status.json").read_text(encoding="utf-8"))
+    assert focused_write["startup_agent_id"] == "codex"
+    assert "startup_agent_id" not in stored_status
+
+    main(["update-status", "--read-status", "--agent", "codex", "--json"])
     read_status = json.loads(capsys.readouterr().out)
     assert read_status["ok"] is True
     assert read_status["action"] == "read_status"
     assert read_status["status_path"] == str(tmp_path / "registry" / "update-status.json")
     assert read_status["agent_update_notice_count"] == 1
     assert read_status["agent_update_notices"][0]["latest_known_version"] == "9.9.9"
+    assert read_status["startup_agent_id"] == "codex"
+    assert read_status["startup_agent_registered"] is True
+    assert read_status["current_agent_needs_attention"] is True
+    assert "9.9.9" in read_status["current_agent_recommended_action"]
+    assert any("vault automation handoff" in step for step in read_status["startup_checklist"])
 
 
 def test_update_status_read_missing_file_is_non_fatal(tmp_path, monkeypatch, capsys):
@@ -69,12 +80,14 @@ def test_update_status_read_missing_file_is_non_fatal(tmp_path, monkeypatch, cap
 
     monkeypatch.setenv("VAULT_AGENT_REGISTRY_DIR", str(tmp_path / "registry"))
 
-    main(["update-status", "--read-status", "--json"])
+    main(["update-status", "--read-status", "--agent", "codex", "--json"])
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is False
     assert payload["missing"] is True
+    assert payload["startup_agent_id"] == "codex"
     assert payload["status_path"] == str(tmp_path / "registry" / "update-status.json")
     assert "write-status" in payload["message"]
+    assert any("write-status" in step for step in payload["startup_checklist"])
 
 
 def test_build_update_status_reports_agent_versions_behind_current_runtime(tmp_path, monkeypatch):

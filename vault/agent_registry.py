@@ -181,6 +181,7 @@ def build_update_status(
     *,
     latest_version: str | None = None,
     check_pypi: bool = False,
+    agent_id: str = "",
     path: str | Path | None = None,
 ) -> dict[str, Any]:
     registry = list_agents(path)
@@ -226,7 +227,50 @@ def build_update_status(
             agent_update_notices=agent_update_notices,
         ),
     }
+    if agent_id:
+        payload = focus_update_status_for_agent(payload, agent_id)
     return payload
+
+
+def focus_update_status_for_agent(payload: dict[str, Any], agent_id: str) -> dict[str, Any]:
+    """Add a per-Agent startup checklist without changing the global status."""
+    focused = dict(payload)
+    safe_id = safe_agent_id(agent_id, default="")
+    if not safe_id:
+        return focused
+    agents = focused.get("agents") if isinstance(focused.get("agents"), list) else []
+    notices = focused.get("agent_update_notices") if isinstance(focused.get("agent_update_notices"), list) else []
+    agent_entry = next((item for item in agents if item.get("agent_id") == safe_id), {})
+    notice = next((item for item in notices if item.get("agent_id") == safe_id), {})
+    needs_attention = bool(notice.get("needs_attention"))
+    recommended_action = str(notice.get("recommended_action") or "").strip()
+    checklist: list[str] = []
+    if focused.get("missing"):
+        checklist.append("Create the machine update status with `vault update-status --write-status`.")
+    elif notice:
+        if needs_attention:
+            checklist.append(recommended_action or "Review this Agent runtime before using shared memory.")
+        else:
+            checklist.append("This Agent runtime is current for the known version source.")
+    else:
+        checklist.append("Register this Agent with `vault setup-agent` or `vault agent register`.")
+    project_dir = str(agent_entry.get("project_dir") or "").strip()
+    if project_dir:
+        checklist.append(f"Read startup handoff: vault automation handoff --project-dir {project_dir}")
+    elif focused.get("projects"):
+        checklist.append("Select the intended project vault before reading memory.")
+    focused.update(
+        {
+            "startup_agent_id": safe_id,
+            "startup_agent_registered": bool(agent_entry),
+            "current_agent": agent_entry,
+            "current_agent_notice": notice,
+            "current_agent_needs_attention": needs_attention,
+            "current_agent_recommended_action": recommended_action,
+            "startup_checklist": checklist,
+        }
+    )
+    return focused
 
 
 def build_agent_update_notices(
@@ -307,17 +351,20 @@ def write_update_status(payload: dict[str, Any], path: str | Path | None = None)
     return status_file
 
 
-def read_update_status(path: str | Path | None = None) -> dict[str, Any]:
+def read_update_status(path: str | Path | None = None, *, agent_id: str = "") -> dict[str, Any]:
     """Read the machine-level update status without recomputing it."""
     status_file = Path(path).expanduser() if path else update_status_path()
     if not status_file.exists():
-        return {
+        payload = {
             "ok": False,
             "action": "read_status",
             "missing": True,
             "status_path": str(status_file),
             "message": "No update status file found. Run `vault update-status --write-status` to create one.",
         }
+        if agent_id:
+            payload = focus_update_status_for_agent(payload, agent_id)
+        return payload
     try:
         payload = json.loads(status_file.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -327,4 +374,6 @@ def read_update_status(path: str | Path | None = None) -> dict[str, Any]:
     payload.setdefault("ok", True)
     payload["action"] = "read_status"
     payload["status_path"] = str(status_file)
+    if agent_id:
+        payload = focus_update_status_for_agent(payload, agent_id)
     return payload

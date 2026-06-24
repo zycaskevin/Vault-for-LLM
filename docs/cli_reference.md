@@ -61,9 +61,10 @@ changed notes without duplicating unchanged ones.
 | `vault update-status` | Show installed Vault version, local Agent registry, project vaults, per-Agent update notices, and startup handoff commands |
 | `vault update-status --check-pypi --write-status --json` | Check PyPI for the latest release and write the machine-level update notice to `~/.vault-for-llm/update-status.json` |
 | `vault update-status --read-status --json` | Read the existing machine-level update notice without recomputing or contacting PyPI |
+| `vault update-status --read-status --agent codex --json` | Read the shared notice and add a focused startup checklist for one Agent/runtime |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.6.82` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.6.83` | Show the same registry/update status without contacting the network |
 
 `vault install-agent` is an alias for `vault setup-agent`.
 Interactive setup asks before installing optional dependencies. Non-interactive

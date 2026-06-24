@@ -1563,11 +1563,13 @@ def write_mcp_startup_guide(
                 "tool": "vault_update_status",
                 "arguments": {
                     "read_status": True,
+                    "agent_id": safe_agent,
                 },
                 "fallback_arguments": {
                     "latest_version": "",
                     "check_pypi": False,
                     "write_status": False,
+                    "agent_id": safe_agent,
                 },
                 "purpose": "Read installed version, local Agent registry, shared/private vault paths, and startup commands.",
             },
@@ -1635,7 +1637,7 @@ def write_mcp_startup_guide(
                 "",
                 "Startup sequence:",
                 "",
-                "1. `vault_update_status` with `read_status=true`",
+                f"1. `vault_update_status` with `read_status=true` and `agent_id={safe_agent}`",
                 "2. `vault_automation_handoff`",
                 "3. `vault_search` only when more context is needed",
                 "4. `vault_read_range` before citing memory",
@@ -1662,6 +1664,7 @@ def write_mcp_startup_guide(
 def write_update_status_templates(
     *,
     output_dir: str | Path,
+    agent: str = "generic",
     vault_executable: str = "vault",
     interval_minutes: int = 60,
 ) -> dict[str, str]:
@@ -1669,21 +1672,25 @@ def write_update_status_templates(
 
     out = Path(output_dir).expanduser().resolve()
     out.mkdir(parents=True, exist_ok=True)
+    safe_agent = _safe_slug(agent, default="generic")
     status_path = update_status_path()
     write_command = [vault_executable, "update-status", "--write-status", "--json"]
-    read_command = [vault_executable, "update-status", "--read-status", "--json"]
+    read_command = [vault_executable, "update-status", "--read-status", "--agent", safe_agent, "--json"]
+    focus_command = [vault_executable, "update-status", "--agent", safe_agent, "--json"]
     contract = {
         "version": 1,
+        "agent": safe_agent,
         "status_path": str(status_path),
         "read_command": shell_join(read_command),
         "write_command": shell_join(write_command),
+        "focus_command": shell_join(focus_command),
         "mcp_read": {
             "tool": "vault_update_status",
-            "arguments": {"read_status": True},
+            "arguments": {"read_status": True, "agent_id": safe_agent},
         },
         "mcp_fallback": {
             "tool": "vault_update_status",
-            "arguments": {"latest_version": "", "check_pypi": False, "write_status": False},
+            "arguments": {"latest_version": "", "check_pypi": False, "write_status": False, "agent_id": safe_agent},
         },
         "mcp_write": {
             "tool": "vault_update_status",
@@ -1748,7 +1755,7 @@ def write_update_status_templates(
                 "",
                 "MCP startup:",
                 "",
-                "1. call `vault_update_status` with `read_status=true`",
+                f"1. call `vault_update_status` with `read_status=true` and `agent_id={safe_agent}`",
                 "2. if the result has `missing=true`, call `vault_update_status` with `check_pypi=false`",
                 "3. only set `check_pypi=true` when the user asks for a live online version check",
                 "",
@@ -1757,6 +1764,7 @@ def write_update_status_templates(
                 "- this is metadata only: versions, registered Agents, vault paths, and handoff commands",
                 "- it is not an auto-upgrader",
                 "- one updated runtime can write the status; other runtimes can read it",
+                "- each runtime should pass its own `agent_id` to get `current_agent_notice` and `startup_checklist`",
                 "- install or upgrade each Agent environment explicitly",
                 "",
                 f"Cron example: `{cron_path.name}`",
@@ -2664,6 +2672,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
     result["next_steps"].append(f"Review MCP startup guide: {result['mcp_startup']['readme']}")
     result["update_status_templates"] = write_update_status_templates(
         output_dir=template_dir,
+        agent=config.agent,
     )
     result["next_steps"].append(f"Review Agent update status guide: {result['update_status_templates']['readme']}")
     result["local_smoke"] = write_local_smoke_template(

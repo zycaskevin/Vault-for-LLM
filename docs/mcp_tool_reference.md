@@ -119,6 +119,7 @@ agents, shared/private vault paths, and suggested startup handoff commands.
   "latest_version": "",
   "check_pypi": false,
   "read_status": false,
+  "agent_id": "",
   "write_status": false
 }
 ```
@@ -126,7 +127,9 @@ agents, shared/private vault paths, and suggested startup handoff commands.
 Agent rule: keep `check_pypi=false` during normal startup unless the user asks
 for a live update check. Prefer `read_status=true` first when another local
 runtime may already have written `~/.vault-for-llm/update-status.json`. Keep
-`write_status=false` unless a durable local status file is needed.
+`write_status=false` unless a durable local status file is needed. Pass
+`agent_id` when the runtime wants `current_agent_notice` and `startup_checklist`
+for itself.
 
 ### `vault_automation_handoff`
 

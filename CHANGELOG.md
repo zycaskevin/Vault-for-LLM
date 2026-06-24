@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.85] - 2026-06-24
+
+### Added
+
+- Added `vault agent doctor` and `vault update-status --doctor` to verify that the shared update notice exists, is fresh, includes every registered Agent, and shows which runtimes need attention.
+- `vault setup-agent` now writes `agent-install/refresh-update-status.sh` and `README-agent-update-rollout.md` so one upgraded runtime can refresh the shared local notice for all other runtimes.
+- Added tests for stale/missing update-status health, Agent attention detection, and generated rollout templates.
+
 ## [0.6.84] - 2026-06-24
 
 ### Added

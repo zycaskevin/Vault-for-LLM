@@ -62,9 +62,11 @@ changed notes without duplicating unchanged ones.
 | `vault update-status --check-pypi --write-status --json` | Check PyPI for the latest release and write the machine-level update notice to `~/.vault-for-llm/update-status.json` |
 | `vault update-status --read-status --json` | Read the existing machine-level update notice without recomputing or contacting PyPI |
 | `vault update-status --read-status --agent codex --json` | Read the shared notice and add a focused startup checklist for one Agent/runtime |
+| `vault update-status --doctor --json` | Check whether the shared update notice exists, is fresh, includes every registered Agent, and shows runtime attention |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.6.84` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.6.85` | Show the same registry/update status without contacting the network |
+| `vault agent doctor --json` | Run the same shared update-distribution health check through the Agent registry namespace |
 
 `vault install-agent` is an alias for `vault setup-agent`.
 Interactive setup asks before installing optional dependencies. Non-interactive
@@ -76,6 +78,8 @@ same project vault and startup handoff path through `vault update-status`.
 The status payload includes `agent_update_notices`; if one Agent updates Vault
 and writes status, other local runtimes can see whether their registered
 environment is behind the current or latest known version.
+Use `vault agent doctor` after upgrades to verify the shared notice is fresh and
+all registered runtimes appear in the update notice.
 MCP-capable runtimes can call `vault_update_status` and
 `vault_automation_handoff` from the `core` profile for the same startup path.
 The default memory layout is `hybrid`: setup creates the shared project vault

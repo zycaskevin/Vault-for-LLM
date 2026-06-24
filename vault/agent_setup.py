@@ -2012,6 +2012,114 @@ def write_agent_adapter_startup_templates(
     contract_path = out / "adapter-startup-contract.json"
     contract_path.write_text(json.dumps(contract, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
+    runtime_playbook = {
+        "version": 1,
+        "purpose": "Keep multiple local Agent runtimes on the same machine pointed at one shared Vault update notice.",
+        "agent": safe_agent,
+        "project_dir": str(project_path),
+        "status_file": "~/.vault-for-llm/update-status.json",
+        "startup_rule": [
+            "Read existing update status for this runtime.",
+            "If status is missing, compute local status without a live PyPI check.",
+            "Run doctor mode when freshness or rollout state is unclear.",
+            "Read automation handoff before searching deeper memory.",
+            "Search/read only when the task needs more context.",
+        ],
+        "after_upgrade_rule": [
+            "Only the runtime that upgraded Vault should refresh the shared notice.",
+            "Run vault update-status --write-status.",
+            "Run vault agent doctor or MCP doctor=true.",
+            "Other runtimes should read their focused notice and restart or upgrade only with user approval.",
+        ],
+        "mcp": {
+            "read": {
+                "tool": "vault_update_status",
+                "arguments": {"read_status": True, "agent_id": safe_agent},
+            },
+            "doctor": {
+                "tool": "vault_update_status",
+                "arguments": {"doctor": True, "agent_id": safe_agent, "max_status_age_minutes": 24 * 60},
+            },
+            "handoff": {
+                "tool": "vault_automation_handoff",
+                "arguments": {"source": "auto", "handoff_path": ""},
+            },
+        },
+        "cli": {
+            "read": shell_join(read_status_command),
+            "fallback": shell_join(fallback_status_command),
+            "refresh": f"{vault_executable} update-status --write-status",
+            "doctor": f"{vault_executable} agent doctor",
+            "handoff": shell_join(handoff_command),
+        },
+        "runtime_targets": {
+            "codex": "project AGENTS.md or Codex project instructions",
+            "claude_code": "project CLAUDE.md or Claude Code project memory",
+            "openclaw": "OpenClaw workspace bootstrap or skill instructions",
+            "hermes": "Hermes profile AGENTS.md, MEMORY.md, or runtime bootstrap",
+        },
+        "safety": {
+            "auto_upgrade": False,
+            "auto_restart": False,
+            "check_pypi_default": False,
+            "one_shared_project_vault": True,
+            "private_agent_memory_stays_private": True,
+        },
+    }
+    runtime_playbook_path = out / "runtime-update-playbook.json"
+    runtime_playbook_path.write_text(
+        json.dumps(runtime_playbook, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    runtime_playbook_readme_path = out / "README-runtime-update-playbook.md"
+    runtime_playbook_readme_path.write_text(
+        "\n".join(
+            [
+                "# Runtime Update Playbook",
+                "",
+                "Use this when Codex, Claude Code, OpenClaw, Hermes Agent, or another local runtime shares the same Vault project.",
+                "",
+                "Goal: every runtime can discover the same project vault, the same update notice, and the same compact handoff without each runtime inventing its own memory database.",
+                "",
+                "Startup rule:",
+                "",
+                f"1. Read this runtime's focused status: `{shell_join(read_status_command)}`.",
+                f"2. If missing, compute local status without a live PyPI check: `{shell_join(fallback_status_command)}`.",
+                "3. If the notice is stale, missing Agents, or upgrade state is unclear, run MCP doctor: `vault_update_status` with `doctor=true` and this runtime's `agent_id`.",
+                f"4. Read the compact handoff: `{shell_join(handoff_command)}`.",
+                "5. Search/read only when the task needs deeper context.",
+                "",
+                "After one runtime upgrades Vault:",
+                "",
+                f"1. Refresh the shared notice: `{vault_executable} update-status --write-status`.",
+                f"2. Verify rollout health: `{vault_executable} agent doctor`.",
+                "3. MCP-only runtimes use `vault_update_status` with `doctor=true` instead.",
+                "4. Other runtimes may restart or upgrade only with user approval.",
+                "",
+                "Where to paste the matching startup template:",
+                "",
+                "| Runtime | Generated file | Suggested target |",
+                "|---|---|---|",
+                "| Codex | `codex-startup.md` | project `AGENTS.md` or Codex project instructions |",
+                "| Claude Code | `claude-code-startup.md` | project `CLAUDE.md` or Claude Code project memory |",
+                "| OpenClaw | `openclaw-startup.md` | OpenClaw workspace bootstrap or skill instructions |",
+                "| Hermes Agent | `hermes-startup.md` | Hermes profile `AGENTS.md`, `MEMORY.md`, or runtime bootstrap |",
+                "",
+                "Safety boundary:",
+                "",
+                "- This playbook is not an auto-upgrader.",
+                "- It does not restart another runtime.",
+                "- It does not read raw transcripts by default.",
+                "- It assumes one shared project vault plus optional private per-Agent memory.",
+                "- It keeps `check_pypi=false` unless the user asks for a live network version check.",
+                "",
+                f"Machine-readable playbook: `{runtime_playbook_path.name}`",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
     def adapter_markdown(title: str, *, target: str, note: str, openclaw: bool = False) -> str:
         lines = [
             f"# {title}",
@@ -2070,7 +2178,11 @@ def write_agent_adapter_startup_templates(
         )
         return "\n".join(lines)
 
-    files: dict[str, str] = {"contract": str(contract_path)}
+    files: dict[str, str] = {
+        "contract": str(contract_path),
+        "runtime_playbook": str(runtime_playbook_path),
+        "runtime_playbook_readme": str(runtime_playbook_readme_path),
+    }
     for adapter_id, adapter in adapters.items():
         filename = adapter["file"]
         path = out / filename
@@ -2107,6 +2219,8 @@ def write_agent_adapter_startup_templates(
                 "- `openclaw-startup.md`",
                 "- `hermes-startup.md`",
                 "- `adapter-startup-contract.json`",
+                "- `runtime-update-playbook.json`",
+                "- `README-runtime-update-playbook.md`",
                 "",
                 "What each Agent should do at startup:",
                 "",
@@ -2127,6 +2241,7 @@ def write_agent_adapter_startup_templates(
                 "- tool profiles reduce token/schema size but are not an authorization boundary",
                 "",
                 f"MCP server command: `{shell_join(mcp_command)}`",
+                f"Runtime update playbook: `{runtime_playbook_readme_path.name}`",
                 "",
             ]
         ),
@@ -3037,6 +3152,9 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         agent=config.agent,
     )
     result["next_steps"].append(f"Review Agent adapter startup guide: {result['agent_adapter_startup']['readme']}")
+    result["next_steps"].append(
+        f"Review runtime update playbook: {result['agent_adapter_startup']['runtime_playbook_readme']}"
+    )
     result["local_smoke"] = write_local_smoke_template(
         output_dir=template_dir,
         project_dir=project_path,

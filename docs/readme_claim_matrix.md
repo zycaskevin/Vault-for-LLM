@@ -1,7 +1,7 @@
 # README Claim Matrix
 
 Generated: 2026-06-23
-Scope: public README feature/capability claims after the v0.6.86 multi-Agent update notice update. Localized README files should mirror the same maturity and non-goal language.
+Scope: public README feature/capability claims after the v0.6.87 multi-Agent update notice update. Localized README files should mirror the same maturity and non-goal language.
 
 ## Maturity Tiers
 
@@ -17,8 +17,8 @@ Scope: public README feature/capability claims after the v0.6.86 multi-Agent upd
 |---|---|---|---|---|
 | C01 | Vault-for-LLM is local-first project memory for AI agents. | stable | Base storage is Markdown plus SQLite; `vault init/add/compile/search` works locally. | README command smoke passes. |
 | C02 | Vault does not replace models, wikis, Obsidian, or hosted memory systems. | positioning | README and docs frame Vault as the governed layer between human notes and agent access. | Product positioning only. |
-| C03 | Agent-driven install is the recommended path. | usable | `vault setup-agent` and `vault install-agent` generate project setup, optional feature guidance, stable venv scripts, sync templates, local agent registry entries, hybrid vault layout manifests, MCP startup guides, update-status install packs, update rollout health scripts, common Agent adapter startup templates, and smoke-test next steps. | `tests/test_agent_setup.py` and `tests/test_agent_registry.py` pass; PyPI smoke is part of release closeout. |
-| C04 | Manual quickstart works from PyPI. | stable | `vault-for-llm[mcp]==0.6.86` installs and exposes `vault`. | Clean Python 3.11 PyPI install smoke is part of release closeout. |
+| C03 | Agent-driven install is the recommended path. | usable | `vault setup-agent` and `vault install-agent` generate project setup, optional feature guidance, stable venv scripts, sync templates, local agent registry entries, hybrid vault layout manifests, MCP startup guides, update-status install packs, update rollout health scripts, runtime update playbooks, common Agent adapter startup templates, and smoke-test next steps. | `tests/test_agent_setup.py` and `tests/test_agent_registry.py` pass; PyPI smoke is part of release closeout. |
+| C04 | Manual quickstart works from PyPI. | stable | `vault-for-llm[mcp]==0.6.87` installs and exposes `vault`. | Clean Python 3.11 PyPI install smoke is part of release closeout. |
 | C05 | MCP lets agents start from status/handoff, search, read bounded ranges, propose memory, inspect stats, and diagnose update rollout health. | usable | `vault-mcp` exposes the core tool profile: `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats`, `vault_update_status`, `vault_automation_handoff`. `vault_update_status` includes per-Agent update notices from the local registry, can read existing `update-status.json` with `read_status=true`, can return `current_agent_notice` plus `startup_checklist` when `agent_id` is provided, and can run the update-distribution health check with `doctor=true` without adding another MCP tool. | MCP tests and README command smoke pass. |
 | C06 | L0-L3 are depth layers, not access-control boundaries by themselves. | stable docs / usable implementation | Schema supports `layer`; governance metadata handles `scope`, `sensitivity`, `owner_agent`, `allowed_agents`, `memory_type`, and expiry. | Access-policy and MCP/read tests pass. |
 | C07 | Usage counters can influence ranking only as a small boost. | usable-alpha | Search uses `access_count`, `citation_count`, and `last_accessed_at` as a saturated rerank signal. | Usage/rerank tests pass. |
@@ -46,14 +46,14 @@ Recent release and README cleanup verification used:
 ```bash
 python scripts/readme_command_smoke.py
 python scripts/public_pr_gate.py
-python scripts/check_release_parity.py --tag v0.6.86
+python scripts/check_release_parity.py --tag v0.6.87
 python -m pytest tests/test_session_capture.py tests/test_agent_setup.py tests/test_automation.py tests/test_cli_project_dir.py tests/test_release_parity.py -q
 ```
 
-For release v0.6.86, clean Python 3.11 PyPI install closeout should verify:
+For release v0.6.87, clean Python 3.11 PyPI install closeout should verify:
 
-- `vault-for-llm[mcp]==0.6.86` installs from PyPI.
-- `vault --version` returns `vault-for-llm 0.6.86`.
+- `vault-for-llm[mcp]==0.6.87` installs from PyPI.
+- `vault --version` returns `vault-for-llm 0.6.87`.
 - `vault capture discover` lists likely transcript exports without reading transcript content.
 - `vault capture session <transcript>` previews session-derived candidates and `--write-candidates` writes gated candidates only.
 - MCP `vault_capture_discover` is available in review/maintenance profiles, hidden from the core profile, and returns a `capture_path` that can feed MCP `vault_capture_session`.
@@ -75,6 +75,7 @@ For release v0.6.86, clean Python 3.11 PyPI install closeout should verify:
 - `vault setup-agent` writes `agent-install/README-update-status.md`, `update-status-contract.json`, `update-status.cron`, and `update-status.launchagent.plist`.
 - `vault setup-agent` writes `agent-install/refresh-update-status.sh` and `README-agent-update-rollout.md`.
 - `vault setup-agent` writes `agent-install/README-agent-adapters.md`, `codex-startup.md`, `claude-code-startup.md`, `openclaw-startup.md`, `hermes-startup.md`, and `adapter-startup-contract.json`.
+- `vault setup-agent` writes `agent-install/README-runtime-update-playbook.md` and `runtime-update-playbook.json`.
 - MCP `vault_automation_inbox` is available in review/maintenance profiles and hidden from the core profile.
 - `vault candidate-review` and MCP `vault_memory_review` record rejected/blocked feedback events.
 - Dream can write `consolidation_suggestion` candidates for duplicate groups without changing active knowledge.

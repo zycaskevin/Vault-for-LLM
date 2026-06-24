@@ -58,7 +58,7 @@ Vault-for-LLM 可能不是第一個該拿起來的工具。
 最推薦的方式，是直接把這段交給能執行本機指令的 Agent：
 
 ```text
-幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.86。
+幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.87。
 先問我要 shared、private、domain-specific 還是 temporary vault。
 詢問穩定的 project directory，並為長期任務產生 stable venv script。
 逐項詢問 MCP、semantic search、Supabase、Obsidian import、Headroom 壓縮、
@@ -71,7 +71,7 @@ Agent 會使用安裝精靈：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.86"
+pip install "vault-for-llm[mcp]==0.6.87"
 
 vault setup-agent
 ```
@@ -124,6 +124,9 @@ setup 也會寫出 `agent-install/mcp-startup.json` 和
 OpenClaw、Hermes Agent 專用啟動模板。每個模板都遵守同一條路徑：
 update-status、automation handoff、必要時才 search/read，最後用
 candidate-first 方式提出新記憶。
+`agent-install/README-runtime-update-playbook.md` 和
+`runtime-update-playbook.json` 則說清楚跨 runtime 更新規則：一個 runtime
+刷新共享通知，其他 runtime 讀自己的 focused status，只有在使用者同意時才升級或重啟。
 
 非互動安裝範例：
 
@@ -150,7 +153,7 @@ vault setup-agent \
 ### 手動快速開始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.86"
+pip install "vault-for-llm[mcp]==0.6.87"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -335,7 +338,7 @@ SQLite 仍然是 source of truth。Supabase 是可選的共享層。
 Remote reader 應該直接把搜尋結果的 `id` 傳給 map/read；它可能是整數，也可能是 Supabase UUID。
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.86"
+pip install "vault-for-llm[supabase]==0.6.87"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

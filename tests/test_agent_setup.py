@@ -248,6 +248,8 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     adapters = result["agent_adapter_startup"]
     adapter_contract = json.loads(Path(adapters["contract"]).read_text(encoding="utf-8"))
     adapter_readme = Path(adapters["readme"]).read_text(encoding="utf-8")
+    runtime_playbook = json.loads(Path(adapters["runtime_playbook"]).read_text(encoding="utf-8"))
+    runtime_playbook_readme = Path(adapters["runtime_playbook_readme"]).read_text(encoding="utf-8")
     codex_template = Path(adapters["codex"]).read_text(encoding="utf-8")
     openclaw_template = Path(adapters["openclaw"]).read_text(encoding="utf-8")
     assert sorted(adapter_contract["adapters"]) == ["claude_code", "codex", "hermes", "openclaw"]
@@ -264,10 +266,19 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert "doctor=true" in codex_template
     assert "vault update-status --read-status --agent automation-agent --json" in codex_template
     assert "latest-context.md" in openclaw_template
+    assert runtime_playbook["mcp"]["doctor"]["arguments"]["doctor"] is True
+    assert runtime_playbook["mcp"]["doctor"]["arguments"]["agent_id"] == "automation-agent"
+    assert runtime_playbook["safety"]["auto_upgrade"] is False
+    assert sorted(runtime_playbook["runtime_targets"]) == ["claude_code", "codex", "hermes", "openclaw"]
+    assert "Runtime Update Playbook" in runtime_playbook_readme
+    assert "one shared project vault" in runtime_playbook_readme
+    assert "not an auto-upgrader" in runtime_playbook_readme
+    assert "README-runtime-update-playbook.md" in adapter_readme
     assert any("memory automation schedule" in step for step in result["next_steps"])
     assert any("vault automation handoff --project-dir" in step for step in result["next_steps"])
     assert any("MCP startup guide" in step for step in result["next_steps"])
     assert any("Agent adapter startup guide" in step for step in result["next_steps"])
+    assert any("runtime update playbook" in step for step in result["next_steps"])
     assert any("Agent update status guide" in step for step in result["next_steps"])
     assert any("update rollout health check" in step for step in result["next_steps"])
 
@@ -592,7 +603,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.86" in captured.out
+    assert "vault-for-llm 0.6.87" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -760,7 +771,7 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.6.86" in body
+    assert "vault-for-llm[mcp,supabase]==0.6.87" in body
     assert "headroom-ai" in body
     assert "--agent-project-dir" in body
     assert str(project) in body

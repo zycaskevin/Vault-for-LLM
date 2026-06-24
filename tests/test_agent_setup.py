@@ -503,6 +503,92 @@ def test_setup_agent_cli_non_interactive(tmp_path, capsys):
     assert (project / "raw" / "obsidian" / "Note.md").exists()
 
 
+def test_agent_install_runtime_template_is_dry_run_then_apply(tmp_path, capsys):
+    from vault.cli import main
+
+    project = tmp_path / "agent-project"
+    target = tmp_path / "AGENTS.md"
+    main(
+        [
+            "setup-agent",
+            "--non-interactive",
+            "--agent",
+            "codex",
+            "--scope",
+            "shared",
+            "--agent-project-dir",
+            str(project),
+            "--features",
+            "core,mcp",
+            "--json",
+        ]
+    )
+    capsys.readouterr()
+
+    main(
+        [
+            "agent",
+            "install-runtime-template",
+            "--runtime",
+            "codex",
+            "--target",
+            str(target),
+            "--template-dir",
+            str(project / "agent-install"),
+            "--json",
+        ]
+    )
+    preview = json.loads(capsys.readouterr().out)
+    assert preview["apply"] is False
+    assert preview["changed"] is True
+    assert preview["action"] == "create"
+    assert not target.exists()
+
+    main(
+        [
+            "agent",
+            "install-runtime-template",
+            "--runtime",
+            "codex",
+            "--target",
+            str(target),
+            "--template-dir",
+            str(project / "agent-install"),
+            "--apply",
+            "--json",
+        ]
+    )
+    applied = json.loads(capsys.readouterr().out)
+    assert applied["apply"] is True
+    assert applied["changed"] is True
+    assert applied["action"] == "create"
+    body = target.read_text(encoding="utf-8")
+    assert "BEGIN Vault-for-LLM runtime startup: codex" in body
+    assert "Codex Startup Template" in body
+
+    target.write_text(body.replace("Codex Startup Template", "Old Vault Template"), encoding="utf-8")
+    main(
+        [
+            "agent",
+            "install-runtime-template",
+            "--runtime",
+            "codex",
+            "--target",
+            str(target),
+            "--template-dir",
+            str(project / "agent-install"),
+            "--apply",
+            "--json",
+        ]
+    )
+    replaced = json.loads(capsys.readouterr().out)
+    assert replaced["action"] == "replace"
+    assert replaced["backup"]
+    assert Path(replaced["backup"]).exists()
+    assert "Codex Startup Template" in target.read_text(encoding="utf-8")
+    assert "Old Vault Template" in Path(replaced["backup"]).read_text(encoding="utf-8")
+
+
 def test_setup_agent_accepts_global_project_dir_for_missing_directory(tmp_path, capsys):
     from vault.cli import main
 
@@ -603,7 +689,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.87" in captured.out
+    assert "vault-for-llm 0.6.88" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -771,7 +857,7 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.6.87" in body
+    assert "vault-for-llm[mcp,supabase]==0.6.88" in body
     assert "headroom-ai" in body
     assert "--agent-project-dir" in body
     assert str(project) in body

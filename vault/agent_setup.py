@@ -6,6 +6,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -41,6 +42,7 @@ VALID_SETUP_LANGUAGES = {"en", "zh-Hant", "zh-CN"}
 VALID_AUTOMATION_MODES = {"conservative", "balanced", "autonomous"}
 VALID_AUTOMATION_COMMANDS = {"run", "cycle"}
 VALID_MEMORY_LAYOUTS = {"shared", "private", "hybrid"}
+VALID_RUNTIME_TEMPLATES = {"codex", "claude-code", "claude_code", "openclaw", "hermes"}
 PYPI_EXTRA_FEATURES = {"mcp", "semantic", "supabase", "dev"}
 VALID_EMBEDDING_MODELS = {"zh", "en", "mix"}
 DEFAULT_SUPABASE_SYNC_INTERVAL_MINUTES = 24 * 60
@@ -2249,6 +2251,93 @@ def write_agent_adapter_startup_templates(
     )
     files["readme"] = str(readme_path)
     return files
+
+
+def _runtime_template_filename(runtime: str) -> tuple[str, str]:
+    normalized = _safe_slug(str(runtime or ""), default="")
+    normalized = normalized.replace("_", "-")
+    if normalized not in {"codex", "claude-code", "openclaw", "hermes"}:
+        allowed = ", ".join(["codex", "claude-code", "openclaw", "hermes"])
+        raise ValueError(f"unknown runtime '{runtime}' (expected one of: {allowed})")
+    return normalized, f"{normalized}-startup.md"
+
+
+def _runtime_template_markers(runtime: str) -> tuple[str, str]:
+    normalized, _ = _runtime_template_filename(runtime)
+    label = f"Vault-for-LLM runtime startup: {normalized}"
+    return f"<!-- BEGIN {label} -->", f"<!-- END {label} -->"
+
+
+def _replace_marked_block(existing: str, *, begin: str, end: str, block: str) -> tuple[str, str]:
+    pattern = re.compile(
+        rf"{re.escape(begin)}.*?{re.escape(end)}",
+        flags=re.DOTALL,
+    )
+    if pattern.search(existing):
+        return pattern.sub(block, existing, count=1), "replace"
+    if existing.strip():
+        separator = "\n\n"
+        if existing.endswith("\n"):
+            separator = "\n"
+        return existing + separator + block + "\n", "append"
+    return block + "\n", "create"
+
+
+def install_runtime_template(
+    *,
+    runtime: str,
+    template_dir: str | Path,
+    target_path: str | Path,
+    apply: bool = False,
+    backup: bool = True,
+) -> dict[str, Any]:
+    """Preview or apply a generated runtime startup template to a target file.
+
+    The write is intentionally conservative: dry-run by default, marker based,
+    and backup-on-write for existing files.
+    """
+    normalized, filename = _runtime_template_filename(runtime)
+    template_path = Path(template_dir).expanduser().resolve() / filename
+    target = Path(target_path).expanduser().resolve()
+    if not template_path.exists() or not template_path.is_file():
+        raise FileNotFoundError(
+            f"runtime template not found: {template_path}; run vault setup-agent first"
+        )
+    template = template_path.read_text(encoding="utf-8").strip()
+    begin, end = _runtime_template_markers(normalized)
+    block = "\n".join([begin, template, end])
+    existing = target.read_text(encoding="utf-8") if target.exists() else ""
+    new_content, action = _replace_marked_block(existing, begin=begin, end=end, block=block)
+    changed = new_content != existing
+    backup_path = ""
+
+    if apply and changed:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists() and backup:
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+            backup_file = target.with_name(f"{target.name}.bak.{stamp}")
+            backup_file.write_text(existing, encoding="utf-8")
+            backup_path = str(backup_file)
+        target.write_text(new_content, encoding="utf-8")
+
+    return {
+        "ok": True,
+        "runtime": normalized,
+        "source": str(template_path),
+        "target": str(target),
+        "target_exists": target.exists(),
+        "apply": bool(apply),
+        "changed": changed,
+        "action": action if changed else "noop",
+        "backup": backup_path,
+        "marker_begin": begin,
+        "marker_end": end,
+        "next_step": (
+            "Review the target file and restart/reload the runtime if needed."
+            if apply
+            else "Re-run with --apply to write the marked startup block."
+        ),
+    }
 
 
 def _normalize_validation_pack_targets(raw: str | list[str] | None) -> set[str]:

@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.6.88] - 2026-06-24
+
+### Added
+
+- Added `vault agent install-runtime-template`, a dry-run-first command for safely applying generated Codex, Claude Code, OpenClaw, or Hermes startup templates into runtime instruction files.
+- Added backups and marker-based replacement for runtime template installs, so repeated runs update the same Vault block instead of duplicating instructions.
+- Added a cross-runtime update-notice smoke test covering Codex, Claude Code, OpenClaw, and Hermes on one shared project vault with one intentionally stale runtime.
+
+### Changed
+
+- Shortened the main README install flow and moved detailed multi-runtime behavior into `docs/agent_install.md`.
+
 ## [0.6.87] - 2026-06-24
 
 ### Added

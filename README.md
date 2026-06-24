@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.87.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.88.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,64 +83,36 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.87"
+pip install "vault-for-llm[mcp]==0.6.88"
 
 vault setup-agent
 ```
 
 `setup-agent` registers the Agent in the local registry at
-`~/.vault-for-llm/agent-registry.json`. Any local runtime can then start with:
+`~/.vault-for-llm/agent-registry.json` and writes an `agent-install/` pack with:
 
-```bash
-vault update-status
-```
+- MCP startup instructions
+- update-status and rollout doctor templates
+- Codex, Claude Code, OpenClaw, and Hermes Agent startup templates
+- a runtime update playbook for multi-runtime machines
+- a hybrid shared/private vault layout manifest
 
-This shows the installed Vault version, registered Agents, project vaults,
-per-Agent update notices, and the next startup handoff command.
-MCP-capable agents can call `vault_update_status` for the same startup view.
-When `--write-status` or MCP `write_status=true` is used, the same local update
-message is written to `~/.vault-for-llm/update-status.json` so another runtime
-can read it later without guessing which vault or version to use.
-Use `vault update-status --read-status` or MCP `read_status=true` to read that
-shared machine notice without recomputing or contacting PyPI. `setup-agent`
-writes `agent-install/README-update-status.md`, cron, LaunchAgent, and a JSON
-contract so every local Agent can follow the same startup rule.
-Pass `--agent <id>` or MCP `agent_id` when a runtime wants its own focused
-startup checklist:
+Each runtime can read its own focused startup view:
 
 ```bash
 vault update-status --read-status --agent codex
 ```
 
-After one runtime upgrades Vault, refresh and verify the shared local notice:
+If you want Vault to safely paste one generated runtime template into a target
+file, preview first and then apply:
 
 ```bash
-vault update-status --write-status
-vault agent doctor
+vault agent install-runtime-template --runtime codex --target ./AGENTS.md
+vault agent install-runtime-template --runtime codex --target ./AGENTS.md --apply
 ```
 
-MCP-only runtimes use the same check through the existing startup tool:
-`vault_update_status` with `doctor=true`, `agent_id=<runtime>`, and
-`max_status_age_minutes=1440`. No extra MCP tool is added.
-
-`setup-agent` writes `agent-install/refresh-update-status.sh` and
-`agent-install/README-agent-update-rollout.md` for that post-upgrade rollout.
-
-The default memory layout is hybrid: shared project memory stays in the project
-vault, while each Agent gets a private local vault for identity, preferences,
-personal notes, and agent-specific working style. Setup writes the layout to
-`agent-install/hybrid-vault-layout.json`.
-Setup also writes `agent-install/mcp-startup.json` and
-`agent-install/README-mcp-startup.md`, so MCP-capable agents can follow the
-same startup order without guessing from README prose.
-It also writes `agent-install/README-agent-adapters.md` plus Codex, Claude
-Code, OpenClaw, and Hermes Agent startup templates. Each template follows the
-same startup order: update-status, automation handoff, search/read only when
-needed, then candidate-first memory proposals.
-`agent-install/README-runtime-update-playbook.md` and
-`runtime-update-playbook.json` explain the cross-runtime update rule: one
-runtime can refresh the shared notice, while the others read their own focused
-status and only upgrade or restart with user approval.
+The apply command is dry-run by default and creates a backup before changing an
+existing file. Full install details live in [`docs/agent_install.md`](docs/agent_install.md).
 
 For non-interactive agent installs:
 
@@ -167,7 +139,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.87"
+pip install "vault-for-llm[mcp]==0.6.88"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -393,7 +365,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.87"
+pip install "vault-for-llm[supabase]==0.6.88"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

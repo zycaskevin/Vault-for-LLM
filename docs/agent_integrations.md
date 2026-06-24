@@ -54,6 +54,9 @@ candidate memory.
 The same install pack writes `README-runtime-update-playbook.md` and
 `runtime-update-playbook.json` so every runtime can follow the same startup,
 post-upgrade, and stale-notice behavior.
+Use `vault agent install-runtime-template --runtime <name> --target <file>` to
+preview a safe marked-block install into `AGENTS.md`, `CLAUDE.md`, or another
+runtime instruction file; add `--apply` only after the preview looks right.
 When update freshness or multi-runtime rollout state is unclear, MCP-capable
 adapters call the existing `vault_update_status` tool with `doctor=true` and
 their `agent_id`; this keeps the startup profile small while matching
@@ -66,8 +69,8 @@ default small and local.
 
 | Feature | Default | Install when | Install command |
 |---|---|---|---|
-| `core` | yes | Always: Markdown, SQLite, keyword search, local CLI. | `python -m pip install vault-for-llm==0.6.87` |
-| `mcp` | yes for MCP-capable agents | The runtime can connect local stdio MCP tools. | `python -m pip install "vault-for-llm[mcp]==0.6.87"` |
+| `core` | yes | Always: Markdown, SQLite, keyword search, local CLI. | `python -m pip install vault-for-llm==0.6.88` |
+| `mcp` | yes for MCP-capable agents | The runtime can connect local stdio MCP tools. | `python -m pip install "vault-for-llm[mcp]==0.6.88"` |
 | `obsidian_import` | no | The user already has an Obsidian vault and wants those notes searchable through Vault. | built into core CLI |
 | `semantic` | no | The user wants embedding-backed semantic or hybrid search. | `python -m pip install "vault-for-llm[semantic]"` |
 | `supabase` | no | The user wants optional remote sync/read paths. | `python -m pip install "vault-for-llm[supabase]"` |

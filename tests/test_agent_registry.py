@@ -153,6 +153,63 @@ def test_agent_update_distribution_doctor_reports_stale_and_attention(tmp_path, 
     assert healthy["agents_needing_attention"] == []
 
 
+def test_cross_runtime_update_notice_smoke_for_shared_project(tmp_path, monkeypatch, capsys):
+    from vault import __version__
+    from vault.agent_registry import load_registry, save_registry
+    from vault.cli import main
+
+    monkeypatch.setenv("VAULT_AGENT_REGISTRY_DIR", str(tmp_path / "registry"))
+    project = tmp_path / "shared-project"
+    project.mkdir()
+
+    for runtime in ["codex", "claude-code", "openclaw", "hermes"]:
+        main(
+            [
+                "agent",
+                "register",
+                "--agent",
+                runtime,
+                "--project",
+                str(project),
+                "--scope",
+                "shared",
+                "--features",
+                "core,mcp",
+                "--json",
+            ]
+        )
+        capsys.readouterr()
+
+    registry = load_registry()
+    registry["agents"]["openclaw"]["vault_version"] = "0.0.1"
+    save_registry(registry)
+
+    main(["update-status", "--write-status", "--json"])
+    status = json.loads(capsys.readouterr().out)
+    assert status["agent_count"] == 4
+    assert status["projects"] == [str(project.resolve())]
+    notices = {item["agent_id"]: item for item in status["agent_update_notices"]}
+    assert sorted(notices) == ["claude-code", "codex", "hermes", "openclaw"]
+    assert notices["openclaw"]["registered_version"] == "0.0.1"
+    assert notices["openclaw"]["behind_current_runtime"] is True
+    assert notices["openclaw"]["needs_attention"] is True
+    assert notices["codex"]["registered_version"] == __version__
+    assert notices["codex"]["needs_attention"] is False
+
+    main(["update-status", "--read-status", "--agent", "openclaw", "--json"])
+    focused = json.loads(capsys.readouterr().out)
+    assert focused["startup_agent_id"] == "openclaw"
+    assert focused["current_agent_needs_attention"] is True
+    assert __version__ in focused["current_agent_recommended_action"]
+
+    main(["agent", "doctor", "--json"])
+    doctor = json.loads(capsys.readouterr().out)
+    assert doctor["ok"] is False
+    assert doctor["agents_missing_from_status"] == []
+    assert doctor["agents_needing_attention"] == ["openclaw"]
+    assert any("Upgrade" in action or "restart" in action for action in doctor["recommended_actions"])
+
+
 def test_build_update_status_reports_agent_versions_behind_current_runtime(tmp_path, monkeypatch):
     from vault import __version__
     from vault.agent_registry import build_update_status, load_registry, register_agent, save_registry

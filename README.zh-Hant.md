@@ -58,7 +58,7 @@ Vault-for-LLM 可能不是第一個該拿起來的工具。
 最推薦的方式，是直接把這段交給能執行本機指令的 Agent：
 
 ```text
-幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.87。
+幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.88。
 先問我要 shared、private、domain-specific 還是 temporary vault。
 詢問穩定的 project directory，並為長期任務產生 stable venv script。
 逐項詢問 MCP、semantic search、Supabase、Obsidian import、Headroom 壓縮、
@@ -71,62 +71,35 @@ Agent 會使用安裝精靈：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.87"
+pip install "vault-for-llm[mcp]==0.6.88"
 
 vault setup-agent
 ```
 
 `setup-agent` 會把目前 Agent 登記到本機 registry：
-`~/.vault-for-llm/agent-registry.json`。同一台電腦上的其他 runtime 可以先跑：
+`~/.vault-for-llm/agent-registry.json`，並產生一包 `agent-install/` 文件：
 
-```bash
-vault update-status
-```
+- MCP 啟動流程
+- update-status 與 rollout doctor 模板
+- Codex、Claude Code、OpenClaw、Hermes Agent 啟動模板
+- 多 runtime 共用的 runtime update playbook
+- hybrid shared/private vault layout manifest
 
-這會顯示目前安裝的 Vault 版本、已登記的 Agent、project vault、每個 Agent
-的更新提醒，以及下一個啟動 handoff 指令。
-MCP-capable Agent 可以用 `vault_update_status` 取得同一份啟動狀態。
-使用 `--write-status` 或 MCP `write_status=true` 時，這份本機更新訊息也會寫到
-`~/.vault-for-llm/update-status.json`，讓另一個 runtime 之後可以直接讀取，不必猜
-要用哪個 vault 或版本。
-使用 `vault update-status --read-status` 或 MCP `read_status=true` 可以只讀取這份
-本機共享通知，不重新計算，也不連 PyPI。`setup-agent` 會產生
-`agent-install/README-update-status.md`、cron、LaunchAgent 與 JSON contract，讓同一台
-電腦上的 Agent 都遵守同一個啟動規則。
-如果某個 runtime 想先知道「我自己需不需要升級或重啟」，可以加上
-`--agent <id>` 或 MCP `agent_id`：
+每個 runtime 都可以讀自己的 focused startup view：
 
 ```bash
 vault update-status --read-status --agent codex
 ```
 
-當其中一個 runtime 升級 Vault 後，可以刷新並檢查共享通知：
+如果要讓 Vault 安全地把某個 runtime 模板貼進目標檔案，先 preview，再 apply：
 
 ```bash
-vault update-status --write-status
-vault agent doctor
+vault agent install-runtime-template --runtime codex --target ./AGENTS.md
+vault agent install-runtime-template --runtime codex --target ./AGENTS.md --apply
 ```
 
-只透過 MCP 工作的 runtime 可以用同一個啟動工具完成檢查：
-`vault_update_status` 加上 `doctor=true`、`agent_id=<runtime>` 與
-`max_status_age_minutes=1440`。這不會新增另一個 MCP tool。
-
-`setup-agent` 會寫出 `agent-install/refresh-update-status.sh` 和
-`agent-install/README-agent-update-rollout.md`，讓更新後的 rollout 不用靠口頭記憶。
-
-預設記憶布局是 hybrid：shared project memory 留在專案 vault，每個 Agent
-另外有自己的本機 private vault，用來放身份、偏好、私人筆記與 Agent 專屬工作風格。
-setup 會把布局寫入 `agent-install/hybrid-vault-layout.json`。
-setup 也會寫出 `agent-install/mcp-startup.json` 和
-`agent-install/README-mcp-startup.md`，讓 MCP-capable Agent 不需要從 README
-自行猜啟動順序。
-它也會寫出 `agent-install/README-agent-adapters.md`，以及 Codex、Claude Code、
-OpenClaw、Hermes Agent 專用啟動模板。每個模板都遵守同一條路徑：
-update-status、automation handoff、必要時才 search/read，最後用
-candidate-first 方式提出新記憶。
-`agent-install/README-runtime-update-playbook.md` 和
-`runtime-update-playbook.json` 則說清楚跨 runtime 更新規則：一個 runtime
-刷新共享通知，其他 runtime 讀自己的 focused status，只有在使用者同意時才升級或重啟。
+套用命令預設是 dry-run，真的寫入時會先備份既有檔案。完整安裝細節放在
+[`docs/agent_install.md`](docs/agent_install.md)。
 
 非互動安裝範例：
 
@@ -153,7 +126,7 @@ vault setup-agent \
 ### 手動快速開始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.87"
+pip install "vault-for-llm[mcp]==0.6.88"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -338,7 +311,7 @@ SQLite 仍然是 source of truth。Supabase 是可選的共享層。
 Remote reader 應該直接把搜尋結果的 `id` 傳給 map/read；它可能是整數，也可能是 Supabase UUID。
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.87"
+pip install "vault-for-llm[supabase]==0.6.88"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

@@ -65,8 +65,10 @@ changed notes without duplicating unchanged ones.
 | `vault update-status --doctor --json` | Check whether the shared update notice exists, is fresh, includes every registered Agent, and shows runtime attention |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.6.87` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.6.88` | Show the same registry/update status without contacting the network |
 | `vault agent doctor --json` | Run the same shared update-distribution health check through the Agent registry namespace |
+| `vault agent install-runtime-template --runtime codex --target ./AGENTS.md` | Preview applying the generated Codex startup template into a runtime instruction file |
+| `vault agent install-runtime-template --runtime codex --target ./AGENTS.md --apply` | Apply the marked startup block and create a backup before changing an existing file |
 
 `vault install-agent` is an alias for `vault setup-agent`.
 Interactive setup asks before installing optional dependencies. Non-interactive
@@ -85,6 +87,10 @@ MCP-capable runtimes can call `vault_update_status` and
 They can also call `vault_update_status` with `doctor=true` and their
 `agent_id` for the same update-distribution health check without adding another
 MCP tool.
+`vault agent install-runtime-template` is dry-run by default. It writes a marked
+Vault block only with `--apply`, replaces that block on later runs, and creates
+a `.bak.<timestamp>` backup for existing target files unless `--no-backup` is
+used.
 The default memory layout is `hybrid`: setup creates the shared project vault
 plus a private Agent vault under `~/Vaults/agents/<agent>/private-memory`, then
 writes `agent-install/hybrid-vault-layout.json`.

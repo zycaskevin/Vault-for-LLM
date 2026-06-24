@@ -2980,7 +2980,36 @@ def cmd_agent(args):
         _print_update_distribution_health(payload)
         return
 
-    raise SystemExit("agent subcommand required: register, list, or status")
+    if action == "install-runtime-template":
+        from vault.agent_setup import install_runtime_template
+
+        template_dir = Path(args.template_dir).expanduser() if args.template_dir else (find_project_dir() / "agent-install")
+        try:
+            payload = install_runtime_template(
+                runtime=args.runtime,
+                template_dir=template_dir,
+                target_path=Path(args.target).expanduser(),
+                apply=bool(args.apply),
+                backup=not bool(args.no_backup),
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            raise SystemExit(2) from exc
+        if args.json or args.pretty:
+            _json_print(payload, pretty=args.pretty)
+            return
+        print("Runtime template apply preview" if not payload["apply"] else "Runtime template applied")
+        print(f"  runtime: {payload['runtime']}")
+        print(f"  source: {payload['source']}")
+        print(f"  target: {payload['target']}")
+        print(f"  action: {payload['action']}")
+        print(f"  changed: {payload['changed']}")
+        if payload.get("backup"):
+            print(f"  backup: {payload['backup']}")
+        print(f"  next: {payload['next_step']}")
+        return
+
+    raise SystemExit("agent subcommand required: register, list, status, doctor, or install-runtime-template")
 
 
 def cmd_update_status(args):
@@ -3340,6 +3369,16 @@ def main(argv: list[str] | None = None):
 
     ap = agent_sub.add_parser("doctor", help="檢查共享更新通知是否能讓所有 Agent 收到最新狀態")
     ap.add_argument("--max-status-age-minutes", type=int, default=24 * 60, help="判定 update-status 過期的分鐘數")
+    ap.add_argument("--json", action="store_true", help="輸出 JSON")
+    ap.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    ap = agent_sub.add_parser("install-runtime-template", help="安全套用 setup-agent 產生的 runtime 啟動模板")
+    ap.add_argument("--runtime", required=True, choices=["codex", "claude-code", "openclaw", "hermes"],
+                    help="要套用的 runtime 模板")
+    ap.add_argument("--target", required=True, help="要寫入的啟動檔，例如 AGENTS.md 或 CLAUDE.md")
+    ap.add_argument("--template-dir", help="setup-agent 產生的 agent-install 目錄；預設 project/agent-install")
+    ap.add_argument("--apply", action="store_true", help="實際寫入；預設只做 dry-run preview")
+    ap.add_argument("--no-backup", action="store_true", help="寫入既有檔案時不要產生 .bak 備份")
     ap.add_argument("--json", action="store_true", help="輸出 JSON")
     ap.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 

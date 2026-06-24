@@ -16,7 +16,7 @@ For adjacent systems and design comparisons, see
 ## Fast Prompt For Agents
 
 ```text
-Install Vault-for-LLM for this project with vault-for-llm[mcp]==0.6.86.
+Install Vault-for-LLM for this project with vault-for-llm[mcp]==0.6.87.
 Ask me where the vault database should live, whether it should be private or
 shared, and whether you should use a stable Python virtualenv path instead of a
 temporary one. Enable MCP by default if this agent runtime supports MCP. Ask
@@ -69,7 +69,7 @@ also prefer a stable virtualenv path such as `~/.hermes/venvs/vault-for-llm/`.
 Use the PyPI release unless the user explicitly asks for source development:
 
 ```bash
-python -m pip install "vault-for-llm[mcp]==0.6.86"
+python -m pip install "vault-for-llm[mcp]==0.6.87"
 vault setup-agent
 ```
 
@@ -103,6 +103,9 @@ public-safe coordination file for future Agents.
 `setup-agent` also writes `agent-install/README-agent-adapters.md` plus Codex,
 Claude Code, OpenClaw, and Hermes startup templates so common runtimes can
 reuse the same update-status -> handoff -> search/read/propose startup flow.
+It also writes `agent-install/README-runtime-update-playbook.md` and
+`runtime-update-playbook.json`, a copyable cross-runtime rule for what to do at
+startup, after one runtime upgrades Vault, and when the shared notice is stale.
 The installer also writes `agent-install/mcp-startup.json` and
 `agent-install/README-mcp-startup.md`, which define the MCP startup sequence:
 `vault_update_status` -> `vault_automation_handoff` -> search/read/propose.

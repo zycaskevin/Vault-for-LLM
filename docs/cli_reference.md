@@ -65,7 +65,7 @@ changed notes without duplicating unchanged ones.
 | `vault update-status --doctor --json` | Check whether the shared update notice exists, is fresh, includes every registered Agent, and shows runtime attention |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.6.86` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.6.87` | Show the same registry/update status without contacting the network |
 | `vault agent doctor --json` | Run the same shared update-distribution health check through the Agent registry namespace |
 
 `vault install-agent` is an alias for `vault setup-agent`.

@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.87] - 2026-06-24
+
+### Added
+
+- `setup-agent` now writes `agent-install/README-runtime-update-playbook.md` and `runtime-update-playbook.json`, giving Codex, Claude Code, OpenClaw, Hermes Agent, and other local runtimes one shared startup/post-upgrade/stale-notice rule.
+- The generated Agent adapter README now points to the runtime update playbook, so multi-runtime installs can coordinate updates without splitting project memory across separate unmanaged databases.
+- Added setup-agent tests for the generated runtime update playbook, including MCP doctor arguments, runtime targets, and no-auto-upgrade safety boundaries.
+
 ## [0.6.86] - 2026-06-24
 
 ### Added

@@ -1217,34 +1217,154 @@ def _brief_learning(evaluation: dict[str, Any], *, limit: int = 5) -> dict[str, 
     }
 
 
+def _parse_utc_datetime(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            dt = datetime.fromisoformat(f"{text}T00:00:00+00:00")
+        except ValueError:
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _recency_component(last_accessed_at: Any, now: datetime) -> float:
+    accessed = _parse_utc_datetime(last_accessed_at)
+    if accessed is None:
+        return 0.0
+    age_days = max(0.0, (now - accessed).total_seconds() / 86400.0)
+    if age_days <= 7:
+        return 10.0
+    if age_days <= 30:
+        return 6.0
+    if age_days <= 90:
+        return 3.0
+    return 1.0
+
+
+def _ttl_pressure_component(expires_at: Any, now: datetime, *, access: int, citations: int) -> tuple[float, str]:
+    if access <= 0 and citations <= 0:
+        return 0.0, ""
+    expires = _parse_utc_datetime(expires_at)
+    if expires is None:
+        return 0.0, ""
+    days_until_expiry = (expires - now).total_seconds() / 86400.0
+    if days_until_expiry <= 0:
+        return 10.0, "expired_but_used"
+    if days_until_expiry <= 14:
+        return 5.0, "expiring_soon_but_used"
+    return 0.0, ""
+
+
+def _protection_component(scope: Any, sensitivity: Any) -> float:
+    scope_text = str(scope or "").strip().lower()
+    sensitivity_text = str(sensitivity or "").strip().lower()
+    score = 0.0
+    if scope_text == "private":
+        score += 2.0
+    if sensitivity_text == "medium":
+        score += 1.0
+    elif sensitivity_text == "high":
+        score += 2.0
+    elif sensitivity_text == "restricted":
+        score += 3.0
+    return min(score, 5.0)
+
+
+def _importance_recommendation(*, access: int, citations: int, ttl_signal: str, score: float) -> str:
+    if ttl_signal == "expired_but_used":
+        return "refresh_or_cold_store_before_forgetting"
+    if ttl_signal == "expiring_soon_but_used":
+        return "review_ttl_before_expiry"
+    if citations > 0:
+        return "protect_or_summarize_before_forgetting"
+    if score > 0 or access > 0:
+        return "keep_available"
+    return "observe"
+
+
 def _brief_memory_weights(usage: dict[str, Any], *, limit: int = 5) -> dict[str, Any]:
     items = []
+    now = datetime.now(timezone.utc)
     for row in usage.get("top_used") or []:
         access = int(row.get("access_count") or 0)
         citations = int(row.get("citation_count") or 0)
-        score = access + citations * 2
+        trust = max(0.0, min(float(row.get("trust") or 0.0), 1.0))
+        freshness = max(0.0, min(float(row.get("freshness") or 0.0), 1.0))
+        ttl_score, ttl_signal = _ttl_pressure_component(
+            row.get("expires_at", ""),
+            now,
+            access=access,
+            citations=citations,
+        )
+        components = {
+            "access": min(20.0, access * 2.0),
+            "citation": min(35.0, citations * 8.0),
+            "recency": _recency_component(row.get("last_accessed_at", ""), now),
+            "trust": round(trust * 10.0, 3),
+            "freshness": round(freshness * 8.0, 3),
+            "ttl_pressure": ttl_score,
+            "protection": _protection_component(row.get("scope", ""), row.get("sensitivity", "")),
+        }
+        score = round(sum(float(value or 0.0) for value in components.values()), 3)
+        signals = []
+        if access > 0:
+            signals.append("accessed")
+        if citations > 0:
+            signals.append("cited")
+        if ttl_signal:
+            signals.append(ttl_signal)
+        if components["protection"] > 0:
+            signals.append("protected_governance")
         items.append(
             {
                 "knowledge_id": row.get("id"),
                 "title": row.get("title", ""),
                 "layer": row.get("layer", ""),
                 "category": row.get("category", ""),
-                "trust": float(row.get("trust") or 0.0),
+                "memory_type": row.get("memory_type", ""),
+                "scope": row.get("scope", ""),
+                "sensitivity": row.get("sensitivity", ""),
+                "trust": trust,
+                "freshness": freshness,
                 "status": row.get("status", ""),
                 "access_count": access,
                 "citation_count": citations,
                 "last_accessed_at": row.get("last_accessed_at", ""),
+                "expires_at": row.get("expires_at", ""),
+                "importance_score": score,
+                "importance_components": components,
+                "signals": signals,
                 "weight_score": score,
-                "recommendation": "protect_or_summarize_before_forgetting" if score > 0 else "observe",
+                "recommendation": _importance_recommendation(
+                    access=access,
+                    citations=citations,
+                    ttl_signal=ttl_signal,
+                    score=score,
+                ),
             }
         )
-    items.sort(key=lambda item: (item["weight_score"], item["trust"]), reverse=True)
+    items.sort(
+        key=lambda item: (
+            float(item["importance_score"]),
+            int(item["citation_count"]),
+            int(item["access_count"]),
+            float(item["trust"]),
+        ),
+        reverse=True,
+    )
     return {
+        "model": "usage_citation_recency_trust_freshness_ttl_v1",
         "knowledge_count": int(usage.get("knowledge_count") or 0),
         "total_accesses": int(usage.get("total_accesses") or 0),
         "total_citations": int(usage.get("total_citations") or 0),
         "top_used": items[: max(1, min(int(limit or 5), 20))],
-        "principle": "Usage weight is a small protection and ranking signal, not a source-of-truth override.",
+        "principle": "Importance is a small protection and ranking signal, not a source-of-truth override.",
     }
 
 
@@ -1480,16 +1600,20 @@ def _write_brief_markdown(project: Path, payload: dict[str, Any], *, brief_path:
     ]
     top_used = weights.get("top_used") or []
     if top_used:
-        lines += [_md_row(["id", "title", "weight", "access", "citations"]), _md_row(["---", "---", "---", "---", "---"])]
+        lines += [
+            _md_row(["id", "title", "importance", "access", "citations", "recommendation"]),
+            _md_row(["---", "---", "---", "---", "---", "---"]),
+        ]
         for item in top_used[:10]:
             lines.append(
                 _md_row(
                     [
                         item.get("knowledge_id", ""),
                         item.get("title", ""),
-                        item.get("weight_score", 0),
+                        item.get("importance_score", item.get("weight_score", 0)),
                         item.get("access_count", 0),
                         item.get("citation_count", 0),
+                        item.get("recommendation", ""),
                     ]
                 )
             )

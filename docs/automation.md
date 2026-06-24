@@ -113,9 +113,22 @@ vault automation brief --write-brief --pretty
 
 `automation brief` is the daily startup surface for the memory loop. It joins
 five signals into one small read-only payload: promote/reject learning hints,
-memory usage weights, long-term forgetting pressure, shared agent health, and
-the 5% human-review queue. It does not promote candidates, read raw candidate
-content, compress memories, or move rows to cold storage by itself.
+explainable memory importance, long-term forgetting pressure, shared agent
+health, and the 5% human-review queue. The memory section exposes
+`importance_score`, `importance_components`, `signals`, and a recommendation for
+each top-used memory. It does not promote candidates, read raw candidate content,
+compress memories, or move rows to cold storage by itself.
+
+The importance model is intentionally small and auditable:
+
+- usage: access and citation counters
+- recency: recently accessed memories stay easier to notice
+- governance: trust, freshness, scope, and sensitivity are visible inputs
+- lifecycle: expired-but-used memories get TTL pressure so they are refreshed or
+  cold-stored before they disappear from daily recall
+
+`weight_score` remains as a compatibility alias for `importance_score`, but new
+integrations should read `importance_score` and `importance_components`.
 
 When that brief recommends `summarize_then_cold_store`, run a dry-run first:
 
@@ -390,8 +403,8 @@ important review fields are:
 - `automation activity`: a compact derived view over recent reports for agent
   startup, showing promoted/skipped reasons without raw candidate content.
 - `automation brief`: a single read-only intelligence view for startup and
-  dashboards: learning hints, memory weights, forgetting pressure, shared agent
-  health, and the 5% human-review digest.
+  dashboards: learning hints, explainable memory importance, forgetting
+  pressure, shared agent health, and the 5% human-review digest.
 - `automation inbox`: the shortest daily review surface. It starts with
   `review_digest` cards from the latest report's `human_review.items`, then
   shows the candidate queue. This lets humans review policy-level decisions

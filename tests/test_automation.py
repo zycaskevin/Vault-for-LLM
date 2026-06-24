@@ -12,6 +12,7 @@ from vault.automation import (
     automation_eval,
     automation_handoff,
     automation_inbox,
+    automation_learning_health,
     automation_plan,
     automation_report,
     automation_review_feedback,
@@ -988,6 +989,65 @@ def test_automation_eval_builds_bounded_learning_policy(tmp_path):
     assert written["rules"] == rules
 
 
+def test_automation_learning_health_writes_short_dashboard(tmp_path):
+    project = _init_project(tmp_path)
+    with VaultDB(project / "vault.db") as db:
+        for idx in range(3):
+            db.record_memory_feedback(
+                {
+                    "candidate_id": f"review_good_{idx}",
+                    "source": "review-summary",
+                    "memory_type": "memory_importance",
+                    "category": "refresh_or_cold_store_before_forgetting",
+                    "outcome": "accepted",
+                    "score": 1.0,
+                }
+            )
+        for idx in range(3):
+            db.record_memory_feedback(
+                {
+                    "candidate_id": f"review_bad_{idx}",
+                    "source": "review-summary",
+                    "memory_type": "report_review",
+                    "category": "review_policy_or_gate_reason",
+                    "outcome": "rejected",
+                    "score": 0.0,
+                }
+            )
+        db.record_memory_feedback(
+            {
+                "candidate_id": "review_defer",
+                "source": "review-summary",
+                "memory_type": "forgetting_strategy",
+                "category": "human_review_required",
+                "outcome": "deferred",
+                "score": 0.5,
+            }
+        )
+
+    payload = automation_learning_health(project, limit=5, min_events=3, write_health=True)
+
+    assert payload["action"] == "learning-health"
+    assert payload["status"] == "watch"
+    assert payload["summary"]["readiness"] == "learning"
+    assert payload["summary"]["accepted_or_promoted"] == 3
+    assert payload["summary"]["rejected_or_blocked"] == 3
+    assert payload["summary"]["deferred"] == 1
+    assert payload["summary"]["prefer_rules"] == 1
+    assert payload["summary"]["downgrade_rules"] == 1
+    assert payload["safety"]["read_only"] is True
+    assert payload["safety"]["includes_raw_feedback_reasons"] is False
+    assert payload["health_path"] == "reports/automation/learning-health-latest.json"
+    assert payload["health_markdown_path"] == "reports/automation/learning-health-latest.md"
+    assert (project / payload["health_path"]).exists()
+    assert (project / payload["health_markdown_path"]).exists()
+    assert any(card["kind"] == "downgrade_rule" for card in payload["cards"])
+    assert any(card["kind"] == "prefer_rule" for card in payload["cards"])
+    markdown = (project / payload["health_markdown_path"]).read_text(encoding="utf-8")
+    assert "# Vault Automation Learning Health" in markdown
+    assert "learning is a ranking hint only" in markdown
+
+
 def test_automation_inbox_applies_learning_policy_to_review_priority(tmp_path):
     project = _init_project(tmp_path)
     with VaultDB(project / "vault.db") as db:
@@ -1494,6 +1554,44 @@ def test_automation_cli_review_feedback_records_card_decision(tmp_path, monkeypa
     assert "decision=accept" in out
     assert "outcome=accepted" in out
     assert "learning policy written: reports/automation/learning_policy.json" in out
+
+
+def test_automation_cli_learning_health_prints_cards(tmp_path, monkeypatch, capsys):
+    from vault.cli import cmd_automation
+
+    project = _init_project(tmp_path)
+    with VaultDB(project / "vault.db") as db:
+        for idx in range(3):
+            db.record_memory_feedback(
+                {
+                    "candidate_id": f"review_good_{idx}",
+                    "source": "review-summary",
+                    "memory_type": "memory_importance",
+                    "category": "refresh_or_cold_store_before_forgetting",
+                    "outcome": "accepted",
+                    "score": 1.0,
+                }
+            )
+    monkeypatch.chdir(project)
+
+    cmd_automation(
+        Namespace(
+            automation_action="learning-health",
+            mode=None,
+            limit=5,
+            min_events=3,
+            write_health=True,
+            health_path="",
+            json=False,
+            pretty=False,
+        )
+    )
+
+    out = capsys.readouterr().out
+    assert "Automation learning health" in out
+    assert "status: healthy" in out
+    assert "Health cards" in out
+    assert "health: reports/automation/learning-health-latest.json" in out
 
 
 def test_automation_cli_eval_prints_feedback_scores(tmp_path, monkeypatch, capsys):

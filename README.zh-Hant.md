@@ -58,7 +58,7 @@ Vault-for-LLM 可能不是第一個該拿起來的工具。
 最推薦的方式，是直接把這段交給能執行本機指令的 Agent：
 
 ```text
-幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.101。
+幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.102。
 先問我要 shared、private、domain-specific 還是 temporary vault。
 詢問穩定的 project directory，並為長期任務產生 stable venv script。
 逐項詢問 MCP、semantic search、Supabase、Obsidian import、Headroom 壓縮、
@@ -71,7 +71,7 @@ Agent 會使用安裝精靈：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.101"
+pip install "vault-for-llm[mcp]==0.6.102"
 
 vault setup-agent
 ```
@@ -127,7 +127,7 @@ vault setup-agent \
 ### 手動快速開始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.101"
+pip install "vault-for-llm[mcp]==0.6.102"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -231,6 +231,8 @@ cold-store preview 和 automation ledger 也會使用同一個 `importance_score
 整理成幾張 approval cards，只留下真正需要人看的 5% 記憶決策。
 `vault automation review-feedback` 則把這個小閉環接起來：記錄某張卡片被
 接受、拒絕或延後，讓 `automation eval` 把長期結果轉成下一輪排序提示。
+`vault automation learning-health` 會把這個閉環整理成 dashboard-safe 狀態：
+目前還在冷啟動、健康、需要觀察，或需要人檢查。
 當 `vault automation eval --write-learning-policy` 累積足夠已審核回饋後，
 inbox/brief 也會用這份 bounded learning policy 來排序 review items。倍率會
 明確顯示且有上限；它不是授權策略。
@@ -290,6 +292,7 @@ vault automation review-summary --write-summary
 vault automation review-feedback --kind memory_importance --card-id 12 \
   --decision accept --reason "正確保護了過期但仍被引用的記憶" \
   --write-learning-policy
+vault automation learning-health --write-health
 ```
 
 MCP-capable Agent 可以在 `core` profile 直接呼叫 `vault_automation_brief`。
@@ -389,7 +392,7 @@ SQLite 仍然是 source of truth。Supabase 是可選的共享層。
 Remote reader 應該直接把搜尋結果的 `id` 傳給 map/read；它可能是整數，也可能是 Supabase UUID。
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.101"
+pip install "vault-for-llm[supabase]==0.6.102"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

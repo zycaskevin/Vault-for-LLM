@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.79] - 2026-06-24
+
+### Added
+
+- Added MCP `vault_update_status`, matching the CLI `vault update-status` startup payload for local version, registry, shared vault, private vault, and handoff command discovery.
+- Added MCP `vault_automation_handoff`, matching the CLI `vault automation handoff` read-only compact handoff flow.
+- Added both startup tools to the `core` MCP profile so daily agents can begin from status and handoff before searching.
+
 ## [0.6.78] - 2026-06-24
 
 ### Added

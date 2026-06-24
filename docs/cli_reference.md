@@ -62,7 +62,7 @@ changed notes without duplicating unchanged ones.
 | `vault update-status --check-pypi --write-status --json` | Check PyPI for the latest release and write `~/.vault-for-llm/update-status.json` |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.6.78` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.6.79` | Show the same registry/update status without contacting the network |
 
 `vault install-agent` is an alias for `vault setup-agent`.
 Interactive setup asks before installing optional dependencies. Non-interactive
@@ -71,6 +71,8 @@ with `--install-embedding-model zh|en|mix`.
 `vault setup-agent` also registers the Agent in
 `~/.vault-for-llm/agent-registry.json`, so other local runtimes can discover the
 same project vault and startup handoff path through `vault update-status`.
+MCP-capable runtimes can call `vault_update_status` and
+`vault_automation_handoff` from the `core` profile for the same startup path.
 The default memory layout is `hybrid`: setup creates the shared project vault
 plus a private Agent vault under `~/Vaults/agents/<agent>/private-memory`, then
 writes `agent-install/hybrid-vault-layout.json`.

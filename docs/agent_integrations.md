@@ -52,8 +52,8 @@ default small and local.
 
 | Feature | Default | Install when | Install command |
 |---|---|---|---|
-| `core` | yes | Always: Markdown, SQLite, keyword search, local CLI. | `python -m pip install vault-for-llm==0.6.78` |
-| `mcp` | yes for MCP-capable agents | The runtime can connect local stdio MCP tools. | `python -m pip install "vault-for-llm[mcp]==0.6.78"` |
+| `core` | yes | Always: Markdown, SQLite, keyword search, local CLI. | `python -m pip install vault-for-llm==0.6.79` |
+| `mcp` | yes for MCP-capable agents | The runtime can connect local stdio MCP tools. | `python -m pip install "vault-for-llm[mcp]==0.6.79"` |
 | `obsidian_import` | no | The user already has an Obsidian vault and wants those notes searchable through Vault. | built into core CLI |
 | `semantic` | no | The user wants embedding-backed semantic or hybrid search. | `python -m pip install "vault-for-llm[semantic]"` |
 | `supabase` | no | The user wants optional remote sync/read paths. | `python -m pip install "vault-for-llm[supabase]"` |
@@ -132,7 +132,7 @@ Supabase is a sync/read target, not the source of truth. Ask again before using
 | System | Recommended path | Status | Notes |
 |---|---|---|---|
 | Hermes Agent | MCP server plus optional scheduled CLI jobs | proven locally | Use `vault-mcp` for search/read/propose. Use cron or Hermes jobs for `vault dream`, backups, and benchmark runs. |
-| OpenClaw | OpenClaw adapter in `integrations/openclaw/` or generic MCP | adapter included | Registers `vault_search`, `vault_read_range`, `vault_memory_propose`, and `vault_stats`; auto-recall is off by default. |
+| OpenClaw | OpenClaw adapter in `integrations/openclaw/` or generic MCP | adapter included | Registers startup/status plus `vault_search`, `vault_read_range`, `vault_memory_propose`, and `vault_stats`; auto-recall is off by default. |
 | n8n | CLI command node, Execute Command, HTTP wrapper, or MCP bridge | compatible | Best for workflows: compile docs, run Search QA, propose memory, backup/verify, or search before a customer-service step. |
 | Codex | CLI in the workspace; MCP where the selected Codex surface supports it | compatible | Use `vault search`, `vault map read`, benchmarks, and release gates from the repo. |
 | OpenCode | Generic stdio MCP where supported, or CLI in shell-capable sessions | compatible | Use the same project-dir and MCP contract as Claude Code/Codex; no dedicated adapter is required for basic use. |
@@ -237,6 +237,8 @@ The adapter provides manual tools:
 - `vault_read_range`
 - `vault_memory_propose`
 - `vault_stats`
+- `vault_update_status`
+- `vault_automation_handoff`
 
 It also ships `vault-openclaw`, a wrapper that can print an MCP config snippet:
 
@@ -273,8 +275,8 @@ When the agent supports MCP, use `vault-mcp` and keep final answers grounded in
 `vault_read_range` output rather than search previews.
 
 For token-sensitive agents, use `vault-mcp --tool-profile core`. This exposes
-only `vault_search`, `vault_read_range`, `vault_memory_propose`, and
-`vault_stats`. Use `review`, `remote`, `maintenance`, or `full` only when those
+only startup/status, handoff, search, bounded read, candidate propose, and
+stats tools. Use `review`, `remote`, `maintenance`, or `full` only when those
 extra tools are needed. For cross-host Supabase readers, the `remote` profile
 adds `vault_remote_search`, `vault_remote_map_show`, and
 `vault_remote_read_range`; use them in that order so hosted agents search safe

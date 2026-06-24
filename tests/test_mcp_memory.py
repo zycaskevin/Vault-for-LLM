@@ -21,6 +21,8 @@ def test_mcp_memory_tools_are_advertised():
         "vault_capture_discover",
         "vault_capture_session",
         "vault_automation_inbox",
+        "vault_automation_handoff",
+        "vault_update_status",
         "vault_dream_run",
     }.issubset(names)
     add_tool = next(tool for tool in TOOLS if tool["name"] == "vault_add")
@@ -38,10 +40,14 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
         "vault_read_range",
         "vault_memory_propose",
         "vault_stats",
+        "vault_update_status",
+        "vault_automation_handoff",
     ]
     assert "vault_memory_candidates" not in core_names
 
     review_names = [tool["name"] for tool in select_tools("review")]
+    assert "vault_update_status" in review_names
+    assert "vault_automation_handoff" in review_names
     assert "vault_memory_candidates" in review_names
     assert "vault_memory_review" in review_names
     assert "vault_capture_discover" in review_names
@@ -55,6 +61,8 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
     full_names = {tool["name"] for tool in select_tools("full")}
     assert "vault_add" in full_names
     assert "vault_memory_review" in full_names
+    assert "vault_update_status" in full_names
+    assert "vault_automation_handoff" in full_names
     assert "vault_remote_read_range" in full_names
     assert len(full_names) > len(core_names)
 
@@ -71,6 +79,76 @@ def test_mcp_custom_tool_allowlist_rejects_unknown_tool():
 
     with pytest.raises(ValueError, match="Unknown MCP tool"):
         select_tools("full", "vault_search,vault_nope")
+
+
+def test_mcp_update_status_reports_agent_registry(tmp_path, monkeypatch):
+    from vault import __version__
+    from vault.agent_registry import register_agent
+
+    monkeypatch.setenv("VAULT_AGENT_REGISTRY_DIR", str(tmp_path / "registry"))
+    project = tmp_path / "shared-project"
+    private_project = tmp_path / "private-project"
+    project.mkdir()
+
+    register_agent(
+        agent="codex",
+        project_dir=project,
+        scope="shared",
+        features=["core", "mcp"],
+        memory_layout="hybrid",
+        private_project_dir=private_project,
+    )
+
+    payload = _payload(
+        handle_tool_call(
+            "vault_update_status",
+            {
+                "latest_version": "9.9.9",
+                "write_status": True,
+            },
+        )
+    )
+
+    assert payload["installed_version"] == __version__
+    assert payload["latest_version"] == "9.9.9"
+    assert payload["update_available"] is True
+    assert payload["agent_count"] == 1
+    assert payload["agents"][0]["agent_id"] == "codex"
+    assert payload["private_projects"] == [str(private_project.resolve())]
+    assert f"vault automation handoff --project-dir {project.resolve()}" in payload["startup_commands"]
+    assert (tmp_path / "registry" / "update-status.json").exists()
+
+
+def test_mcp_automation_handoff_reads_existing_compact_handoff(tmp_path):
+    _set_project_dir(tmp_path)
+    report_dir = tmp_path / "reports" / "automation"
+    report_dir.mkdir(parents=True)
+    (report_dir / "cycle-latest.md").write_text(
+        "# Daily handoff\n\n- Suggested next task: run bounded search before edits.\n",
+        encoding="utf-8",
+    )
+
+    payload = _payload(handle_tool_call("vault_automation_handoff", {}))
+
+    assert payload["action"] == "handoff"
+    assert payload["status"] == "completed"
+    assert payload["handoff_path"] == "reports/automation/cycle-latest.md"
+    assert payload["content_type"] == "markdown"
+    assert "bounded search" in payload["content"]
+    assert payload["safety"]["read_only"] is True
+    assert payload["safety"]["uses_existing_handoff_only"] is True
+
+
+def test_mcp_automation_handoff_missing_is_bounded(tmp_path):
+    _set_project_dir(tmp_path)
+
+    payload = _payload(handle_tool_call("vault_automation_handoff", {}))
+
+    assert payload["action"] == "handoff"
+    assert payload["status"] == "missing"
+    assert payload["content"] == ""
+    assert payload["safety"]["read_only"] is True
+    assert payload["next_action"].startswith("Run `vault automation cycle")
 
 
 def test_mcp_search_respects_fields_and_snippet(tmp_path):

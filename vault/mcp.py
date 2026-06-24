@@ -1837,6 +1837,26 @@ TOOLS = [
         }
     },
     {
+        "name": "vault_automation_handoff",
+        "description": "Read the latest compact startup handoff for this project. Read-only; does not inspect raw transcripts or mutate memory.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "source": {
+                    "type": "string",
+                    "enum": ["auto", "cycle", "inbox"],
+                    "description": "Which handoff to read. auto prefers cycle-latest.md.",
+                    "default": "auto",
+                },
+                "handoff_path": {
+                    "type": "string",
+                    "description": "Optional custom reports/automation/*.md or *.json handoff path.",
+                    "default": "",
+                },
+            },
+        }
+    },
+    {
         "name": "vault_obsidian_import",
         "description": "Import an existing Obsidian vault into raw/obsidian/. Run dry_run first; compile only after user confirmation.",
         "inputSchema": {
@@ -1883,6 +1903,30 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {}
+        }
+    },
+    {
+        "name": "vault_update_status",
+        "description": "Show local Vault version, update hint, Agent registry, shared/private vaults, and startup handoff commands.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "latest_version": {
+                    "type": "string",
+                    "description": "Optional known latest version. Avoids network checks when provided.",
+                    "default": "",
+                },
+                "check_pypi": {
+                    "type": "boolean",
+                    "description": "Contact PyPI to resolve the latest version. Defaults false for bounded startup.",
+                    "default": False,
+                },
+                "write_status": {
+                    "type": "boolean",
+                    "description": "Write ~/.vault-for-llm/update-status.json. Defaults false.",
+                    "default": False,
+                },
+            }
         }
     },
     {
@@ -2108,11 +2152,16 @@ TOOL_PROFILES = {
         "vault_read_range",
         "vault_memory_propose",
         "vault_stats",
+        "vault_update_status",
+        "vault_automation_handoff",
     ],
     "review": [
         "vault_search",
         "vault_read_range",
         "vault_memory_propose",
+        "vault_stats",
+        "vault_update_status",
+        "vault_automation_handoff",
         "vault_memory_promote",
         "vault_memory_review",
         "vault_memory_candidates",
@@ -2120,13 +2169,14 @@ TOOL_PROFILES = {
         "vault_capture_session",
         "vault_automation_inbox",
         "vault_dream_run",
-        "vault_stats",
     ],
     "remote": [
         "vault_search",
         "vault_read_range",
         "vault_memory_propose",
         "vault_stats",
+        "vault_update_status",
+        "vault_automation_handoff",
         "vault_remote_search",
         "vault_remote_map_show",
         "vault_remote_read_range",
@@ -2135,6 +2185,9 @@ TOOL_PROFILES = {
         "vault_search",
         "vault_read_range",
         "vault_memory_propose",
+        "vault_stats",
+        "vault_update_status",
+        "vault_automation_handoff",
         "vault_memory_promote",
         "vault_memory_review",
         "vault_memory_candidates",
@@ -2143,7 +2196,6 @@ TOOL_PROFILES = {
         "vault_automation_inbox",
         "vault_obsidian_import",
         "vault_dream_run",
-        "vault_stats",
         "vault_converge",
         "vault_freshness",
     ],
@@ -2493,6 +2545,16 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
             )
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 
+        elif name == "vault_automation_handoff":
+            from vault.automation import automation_handoff
+
+            payload = automation_handoff(
+                Path(DB_PATH).resolve().parent,
+                source=str(arguments.get("source") or "auto"),
+                handoff_path=str(arguments.get("handoff_path") or ""),
+            )
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
+
         elif name == "vault_obsidian_import":
             from vault.agent_setup import compile_project
             from vault.import_obsidian import sync_obsidian_vault
@@ -2550,6 +2612,17 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
             stats = db.stats()
             db.close()
             return {"result": json.dumps(stats, ensure_ascii=False, indent=2)}
+
+        elif name == "vault_update_status":
+            from vault.agent_registry import build_update_status, write_update_status
+
+            payload = build_update_status(
+                latest_version=str(arguments.get("latest_version") or ""),
+                check_pypi=bool(arguments.get("check_pypi", False)),
+            )
+            if bool(arguments.get("write_status", False)):
+                payload["status_path"] = str(write_update_status(payload))
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 
         elif name == "vault_converge":
             # 使用關鍵詞 fallback，不依賴 LLM

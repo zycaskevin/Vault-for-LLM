@@ -11,7 +11,7 @@ the model context and fewer ways for an agent to choose the wrong action.
 
 | Profile | Tools | Best For |
 |---|---|---|
-| `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats` | Daily agent work: find memory, read bounded evidence, propose new memory. |
+| `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats`, `vault_update_status`, `vault_automation_handoff` | Daily agent work: start from status/handoff, find memory, read bounded evidence, propose new memory. |
 | `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_capture_discover`, `vault_capture_session`, `vault_automation_inbox`, `vault_dream_run` | A reviewer agent or operator session that discovers/captures, approves, rejects, or blocks candidate memories. |
 | `remote` | Core plus `vault_remote_search`, `vault_remote_map_show`, `vault_remote_read_range` | Hosted or cross-host agents reading a Supabase-synced vault. |
 | `maintenance` | Review plus Obsidian import, freshness, convergence, and curation tools | Scheduled maintenance or explicit operator-led cleanup. |
@@ -108,6 +108,40 @@ setup smoke tests.
 ```json
 {}
 ```
+
+### `vault_update_status`
+
+Read local startup state: installed version, optional update hint, registered
+agents, shared/private vault paths, and suggested startup handoff commands.
+
+```json
+{
+  "latest_version": "",
+  "check_pypi": false,
+  "write_status": false
+}
+```
+
+Agent rule: keep `check_pypi=false` during normal startup unless the user asks
+for a live update check. Keep `write_status=false` unless a durable local status
+file is needed.
+
+### `vault_automation_handoff`
+
+Read the latest compact automation handoff for this project. It only reads
+existing files under `reports/automation` and does not read raw transcript
+contents or mutate memory.
+
+```json
+{
+  "source": "auto",
+  "handoff_path": ""
+}
+```
+
+Agent rule: call this at startup before reading full reports. If it returns
+`status=missing`, continue with normal search/read flow or run the CLI
+automation cycle only after user approval.
 
 ## Candidate Memory Tools
 

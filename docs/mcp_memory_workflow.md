@@ -11,7 +11,7 @@ Use the smallest MCP tool profile that fits the session:
 
 | Profile | Tools | Use when |
 |---|---|---|
-| `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats` | Daily agent use with fewer tool-schema tokens |
+| `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats`, `vault_update_status`, `vault_automation_handoff` | Daily agent use with startup status and compact handoff |
 | `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_capture_discover`, `vault_capture_session`, `vault_automation_inbox`, `vault_dream_run` | Discovering/capturing sessions and reviewing, rejecting, blocking, or promoting candidate memory |
 | `remote` | Core plus `vault_remote_search`, `vault_remote_map_show`, `vault_remote_read_range` | Reading a Supabase-synced cross-host memory view |
 | `maintenance` | Review plus Obsidian import and freshness/convergence checks | Scheduled or operator-led curation |
@@ -31,14 +31,16 @@ selected project directory.
 ## Recommended agent flow
 
 ```text
-1. vault_memory_propose  # candidate-first write with gates
-2. vault_capture_discover # optional: find likely transcript files without reading content
-3. vault_capture_session # optional: turn a transcript into candidates, preview first
-4. vault_memory_candidates # inspect pending candidates and gate result
-5. vault_memory_review   # reject/block weak candidates when needed
-6. vault_memory_promote  # explicit confirm=true promotion
-7. vault_search          # find active memory later
-8. vault_read_range      # read bounded source range and cite it
+1. vault_update_status       # see version, registry, shared/private vaults
+2. vault_automation_handoff  # read the compact project handoff when present
+3. vault_search              # find active memory
+4. vault_read_range          # read bounded source range and cite it
+5. vault_memory_propose      # candidate-first write with gates
+6. vault_capture_discover    # optional review profile: find transcripts without reading content
+7. vault_capture_session     # optional review profile: turn a transcript into candidates
+8. vault_memory_candidates   # optional review profile: inspect pending candidates
+9. vault_memory_review       # optional review profile: reject/block weak candidates
+10. vault_memory_promote     # optional review profile: explicit confirm=true promotion
 ```
 
 For shared or multi-agent vaults, pass the agent identity on read tools:

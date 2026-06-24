@@ -16,7 +16,7 @@ For adjacent systems and design comparisons, see
 ## Fast Prompt For Agents
 
 ```text
-Install Vault-for-LLM for this project with vault-for-llm[mcp]==0.6.78.
+Install Vault-for-LLM for this project with vault-for-llm[mcp]==0.6.79.
 Ask me where the vault database should live, whether it should be private or
 shared, and whether you should use a stable Python virtualenv path instead of a
 temporary one. Enable MCP by default if this agent runtime supports MCP. Ask
@@ -69,7 +69,7 @@ also prefer a stable virtualenv path such as `~/.hermes/venvs/vault-for-llm/`.
 Use the PyPI release unless the user explicitly asks for source development:
 
 ```bash
-python -m pip install "vault-for-llm[mcp]==0.6.78"
+python -m pip install "vault-for-llm[mcp]==0.6.79"
 vault setup-agent
 ```
 
@@ -78,6 +78,8 @@ vault setup-agent
 `vault update-status` to see which Agents are connected, which project vaults
 they use, and which `vault automation handoff --project-dir ...` commands should
 be read before starting work.
+MCP-capable agents can use `vault_update_status` and
+`vault_automation_handoff` from the `core` profile for the same startup flow.
 
 The default memory layout is `hybrid`: one shared project vault plus one private
 Agent vault. The generated `agent-install/hybrid-vault-layout.json` is the

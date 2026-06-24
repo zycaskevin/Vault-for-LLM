@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.78.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.79.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,7 +83,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.78"
+pip install "vault-for-llm[mcp]==0.6.79"
 
 vault setup-agent
 ```
@@ -97,6 +97,7 @@ vault update-status
 
 This shows the installed Vault version, registered Agents, project vaults, and
 the next startup handoff command.
+MCP-capable agents can call `vault_update_status` for the same startup view.
 
 The default memory layout is hybrid: shared project memory stays in the project
 vault, while each Agent gets a private local vault for identity, preferences,
@@ -128,7 +129,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.78"
+pip install "vault-for-llm[mcp]==0.6.79"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -172,6 +173,8 @@ Recommended core tools:
 - `vault_read_range`
 - `vault_memory_propose`
 - `vault_stats`
+- `vault_update_status`
+- `vault_automation_handoff`
 
 Reviewer or maintenance agents can use `vault_capture_discover` and
 `vault_capture_session` from the MCP `review` profile to run the same
@@ -289,6 +292,9 @@ The next agent can read the latest compact handoff with:
 vault automation handoff
 ```
 
+MCP-capable agents can read the same compact handoff with
+`vault_automation_handoff` in the `core` profile.
+
 `vault automation inbox` is the short review surface for that loop. It does not
 mutate memory. It ranks privacy-blocked, sensitive, duplicate, weak-quality, and
 automation-generated candidates, hides raw content by default, and shows only the
@@ -349,7 +355,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.78"
+pip install "vault-for-llm[supabase]==0.6.79"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

@@ -97,7 +97,31 @@ Generic `build/` and `dist/` directories are review-only by default because some
 
 It does **not** delete review-only large artifacts such as `.opencode/`, generic `build/` / `dist/`, or full `graphify-out/` directories.
 
-## 3. Git staging rule
+## 3. Discussion record rule
+
+After any substantial product, architecture, automation, security, or memory-governance discussion, write the conclusion into a repository document before starting the next implementation pass.
+
+This is a development rule, not a nice-to-have. Chat history is not a stable source of truth. If a decision should shape future code, installer behavior, agent workflow, security policy, benchmark interpretation, or roadmap direction, it must be captured in a public-safe document first.
+
+The record should include:
+
+- the decision or principle
+- the reason it matters
+- the intended product behavior
+- the boundary or safety rule
+- follow-up implementation tasks
+- anything explicitly deferred
+
+Good destinations include:
+
+- `docs/decision_records/` for product and architecture decisions
+- `docs/automation.md` for memory automation behavior
+- `docs/memory_governance.md` for memory layering and access rules
+- `docs/repo_governance.md` for development process rules
+
+Do not include private names, private conversation details, secrets, local-only paths, raw transcript content, or personal agent lore in public decision records. Use role-based language such as "personal companion agent", "coding agent", "project agent", or "remote agent".
+
+## 4. Git staging rule
 
 Do not use `git add .` in a dirty repo with runtime artifacts. Stage by allowlist:
 
@@ -114,7 +138,7 @@ git diff --cached --check
 python -m pytest tests/test_repo_hygiene_tools.py -q
 ```
 
-## 4. Design principle
+## 5. Design principle
 
 The tools are intentionally conservative:
 

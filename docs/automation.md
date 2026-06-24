@@ -310,6 +310,7 @@ vault setup-agent \
   --features core,mcp,memory_agents \
   --automation-schedule all \
   --automation-mode balanced \
+  --automation-write-workspace \
   --automation-include-transcripts
 ```
 
@@ -326,6 +327,12 @@ the generated cron, LaunchAgent, and n8n templates also run
 `reports/automation/inbox-latest.json` as the next-agent handoff. Use
 `--automation-command run` when you want a maintenance-only schedule without the
 feedback-learning phase.
+
+Add `--automation-write-workspace` when generated schedules should also pass
+`--write-workspace` to the scheduled cycle. This writes
+`reports/automation/cycle-latest.json` during the scheduled run. It is still a
+compact handoff only: candidate content stays hidden by default and the cycle
+does not promote candidates or hard-delete memory.
 
 Add `--automation-include-transcripts` when the scheduled handoff should also
 show uncaptured transcript exports for the next reviewer. This only passes

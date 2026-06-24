@@ -2714,6 +2714,8 @@ def cmd_setup_agent(args):
             automation_mode=args.automation_mode,
             automation_command=args.automation_command,
             automation_apply=bool(args.automation_apply),
+            automation_write_workspace=bool(args.automation_write_workspace),
+            automation_workspace_inbox_limit=args.automation_workspace_inbox_limit,
             automation_include_transcripts=bool(args.automation_include_transcripts),
             automation_transcript_limit=args.automation_transcript_limit,
             template_dir=Path(args.template_dir).expanduser() if args.template_dir else None,
@@ -2741,6 +2743,7 @@ def cmd_setup_agent(args):
             "sync_interval_minutes": args.sync_interval_minutes,
             "supabase_sync_interval_minutes": args.supabase_sync_interval_minutes,
             "automation_interval_minutes": args.automation_interval_minutes,
+            "automation_workspace_inbox_limit": args.automation_workspace_inbox_limit,
             "automation_transcript_limit": args.automation_transcript_limit,
             "template_dir": args.template_dir,
             "allow_private": args.allow_private,
@@ -2765,6 +2768,8 @@ def cmd_setup_agent(args):
             setup_values["automation_command"] = args.automation_command
         if args.automation_apply:
             setup_values["automation_apply"] = True
+        if args.automation_write_workspace:
+            setup_values["automation_write_workspace"] = True
         if args.automation_include_transcripts:
             setup_values["automation_include_transcripts"] = True
         config = interactive_setup(setup_values)
@@ -3066,6 +3071,10 @@ def main(argv: list[str] | None = None):
                         default="cycle", help="排程使用 cycle 或 run；cycle 會先寫 learning policy 再整理")
         ap.add_argument("--automation-apply", action="store_true",
                         help="讓排程模板加入 --apply；只執行 policy 允許的可逆操作")
+        ap.add_argument("--automation-write-workspace", action="store_true",
+                        help="讓 cycle 排程寫出 reports/automation/cycle-latest.json 每日工作台")
+        ap.add_argument("--automation-workspace-inbox-limit", type=int, default=5,
+                        help="cycle workspace 內最多列出的候選審核項目數（預設 5，上限 50）")
         ap.add_argument("--automation-include-transcripts", action="store_true",
                         help="讓排程 handoff opt-in 加入未 capture transcript 的 metadata-only 候選清單")
         ap.add_argument("--automation-transcript-limit", type=int, default=5,

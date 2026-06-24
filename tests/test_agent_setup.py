@@ -178,6 +178,7 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert "vault automation cycle" in cron
     assert "vault automation inbox" in cron
     assert "--write-handoff" in cron
+    assert "--write-workspace" not in cron
     assert "--project-dir" in cron
     assert str(project) in cron
     assert "--apply" not in cron
@@ -292,6 +293,40 @@ def test_run_agent_setup_can_include_transcript_hints_in_scheduled_handoff(tmp_p
     assert "--include-transcripts --transcript-limit 7" in readme
     assert "uncaptured transcript hints in scheduled handoff: `true`" in readme
     assert "metadata-only and does not read transcript contents" in readme
+
+
+def test_run_agent_setup_can_write_scheduled_cycle_workspace(tmp_path):
+    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+
+    project = tmp_path / "agent-project"
+    result = run_agent_setup(
+        AgentSetupConfig(
+            project_dir=project,
+            scope="shared",
+            agent="automation-agent",
+            features=["core", "mcp", "memory_agents"],
+            automation_schedule_targets="all",
+            automation_interval_minutes=1440,
+            automation_write_workspace=True,
+            automation_workspace_inbox_limit=9,
+            automation_include_transcripts=True,
+            automation_transcript_limit=7,
+            template_dir=tmp_path / "templates",
+        )
+    )
+
+    cron = Path(result["automation_schedule_templates"]["cron"]).read_text(encoding="utf-8")
+    plist = Path(result["automation_schedule_templates"]["launchagent"]).read_text(encoding="utf-8")
+    workflow = json.loads(Path(result["automation_schedule_templates"]["n8n"]).read_text(encoding="utf-8"))
+    readme = Path(result["automation_schedule_templates"]["readme"]).read_text(encoding="utf-8")
+
+    expected = "--write-workspace --inbox-limit 9 --include-transcripts --transcript-limit 7"
+    assert expected in cron
+    assert expected in plist
+    assert expected in workflow["nodes"][1]["parameters"]["command"]
+    assert expected in readme
+    assert "scheduled cycle workspace: `true`" in readme
+    assert "cycle workspace path: `reports/automation/cycle-latest.json`" in readme
 
 
 def test_run_agent_setup_writes_agent_roster_and_validation_pack(tmp_path):
@@ -462,6 +497,8 @@ def test_setup_agent_help_exposes_supabase_sync_options(capsys):
     assert "--automation-mode" in captured.out
     assert "--automation-command" in captured.out
     assert "--automation-apply" in captured.out
+    assert "--automation-write-workspace" in captured.out
+    assert "--automation-workspace-inbox-limit" in captured.out
     assert "--automation-include-transcripts" in captured.out
     assert "--automation-transcript-limit" in captured.out
 
@@ -475,7 +512,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.71" in captured.out
+    assert "vault-for-llm 0.6.72" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -643,7 +680,7 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.6.71" in body
+    assert "vault-for-llm[mcp,supabase]==0.6.72" in body
     assert "headroom-ai" in body
     assert "--agent-project-dir" in body
     assert str(project) in body
@@ -705,6 +742,7 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
             "balanced",  # memory automation mode
             "",  # default memory automation command: cycle
             "no",  # no scheduled apply
+            "yes",  # write cycle workspace handoff
             "yes",  # include metadata-only transcript hints in scheduled handoff
         ]
     )
@@ -737,6 +775,7 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
     assert any("Memory automation mode" in prompt for prompt in prompts)
     assert any("Memory automation command" in prompt for prompt in prompts)
     assert any("reversible archival" in prompt for prompt in prompts)
+    assert any("cycle workspace handoff" in prompt for prompt in prompts)
     assert any("uncaptured transcript hints" in prompt for prompt in prompts)
     assert config.remote_reader_targets == "n8n"
     assert config.agent_roster == "profile-agent:profile,remote-agent:remote"
@@ -745,6 +784,8 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
     assert config.automation_mode == "balanced"
     assert config.automation_command == "cycle"
     assert config.automation_apply is False
+    assert config.automation_write_workspace is True
+    assert config.automation_workspace_inbox_limit == 5
     assert config.automation_include_transcripts is True
     assert config.automation_transcript_limit == 5
 

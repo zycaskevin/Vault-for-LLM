@@ -868,6 +868,10 @@ def automation_schedule_command(
     apply: bool = False,
     command: str = "cycle",
     vault_executable: str = "vault",
+    write_workspace: bool = False,
+    inbox_limit: int = 5,
+    include_transcripts: bool = False,
+    transcript_limit: int = 5,
 ) -> list[str]:
     normalized_command = _normalize_automation_command(command)
     command_args = [
@@ -882,6 +886,17 @@ def automation_schedule_command(
     ]
     if apply:
         command_args.append("--apply")
+    if normalized_command == "cycle" and write_workspace:
+        command_args.append("--write-workspace")
+        command_args.extend(["--inbox-limit", str(max(1, min(int(inbox_limit or 5), 50)))])
+        if include_transcripts:
+            command_args.extend(
+                [
+                    "--include-transcripts",
+                    "--transcript-limit",
+                    str(max(1, min(int(transcript_limit or 5), 20))),
+                ]
+            )
     return command_args
 
 
@@ -922,6 +937,8 @@ def automation_schedule_with_inbox_command(
     apply: bool = False,
     command: str = "cycle",
     vault_executable: str = "vault",
+    write_workspace: bool = False,
+    inbox_limit: int = 5,
     include_transcripts: bool = False,
     transcript_limit: int = 5,
 ) -> list[str]:
@@ -931,6 +948,10 @@ def automation_schedule_with_inbox_command(
         apply=apply,
         command=command,
         vault_executable=vault_executable,
+        write_workspace=write_workspace,
+        inbox_limit=inbox_limit,
+        include_transcripts=include_transcripts,
+        transcript_limit=transcript_limit,
     )
     inbox = automation_inbox_handoff_command(
         project_dir=project_dir,
@@ -951,6 +972,8 @@ def write_automation_schedule_templates(
     apply: bool = False,
     command: str = "cycle",
     vault_executable: str = "vault",
+    write_workspace: bool = False,
+    workspace_inbox_limit: int = 5,
     include_transcripts: bool = False,
     transcript_limit: int = 5,
 ) -> dict[str, str]:
@@ -965,6 +988,10 @@ def write_automation_schedule_templates(
         apply=apply,
         command=normalized_command,
         vault_executable=vault_executable,
+        write_workspace=write_workspace,
+        inbox_limit=workspace_inbox_limit,
+        include_transcripts=include_transcripts,
+        transcript_limit=transcript_limit,
     )
     scheduled_args = automation_schedule_with_inbox_command(
         project_dir=project_dir,
@@ -972,6 +999,8 @@ def write_automation_schedule_templates(
         apply=apply,
         command=normalized_command,
         vault_executable=vault_executable,
+        write_workspace=write_workspace,
+        inbox_limit=workspace_inbox_limit,
         include_transcripts=include_transcripts,
         transcript_limit=transcript_limit,
     )
@@ -1047,6 +1076,8 @@ def write_automation_schedule_templates(
                 "- automation never hard-deletes memory",
                 "- expired memories with usage are protected and sent to human review",
                 "- scheduled runs write `reports/automation/inbox-latest.json` as the next-agent handoff",
+                f"- scheduled cycle workspace: `{str(bool(write_workspace and normalized_command == 'cycle')).lower()}`",
+                "- cycle workspace path: `reports/automation/cycle-latest.json` when enabled",
                 f"- uncaptured transcript hints in scheduled handoff: `{str(bool(include_transcripts)).lower()}`",
                 "- transcript discovery is metadata-only and does not read transcript contents",
                 "",
@@ -2171,6 +2202,8 @@ class AgentSetupConfig:
     automation_mode: str = "balanced"
     automation_command: str = "cycle"
     automation_apply: bool = False
+    automation_write_workspace: bool = False
+    automation_workspace_inbox_limit: int = 5
     automation_include_transcripts: bool = False
     automation_transcript_limit: int = 5
     template_dir: Path | None = None
@@ -2361,6 +2394,8 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
             mode=config.automation_mode,
             command=config.automation_command,
             apply=config.automation_apply,
+            write_workspace=config.automation_write_workspace,
+            workspace_inbox_limit=config.automation_workspace_inbox_limit,
             include_transcripts=config.automation_include_transcripts,
             transcript_limit=config.automation_transcript_limit,
         )
@@ -2715,6 +2750,18 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
     automation_apply = bool(argv_config.get("automation_apply", False))
     if automation_schedule_targets and automation_schedule_targets != "none" and "automation_apply" not in argv_config:
         automation_apply = _ask_yes_no("Allow scheduled automation to apply reversible archival?", False)
+    automation_write_workspace = bool(argv_config.get("automation_write_workspace", False))
+    if (
+        automation_schedule_targets
+        and automation_schedule_targets != "none"
+        and str(automation_command or "cycle") == "cycle"
+        and "automation_write_workspace" not in argv_config
+    ):
+        automation_write_workspace = _ask_yes_no(
+            "Write scheduled cycle workspace handoff (cycle-latest.json)?",
+            False,
+        )
+    automation_workspace_inbox_limit = int(argv_config.get("automation_workspace_inbox_limit") or 5)
     automation_include_transcripts = bool(argv_config.get("automation_include_transcripts", False))
     if (
         automation_schedule_targets
@@ -2765,6 +2812,8 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
         automation_mode=_normalize_automation_mode(str(automation_mode)),
         automation_command=_normalize_automation_command(str(automation_command)),
         automation_apply=automation_apply,
+        automation_write_workspace=automation_write_workspace,
+        automation_workspace_inbox_limit=automation_workspace_inbox_limit,
         automation_include_transcripts=automation_include_transcripts,
         automation_transcript_limit=automation_transcript_limit,
         template_dir=Path(argv_config["template_dir"]) if argv_config.get("template_dir") else None,

@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.72] - 2026-06-24
+
+### Added
+
+- Added `--automation-write-workspace` and `--automation-workspace-inbox-limit` to `vault setup-agent` / `vault install-agent`.
+- Generated cron, LaunchAgent, and n8n automation schedules can now opt into `vault automation cycle --write-workspace`, producing `reports/automation/cycle-latest.json` during scheduled cycle runs.
+- Interactive agent setup now asks whether scheduled cycle jobs should write the compact cycle workspace only after the user opts into memory automation schedules.
+
 ## [0.6.71] - 2026-06-24
 
 ### Added

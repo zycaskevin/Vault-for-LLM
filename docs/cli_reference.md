@@ -55,7 +55,7 @@ changed notes without duplicating unchanged ones.
 | `vault setup-agent --non-interactive --agent profile-agent --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase --language zh-Hant --install-optional-deps --supabase-setup simple --supabase-sync cron --remote-reader all --json` | Generate guided Supabase setup, daily sync templates, and shell/n8n/Coze remote reader templates |
 | `vault setup-agent --non-interactive --agent profile-agent --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase,memory_agents --agent-roster profile-agent:profile,work-agent:work,remote-agent:remote,n8n:automation --validation-pack all --json` | Generate a multi-agent access matrix plus live Supabase/n8n/Coze validation checklists |
 | `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase --write-stable-venv-script --json` | Generate `agent-install/setup-stable-venv.sh` for reboot-safe scheduled jobs and MCP commands |
-| `vault setup-agent --non-interactive --agent automation-agent --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,memory_agents --automation-schedule all --automation-mode balanced --automation-include-transcripts --json` | Generate cron, LaunchAgent, and n8n templates for report-first memory automation plus metadata-only uncaptured transcript hints |
+| `vault setup-agent --non-interactive --agent automation-agent --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,memory_agents --automation-schedule all --automation-mode balanced --automation-write-workspace --automation-include-transcripts --json` | Generate cron, LaunchAgent, and n8n templates for report-first memory automation plus cycle workspace and metadata-only uncaptured transcript hints |
 | `vault setup-agent --obsidian-vault ~/Documents/ObsidianVault --import-obsidian --obsidian-sync all` | Run first Obsidian import and write cron, LaunchAgent, and n8n templates |
 
 `vault install-agent` is an alias for `vault setup-agent`.
@@ -79,6 +79,8 @@ Memory automation schedule files are opt-in with
 `--automation-schedule cron|launchagent|n8n|all`; generated jobs default to
 `vault automation cycle` and stay report-first unless `--automation-apply` is
 explicitly set. Use `--automation-command run` for maintenance-only schedules.
+Add `--automation-write-workspace` when those scheduled cycle jobs should write
+`reports/automation/cycle-latest.json` as the next-agent workbench.
 Add `--automation-include-transcripts` when those scheduled jobs should write
 metadata-only uncaptured transcript hints into the inbox handoff.
 Manual interactive setup asks for `en`, `zh-Hant`, or `zh-CN`; non-interactive

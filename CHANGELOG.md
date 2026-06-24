@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [0.6.98] - 2026-06-24
+
+### Added
+
+- `automation brief` now exposes an explainable `importance_score` for top-used memories, with components for access, citation, recency, trust, freshness, TTL pressure, and governance protection hints.
+- Brief JSON now includes `importance_components`, `signals`, and lifecycle recommendations such as `refresh_or_cold_store_before_forgetting`.
+
+### Changed
+
+- Memory ranking in the automation brief is now based on the explainable importance model instead of the old `access + citation` weight alone. `weight_score` remains as a compatibility alias.
+
 ## [0.6.97] - 2026-06-24
 
 ### Added

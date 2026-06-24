@@ -168,7 +168,7 @@ automation cycle only after user approval.
 ### `vault_automation_brief`
 
 Read one compact automation intelligence brief. It returns learning hints,
-memory usage weights, long-term forgetting pressure, local agent-registry
+explainable memory importance, long-term forgetting pressure, local agent-registry
 health, and the smallest human-review queue.
 
 ```json

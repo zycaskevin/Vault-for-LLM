@@ -1108,7 +1108,8 @@ class VaultDB:
         if not include_archived:
             where = "WHERE COALESCE(status, 'active') != 'archived'"
         rows = self.conn.execute(
-            f"""SELECT id, title, layer, category, trust, status,
+            f"""SELECT id, title, layer, category, trust, freshness,
+                       scope, sensitivity, memory_type, expires_at, status,
                        access_count, citation_count, last_accessed_at, updated_at
                   FROM knowledge
                   {where}

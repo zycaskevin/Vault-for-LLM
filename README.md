@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.97.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.98.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,7 +83,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.97"
+pip install "vault-for-llm[mcp]==0.6.98"
 
 vault setup-agent
 ```
@@ -140,7 +140,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.97"
+pip install "vault-for-llm[mcp]==0.6.98"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -221,6 +221,10 @@ Searches record lightweight usage counters (`access_count`, `citation_count`,
 `last_accessed_at`). The default lightweight reranker uses these signals as a
 small, saturated boost, so frequently useful memories can rise slightly without
 overriding source relevance, trust, freshness, or access policy.
+`vault automation brief` also turns usage into an explainable
+`importance_score` with visible components for access, citation, recency, trust,
+freshness, TTL pressure, and protection hints. The score is for ranking and
+review guidance only; it never bypasses governance or promotes memory by itself.
 
 Short-lived memories with `expires_at` can be moved to `status: archived`
 instead of deleted:
@@ -369,9 +373,9 @@ candidate content. MCP-capable agents can call `vault_automation_activity` from
 the `core` profile.
 
 `vault automation brief` is the shortest daily intelligence view. It combines
-learning hints from promote/reject feedback, memory usage weights, forgetting
-pressure, shared agent health, and the 5% human-review queue. Use it before
-opening full reports:
+learning hints from promote/reject feedback, explainable memory importance,
+forgetting pressure, shared agent health, and the 5% human-review queue. Use it
+before opening full reports:
 
 ```bash
 vault automation brief --pretty
@@ -436,7 +440,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.97"
+pip install "vault-for-llm[supabase]==0.6.98"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

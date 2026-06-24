@@ -562,7 +562,13 @@ def test_automation_brief_combines_learning_weights_forgetting_and_review(tmp_pa
     assert payload["learning"]["readiness"] == "learning"
     assert payload["learning"]["top_rules"]
     assert payload["memory_weights"]["top_used"][0]["knowledge_id"] == used_id
-    assert payload["memory_weights"]["top_used"][0]["weight_score"] == 3
+    top_weight = payload["memory_weights"]["top_used"][0]
+    assert top_weight["importance_score"] == top_weight["weight_score"]
+    assert top_weight["importance_score"] > 3
+    assert top_weight["importance_components"]["citation"] > 0
+    assert top_weight["importance_components"]["ttl_pressure"] > 0
+    assert "expired_but_used" in top_weight["signals"]
+    assert top_weight["recommendation"] == "refresh_or_cold_store_before_forgetting"
     assert payload["forgetting_strategy"]["used_expired_count"] == 1
     assert payload["forgetting_strategy"]["archiveable_count"] == 1
     assert payload["human_review_5_percent"]["items"]
@@ -572,6 +578,44 @@ def test_automation_brief_combines_learning_weights_forgetting_and_review(tmp_pa
     assert (project / payload["brief_markdown_path"]).exists()
     written = json.loads((project / payload["brief_path"]).read_text(encoding="utf-8"))
     assert written["brief_markdown_path"] == "reports/automation/brief-latest.md"
+
+
+def test_automation_brief_memory_importance_explains_components(tmp_path):
+    project = _init_project(tmp_path)
+    expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    old_access = (datetime.now(timezone.utc) - timedelta(days=45)).isoformat()
+    with VaultDB(project / "vault.db") as db:
+        cited_id = db.add_knowledge(
+            "Cited expired release rule",
+            "Release rules that are still cited should be refreshed before forgetting.",
+            category="release",
+            trust=0.8,
+            expires_at=expired,
+        )
+        accessed_id = db.add_knowledge(
+            "Accessed active note",
+            "Active notes with access but no citations should stay below cited evidence.",
+            category="ops",
+            trust=0.6,
+        )
+        db.record_knowledge_access([cited_id], cited=True)
+        db.record_knowledge_access([accessed_id], cited=False, accessed_at=old_access)
+
+    payload = automation_brief(project, limit=5, review_limit=5, min_events=1, write_brief=True)
+    top_used = payload["memory_weights"]["top_used"]
+    cited = next(item for item in top_used if item["knowledge_id"] == cited_id)
+    accessed = next(item for item in top_used if item["knowledge_id"] == accessed_id)
+
+    assert payload["memory_weights"]["model"] == "usage_citation_recency_trust_freshness_ttl_v1"
+    assert cited["importance_score"] > accessed["importance_score"]
+    assert cited["importance_components"]["citation"] == 8.0
+    assert cited["importance_components"]["ttl_pressure"] == 10.0
+    assert cited["importance_components"]["trust"] == 8.0
+    assert cited["weight_score"] == cited["importance_score"]
+    assert "cited" in cited["signals"]
+    assert accessed["importance_components"]["recency"] == 3.0
+    markdown = (project / payload["brief_markdown_path"]).read_text(encoding="utf-8")
+    assert "| id | title | importance | access | citations | recommendation |" in markdown
 
 
 def test_automation_apply_does_not_touch_private_or_high_sensitivity_memory(tmp_path):

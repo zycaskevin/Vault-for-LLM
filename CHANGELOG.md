@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [0.6.100] - 2026-06-24
+
+### Added
+
+- Added `vault automation review-summary`, a read-only 5% human approval surface that turns brief/inbox/report signals into short review cards.
+- Review summaries can write `reports/automation/review-summary-latest.json` and `.md` for dashboards, scheduled handoffs, or human review.
+
+### Changed
+
+- Automation review UX now has a smaller first-stop surface before opening full reports, inbox queues, raw candidate content, or lifecycle ledgers.
+
 ## [0.6.99] - 2026-06-24
 
 ### Added

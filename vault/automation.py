@@ -690,6 +690,68 @@ def automation_brief(
     return payload
 
 
+def automation_review_summary(
+    project_dir: str | Path,
+    *,
+    limit: int = 5,
+    min_events: int = 5,
+    write_summary: bool = False,
+    summary_path: str | Path = "",
+) -> dict[str, Any]:
+    """Build the shortest human approval surface for automation.
+
+    This is intentionally derived and read-only. It hides candidate content and
+    compresses the existing brief/inbox/report signals into a few approval
+    cards that a person can quickly accept, reject, or defer.
+    """
+    project = Path(project_dir)
+    limit_i = max(1, min(int(limit or 5), 20))
+    brief = automation_brief(project, limit=limit_i, review_limit=limit_i, min_events=min_events, write_brief=False)
+    cards = _review_summary_cards(brief, limit=limit_i)
+    required = any(card.get("requires_human_decision") for card in cards)
+    payload = {
+        "action": "review-summary",
+        "generated_at": _now(),
+        "project_dir": str(project),
+        "status": brief.get("status", "completed"),
+        "summary": {
+            "cards": len(cards),
+            "requires_human_decision": required,
+            "pending_candidates": int((brief.get("summary") or {}).get("pending_candidates") or 0),
+            "needs_review": int((brief.get("summary") or {}).get("needs_review") or 0),
+            "expired_active": int((brief.get("summary") or {}).get("expired_active") or 0),
+            "cold_store_preview": int((brief.get("summary") or {}).get("cold_store_preview") or 0),
+            "cold_store_applied": int((brief.get("summary") or {}).get("cold_store_applied") or 0),
+            "top_importance_score": max([float(card.get("importance_score") or 0.0) for card in cards], default=0.0),
+        },
+        "cards": cards,
+        "safety": {
+            "read_only": True,
+            "writes_active_memory": False,
+            "writes_candidates": False,
+            "hard_delete": False,
+            "includes_raw_candidate_content": False,
+            "importance_is_ranking_hint_only": True,
+            "learning_is_ranking_hint_only": True,
+        },
+        "review_summary_path": "",
+        "review_summary_markdown_path": "",
+        "next_action": (
+            "Read only these cards first. Approve lifecycle changes only after checking "
+            "bounded evidence or the compact automation report."
+        ),
+    }
+    if write_summary:
+        payload["review_summary_path"] = _write_review_summary(project, payload, summary_path=summary_path)
+        payload["review_summary_markdown_path"] = _write_review_summary_markdown(
+            project,
+            payload,
+            summary_path=payload["review_summary_path"],
+        )
+        _write_review_summary(project, payload, summary_path=payload["review_summary_path"])
+    return payload
+
+
 def automation_handoff(
     project_dir: str | Path,
     *,
@@ -1424,6 +1486,110 @@ def _brief_human_review(inbox: dict[str, Any], activity: dict[str, Any], *, limi
     }
 
 
+def _review_summary_cards(brief: dict[str, Any], *, limit: int = 5) -> list[dict[str, Any]]:
+    cards: list[dict[str, Any]] = []
+    budget = max(1, min(int(limit or 5), 20))
+    review = brief.get("human_review_5_percent") or {}
+    for item in review.get("items") or []:
+        cards.append(
+            {
+                "kind": item.get("kind", "review"),
+                "id": item.get("id", ""),
+                "title": item.get("title") or item.get("id") or item.get("kind", "Review item"),
+                "priority": int(item.get("priority") or 80),
+                "count": int(item.get("count") or 1),
+                "reason": item.get("reason", ""),
+                "recommended_action": item.get("recommended_action", "review"),
+                "safe_action": item.get("safe_action", "Inspect compact report before changing memory or policy."),
+                "requires_human_decision": True,
+                "source": "human_review_5_percent",
+            }
+        )
+
+    forgetting = brief.get("forgetting_strategy") or {}
+    for item in forgetting.get("recommendations") or []:
+        cards.append(
+            {
+                "kind": "forgetting_strategy",
+                "id": item.get("action", "forgetting_strategy"),
+                "title": _review_card_title(item.get("action", "forgetting strategy")),
+                "priority": 78 if item.get("action") == "human_review_required" else 62,
+                "count": int(item.get("count") or 1),
+                "reason": item.get("reason", ""),
+                "recommended_action": item.get("action", "review"),
+                "safe_action": "Prefer refresh or summarize-then-cold-store before removing daily recall.",
+                "requires_human_decision": item.get("action") == "human_review_required",
+                "source": "forgetting_strategy",
+            }
+        )
+
+    weights = brief.get("memory_weights") or {}
+    for item in weights.get("top_used") or []:
+        recommendation = str(item.get("recommendation") or "")
+        score = float(item.get("importance_score") or item.get("weight_score") or 0.0)
+        if recommendation in {"observe", "keep_available"} and score < 20:
+            continue
+        cards.append(
+            {
+                "kind": "memory_importance",
+                "id": item.get("knowledge_id", ""),
+                "title": item.get("title", ""),
+                "priority": min(92, 50 + int(score)),
+                "count": 1,
+                "reason": _importance_reason(item),
+                "recommended_action": recommendation or "review_memory_importance",
+                "safe_action": "Use bounded read and citations before refreshing, summarizing, or changing TTL.",
+                "requires_human_decision": recommendation in {
+                    "refresh_or_cold_store_before_forgetting",
+                    "review_ttl_before_expiry",
+                    "protect_or_summarize_before_forgetting",
+                },
+                "importance_score": score,
+                "importance_components": item.get("importance_components", {}),
+                "importance_signals": item.get("signals", []),
+                "source": "memory_weights",
+            }
+        )
+
+    unique: dict[tuple[str, str], dict[str, Any]] = {}
+    for card in cards:
+        key = (str(card.get("kind") or ""), str(card.get("id") or card.get("title") or ""))
+        existing = unique.get(key)
+        if existing is None or int(card.get("priority") or 0) > int(existing.get("priority") or 0):
+            unique[key] = card
+    ordered = sorted(
+        unique.values(),
+        key=lambda card: (
+            -int(card.get("priority") or 0),
+            -float(card.get("importance_score") or 0.0),
+            str(card.get("title") or ""),
+        ),
+    )
+    return ordered[:budget]
+
+
+def _review_card_title(value: Any) -> str:
+    text = str(value or "").replace("_", " ").strip()
+    return text[:1].upper() + text[1:] if text else "Review item"
+
+
+def _importance_reason(item: dict[str, Any]) -> str:
+    components = item.get("importance_components") or {}
+    signals = item.get("signals") or []
+    bits = []
+    if "cited" in signals:
+        bits.append("it has citation usage")
+    if "expired_but_used" in signals:
+        bits.append("it is expired but still used")
+    if components.get("recency", 0) >= 10:
+        bits.append("it was accessed recently")
+    if components.get("protection", 0) > 0:
+        bits.append("governance protection is involved")
+    if not bits:
+        bits.append("its importance score is elevated")
+    return "; ".join(bits) + "."
+
+
 def _write_brief(project: Path, payload: dict[str, Any], *, brief_path: str | Path = "") -> str:
     report_dir = project / "reports" / "automation"
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -1540,6 +1706,78 @@ def _write_brief_markdown(project: Path, payload: dict[str, Any], *, brief_path:
         "- no raw candidate content",
         "- no auto-promote policy widening",
         "- forgetting strategy only; no compression or cold-store mutation",
+    ]
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return _relative_to_project(project, path)
+
+
+def _write_review_summary(project: Path, payload: dict[str, Any], *, summary_path: str | Path = "") -> str:
+    report_dir = project / "reports" / "automation"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    if summary_path:
+        raw = Path(summary_path)
+        path = raw if raw.is_absolute() else project / raw
+        try:
+            resolved = path.expanduser().resolve()
+            allowed = report_dir.expanduser().resolve()
+        except Exception as exc:
+            raise ValueError(f"unable to resolve automation review summary path: {exc}") from exc
+        if allowed != resolved and allowed not in resolved.parents:
+            raise ValueError("automation review summary path must stay under reports/automation")
+        path = resolved
+    else:
+        path = report_dir / "review-summary-latest.json"
+    data = dict(payload)
+    data["review_summary_path"] = _relative_to_project(project, path)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return _relative_to_project(project, path)
+
+
+def _write_review_summary_markdown(project: Path, payload: dict[str, Any], *, summary_path: str | Path) -> str:
+    json_path = project / summary_path if not Path(summary_path).is_absolute() else Path(summary_path)
+    path = json_path.with_suffix(".md")
+    cards = payload.get("cards") or []
+    summary = payload.get("summary") or {}
+    lines = [
+        "# Vault Automation Review Summary",
+        "",
+        f"- generated: `{_md_text(payload.get('generated_at', ''))}`",
+        f"- status: `{_md_text(payload.get('status', ''))}`",
+        f"- cards: `{int(summary.get('cards') or 0)}`",
+        f"- requires human decision: `{bool(summary.get('requires_human_decision', False))}`",
+        f"- top importance score: `{float(summary.get('top_importance_score') or 0.0)}`",
+        "",
+    ]
+    if cards:
+        lines += [
+            _md_row(["priority", "kind", "id", "title", "action", "why"]),
+            _md_row(["---", "---", "---", "---", "---", "---"]),
+        ]
+        for card in cards:
+            lines.append(
+                _md_row(
+                    [
+                        card.get("priority", 0),
+                        card.get("kind", ""),
+                        card.get("id", ""),
+                        card.get("title", ""),
+                        card.get("recommended_action", ""),
+                        card.get("reason", ""),
+                    ]
+                )
+            )
+    else:
+        lines.append("No review cards.")
+    lines += [
+        "",
+        "## Safety",
+        "",
+        "- read-only summary",
+        "- no raw candidate content",
+        "- no promotion, archive, or deletion",
+        "- importance is a ranking hint only",
+        "",
+        f"Next action: {_md_text(payload.get('next_action', ''))}",
     ]
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     return _relative_to_project(project, path)

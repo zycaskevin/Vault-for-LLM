@@ -1980,13 +1980,14 @@ def cmd_automation(args):
         automation_inbox,
         automation_plan,
         automation_report,
+        automation_review_summary,
         automation_run,
     )
 
     action = getattr(args, "automation_action", "")
-    if action not in {"plan", "run", "cycle", "report", "activity", "brief", "inbox", "handoff", "doctor", "eval"}:
+    if action not in {"plan", "run", "cycle", "report", "activity", "brief", "review-summary", "inbox", "handoff", "doctor", "eval"}:
         print(
-            "error: automation requires action: plan, run, cycle, report, activity, brief, inbox, handoff, eval, or doctor",
+            "error: automation requires action: plan, run, cycle, report, activity, brief, review-summary, inbox, handoff, eval, or doctor",
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -2049,6 +2050,14 @@ def cmd_automation(args):
                 min_events=getattr(args, "min_events", 5),
                 write_brief=getattr(args, "write_brief", False),
                 brief_path=getattr(args, "brief_path", ""),
+            )
+        elif action == "review-summary":
+            payload = automation_review_summary(
+                project_dir,
+                limit=args.limit,
+                min_events=getattr(args, "min_events", 5),
+                write_summary=getattr(args, "write_summary", False),
+                summary_path=getattr(args, "summary_path", ""),
             )
         elif action == "inbox":
             payload = automation_inbox(
@@ -2403,6 +2412,42 @@ def cmd_automation(args):
                 )
         else:
             print("\n  Human review 5%: empty")
+        return
+
+    if action == "review-summary":
+        summary = payload.get("summary") or {}
+        cards = payload.get("cards") or []
+        print("✅ Automation review summary\n")
+        print(f"  status: {payload.get('status')}")
+        print(
+            "  review: "
+            f"cards={summary.get('cards', 0)} "
+            f"requires_human_decision={summary.get('requires_human_decision', False)} "
+            f"top_importance={summary.get('top_importance_score', 0)}"
+        )
+        print(
+            "  queue: "
+            f"pending={summary.get('pending_candidates', 0)} "
+            f"needs_review={summary.get('needs_review', 0)} "
+            f"expired={summary.get('expired_active', 0)} "
+            f"cold_store_preview={summary.get('cold_store_preview', 0)}"
+        )
+        if payload.get("review_summary_path"):
+            print(f"  summary: {payload.get('review_summary_path')}")
+        if payload.get("review_summary_markdown_path"):
+            print(f"  summary markdown: {payload.get('review_summary_markdown_path')}")
+        if cards:
+            print("\n  Review cards:")
+            for card in cards:
+                print(
+                    f"    - P{card.get('priority', 0)} {card.get('kind')} "
+                    f"{card.get('id')} action={card.get('recommended_action')}"
+                )
+                print(f"      {card.get('title')}")
+                print(f"      why: {card.get('reason')}")
+                print(f"      safe: {card.get('safe_action')}")
+        else:
+            print("\n  Review cards: empty")
         return
 
     if action == "inbox":
@@ -4074,6 +4119,12 @@ def main(argv: list[str] | None = None):
     sp.add_argument("--min-events", type=int, default=5, help="minimum feedback events before a group is considered learnable")
     sp.add_argument("--write-brief", action="store_true", help="write reports/automation/brief-latest.json and .md")
     sp.add_argument("--brief-path", default="", help="custom reports/automation/*.json brief path")
+
+    sp = automation_sub.add_parser("review-summary", help="Show the shortest human approval cards for automation")
+    add_automation_common(sp)
+    sp.add_argument("--min-events", type=int, default=5, help="minimum feedback events before a group is considered learnable")
+    sp.add_argument("--write-summary", action="store_true", help="write reports/automation/review-summary-latest.json and .md")
+    sp.add_argument("--summary-path", default="", help="custom reports/automation/*.json review summary path")
 
     sp = automation_sub.add_parser("inbox", help="Show the shortest review queue for automation candidates and reports")
     add_automation_common(sp)

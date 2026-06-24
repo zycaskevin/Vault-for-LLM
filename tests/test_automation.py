@@ -14,6 +14,7 @@ from vault.automation import (
     automation_inbox,
     automation_plan,
     automation_report,
+    automation_review_summary,
     automation_run,
     load_policy,
 )
@@ -663,6 +664,44 @@ def test_automation_brief_memory_importance_explains_components(tmp_path):
     assert accessed["importance_components"]["recency"] == 3.0
     markdown = (project / payload["brief_markdown_path"]).read_text(encoding="utf-8")
     assert "| id | title | importance | access | citations | recommendation |" in markdown
+
+
+def test_automation_review_summary_writes_short_approval_cards(tmp_path):
+    project = _init_project(tmp_path)
+    expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    with VaultDB(project / "vault.db") as db:
+        used_id = db.add_knowledge(
+            "Review summary cited SOP",
+            "Cited expired memory should appear as a tiny approval card.",
+            layer="L2",
+            expires_at=expired,
+            trust=0.8,
+        )
+        db.record_knowledge_access([used_id], cited=True)
+        _create_low_risk_session_candidate(db, title="Review summary candidate")
+
+    automation_run(project, mode="balanced", apply=False, limit=10, write_reports=True)
+    payload = automation_review_summary(project, limit=5, min_events=1, write_summary=True)
+
+    assert payload["action"] == "review-summary"
+    assert payload["safety"]["read_only"] is True
+    assert payload["safety"]["includes_raw_candidate_content"] is False
+    assert payload["summary"]["requires_human_decision"] is True
+    assert payload["summary"]["top_importance_score"] > 0
+    assert payload["review_summary_path"] == "reports/automation/review-summary-latest.json"
+    assert payload["review_summary_markdown_path"] == "reports/automation/review-summary-latest.md"
+    assert (project / payload["review_summary_path"]).exists()
+    assert (project / payload["review_summary_markdown_path"]).exists()
+    assert any(card["kind"] == "report_review" for card in payload["cards"])
+    assert any(
+        card["kind"] == "memory_importance"
+        and card["id"] == used_id
+        and card["importance_score"] > 0
+        for card in payload["cards"]
+    )
+    markdown = (project / payload["review_summary_markdown_path"]).read_text(encoding="utf-8")
+    assert "# Vault Automation Review Summary" in markdown
+    assert "importance is a ranking hint only" in markdown
 
 
 def test_automation_apply_does_not_touch_private_or_high_sensitivity_memory(tmp_path):
@@ -1337,6 +1376,37 @@ def test_automation_cli_brief_prints_short_human_review(tmp_path, monkeypatch, c
     assert "Human review 5%" in out
     assert "used_expired=1" in out
     assert "brief: reports/automation/brief-latest.json" in out
+
+
+def test_automation_cli_review_summary_prints_approval_cards(tmp_path, monkeypatch, capsys):
+    from vault.cli import cmd_automation
+
+    project = _init_project(tmp_path)
+    expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    with VaultDB(project / "vault.db") as db:
+        used_id = db.add_knowledge("Review summary CLI SOP", "Used expired memory.", layer="L2", expires_at=expired)
+        db.record_knowledge_access([used_id], cited=True)
+    automation_run(project, mode="balanced", apply=False, limit=10, write_reports=True)
+    monkeypatch.chdir(project)
+
+    cmd_automation(
+        Namespace(
+            automation_action="review-summary",
+            mode=None,
+            limit=5,
+            min_events=1,
+            write_summary=True,
+            summary_path="",
+            json=False,
+            pretty=False,
+        )
+    )
+
+    out = capsys.readouterr().out
+    assert "Automation review summary" in out
+    assert "Review cards" in out
+    assert "requires_human_decision=True" in out
+    assert "summary: reports/automation/review-summary-latest.json" in out
 
 
 def test_automation_cli_eval_prints_feedback_scores(tmp_path, monkeypatch, capsys):

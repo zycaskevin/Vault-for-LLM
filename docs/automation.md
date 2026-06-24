@@ -109,6 +109,7 @@ Show the shortest intelligence brief:
 ```bash
 vault automation brief --pretty
 vault automation brief --write-brief --pretty
+vault automation review-summary --write-summary
 ```
 
 `automation brief` is the daily startup surface for the memory loop. It joins
@@ -134,6 +135,12 @@ The same model is used by `cold-store-expired`, `automation run`, and
 importance before cold-store preview/apply, and the action ledger carries the
 score plus recommendation so dashboards and agents can explain why an item is
 near the top.
+
+`automation review-summary` is the shortest human approval surface. It derives
+cards from the brief, inbox, and latest report, hides raw candidate content, and
+writes `reports/automation/review-summary-latest.json` plus `.md` when
+`--write-summary` is used. Use it before opening full reports or raw candidate
+content.
 
 When that brief recommends `summarize_then_cold_store`, run a dry-run first:
 
@@ -410,6 +417,8 @@ important review fields are:
 - `automation brief`: a single read-only intelligence view for startup and
   dashboards: learning hints, explainable memory importance, forgetting
   pressure, shared agent health, and the 5% human-review digest.
+- `automation review-summary`: the shortest approval-card view for humans,
+  derived from brief/inbox/report signals without raw candidate content.
 - `automation inbox`: the shortest daily review surface. It starts with
   `review_digest` cards from the latest report's `human_review.items`, then
   shows the candidate queue. This lets humans review policy-level decisions

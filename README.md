@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.99.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.100.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,7 +83,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.99"
+pip install "vault-for-llm[mcp]==0.6.100"
 
 vault setup-agent
 ```
@@ -140,7 +140,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.99"
+pip install "vault-for-llm[mcp]==0.6.100"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -250,6 +250,9 @@ to deserve refresh, summary, or protected cold storage.
 signals into a compact review digest, so the human review surface stays short:
 review protected TTL decisions, expired-but-used memory, cold-store summaries,
 and promotion previews before opening raw candidate content.
+`vault automation review-summary` is even smaller: it turns the brief, inbox,
+and latest report into a few approval cards for the 5% of memory decisions a
+person should actually inspect.
 When `vault automation eval --write-learning-policy` has enough reviewed
 feedback, inbox/brief also use that bounded learning policy to sort review
 items. The multiplier is visible and capped; it is not an authorization policy.
@@ -382,6 +385,7 @@ before opening full reports:
 
 ```bash
 vault automation brief --pretty
+vault automation review-summary --write-summary
 ```
 
 MCP-capable agents can call `vault_automation_brief` from the `core` profile.
@@ -443,7 +447,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.99"
+pip install "vault-for-llm[supabase]==0.6.100"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

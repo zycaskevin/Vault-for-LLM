@@ -2891,7 +2891,14 @@ def cmd_setup_agent(args):
 
 def cmd_agent(args):
     """Local agent registry commands."""
-    from vault.agent_registry import build_update_status, focus_update_status_for_agent, list_agents, read_update_status, register_agent
+    from vault.agent_registry import (
+        build_update_distribution_health,
+        build_update_status,
+        focus_update_status_for_agent,
+        list_agents,
+        read_update_status,
+        register_agent,
+    )
 
     action = getattr(args, "agent_action", None)
     if action == "register":
@@ -2939,6 +2946,13 @@ def cmd_agent(args):
     if action == "status":
         if args.read_status and args.write_status:
             raise SystemExit("--read-status cannot be combined with --write-status")
+        if getattr(args, "doctor", False):
+            payload = build_update_distribution_health(max_age_minutes=args.max_status_age_minutes)
+            if args.json or args.pretty:
+                _json_print(payload, pretty=args.pretty)
+                return
+            _print_update_distribution_health(payload)
+            return
         if args.read_status:
             payload = read_update_status(agent_id=args.agent or "")
         else:
@@ -2958,15 +2972,36 @@ def cmd_agent(args):
         _print_update_status(payload)
         return
 
+    if action == "doctor":
+        payload = build_update_distribution_health(max_age_minutes=args.max_status_age_minutes)
+        if args.json or args.pretty:
+            _json_print(payload, pretty=args.pretty)
+            return
+        _print_update_distribution_health(payload)
+        return
+
     raise SystemExit("agent subcommand required: register, list, or status")
 
 
 def cmd_update_status(args):
     """Show local Vault runtime update and agent registry status."""
-    from vault.agent_registry import build_update_status, focus_update_status_for_agent, read_update_status, write_update_status
+    from vault.agent_registry import (
+        build_update_distribution_health,
+        build_update_status,
+        focus_update_status_for_agent,
+        read_update_status,
+        write_update_status,
+    )
 
     if args.read_status and args.write_status:
         raise SystemExit("--read-status cannot be combined with --write-status")
+    if getattr(args, "doctor", False):
+        payload = build_update_distribution_health(max_age_minutes=args.max_status_age_minutes)
+        if args.json or args.pretty:
+            _json_print(payload, pretty=args.pretty)
+            return
+        _print_update_distribution_health(payload)
+        return
     if args.read_status:
         payload = read_update_status(agent_id=args.agent or "")
     else:
@@ -2982,6 +3017,32 @@ def cmd_update_status(args):
         _json_print(payload, pretty=args.pretty)
         return
     _print_update_status(payload)
+
+
+def _print_update_distribution_health(payload: dict) -> None:
+    print("Vault Agent update distribution")
+    print(f"  ok: {payload.get('ok', False)}")
+    print(f"  registry: {payload.get('registry_path', '')}")
+    print(f"  status_path: {payload.get('status_path', '')}")
+    print(f"  status_exists: {payload.get('status_exists', False)}")
+    print(f"  status_installed_version: {payload.get('status_installed_version', '')}")
+    print(f"  status_current_runtime_mismatch: {payload.get('status_current_runtime_mismatch', False)}")
+    print(f"  status_stale: {payload.get('status_stale', True)}")
+    print(f"  status_age_seconds: {payload.get('status_age_seconds')}")
+    print(f"  agents: {payload.get('agent_count', 0)}")
+    attention = payload.get("agents_needing_attention") or []
+    if attention:
+        print("Agents needing attention:")
+        for agent in attention:
+            print(f"  {agent}")
+    missing = payload.get("agents_missing_from_status") or []
+    if missing:
+        print("Agents missing from status:")
+        for agent in missing:
+            print(f"  {agent}")
+    print("Recommended actions:")
+    for action in payload.get("recommended_actions", []):
+        print(f"  {action}")
 
 
 def _print_update_status(payload: dict) -> None:
@@ -3236,6 +3297,8 @@ def main(argv: list[str] | None = None):
     p.add_argument("--check-pypi", action="store_true", help="連線 PyPI 查詢最新版本")
     p.add_argument("--read-status", action="store_true", help="讀取既有 ~/.vault-for-llm/update-status.json，不重新計算")
     p.add_argument("--write-status", action="store_true", help="寫入 ~/.vault-for-llm/update-status.json")
+    p.add_argument("--doctor", action="store_true", help="檢查共享更新通知是否存在、過期，以及哪些 Agent 需要處理")
+    p.add_argument("--max-status-age-minutes", type=int, default=24 * 60, help="doctor 判定 update-status 過期的分鐘數")
     p.add_argument("--agent", default="", help="聚焦特定 Agent/runtime 的啟動檢查")
     p.add_argument("--json", action="store_true", help="輸出 JSON")
     p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
@@ -3269,7 +3332,14 @@ def main(argv: list[str] | None = None):
     ap.add_argument("--check-pypi", action="store_true", help="連線 PyPI 查詢最新版本")
     ap.add_argument("--read-status", action="store_true", help="讀取既有 ~/.vault-for-llm/update-status.json，不重新計算")
     ap.add_argument("--write-status", action="store_true", help="寫入 ~/.vault-for-llm/update-status.json")
+    ap.add_argument("--doctor", action="store_true", help="檢查共享更新通知是否存在、過期，以及哪些 Agent 需要處理")
+    ap.add_argument("--max-status-age-minutes", type=int, default=24 * 60, help="doctor 判定 update-status 過期的分鐘數")
     ap.add_argument("--agent", default="", help="聚焦特定 Agent/runtime 的啟動檢查")
+    ap.add_argument("--json", action="store_true", help="輸出 JSON")
+    ap.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    ap = agent_sub.add_parser("doctor", help="檢查共享更新通知是否能讓所有 Agent 收到最新狀態")
+    ap.add_argument("--max-status-age-minutes", type=int, default=24 * 60, help="判定 update-status 過期的分鐘數")
     ap.add_argument("--json", action="store_true", help="輸出 JSON")
     ap.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 

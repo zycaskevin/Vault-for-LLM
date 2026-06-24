@@ -1729,6 +1729,65 @@ def write_update_status_templates(
         encoding="utf-8",
     )
 
+    refresh_script_path = out / "refresh-update-status.sh"
+    refresh_script_path.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env sh",
+                "set -eu",
+                "",
+                f"VAULT=${{VAULT:-{shlex.quote(vault_executable)}}}",
+                "",
+                "\"$VAULT\" update-status --write-status --json >/dev/null",
+                f"\"$VAULT\" update-status --doctor --max-status-age-minutes {max(1, int(interval_minutes))} --json",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    refresh_script_path.chmod(0o755)
+
+    rollout_path = out / "README-agent-update-rollout.md"
+    rollout_path.write_text(
+        "\n".join(
+            [
+                "# Agent Update Rollout",
+                "",
+                "Use this when one local runtime upgrades Vault-for-LLM and the other runtimes need to notice.",
+                "",
+                "After an upgrade or reinstall, refresh the shared machine notice:",
+                "",
+                "```bash",
+                f"sh {shlex.quote(str(refresh_script_path))}",
+                "```",
+                "",
+                "Manual equivalent:",
+                "",
+                "```bash",
+                shell_join(write_command),
+                f"{vault_executable} update-status --doctor --max-status-age-minutes {max(1, int(interval_minutes))}",
+                "```",
+                "",
+                "What the doctor checks:",
+                "",
+                "- `update-status.json` exists",
+                "- the notice is fresh enough for this install pack",
+                "- every registered Agent appears in `agent_update_notices`",
+                "- no registered Agent is behind the current runtime or latest known version",
+                "",
+                "Agents should still read with their own runtime id:",
+                "",
+                "```bash",
+                shell_join(read_command),
+                "```",
+                "",
+                "This is not an auto-upgrader. It is a shared local notice and a health check.",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
     readme_path = out / "README-update-status.md"
     readme_path.write_text(
         "\n".join(
@@ -1769,6 +1828,8 @@ def write_update_status_templates(
                 "",
                 f"Cron example: `{cron_path.name}`",
                 f"LaunchAgent example: `{launchagent_path.name}`",
+                f"Refresh script: `{refresh_script_path.name}`",
+                f"Rollout guide: `{rollout_path.name}`",
                 f"Machine-readable contract: `{contract_path.name}`",
                 "",
             ]
@@ -1780,6 +1841,8 @@ def write_update_status_templates(
         "readme": str(readme_path),
         "cron": str(cron_path),
         "launchagent": str(launchagent_path),
+        "refresh_script": str(refresh_script_path),
+        "rollout_readme": str(rollout_path),
     }
 
 
@@ -2951,6 +3014,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         agent=config.agent,
     )
     result["next_steps"].append(f"Review Agent update status guide: {result['update_status_templates']['readme']}")
+    result["next_steps"].append(f"Run update rollout health check: {result['update_status_templates']['refresh_script']}")
     result["agent_adapter_startup"] = write_agent_adapter_startup_templates(
         output_dir=template_dir,
         project_dir=project_path,

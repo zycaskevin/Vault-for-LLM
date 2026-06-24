@@ -90,6 +90,69 @@ def test_update_status_read_missing_file_is_non_fatal(tmp_path, monkeypatch, cap
     assert any("write-status" in step for step in payload["startup_checklist"])
 
 
+def test_agent_update_distribution_doctor_reports_stale_and_attention(tmp_path, monkeypatch, capsys):
+    from vault.cli import main
+
+    monkeypatch.setenv("VAULT_AGENT_REGISTRY_DIR", str(tmp_path / "registry"))
+    project = tmp_path / "project"
+    project.mkdir()
+
+    main(
+        [
+            "agent",
+            "register",
+            "--agent",
+            "codex",
+            "--project",
+            str(project),
+            "--scope",
+            "shared",
+            "--json",
+        ]
+    )
+    capsys.readouterr()
+
+    main(["agent", "doctor", "--json"])
+    missing = json.loads(capsys.readouterr().out)
+    assert missing["ok"] is False
+    assert missing["status_exists"] is False
+    assert any("write-status" in action for action in missing["recommended_actions"])
+
+    main(["update-status", "--latest-version", "9.9.9", "--write-status", "--json"])
+    capsys.readouterr()
+    status_path = tmp_path / "registry" / "update-status.json"
+    stale_payload = json.loads(status_path.read_text(encoding="utf-8"))
+    stale_payload["checked_at"] = "2000-01-01T00:00:00+00:00"
+    status_path.write_text(json.dumps(stale_payload), encoding="utf-8")
+    main(["update-status", "--doctor", "--max-status-age-minutes", "1", "--json"])
+    doctor = json.loads(capsys.readouterr().out)
+    assert doctor["ok"] is False
+    assert doctor["status_exists"] is True
+    assert doctor["status_stale"] is True
+    assert doctor["agents_needing_attention"] == ["codex"]
+    assert any("Upgrade" in action for action in doctor["recommended_actions"])
+
+    main(["update-status", "--write-status", "--json"])
+    capsys.readouterr()
+    mismatch_payload = json.loads(status_path.read_text(encoding="utf-8"))
+    mismatch_payload["installed_version"] = "0.0.1"
+    status_path.write_text(json.dumps(mismatch_payload), encoding="utf-8")
+    main(["agent", "doctor", "--json"])
+    mismatch = json.loads(capsys.readouterr().out)
+    assert mismatch["ok"] is False
+    assert mismatch["status_current_runtime_mismatch"] is True
+    assert mismatch["status_installed_version"] == "0.0.1"
+    assert any("0.0.1" in action for action in mismatch["recommended_actions"])
+
+    main(["update-status", "--write-status", "--json"])
+    capsys.readouterr()
+    main(["agent", "doctor", "--json"])
+    healthy = json.loads(capsys.readouterr().out)
+    assert healthy["ok"] is True
+    assert healthy["status_stale"] is False
+    assert healthy["agents_needing_attention"] == []
+
+
 def test_build_update_status_reports_agent_versions_behind_current_runtime(tmp_path, monkeypatch):
     from vault import __version__
     from vault.agent_registry import build_update_status, load_registry, register_agent, save_registry

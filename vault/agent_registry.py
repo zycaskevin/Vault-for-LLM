@@ -157,6 +157,21 @@ def _version_tuple(value: str) -> tuple[int, ...]:
     return tuple(int(part) for part in parts[:4]) or (0,)
 
 
+def _parse_iso_datetime(value: object) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def is_newer_version(latest: str, current: str = __version__) -> bool:
     return _version_tuple(latest) > _version_tuple(current)
 
@@ -342,6 +357,110 @@ def _update_next_steps(
     else:
         steps.append("Register at least one agent with `vault agent register` or `vault setup-agent`.")
     return steps
+
+
+def build_update_distribution_health(
+    *,
+    max_age_minutes: int = 24 * 60,
+    path: str | Path | None = None,
+    status_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Inspect whether local Agent runtimes can receive current update notices."""
+    registry = list_agents(path)
+    status_file = Path(status_path).expanduser() if status_path else update_status_path()
+    now = datetime.now(timezone.utc)
+    max_age = max(0, int(max_age_minutes))
+    payload: dict[str, Any] = {
+        "ok": False,
+        "checked_at": now.isoformat(),
+        "registry_path": registry["registry_path"],
+        "status_path": str(status_file),
+        "status_exists": status_file.exists(),
+        "status_installed_version": "",
+        "status_current_runtime_mismatch": False,
+        "status_age_seconds": None,
+        "status_stale": True,
+        "max_age_minutes": max_age,
+        "agent_count": registry["agent_count"],
+        "agents": registry["agents"],
+        "agent_update_notices": [],
+        "agent_update_notice_count": 0,
+        "agents_needing_attention": [],
+        "recommended_actions": [],
+    }
+    if not status_file.exists():
+        payload["recommended_actions"].append("Create the shared notice with `vault update-status --write-status`.")
+        if registry["agent_count"] == 0:
+            payload["recommended_actions"].append("Register at least one runtime with `vault setup-agent` or `vault agent register`.")
+        return payload
+
+    try:
+        status = json.loads(status_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        payload["status_invalid"] = True
+        payload["recommended_actions"].append(f"Rewrite invalid update status JSON at {status_file}.")
+        payload["error"] = str(exc)
+        return payload
+    if not isinstance(status, dict):
+        payload["status_invalid"] = True
+        payload["recommended_actions"].append(f"Rewrite invalid update status payload at {status_file}.")
+        return payload
+    status_installed_version = str(status.get("installed_version") or "").strip()
+    payload["status_installed_version"] = status_installed_version
+    payload["status_current_runtime_mismatch"] = bool(status_installed_version and status_installed_version != __version__)
+
+    checked = _parse_iso_datetime(status.get("checked_at"))
+    if checked is None:
+        try:
+            checked = datetime.fromtimestamp(status_file.stat().st_mtime, tz=timezone.utc)
+        except OSError:
+            checked = None
+    if checked is not None:
+        age = max(0, int((now - checked).total_seconds()))
+        payload["status_age_seconds"] = age
+        payload["status_stale"] = age > max_age * 60
+    else:
+        payload["status_stale"] = True
+    notices = status.get("agent_update_notices") if isinstance(status.get("agent_update_notices"), list) else []
+    payload["agent_update_notices"] = notices
+    payload["agent_update_notice_count"] = sum(1 for item in notices if item.get("needs_attention"))
+    payload["agents_needing_attention"] = [
+        item.get("agent_id", "") for item in notices if item.get("needs_attention")
+    ]
+    if payload["status_stale"]:
+        payload["recommended_actions"].append("Refresh the shared notice with `vault update-status --write-status`.")
+    if payload["status_current_runtime_mismatch"]:
+        payload["recommended_actions"].append(
+            f"Refresh status because it was written by Vault-for-LLM {status_installed_version}, not {__version__}."
+        )
+    if payload["agents_needing_attention"]:
+        payload["recommended_actions"].append("Upgrade, restart, or re-register the listed Agent runtimes.")
+    missing_from_status = sorted(
+        {
+            agent.get("agent_id", "")
+            for agent in registry["agents"]
+            if agent.get("agent_id")
+        }
+        - {
+            item.get("agent_id", "")
+            for item in notices
+            if item.get("agent_id")
+        }
+    )
+    payload["agents_missing_from_status"] = missing_from_status
+    if missing_from_status:
+        payload["recommended_actions"].append("Refresh status so every registered Agent appears in `agent_update_notices`.")
+    payload["ok"] = (
+        bool(payload["status_exists"])
+        and not payload.get("status_invalid")
+        and not payload["status_stale"]
+        and not payload["status_current_runtime_mismatch"]
+        and not payload["agents_needing_attention"]
+        and not missing_from_status
+    )
+    if payload["ok"]:
+        payload["recommended_actions"].append("All registered Agent runtimes have a fresh shared update notice.")
+    return payload
 
 
 def write_update_status(payload: dict[str, Any], path: str | Path | None = None) -> Path:

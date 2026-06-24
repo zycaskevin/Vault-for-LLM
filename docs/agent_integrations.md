@@ -59,8 +59,8 @@ default small and local.
 
 | Feature | Default | Install when | Install command |
 |---|---|---|---|
-| `core` | yes | Always: Markdown, SQLite, keyword search, local CLI. | `python -m pip install vault-for-llm==0.6.84` |
-| `mcp` | yes for MCP-capable agents | The runtime can connect local stdio MCP tools. | `python -m pip install "vault-for-llm[mcp]==0.6.84"` |
+| `core` | yes | Always: Markdown, SQLite, keyword search, local CLI. | `python -m pip install vault-for-llm==0.6.85` |
+| `mcp` | yes for MCP-capable agents | The runtime can connect local stdio MCP tools. | `python -m pip install "vault-for-llm[mcp]==0.6.85"` |
 | `obsidian_import` | no | The user already has an Obsidian vault and wants those notes searchable through Vault. | built into core CLI |
 | `semantic` | no | The user wants embedding-backed semantic or hybrid search. | `python -m pip install "vault-for-llm[semantic]"` |
 | `supabase` | no | The user wants optional remote sync/read paths. | `python -m pip install "vault-for-llm[supabase]"` |

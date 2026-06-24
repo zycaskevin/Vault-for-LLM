@@ -16,7 +16,7 @@ For adjacent systems and design comparisons, see
 ## Fast Prompt For Agents
 
 ```text
-Install Vault-for-LLM for this project with vault-for-llm[mcp]==0.6.76.
+Install Vault-for-LLM for this project with vault-for-llm[mcp]==0.6.77.
 Ask me where the vault database should live, whether it should be private or
 shared, and whether you should use a stable Python virtualenv path instead of a
 temporary one. Enable MCP by default if this agent runtime supports MCP. Ask
@@ -69,9 +69,15 @@ also prefer a stable virtualenv path such as `~/.hermes/venvs/vault-for-llm/`.
 Use the PyPI release unless the user explicitly asks for source development:
 
 ```bash
-python -m pip install "vault-for-llm[mcp]==0.6.76"
+python -m pip install "vault-for-llm[mcp]==0.6.77"
 vault setup-agent
 ```
+
+`setup-agent` also registers the current Agent/runtime in the local registry at
+`~/.vault-for-llm/agent-registry.json`. Other tools on the same machine can run
+`vault update-status` to see which Agents are connected, which project vaults
+they use, and which `vault automation handoff --project-dir ...` commands should
+be read before starting work.
 
 For an agent-run install:
 

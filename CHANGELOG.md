@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## [0.6.77] - 2026-06-24
+
+### Added
+
+- Added a local multi-agent registry at `~/.vault-for-llm/agent-registry.json`.
+- Added `vault agent register`, `vault agent list`, and `vault agent status` for local Agent/runtime registration.
+- Added `vault update-status` so Agents can see the installed Vault version, optional latest-version comparison, registered Agents, project vaults, and startup handoff commands.
+- `vault setup-agent` now registers the configured Agent automatically and adds `vault update-status` to setup next steps.
+
 ## [0.6.76] - 2026-06-24
 
 ### Added

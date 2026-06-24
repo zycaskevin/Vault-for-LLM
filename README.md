@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.76.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.77.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,10 +83,20 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.76"
+pip install "vault-for-llm[mcp]==0.6.77"
 
 vault setup-agent
 ```
+
+`setup-agent` registers the Agent in the local registry at
+`~/.vault-for-llm/agent-registry.json`. Any local runtime can then start with:
+
+```bash
+vault update-status
+```
+
+This shows the installed Vault version, registered Agents, project vaults, and
+the next startup handoff command.
 
 For non-interactive agent installs:
 
@@ -112,7 +122,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.76"
+pip install "vault-for-llm[mcp]==0.6.77"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -333,7 +343,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.76"
+pip install "vault-for-llm[supabase]==0.6.77"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

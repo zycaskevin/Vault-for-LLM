@@ -2869,6 +2869,105 @@ def cmd_setup_agent(args):
     for step in payload["next_steps"]:
         print(f"  {step}")
 
+
+def cmd_agent(args):
+    """Local agent registry commands."""
+    from vault.agent_registry import build_update_status, list_agents, register_agent
+
+    action = getattr(args, "agent_action", None)
+    if action == "register":
+        project_dir = Path(args.agent_project_dir or find_project_dir()).expanduser()
+        features = [item.strip() for item in str(args.features or "").split(",") if item.strip()]
+        payload = register_agent(
+            agent=args.agent,
+            project_dir=project_dir,
+            scope=args.scope,
+            features=features,
+            tool_profile=args.tool_profile,
+            source=args.source,
+        )
+        if args.json or args.pretty:
+            _json_print(payload, pretty=args.pretty)
+            return
+        agent = payload["agent"]
+        print("Agent registered")
+        print(f"  agent: {agent['agent_id']}")
+        print(f"  project_dir: {agent['project_dir']}")
+        print(f"  scope: {agent['scope']}")
+        print(f"  registry: {payload['registry_path']}")
+        return
+
+    if action == "list":
+        payload = list_agents()
+        if args.json or args.pretty:
+            _json_print(payload, pretty=args.pretty)
+            return
+        print(f"Registered agents: {payload['agent_count']}")
+        print(f"Registry: {payload['registry_path']}")
+        for item in payload["agents"]:
+            print(
+                "  {agent_id} [{scope}] project={project_dir} version={vault_version}".format(
+                    **item
+                )
+            )
+        return
+
+    if action == "status":
+        payload = build_update_status(
+            latest_version=args.latest_version,
+            check_pypi=bool(args.check_pypi),
+        )
+        if args.write_status:
+            from vault.agent_registry import write_update_status
+
+            payload["status_path"] = str(write_update_status(payload))
+        if args.json or args.pretty:
+            _json_print(payload, pretty=args.pretty)
+            return
+        _print_update_status(payload)
+        return
+
+    raise SystemExit("agent subcommand required: register, list, or status")
+
+
+def cmd_update_status(args):
+    """Show local Vault runtime update and agent registry status."""
+    from vault.agent_registry import build_update_status, write_update_status
+
+    payload = build_update_status(
+        latest_version=args.latest_version,
+        check_pypi=bool(args.check_pypi),
+    )
+    if args.write_status:
+        payload["status_path"] = str(write_update_status(payload))
+    if args.json or args.pretty:
+        _json_print(payload, pretty=args.pretty)
+        return
+    _print_update_status(payload)
+
+
+def _print_update_status(payload: dict) -> None:
+    print("Vault update status")
+    print(f"  installed_version: {payload['installed_version']}")
+    print(f"  latest_version: {payload['latest_version']}")
+    print(f"  update_available: {payload['update_available']}")
+    if payload.get("latest_version_error"):
+        print(f"  latest_version_error: {payload['latest_version_error']}")
+    print(f"  registry: {payload['registry_path']}")
+    print(f"  agents: {payload['agent_count']}")
+    for agent in payload.get("agents", []):
+        print(
+            "    {agent_id}: scope={scope} project={project_dir}".format(
+                **agent
+            )
+        )
+    print("Startup commands:")
+    for command in payload.get("startup_commands", []):
+        print(f"  {command}")
+    print("Next steps:")
+    for step in payload.get("next_steps", []):
+        print(f"  {step}")
+
 # ── CLI 入口 ─────────────────────────────────────────────
 
 def _add_governance_args(parser: argparse.ArgumentParser) -> None:
@@ -3052,6 +3151,42 @@ def main(argv: list[str] | None = None):
     # install-embedding
     p = sub.add_parser("install-embedding", help="安裝嵌入模型")
     p.add_argument("--model", choices=["zh", "en", "mix"], default="mix")
+
+    # update-status — local runtime update and registry status
+    p = sub.add_parser("update-status", help="顯示本機 Vault 版本、更新與 Agent registry 狀態")
+    p.add_argument("--latest-version", default="", help="手動提供最新版本，用於離線比較")
+    p.add_argument("--check-pypi", action="store_true", help="連線 PyPI 查詢最新版本")
+    p.add_argument("--write-status", action="store_true", help="寫入 ~/.vault-for-llm/update-status.json")
+    p.add_argument("--json", action="store_true", help="輸出 JSON")
+    p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    # agent — local multi-agent registry
+    p = sub.add_parser("agent", help="本機多 Agent registry")
+    agent_sub = p.add_subparsers(dest="agent_action", help="Agent registry 子命令")
+
+    ap = agent_sub.add_parser("register", help="登記目前 Agent 使用的 Vault project")
+    ap.add_argument("--agent", required=True, help="Agent/runtime 名稱，例如 codex/hermes/openclaw")
+    ap.add_argument("--agent-project-dir", "--project", dest="agent_project_dir",
+                    help="要登記的 Vault project directory；預設自動偵測")
+    ap.add_argument("--scope", choices=["shared", "private", "project", "public", "domain", "temporary"],
+                    default="shared", help="此 Agent 使用的記憶範圍")
+    ap.add_argument("--features", default="core,mcp", help="已啟用功能 CSV")
+    ap.add_argument("--tool-profile", choices=["core", "review", "remote", "maintenance", "full"],
+                    default="core", help="建議 MCP tool profile")
+    ap.add_argument("--source", default="manual", help="登記來源，例如 manual/setup-agent")
+    ap.add_argument("--json", action="store_true", help="輸出 JSON")
+    ap.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    ap = agent_sub.add_parser("list", help="列出本機已登記 Agent")
+    ap.add_argument("--json", action="store_true", help="輸出 JSON")
+    ap.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    ap = agent_sub.add_parser("status", help="顯示 Agent registry 與更新狀態")
+    ap.add_argument("--latest-version", default="", help="手動提供最新版本，用於離線比較")
+    ap.add_argument("--check-pypi", action="store_true", help="連線 PyPI 查詢最新版本")
+    ap.add_argument("--write-status", action="store_true", help="寫入 ~/.vault-for-llm/update-status.json")
+    ap.add_argument("--json", action="store_true", help="輸出 JSON")
+    ap.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     def add_agent_setup_args(ap):
         ap.add_argument("--agent", default="generic", help="Agent/runtime 名稱，例如 hermes/openclaw/codex/n8n")
@@ -3562,6 +3697,8 @@ def main(argv: list[str] | None = None):
         "usage": cmd_usage,
         "automation": cmd_automation,
         "install-embedding": cmd_install_embedding,
+        "update-status": cmd_update_status,
+        "agent": cmd_agent,
         "setup-agent": cmd_setup_agent,
         "install-agent": cmd_setup_agent,
         "import": cmd_import,

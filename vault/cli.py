@@ -1951,6 +1951,7 @@ def cmd_automation(args):
         automation_cycle,
         automation_doctor,
         automation_eval,
+        automation_handoff,
         automation_inbox,
         automation_plan,
         automation_report,
@@ -1958,8 +1959,11 @@ def cmd_automation(args):
     )
 
     action = getattr(args, "automation_action", "")
-    if action not in {"plan", "run", "cycle", "report", "inbox", "doctor", "eval"}:
-        print("error: automation requires action: plan, run, cycle, report, inbox, eval, or doctor", file=sys.stderr)
+    if action not in {"plan", "run", "cycle", "report", "inbox", "handoff", "doctor", "eval"}:
+        print(
+            "error: automation requires action: plan, run, cycle, report, inbox, handoff, eval, or doctor",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
 
     project_dir = find_project_dir()
@@ -2010,6 +2014,12 @@ def cmd_automation(args):
                 include_transcripts=getattr(args, "include_transcripts", False),
                 transcript_limit=getattr(args, "transcript_limit", 5),
                 write_handoff=getattr(args, "write_handoff", False),
+                handoff_path=getattr(args, "handoff_path", ""),
+            )
+        elif action == "handoff":
+            payload = automation_handoff(
+                project_dir,
+                source=getattr(args, "source", "auto"),
                 handoff_path=getattr(args, "handoff_path", ""),
             )
         elif action == "eval":
@@ -2155,6 +2165,22 @@ def cmd_automation(args):
             for item in payload["human_review"].get("items", []):
                 print(f"    - {item.get('kind')}: {item.get('count')}")
         print(f"\n  principle: {payload.get('principle')}")
+        return
+
+    if action == "handoff":
+        if payload.get("status") != "completed":
+            print("📄 Automation handoff\n")
+            print(f"  status: {payload.get('status')}")
+            print(f"  source: {payload.get('source')}")
+            print(f"  next action: {payload.get('next_action')}")
+            return
+        if payload.get("content_type") == "markdown":
+            print(payload.get("content", "").rstrip())
+            return
+        print("📄 Automation handoff\n")
+        print(f"  path: {payload.get('handoff_path')}")
+        print(f"  type: {payload.get('content_type')}")
+        print(payload.get("content", "").rstrip())
         return
 
     if action == "report":
@@ -3485,6 +3511,12 @@ def main(argv: list[str] | None = None):
     sp.add_argument("--transcript-limit", type=int, default=5, help="maximum transcript discovery hints")
     sp.add_argument("--write-handoff", action="store_true", help="write reports/automation/inbox-latest.json")
     sp.add_argument("--handoff-path", default="", help="custom reports/automation/*.json inbox handoff path")
+
+    sp = automation_sub.add_parser("handoff", help="Print the latest compact automation handoff for the next agent")
+    add_automation_common(sp)
+    sp.add_argument("--source", choices=["auto", "cycle", "inbox"], default="auto",
+                    help="which handoff to read; auto prefers cycle-latest.md")
+    sp.add_argument("--handoff-path", default="", help="custom reports/automation/*.md or *.json handoff path")
 
     sp = automation_sub.add_parser("eval", help="Evaluate automation feedback and candidate outcomes")
     add_automation_common(sp)

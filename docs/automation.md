@@ -200,6 +200,16 @@ content hidden, and lists transcript candidates as paths only. It also includes
 a priority brief, suggested next tasks, and a copyable start prompt for the next
 agent session.
 
+The next agent can consume the latest compact handoff without knowing the file
+path:
+
+```bash
+vault automation handoff
+```
+
+The command is read-only. It prefers `cycle-latest.md`, then falls back to
+`cycle-latest.json` or `inbox-latest.json`.
+
 ## Policy
 
 `automation_policy.yaml` controls the automation boundary:
@@ -297,6 +307,9 @@ important review fields are:
   `agent_start_prompt` so scheduled agents can take over from the smallest
   useful context. It is read-only, content-hidden by default, and does not
   promote or mutate memory by itself.
+- `handoff`: `vault automation handoff` prints the latest compact handoff for
+  the next agent. It is read-only and never generates, promotes, archives, or
+  reads transcript contents by itself.
 - `consolidation_suggestion`: Dream can write this candidate type for duplicate
   groups. It asks for a reviewed merge/archive decision and never changes
   active knowledge by itself.

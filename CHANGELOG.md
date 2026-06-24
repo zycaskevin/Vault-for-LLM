@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.75] - 2026-06-24
+
+### Added
+
+- Added `vault automation handoff`, a read-only command that prints the latest compact automation handoff for the next agent.
+- The handoff command prefers `reports/automation/cycle-latest.md`, then falls back to `cycle-latest.json` or `inbox-latest.json`.
+- Added path validation for custom handoff reads so automation handoff files must stay under `reports/automation`.
+
 ## [0.6.74] - 2026-06-24
 
 ### Added

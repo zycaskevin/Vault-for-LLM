@@ -8,6 +8,7 @@ from vault.automation import (
     automation_cycle,
     automation_doctor,
     automation_eval,
+    automation_handoff,
     automation_inbox,
     automation_plan,
     automation_report,
@@ -616,6 +617,38 @@ def test_automation_cycle_blocks_without_vault_db(tmp_path):
     assert "vault init" in payload["next_action"]
 
 
+def test_automation_handoff_reads_latest_cycle_markdown(tmp_path):
+    project = _init_project(tmp_path)
+    report_dir = project / "reports" / "automation"
+    report_dir.mkdir(parents=True)
+    (report_dir / "cycle-latest.md").write_text(
+        "# Vault Automation Cycle Workspace\n\n## Agent Start Prompt\n\nStart here.\n",
+        encoding="utf-8",
+    )
+
+    payload = automation_handoff(project)
+
+    assert payload["action"] == "handoff"
+    assert payload["status"] == "completed"
+    assert payload["handoff_path"] == "reports/automation/cycle-latest.md"
+    assert payload["content_type"] == "markdown"
+    assert "Agent Start Prompt" in payload["content"]
+    assert payload["safety"]["writes_active_memory"] is False
+
+
+def test_automation_handoff_path_must_stay_under_reports(tmp_path):
+    project = _init_project(tmp_path)
+    outside = project / "outside.md"
+    outside.write_text("# outside\n", encoding="utf-8")
+
+    try:
+        automation_handoff(project, handoff_path=outside)
+    except ValueError as exc:
+        assert "reports/automation" in str(exc)
+    else:
+        raise AssertionError("expected automation_handoff to reject paths outside reports/automation")
+
+
 def test_automation_report_specific_path_must_stay_under_report_dir(tmp_path):
     project = _init_project(tmp_path)
     outside = project / "not-automation-report.json"
@@ -745,6 +778,36 @@ def test_automation_cli_cycle_prints_learning_summary(tmp_path, monkeypatch, cap
     assert "workspace: reports/automation/cycle-latest.json" in out
     assert "workspace markdown: reports/automation/cycle-latest.md" in out
     assert "does not auto-promote" in out
+
+
+def test_automation_cli_handoff_prints_markdown(tmp_path, monkeypatch, capsys):
+    from vault.cli import cmd_automation
+
+    project = _init_project(tmp_path)
+    report_dir = project / "reports" / "automation"
+    report_dir.mkdir(parents=True)
+    (report_dir / "cycle-latest.md").write_text(
+        "# Vault Automation Cycle Workspace\n\n## Priority Brief\n\nStart from the short handoff.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(project)
+
+    cmd_automation(
+        Namespace(
+            automation_action="handoff",
+            mode=None,
+            limit=50,
+            source="auto",
+            handoff_path="",
+            json=False,
+            pretty=False,
+        )
+    )
+
+    out = capsys.readouterr().out
+    assert "# Vault Automation Cycle Workspace" in out
+    assert "## Priority Brief" in out
+    assert "Start from the short handoff." in out
 
 
 def test_automation_inbox_prioritizes_privacy_blocked_candidates(tmp_path):

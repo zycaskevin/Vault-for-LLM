@@ -58,7 +58,7 @@ Vault-for-LLM 可能不是第一個該拿起來的工具。
 最推薦的方式，是直接把這段交給能執行本機指令的 Agent：
 
 ```text
-幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.74。
+幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.75。
 先問我要 shared、private、domain-specific 還是 temporary vault。
 詢問穩定的 project directory，並為長期任務產生 stable venv script。
 逐項詢問 MCP、semantic search、Supabase、Obsidian import、Headroom 壓縮、
@@ -71,7 +71,7 @@ Agent 會使用安裝精靈：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.74"
+pip install "vault-for-llm[mcp]==0.6.75"
 
 vault setup-agent
 ```
@@ -100,7 +100,7 @@ vault setup-agent \
 ### 手動快速開始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.74"
+pip install "vault-for-llm[mcp]==0.6.75"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -207,6 +207,11 @@ automation 可以排序與整理，但 promotion 仍然需要明確審核。
 同時也會寫出 `reports/automation/cycle-latest.md`，給人和下一個 Agent 先讀；
 它會放 priority brief、suggested next tasks、agent start prompt，但不展開候選原文或
 transcript 內容。
+下一個 Agent 可以直接用這條指令讀取最新短版 handoff：
+
+```bash
+vault automation handoff
+```
 
 `vault automation inbox` 是這個閉環的短版審核入口。它不會修改記憶，只會把
 privacy blocked、敏感、重複、品質不足、automation 產生的候選排出優先順序；
@@ -273,7 +278,7 @@ SQLite 仍然是 source of truth。Supabase 是可選的共享層。
 Remote reader 應該直接把搜尋結果的 `id` 傳給 map/read；它可能是整數，也可能是 Supabase UUID。
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.74"
+pip install "vault-for-llm[supabase]==0.6.75"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

@@ -429,6 +429,72 @@ def automation_report(
     }
 
 
+def automation_handoff(
+    project_dir: str | Path,
+    *,
+    source: str = "auto",
+    handoff_path: str | Path = "",
+) -> dict[str, Any]:
+    """Read the latest compact automation handoff for the next agent.
+
+    This is intentionally read-only. It does not generate, mutate, promote, or
+    inspect raw transcript content; it only returns an existing handoff artifact
+    under reports/automation.
+    """
+    project = Path(project_dir)
+    report_dir = project / "reports" / "automation"
+    selected = _resolve_handoff_read_path(project, report_dir, source=source, handoff_path=handoff_path)
+    if selected is None:
+        return {
+            "action": "handoff",
+            "generated_at": _now(),
+            "project_dir": str(project),
+            "status": "missing",
+            "source": source,
+            "handoff_path": "",
+            "content_type": "",
+            "content": "",
+            "summary": {},
+            "safety": {
+                "read_only": True,
+                "writes_active_memory": False,
+                "transcript_discovery_reads_contents": False,
+            },
+            "next_action": "Run `vault automation cycle --write-workspace` to create a daily handoff.",
+        }
+    content = selected.read_text(encoding="utf-8")
+    parsed: dict[str, Any] = {}
+    if selected.suffix.lower() == ".json":
+        try:
+            loaded = json.loads(content)
+            if isinstance(loaded, dict):
+                parsed = loaded
+        except Exception:
+            parsed = {}
+    return {
+        "action": "handoff",
+        "generated_at": _now(),
+        "project_dir": str(project),
+        "status": "completed",
+        "source": source,
+        "handoff_path": _relative_to_project(project, selected),
+        "content_type": "markdown" if selected.suffix.lower() == ".md" else "json",
+        "content": content,
+        "summary": parsed.get("summary", {}) if parsed else {},
+        "agent_start_prompt": parsed.get("agent_start_prompt", "") if parsed else "",
+        "safety": {
+            "read_only": True,
+            "writes_active_memory": False,
+            "transcript_discovery_reads_contents": False,
+            "uses_existing_handoff_only": True,
+        },
+        "next_action": (
+            "Read this handoff first, then use the listed suggested_next_tasks without "
+            "auto-promoting candidates or reading transcript contents by default."
+        ),
+    }
+
+
 def automation_inbox(
     project_dir: str | Path,
     *,
@@ -1829,6 +1895,42 @@ def _resolve_report_path(
     if latest:
         reports = _automation_report_files(report_dir)
         return reports[0] if reports else None
+    return None
+
+
+def _resolve_handoff_read_path(
+    project: Path,
+    report_dir: Path,
+    *,
+    source: str = "auto",
+    handoff_path: str | Path = "",
+) -> Path | None:
+    if source not in {"auto", "cycle", "inbox"}:
+        raise ValueError("handoff source must be one of: auto, cycle, inbox")
+    if handoff_path:
+        raw = Path(handoff_path)
+        candidate = raw if raw.is_absolute() else project / raw
+        try:
+            resolved = candidate.expanduser().resolve()
+            allowed = report_dir.expanduser().resolve()
+        except Exception as exc:
+            raise ValueError(f"unable to resolve automation handoff path: {exc}") from exc
+        if allowed != resolved and allowed not in resolved.parents:
+            raise ValueError("automation handoff path must stay under reports/automation")
+        if resolved.suffix.lower() not in {".md", ".json"}:
+            raise ValueError("automation handoff path must be a Markdown or JSON file")
+        if not resolved.exists():
+            raise FileNotFoundError(str(resolved))
+        return resolved
+    names_by_source = {
+        "cycle": ["cycle-latest.md", "cycle-latest.json"],
+        "inbox": ["inbox-latest.json"],
+        "auto": ["cycle-latest.md", "cycle-latest.json", "inbox-latest.json"],
+    }
+    for name in names_by_source[source]:
+        candidate = report_dir / name
+        if candidate.exists():
+            return candidate
     return None
 
 

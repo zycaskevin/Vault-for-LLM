@@ -17,6 +17,8 @@ import yaml
 
 from .db import VaultDB
 from .dream import run_dream
+from .importance import MODEL_ID as IMPORTANCE_MODEL_ID
+from .importance import compute_memory_importance
 from .privacy import redact_secrets
 
 AUTOMATION_MODES = {"conservative", "balanced", "autonomous"}
@@ -1217,77 +1219,6 @@ def _brief_learning(evaluation: dict[str, Any], *, limit: int = 5) -> dict[str, 
     }
 
 
-def _parse_utc_datetime(value: Any) -> datetime | None:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    try:
-        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
-    except ValueError:
-        try:
-            dt = datetime.fromisoformat(f"{text}T00:00:00+00:00")
-        except ValueError:
-            return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
-
-
-def _recency_component(last_accessed_at: Any, now: datetime) -> float:
-    accessed = _parse_utc_datetime(last_accessed_at)
-    if accessed is None:
-        return 0.0
-    age_days = max(0.0, (now - accessed).total_seconds() / 86400.0)
-    if age_days <= 7:
-        return 10.0
-    if age_days <= 30:
-        return 6.0
-    if age_days <= 90:
-        return 3.0
-    return 1.0
-
-
-def _ttl_pressure_component(expires_at: Any, now: datetime, *, access: int, citations: int) -> tuple[float, str]:
-    if access <= 0 and citations <= 0:
-        return 0.0, ""
-    expires = _parse_utc_datetime(expires_at)
-    if expires is None:
-        return 0.0, ""
-    days_until_expiry = (expires - now).total_seconds() / 86400.0
-    if days_until_expiry <= 0:
-        return 10.0, "expired_but_used"
-    if days_until_expiry <= 14:
-        return 5.0, "expiring_soon_but_used"
-    return 0.0, ""
-
-
-def _protection_component(scope: Any, sensitivity: Any) -> float:
-    scope_text = str(scope or "").strip().lower()
-    sensitivity_text = str(sensitivity or "").strip().lower()
-    score = 0.0
-    if scope_text == "private":
-        score += 2.0
-    if sensitivity_text == "medium":
-        score += 1.0
-    elif sensitivity_text == "high":
-        score += 2.0
-    elif sensitivity_text == "restricted":
-        score += 3.0
-    return min(score, 5.0)
-
-
-def _importance_recommendation(*, access: int, citations: int, ttl_signal: str, score: float) -> str:
-    if ttl_signal == "expired_but_used":
-        return "refresh_or_cold_store_before_forgetting"
-    if ttl_signal == "expiring_soon_but_used":
-        return "review_ttl_before_expiry"
-    if citations > 0:
-        return "protect_or_summarize_before_forgetting"
-    if score > 0 or access > 0:
-        return "keep_available"
-    return "observe"
-
-
 def _brief_memory_weights(usage: dict[str, Any], *, limit: int = 5) -> dict[str, Any]:
     items = []
     now = datetime.now(timezone.utc)
@@ -1296,31 +1227,8 @@ def _brief_memory_weights(usage: dict[str, Any], *, limit: int = 5) -> dict[str,
         citations = int(row.get("citation_count") or 0)
         trust = max(0.0, min(float(row.get("trust") or 0.0), 1.0))
         freshness = max(0.0, min(float(row.get("freshness") or 0.0), 1.0))
-        ttl_score, ttl_signal = _ttl_pressure_component(
-            row.get("expires_at", ""),
-            now,
-            access=access,
-            citations=citations,
-        )
-        components = {
-            "access": min(20.0, access * 2.0),
-            "citation": min(35.0, citations * 8.0),
-            "recency": _recency_component(row.get("last_accessed_at", ""), now),
-            "trust": round(trust * 10.0, 3),
-            "freshness": round(freshness * 8.0, 3),
-            "ttl_pressure": ttl_score,
-            "protection": _protection_component(row.get("scope", ""), row.get("sensitivity", "")),
-        }
-        score = round(sum(float(value or 0.0) for value in components.values()), 3)
-        signals = []
-        if access > 0:
-            signals.append("accessed")
-        if citations > 0:
-            signals.append("cited")
-        if ttl_signal:
-            signals.append(ttl_signal)
-        if components["protection"] > 0:
-            signals.append("protected_governance")
+        importance = compute_memory_importance(row, now=now)
+        score = float(importance["importance_score"])
         items.append(
             {
                 "knowledge_id": row.get("id"),
@@ -1338,15 +1246,10 @@ def _brief_memory_weights(usage: dict[str, Any], *, limit: int = 5) -> dict[str,
                 "last_accessed_at": row.get("last_accessed_at", ""),
                 "expires_at": row.get("expires_at", ""),
                 "importance_score": score,
-                "importance_components": components,
-                "signals": signals,
+                "importance_components": importance["importance_components"],
+                "signals": importance["signals"],
                 "weight_score": score,
-                "recommendation": _importance_recommendation(
-                    access=access,
-                    citations=citations,
-                    ttl_signal=ttl_signal,
-                    score=score,
-                ),
+                "recommendation": importance["recommendation"],
             }
         )
     items.sort(
@@ -1359,7 +1262,7 @@ def _brief_memory_weights(usage: dict[str, Any], *, limit: int = 5) -> dict[str,
         reverse=True,
     )
     return {
-        "model": "usage_citation_recency_trust_freshness_ttl_v1",
+        "model": IMPORTANCE_MODEL_ID,
         "knowledge_count": int(usage.get("knowledge_count") or 0),
         "total_accesses": int(usage.get("total_accesses") or 0),
         "total_citations": int(usage.get("total_citations") or 0),
@@ -2961,7 +2864,12 @@ def _planned_actions(
 
 
 def _compact_memory_item(row: dict[str, Any]) -> dict[str, Any]:
-    return {
+    importance = (
+        {}
+        if "importance_score" in row
+        else compute_memory_importance(row) if ("access_count" in row or "citation_count" in row) else {}
+    )
+    item = {
         "id": row.get("id"),
         "title": row.get("title", ""),
         "layer": row.get("layer", ""),
@@ -2974,6 +2882,19 @@ def _compact_memory_item(row: dict[str, Any]) -> dict[str, Any]:
         "access_count": int(row.get("access_count") or 0),
         "citation_count": int(row.get("citation_count") or 0),
     }
+    if "importance_score" in row or importance:
+        item["importance_score"] = float(row.get("importance_score") or importance.get("importance_score") or 0.0)
+    if "importance_components" in row or importance:
+        item["importance_components"] = row.get("importance_components") or importance.get("importance_components") or {}
+    if "importance_signals" in row or importance:
+        item["importance_signals"] = row.get("importance_signals") or importance.get("signals") or []
+    elif "signals" in row:
+        item["importance_signals"] = row.get("signals") or []
+    if "importance_recommendation" in row or importance:
+        item["importance_recommendation"] = row.get("importance_recommendation") or importance.get("recommendation", "")
+    elif "recommendation" in row:
+        item["importance_recommendation"] = row.get("recommendation", "")
+    return item
 
 
 def _usage_review(
@@ -2986,6 +2907,15 @@ def _usage_review(
     skipped_used = [_compact_memory_item(row) for row in archive_preview.get("skipped_used", [])]
     skipped_protected = [_compact_memory_item(row) for row in archive_preview.get("skipped_protected", [])]
     top_used = [_compact_memory_item(row) for row in usage.get("top_used", [])[:5]]
+    skipped_used.sort(
+        key=lambda item: (
+            float(item.get("importance_score") or 0.0),
+            int(item.get("citation_count") or 0),
+            int(item.get("access_count") or 0),
+            int(item.get("id") or 0),
+        ),
+        reverse=True,
+    )
 
     suggestions = []
     if archive_items:
@@ -3003,6 +2933,7 @@ def _usage_review(
                 "kind": "review_expired_but_used",
                 "count": len(skipped_used),
                 "autonomy": "human-review",
+                "top_importance_score": float(skipped_used[0].get("importance_score") or 0.0),
                 "reason": "These memories are expired but still retrieved or cited; review TTL before archiving.",
             }
         )
@@ -3021,6 +2952,7 @@ def _usage_review(
                 "kind": "protect_top_used",
                 "count": len(top_used),
                 "autonomy": "ranking-signal",
+                "top_importance_score": float(top_used[0].get("importance_score") or 0.0) if top_used else 0.0,
                 "reason": "Frequently retrieved memories should stay source-checked and may deserve stronger summaries or citations.",
             }
         )
@@ -3037,7 +2969,8 @@ def _usage_review(
         "expired_protected": skipped_protected,
         "top_used": top_used,
         "suggestions": suggestions,
-        "principle": "usage helps agents prioritize maintenance; it does not override access policy or source quality",
+        "importance_model": IMPORTANCE_MODEL_ID,
+        "principle": "importance helps agents prioritize maintenance; it does not override access policy or source quality",
     }
 
 
@@ -3486,6 +3419,8 @@ def _archive_action_ledger(archive_result: dict[str, Any], *, applied: bool) -> 
                 "risk": "medium",
                 "scope": item.get("scope", ""),
                 "sensitivity": item.get("sensitivity", ""),
+                "importance_score": item.get("importance_score", 0.0),
+                "importance_recommendation": item.get("importance_recommendation", ""),
             }
         )
     for row in archive_result.get("skipped_used", []) or []:
@@ -3502,6 +3437,8 @@ def _archive_action_ledger(archive_result: dict[str, Any], *, applied: bool) -> 
                 "risk": "human-review",
                 "scope": item.get("scope", ""),
                 "sensitivity": item.get("sensitivity", ""),
+                "importance_score": item.get("importance_score", 0.0),
+                "importance_recommendation": item.get("importance_recommendation", ""),
             }
         )
     for row in archive_result.get("skipped_protected", []) or []:
@@ -3518,6 +3455,8 @@ def _archive_action_ledger(archive_result: dict[str, Any], *, applied: bool) -> 
                 "risk": "policy-blocked",
                 "scope": item.get("scope", ""),
                 "sensitivity": item.get("sensitivity", ""),
+                "importance_score": item.get("importance_score", 0.0),
+                "importance_recommendation": item.get("importance_recommendation", ""),
             }
         )
     return ledger
@@ -3543,6 +3482,8 @@ def _cold_store_action_ledger(cold_store_result: dict[str, Any], *, applied: boo
                 "risk": "medium",
                 "scope": item.get("scope", ""),
                 "sensitivity": item.get("sensitivity", ""),
+                "importance_score": item.get("importance_score", 0.0),
+                "importance_recommendation": item.get("importance_recommendation", ""),
             }
         )
     for row in cold_store_result.get("skipped_low_usage", []) or []:
@@ -3559,6 +3500,8 @@ def _cold_store_action_ledger(cold_store_result: dict[str, Any], *, applied: boo
                 "risk": "low",
                 "scope": item.get("scope", ""),
                 "sensitivity": item.get("sensitivity", ""),
+                "importance_score": item.get("importance_score", 0.0),
+                "importance_recommendation": item.get("importance_recommendation", ""),
             }
         )
     for row in cold_store_result.get("skipped_protected", []) or []:
@@ -3575,6 +3518,8 @@ def _cold_store_action_ledger(cold_store_result: dict[str, Any], *, applied: boo
                 "risk": "policy-blocked",
                 "scope": item.get("scope", ""),
                 "sensitivity": item.get("sensitivity", ""),
+                "importance_score": item.get("importance_score", 0.0),
+                "importance_recommendation": item.get("importance_recommendation", ""),
             }
         )
     return ledger
@@ -3606,6 +3551,10 @@ def _dry_run_diff(
         item for item in ledger
         if item.get("operation") == "cold_store_expired" and item.get("status") == "skipped_policy"
     ]
+    cold_store_items = [
+        item for item in ledger
+        if item.get("operation") == "cold_store_expired" and item.get("status") in {"preview", "applied"}
+    ]
     return {
         "apply_requested": bool(apply_requested),
         "policy_allows_archive": bool(archive_allowed),
@@ -3615,6 +3564,10 @@ def _dry_run_diff(
         "skipped_policy_count": len(skipped_policy),
         "cold_store_skipped_usage_count": len(cold_store_skipped_usage),
         "cold_store_skipped_policy_count": len(cold_store_skipped_policy),
+        "highest_cold_store_importance": max(
+            [float(item.get("importance_score") or 0.0) for item in cold_store_items],
+            default=0.0,
+        ),
         "fields_changed": ["status", "archived_at", "updated_at"] if would_archive else [],
         "hard_delete": False,
         "promote_candidates": False,

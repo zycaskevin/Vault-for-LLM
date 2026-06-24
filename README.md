@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.98.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.99.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,7 +83,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.98"
+pip install "vault-for-llm[mcp]==0.6.99"
 
 vault setup-agent
 ```
@@ -140,7 +140,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.98"
+pip install "vault-for-llm[mcp]==0.6.99"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -243,6 +243,9 @@ private, high/restricted, and L0/L1 memory.
 Policy automation can run the same cold-store path during `vault automation run`
 or `vault automation cycle` when `cold_store_used_expired` and `--apply` are
 enabled.
+Cold-store previews and automation ledgers use the same `importance_score` to
+sort expired-but-used memories, so review starts with the memories most likely
+to deserve refresh, summary, or protected cold storage.
 `vault automation inbox` and `vault automation brief` turn those report-level
 signals into a compact review digest, so the human review surface stays short:
 review protected TTL decisions, expired-but-used memory, cold-store summaries,
@@ -440,7 +443,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.98"
+pip install "vault-for-llm[supabase]==0.6.99"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

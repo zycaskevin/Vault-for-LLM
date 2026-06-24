@@ -147,13 +147,29 @@ def test_automation_run_cold_stores_expired_but_used_memory(tmp_path):
     assert payload["archive_expired"]["archived_count"] == 0
     assert payload["archive_expired"]["skipped_used_count"] == 1
     assert payload["cold_store_expired"]["applied_count"] == 1
+    assert payload["cold_store_expired"]["items"][0]["importance_score"] > 0
+    assert payload["cold_store_expired"]["items"][0]["importance_components"]["citation"] > 0
+    assert payload["cold_store_expired"]["items"][0]["importance_recommendation"] == "refresh_or_cold_store_before_forgetting"
     assert payload["dry_run_diff"]["would_cold_store_count"] == 1
     assert payload["dry_run_diff"]["cold_store_applied_count"] == 1
+    assert payload["dry_run_diff"]["highest_cold_store_importance"] == payload["cold_store_expired"]["items"][0]["importance_score"]
     assert payload["dry_run_diff"]["skipped_usage_count"] == 1
     assert payload["usage_review"]["expired_used_review_count"] == 1
+    assert payload["usage_review"]["importance_model"] == "usage_citation_recency_trust_freshness_ttl_v1"
+    assert payload["usage_review"]["expired_but_used"][0]["importance_score"] > 0
     assert payload["forgetting"]["candidates_written"] == 1
-    assert any(item["operation"] == "archive_expired" and item["status"] == "skipped_usage" for item in payload["action_ledger"])
-    assert any(item["operation"] == "cold_store_expired" and item["status"] == "applied" for item in payload["action_ledger"])
+    assert any(
+        item["operation"] == "archive_expired"
+        and item["status"] == "skipped_usage"
+        and item["importance_score"] > 0
+        for item in payload["action_ledger"]
+    )
+    assert any(
+        item["operation"] == "cold_store_expired"
+        and item["status"] == "applied"
+        and item["importance_recommendation"] == "refresh_or_cold_store_before_forgetting"
+        for item in payload["action_ledger"]
+    )
     assert payload["human_review"]["required"] is True
     assert {"kind": "expired_but_used", "count": 1} in payload["human_review"]["items"]
     assert {"kind": "cold_stored_expired", "count": 1} in payload["human_review"]["items"]
@@ -169,6 +185,37 @@ def test_automation_run_cold_stores_expired_but_used_memory(tmp_path):
         ]
     assert len(forgetting_candidates) == 1
     assert forgetting_candidates[0]["source"] == "automation"
+
+
+def test_automation_cold_store_orders_by_importance_score(tmp_path):
+    project = _init_project(tmp_path)
+    expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    with VaultDB(project / "vault.db") as db:
+        accessed_id = db.add_knowledge(
+            "Expired accessed note",
+            "This note has usage but no citation evidence.",
+            layer="L2",
+            expires_at=expired,
+            trust=0.5,
+        )
+        cited_id = db.add_knowledge(
+            "Expired cited source of truth",
+            "This cited rule should be reviewed before lower-importance memories.",
+            layer="L2",
+            expires_at=expired,
+            trust=0.8,
+        )
+        db.record_knowledge_access([accessed_id], cited=False)
+        db.record_knowledge_access([cited_id], cited=True)
+
+    payload = automation_run(project, mode="balanced", apply=False, limit=10, write_reports=False)
+    items = payload["cold_store_expired"]["items"]
+
+    assert [item["id"] for item in items][:2] == [cited_id, accessed_id]
+    assert items[0]["importance_score"] > items[1]["importance_score"]
+    assert items[0]["importance_components"]["citation"] == 8.0
+    assert "cited" in items[0]["importance_signals"]
+    assert payload["dry_run_diff"]["highest_cold_store_importance"] == items[0]["importance_score"]
 
 
 def test_automation_cli_shows_usage_review(tmp_path, monkeypatch, capsys):

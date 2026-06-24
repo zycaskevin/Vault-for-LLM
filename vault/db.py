@@ -17,6 +17,8 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional, Any
 
+from .importance import compute_memory_importance
+
 # sqlite-vec 是可選依賴
 _VEC_AVAILABLE = False
 try:
@@ -1171,8 +1173,9 @@ class VaultDB:
 
         limit_i = max(1, min(int(limit or 100), 10000))
         rows = self.conn.execute(
-            """SELECT id, title, layer, category, memory_type, scope, sensitivity,
-                      status, expires_at, access_count, citation_count
+            """SELECT id, title, layer, category, trust, freshness,
+                      memory_type, scope, sensitivity, status, expires_at,
+                      access_count, citation_count, last_accessed_at
                  FROM knowledge
                 WHERE COALESCE(status, 'active') != 'archived'
                   AND COALESCE(expires_at, '') != ''
@@ -1285,7 +1288,8 @@ class VaultDB:
         protected_layer_set = {str(value).strip().upper() for value in (protected_layers or ["L0", "L1"]) if str(value).strip()}
 
         rows = self.conn.execute(
-            """SELECT id, title, layer, category, tags, trust, content_raw, summary,
+            """SELECT id, title, layer, category, tags, trust, freshness,
+                      content_raw, summary, last_accessed_at,
                       memory_type, scope, sensitivity, status, expires_at,
                       access_count, citation_count
                  FROM knowledge
@@ -1323,6 +1327,17 @@ class VaultDB:
                 skipped_low_usage.append(compact)
                 continue
             candidates.append(compact)
+        candidates.sort(
+            key=lambda item: (
+                float(item.get("importance_score") or 0.0),
+                int(item.get("citation_count") or 0),
+                int(item.get("access_count") or 0),
+                int(item.get("id") or 0),
+            ),
+            reverse=True,
+        )
+        skipped_low_usage.sort(key=lambda item: (float(item.get("importance_score") or 0.0), int(item.get("id") or 0)), reverse=True)
+        skipped_protected.sort(key=lambda item: (float(item.get("importance_score") or 0.0), int(item.get("id") or 0)), reverse=True)
 
         if dry_run or not candidates:
             return {
@@ -1388,6 +1403,7 @@ class VaultDB:
     ) -> dict[str, Any]:
         access = int(row.get("access_count") or 0)
         citations = int(row.get("citation_count") or 0)
+        importance = compute_memory_importance(row, now=self._parse_timestamp(now_text) or datetime.now(timezone.utc))
         summary = self._build_cold_store_summary(row, max_chars=summary_max_chars, now_text=now_text)
         return {
             "id": int(row.get("id") or 0),
@@ -1402,6 +1418,10 @@ class VaultDB:
             "access_count": access,
             "citation_count": citations,
             "usage_count": access + citations,
+            "importance_score": importance["importance_score"],
+            "importance_components": importance["importance_components"],
+            "importance_signals": importance["signals"],
+            "importance_recommendation": importance["recommendation"],
             "summary": summary,
             "operation": "summarize_then_cold_store",
         }

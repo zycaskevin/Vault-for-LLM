@@ -129,6 +129,11 @@ The importance model is intentionally small and auditable:
 
 `weight_score` remains as a compatibility alias for `importance_score`, but new
 integrations should read `importance_score` and `importance_components`.
+The same model is used by `cold-store-expired`, `automation run`, and
+`automation cycle` lifecycle previews. Expired-but-used memories are sorted by
+importance before cold-store preview/apply, and the action ledger carries the
+score plus recommendation so dashboards and agents can explain why an item is
+near the top.
 
 When that brief recommends `summarize_then_cold_store`, run a dry-run first:
 

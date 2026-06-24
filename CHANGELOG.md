@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [0.6.99] - 2026-06-24
+
+### Added
+
+- `cold-store-expired` previews and automation reports now include the same explainable `importance_score`, components, signals, and recommendation used by `automation brief`.
+- Automation action ledgers and dry-run diffs now surface importance-guided lifecycle context, including the highest cold-store importance score for a run.
+
+### Changed
+
+- Expired-but-used cold-store candidates are now sorted by importance, citation count, access count, and id, so review starts with the memories most likely to deserve refresh, summary, or protected cold storage.
+
 ## [0.6.98] - 2026-06-24
 
 ### Added

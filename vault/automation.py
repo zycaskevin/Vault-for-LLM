@@ -1232,6 +1232,102 @@ def automation_learning_health(
     return payload
 
 
+def automation_fleet_health(
+    project_dir: str | Path,
+    *,
+    limit: int = 5,
+    min_events: int = 5,
+    max_status_age_minutes: int = 24 * 60,
+    write_health: bool = False,
+    health_path: str | Path = "",
+) -> dict[str, Any]:
+    """Return a read-only multi-Agent automation health summary."""
+    project = Path(project_dir)
+    generated_at = _now()
+    learning = automation_learning_health(
+        project,
+        limit=limit,
+        min_events=min_events,
+        write_health=False,
+    )
+    agent_health = _brief_agent_health(project)
+    update_health = _automation_update_distribution_health(
+        max_status_age_minutes=max_status_age_minutes,
+    )
+    agents = agent_health.get("agents") or []
+    project_agents = [agent for agent in agents if agent.get("uses_this_project")]
+    status = _fleet_health_status(
+        learning_status=str(learning.get("status") or ""),
+        agent_count=int(agent_health.get("agent_count") or 0),
+        project_agent_count=len(project_agents),
+        update_ok=bool(update_health.get("ok", False)),
+        update_status_exists=bool(update_health.get("status_exists", False)),
+    )
+    payload = {
+        "action": "fleet-health",
+        "generated_at": generated_at,
+        "project_dir": str(project),
+        "status": status,
+        "summary": {
+            "registered_agents": int(agent_health.get("agent_count") or 0),
+            "agents_for_project": len(project_agents),
+            "learning_status": learning.get("status", ""),
+            "learning_readiness": (learning.get("summary") or {}).get("readiness", ""),
+            "learning_events": int((learning.get("summary") or {}).get("event_count") or 0),
+            "learning_rules": int((learning.get("summary") or {}).get("active_rules") or 0),
+            "update_status_exists": bool(update_health.get("status_exists", False)),
+            "update_distribution_ok": bool(update_health.get("ok", False)),
+            "agents_needing_attention": len(update_health.get("agents_needing_attention") or []),
+            "agents_missing_from_status": len(update_health.get("agents_missing_from_status") or []),
+        },
+        "agents": project_agents[: max(1, min(int(limit or 5), 50))],
+        "learning_health": {
+            "status": learning.get("status", ""),
+            "summary": learning.get("summary", {}),
+            "cards": (learning.get("cards") or [])[: max(1, min(int(limit or 5), 20))],
+            "top_rules": (learning.get("top_rules") or [])[: max(1, min(int(limit or 5), 20))],
+        },
+        "update_distribution": {
+            "ok": bool(update_health.get("ok", False)),
+            "status_exists": bool(update_health.get("status_exists", False)),
+            "status_stale": bool(update_health.get("status_stale", False)),
+            "status_current_runtime_mismatch": bool(update_health.get("status_current_runtime_mismatch", False)),
+            "agents_needing_attention": update_health.get("agents_needing_attention") or [],
+            "agents_missing_from_status": update_health.get("agents_missing_from_status") or [],
+            "recommended_actions": (update_health.get("recommended_actions") or [])[: max(1, min(int(limit or 5), 20))],
+        },
+        "cards": _fleet_health_cards(
+            learning=learning,
+            agent_health=agent_health,
+            update_health=update_health,
+            project_agent_count=len(project_agents),
+            limit=limit,
+        ),
+        "safety": {
+            "read_only": True,
+            "writes_active_memory": False,
+            "writes_candidates": False,
+            "hard_delete": False,
+            "includes_raw_candidate_content": False,
+            "includes_raw_feedback_reasons": False,
+            "reads_private_memory": False,
+            "registry_metadata_only": True,
+        },
+        "fleet_health_path": "",
+        "fleet_health_markdown_path": "",
+        "next_action": _fleet_health_next_action(status),
+    }
+    if write_health:
+        payload["fleet_health_path"] = _write_fleet_health(project, payload, health_path=health_path)
+        payload["fleet_health_markdown_path"] = _write_fleet_health_markdown(
+            project,
+            payload,
+            health_path=payload["fleet_health_path"],
+        )
+        _write_fleet_health(project, payload, health_path=payload["fleet_health_path"])
+    return payload
+
+
 def _feedback_learning_policy(
     groups: list[dict[str, Any]],
     *,
@@ -1767,6 +1863,121 @@ def _brief_agent_health(project: Path) -> dict[str, Any]:
         "agents": agents,
         "principle": "Shared health is local registry metadata only; it does not expose private memories.",
     }
+
+
+def _automation_update_distribution_health(*, max_status_age_minutes: int = 24 * 60) -> dict[str, Any]:
+    try:
+        from vault.agent_registry import build_update_distribution_health
+
+        return build_update_distribution_health(max_age_minutes=max_status_age_minutes)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status_exists": False,
+            "status_stale": True,
+            "agents_needing_attention": [],
+            "agents_missing_from_status": [],
+            "recommended_actions": ["Unable to read update-distribution health; run `vault agent doctor` for details."],
+            "error_type": type(exc).__name__,
+        }
+
+
+def _fleet_health_status(
+    *,
+    learning_status: str,
+    agent_count: int,
+    project_agent_count: int,
+    update_ok: bool,
+    update_status_exists: bool,
+) -> str:
+    if learning_status == "blocked":
+        return "blocked"
+    if agent_count <= 0 or project_agent_count <= 0:
+        return "needs_review"
+    if learning_status == "needs_review":
+        return "needs_review"
+    if not update_status_exists or not update_ok:
+        return "watch"
+    if learning_status in {"cold_start", "watch"}:
+        return learning_status
+    return "healthy"
+
+
+def _fleet_health_cards(
+    *,
+    learning: dict[str, Any],
+    agent_health: dict[str, Any],
+    update_health: dict[str, Any],
+    project_agent_count: int,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    cards: list[dict[str, Any]] = []
+    agent_count = int(agent_health.get("agent_count") or 0)
+    if agent_count <= 0:
+        cards.append(
+            {
+                "kind": "no_registered_agents",
+                "priority": 95,
+                "title": "No registered Agent runtimes",
+                "reason": "No local runtimes are registered, so shared automation health cannot be distributed.",
+                "safe_action": "Run `vault setup-agent` or `vault agent register` from each runtime that should share this vault.",
+            }
+        )
+    elif project_agent_count <= 0:
+        cards.append(
+            {
+                "kind": "no_project_agents",
+                "priority": 88,
+                "title": "No registered Agent points at this project vault",
+                "reason": "The registry exists, but none of the registered runtimes use this project directory.",
+                "safe_action": "Re-run setup-agent with the intended shared project directory.",
+            }
+        )
+    learning_status = str(learning.get("status") or "")
+    if learning_status in {"cold_start", "watch", "needs_review", "blocked"}:
+        cards.append(
+            {
+                "kind": "learning_health",
+                "priority": 84 if learning_status == "needs_review" else 70,
+                "title": f"Learning health is {learning_status}",
+                "reason": learning.get("next_action", ""),
+                "safe_action": "Use review-summary and review-feedback to add explicit outcomes before widening automation.",
+            }
+        )
+    if not bool(update_health.get("status_exists", False)):
+        cards.append(
+            {
+                "kind": "missing_update_status",
+                "priority": 78,
+                "title": "Shared update-status file is missing",
+                "reason": "Registered agents may not see the same version/update notice state.",
+                "safe_action": "Run `vault update-status --write-status` from the shared runtime environment.",
+            }
+        )
+    elif not bool(update_health.get("ok", False)):
+        cards.append(
+            {
+                "kind": "update_distribution",
+                "priority": 76,
+                "title": "Update distribution needs attention",
+                "reason": "; ".join(str(item) for item in (update_health.get("recommended_actions") or [])[:2]),
+                "safe_action": "Refresh update status and restart or re-register only the listed runtimes.",
+            }
+        )
+    cards.sort(key=lambda item: int(item.get("priority") or 0), reverse=True)
+    return cards[: max(1, min(int(limit or 5), 20))]
+
+
+def _fleet_health_next_action(status: str) -> str:
+    if status == "healthy":
+        return "Keep scheduled automation running and review only the short health reports first."
+    if status == "cold_start":
+        return "Collect more review feedback before trusting learned ranking hints."
+    if status == "watch":
+        return "Refresh update status and inspect learning-health cards before widening automation."
+    if status == "blocked":
+        return "Initialize the project vault before checking fleet health."
+    return "Register project runtimes and review the highest-priority fleet health cards."
 
 
 def _brief_human_review(inbox: dict[str, Any], activity: dict[str, Any], *, limit: int = 5) -> dict[str, Any]:
@@ -2309,6 +2520,107 @@ def _write_learning_health_markdown(project: Path, payload: dict[str, Any], *, h
         "- no raw feedback reasons",
         "- no promotion, archive, or deletion",
         "- learning is a ranking hint only",
+        "",
+        f"Next action: {_md_text(payload.get('next_action', ''))}",
+    ]
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return _relative_to_project(project, path)
+
+
+def _write_fleet_health(project: Path, payload: dict[str, Any], *, health_path: str | Path = "") -> str:
+    report_dir = project / "reports" / "automation"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    if health_path:
+        raw = Path(health_path)
+        path = raw if raw.is_absolute() else project / raw
+        try:
+            resolved = path.expanduser().resolve()
+            allowed = report_dir.expanduser().resolve()
+        except Exception as exc:
+            raise ValueError(f"unable to resolve automation fleet health path: {exc}") from exc
+        if allowed != resolved and allowed not in resolved.parents:
+            raise ValueError("automation fleet health path must stay under reports/automation")
+        path = resolved
+    else:
+        path = report_dir / "fleet-health-latest.json"
+    data = dict(payload)
+    data["fleet_health_path"] = _relative_to_project(project, path)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return _relative_to_project(project, path)
+
+
+def _write_fleet_health_markdown(project: Path, payload: dict[str, Any], *, health_path: str | Path) -> str:
+    json_path = project / health_path if not Path(health_path).is_absolute() else Path(health_path)
+    path = json_path.with_suffix(".md")
+    summary = payload.get("summary") or {}
+    cards = payload.get("cards") or []
+    agents = payload.get("agents") or []
+    lines = [
+        "# Vault Automation Fleet Health",
+        "",
+        f"- generated: `{_md_text(payload.get('generated_at', ''))}`",
+        f"- status: `{_md_text(payload.get('status', ''))}`",
+        f"- registered agents: `{int(summary.get('registered_agents') or 0)}`",
+        f"- agents for this project: `{int(summary.get('agents_for_project') or 0)}`",
+        f"- learning: `{_md_text(summary.get('learning_status', ''))}` / `{_md_text(summary.get('learning_readiness', ''))}`",
+        f"- learning events / rules: `{int(summary.get('learning_events') or 0)}` / `{int(summary.get('learning_rules') or 0)}`",
+        f"- update distribution ok: `{str(bool(summary.get('update_distribution_ok'))).lower()}`",
+        "",
+        "## Cards",
+        "",
+    ]
+    if cards:
+        lines += [
+            _md_row(["priority", "kind", "title", "why", "safe action"]),
+            _md_row(["---", "---", "---", "---", "---"]),
+        ]
+        for card in cards:
+            lines.append(
+                _md_row(
+                    [
+                        card.get("priority", ""),
+                        card.get("kind", ""),
+                        card.get("title", ""),
+                        card.get("reason", ""),
+                        card.get("safe_action", ""),
+                    ]
+                )
+            )
+    else:
+        lines.append("No fleet-health cards.")
+    lines += [
+        "",
+        "## Project Agents",
+        "",
+    ]
+    if agents:
+        lines += [
+            _md_row(["agent", "scope", "layout", "profile", "version"]),
+            _md_row(["---", "---", "---", "---", "---"]),
+        ]
+        for agent in agents:
+            lines.append(
+                _md_row(
+                    [
+                        agent.get("agent_id", ""),
+                        agent.get("scope", ""),
+                        agent.get("memory_layout", ""),
+                        agent.get("tool_profile", ""),
+                        agent.get("vault_version", ""),
+                    ]
+                )
+            )
+    else:
+        lines.append("No registered project agents.")
+    lines += [
+        "",
+        "## Safety",
+        "",
+        "- read-only fleet panel",
+        "- registry metadata only",
+        "- no raw candidate content",
+        "- no raw feedback reasons",
+        "- no promotion, archive, or deletion",
         "",
         f"Next action: {_md_text(payload.get('next_action', ''))}",
     ]

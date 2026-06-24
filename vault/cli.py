@@ -1976,6 +1976,7 @@ def cmd_automation(args):
         automation_cycle,
         automation_doctor,
         automation_eval,
+        automation_fleet_health,
         automation_handoff,
         automation_inbox,
         automation_learning_health,
@@ -1987,9 +1988,9 @@ def cmd_automation(args):
     )
 
     action = getattr(args, "automation_action", "")
-    if action not in {"plan", "run", "cycle", "report", "activity", "brief", "review-summary", "review-feedback", "learning-health", "inbox", "handoff", "doctor", "eval"}:
+    if action not in {"plan", "run", "cycle", "report", "activity", "brief", "review-summary", "review-feedback", "learning-health", "fleet-health", "inbox", "handoff", "doctor", "eval"}:
         print(
-            "error: automation requires action: plan, run, cycle, report, activity, brief, review-summary, review-feedback, learning-health, inbox, handoff, eval, or doctor",
+            "error: automation requires action: plan, run, cycle, report, activity, brief, review-summary, review-feedback, learning-health, fleet-health, inbox, handoff, eval, or doctor",
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -2079,6 +2080,15 @@ def cmd_automation(args):
                 project_dir,
                 limit=args.limit,
                 min_events=getattr(args, "min_events", 5),
+                write_health=getattr(args, "write_health", False),
+                health_path=getattr(args, "health_path", ""),
+            )
+        elif action == "fleet-health":
+            payload = automation_fleet_health(
+                project_dir,
+                limit=args.limit,
+                min_events=getattr(args, "min_events", 5),
+                max_status_age_minutes=getattr(args, "max_status_age_minutes", 24 * 60),
                 write_health=getattr(args, "write_health", False),
                 health_path=getattr(args, "health_path", ""),
             )
@@ -2534,6 +2544,44 @@ def cmd_automation(args):
                 print(f"      safe: {card.get('safe_action')}")
         else:
             print("\n  Health cards: empty")
+        return
+
+    if action == "fleet-health":
+        summary = payload.get("summary") or {}
+        print("🛰️ Automation fleet health\n")
+        print(f"  status: {payload.get('status')}")
+        print(
+            "  agents: "
+            f"registered={summary.get('registered_agents', 0)} "
+            f"project={summary.get('agents_for_project', 0)}"
+        )
+        print(
+            "  learning: "
+            f"status={summary.get('learning_status', '')} "
+            f"readiness={summary.get('learning_readiness', '')} "
+            f"events={summary.get('learning_events', 0)} "
+            f"rules={summary.get('learning_rules', 0)}"
+        )
+        print(
+            "  update: "
+            f"exists={summary.get('update_status_exists', False)} "
+            f"ok={summary.get('update_distribution_ok', False)} "
+            f"attention={summary.get('agents_needing_attention', 0)} "
+            f"missing={summary.get('agents_missing_from_status', 0)}"
+        )
+        if payload.get("fleet_health_path"):
+            print(f"  fleet health: {payload.get('fleet_health_path')}")
+        if payload.get("fleet_health_markdown_path"):
+            print(f"  fleet health markdown: {payload.get('fleet_health_markdown_path')}")
+        cards = payload.get("cards") or []
+        if cards:
+            print("\n  Fleet cards:")
+            for card in cards:
+                print(f"    - P{card.get('priority', 0)} {card.get('kind')} {card.get('title')}")
+                print(f"      why: {card.get('reason')}")
+                print(f"      safe: {card.get('safe_action')}")
+        else:
+            print("\n  Fleet cards: empty")
         return
 
     if action == "inbox":
@@ -4229,6 +4277,13 @@ def main(argv: list[str] | None = None):
     sp.add_argument("--min-events", type=int, default=5, help="minimum feedback events before learning is considered warm")
     sp.add_argument("--write-health", action="store_true", help="write reports/automation/learning-health-latest.json and .md")
     sp.add_argument("--health-path", default="", help="custom reports/automation/*.json learning health path")
+
+    sp = automation_sub.add_parser("fleet-health", help="Show a multi-Agent automation health panel")
+    add_automation_common(sp)
+    sp.add_argument("--min-events", type=int, default=5, help="minimum feedback events before learning is considered warm")
+    sp.add_argument("--max-status-age-minutes", type=int, default=24 * 60, help="maximum age for shared update-status before it is stale")
+    sp.add_argument("--write-health", action="store_true", help="write reports/automation/fleet-health-latest.json and .md")
+    sp.add_argument("--health-path", default="", help="custom reports/automation/*.json fleet health path")
 
     sp = automation_sub.add_parser("inbox", help="Show the shortest review queue for automation candidates and reports")
     add_automation_common(sp)

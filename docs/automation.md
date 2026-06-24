@@ -114,6 +114,7 @@ vault automation review-feedback --kind memory_importance --card-id 12 \
   --decision accept --reason "Correctly protected an expired but cited memory" \
   --write-learning-policy
 vault automation learning-health --write-health
+vault automation fleet-health --write-health
 ```
 
 `automation brief` is the daily startup surface for the memory loop. It joins
@@ -159,6 +160,12 @@ writes `reports/automation/learning-health-latest.json` plus `.md`.
 `setup-agent` generated cron, LaunchAgent, and n8n memory automation schedules
 write the same health files after each scheduled run, so dashboards and the next
 agent session can check the loop without opening full reports.
+
+`automation fleet-health` is the shared multi-Agent panel above learning-health.
+It combines local Agent registry metadata, learning-health status, and
+update-distribution health. With `--write-health`, it writes
+`reports/automation/fleet-health-latest.json` plus `.md`. It is read-only and
+does not read private memory, raw candidate content, or raw feedback reasons.
 
 When that brief recommends `summarize_then_cold_store`, run a dry-run first:
 
@@ -446,6 +453,8 @@ important review fields are:
   review-summary cards, used by `automation eval` as bounded ranking hints.
 - `automation learning-health`: read-only health cards for the learning loop,
   including cold-start, healthy, watch, or needs-review status.
+- `automation fleet-health`: read-only multi-Agent health panel combining local
+  registry metadata, learning-health status, and update-distribution health.
 - `automation inbox`: the shortest daily review surface. It starts with
   `review_digest` cards from the latest report's `human_review.items`, then
   shows the candidate queue. This lets humans review policy-level decisions

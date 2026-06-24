@@ -10,6 +10,7 @@ from vault.automation import (
     automation_cycle,
     automation_doctor,
     automation_eval,
+    automation_fleet_health,
     automation_handoff,
     automation_inbox,
     automation_learning_health,
@@ -1048,6 +1049,64 @@ def test_automation_learning_health_writes_short_dashboard(tmp_path):
     assert "learning is a ranking hint only" in markdown
 
 
+def test_automation_fleet_health_writes_multi_agent_dashboard(tmp_path, monkeypatch):
+    from vault.agent_registry import build_update_status, register_agent, write_update_status
+
+    monkeypatch.setenv("VAULT_AGENT_REGISTRY_DIR", str(tmp_path / "registry"))
+    project = _init_project(tmp_path)
+    for runtime in ["codex", "claude-code", "openclaw", "hermes"]:
+        register_agent(agent=runtime, project_dir=project, scope="shared", features=["core", "mcp"])
+    write_update_status(build_update_status())
+
+    with VaultDB(project / "vault.db") as db:
+        for idx in range(3):
+            db.record_memory_feedback(
+                {
+                    "candidate_id": f"fleet_good_{idx}",
+                    "source": "review-summary",
+                    "memory_type": "memory_importance",
+                    "category": "refresh_or_cold_store_before_forgetting",
+                    "outcome": "accepted",
+                    "score": 1.0,
+                }
+            )
+
+    payload = automation_fleet_health(project, limit=5, min_events=3, write_health=True)
+
+    assert payload["action"] == "fleet-health"
+    assert payload["status"] == "healthy"
+    assert payload["summary"]["registered_agents"] == 4
+    assert payload["summary"]["agents_for_project"] == 4
+    assert payload["summary"]["learning_status"] == "healthy"
+    assert payload["summary"]["update_distribution_ok"] is True
+    assert payload["safety"]["read_only"] is True
+    assert payload["safety"]["reads_private_memory"] is False
+    assert payload["fleet_health_path"] == "reports/automation/fleet-health-latest.json"
+    assert payload["fleet_health_markdown_path"] == "reports/automation/fleet-health-latest.md"
+    assert (project / payload["fleet_health_path"]).exists()
+    assert (project / payload["fleet_health_markdown_path"]).exists()
+    assert sorted(agent["agent_id"] for agent in payload["agents"]) == [
+        "claude-code",
+        "codex",
+        "hermes",
+        "openclaw",
+    ]
+    markdown = (project / payload["fleet_health_markdown_path"]).read_text(encoding="utf-8")
+    assert "# Vault Automation Fleet Health" in markdown
+    assert "registry metadata only" in markdown
+
+
+def test_automation_fleet_health_warns_when_agents_are_missing(tmp_path, monkeypatch):
+    monkeypatch.setenv("VAULT_AGENT_REGISTRY_DIR", str(tmp_path / "registry"))
+    project = _init_project(tmp_path)
+
+    payload = automation_fleet_health(project, limit=5, min_events=3)
+
+    assert payload["status"] == "needs_review"
+    assert payload["summary"]["registered_agents"] == 0
+    assert any(card["kind"] == "no_registered_agents" for card in payload["cards"])
+
+
 def test_automation_inbox_applies_learning_policy_to_review_priority(tmp_path):
     project = _init_project(tmp_path)
     with VaultDB(project / "vault.db") as db:
@@ -1592,6 +1651,49 @@ def test_automation_cli_learning_health_prints_cards(tmp_path, monkeypatch, caps
     assert "status: healthy" in out
     assert "Health cards" in out
     assert "health: reports/automation/learning-health-latest.json" in out
+
+
+def test_automation_cli_fleet_health_prints_dashboard(tmp_path, monkeypatch, capsys):
+    from vault.agent_registry import build_update_status, register_agent, write_update_status
+    from vault.cli import cmd_automation
+
+    monkeypatch.setenv("VAULT_AGENT_REGISTRY_DIR", str(tmp_path / "registry"))
+    project = _init_project(tmp_path)
+    register_agent(agent="codex", project_dir=project, scope="shared", features=["core", "mcp"])
+    write_update_status(build_update_status())
+    with VaultDB(project / "vault.db") as db:
+        for idx in range(3):
+            db.record_memory_feedback(
+                {
+                    "candidate_id": f"fleet_good_{idx}",
+                    "source": "review-summary",
+                    "memory_type": "memory_importance",
+                    "category": "refresh_or_cold_store_before_forgetting",
+                    "outcome": "accepted",
+                    "score": 1.0,
+                }
+            )
+    monkeypatch.chdir(project)
+
+    cmd_automation(
+        Namespace(
+            automation_action="fleet-health",
+            mode=None,
+            limit=5,
+            min_events=3,
+            max_status_age_minutes=24 * 60,
+            write_health=True,
+            health_path="",
+            json=False,
+            pretty=False,
+        )
+    )
+
+    out = capsys.readouterr().out
+    assert "Automation fleet health" in out
+    assert "status: healthy" in out
+    assert "registered=1" in out
+    assert "fleet health: reports/automation/fleet-health-latest.json" in out
 
 
 def test_automation_cli_eval_prints_feedback_scores(tmp_path, monkeypatch, capsys):

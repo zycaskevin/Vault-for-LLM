@@ -58,7 +58,7 @@ Vault-for-LLM 可能不是第一個該拿起來的工具。
 最推薦的方式，是直接把這段交給能執行本機指令的 Agent：
 
 ```text
-幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.103。
+幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.104。
 先問我要 shared、private、domain-specific 還是 temporary vault。
 詢問穩定的 project directory，並為長期任務產生 stable venv script。
 逐項詢問 MCP、semantic search、Supabase、Obsidian import、Headroom 壓縮、
@@ -71,7 +71,7 @@ Agent 會使用安裝精靈：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.103"
+pip install "vault-for-llm[mcp]==0.6.104"
 
 vault setup-agent
 ```
@@ -127,7 +127,7 @@ vault setup-agent \
 ### 手動快速開始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.103"
+pip install "vault-for-llm[mcp]==0.6.104"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -293,9 +293,14 @@ vault automation review-feedback --kind memory_importance --card-id 12 \
   --decision accept --reason "正確保護了過期但仍被引用的記憶" \
   --write-learning-policy
 vault automation learning-health --write-health
+vault automation fleet-health --write-health
 ```
 
 MCP-capable Agent 可以在 `core` profile 直接呼叫 `vault_automation_brief`。
+多 Agent 安裝時，`vault automation fleet-health` 會把本機 Agent registry、
+learning-health 狀態和 update-distribution health 合成
+`reports/automation/fleet-health-latest.json` 與 `.md`。它只讀 registry
+metadata 和短報告，不讀私人記憶、raw candidate content 或 raw feedback reason。
 如果安裝時加上 `--automation-include-transcripts`，排程 handoff 也會列出尚未
 capture 的 transcript 候選路徑。這只包含 metadata，不讀 transcript 內容，也不會
 自動把對話變成正式記憶。
@@ -396,7 +401,7 @@ SQLite 仍然是 source of truth。Supabase 是可選的共享層。
 Remote reader 應該直接把搜尋結果的 `id` 傳給 map/read；它可能是整數，也可能是 Supabase UUID。
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.103"
+pip install "vault-for-llm[supabase]==0.6.104"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

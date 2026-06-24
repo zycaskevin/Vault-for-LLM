@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [0.6.104] - 2026-06-25
+
+### Added
+
+- Added `vault automation fleet-health`, a read-only multi-Agent automation health panel that combines local agent registry metadata, learning-health status, and update-distribution health.
+- Fleet health can write `reports/automation/fleet-health-latest.json` and `.md` for dashboards and shared Agent startup checks.
+
+### Safety
+
+- Fleet health uses registry metadata and compact reports only; it does not read private memory, raw candidate content, or raw feedback reasons.
+
 ## [0.6.103] - 2026-06-25
 
 ### Changed

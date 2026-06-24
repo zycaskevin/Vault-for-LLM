@@ -454,6 +454,64 @@ def test_run_agent_setup_can_enable_scheduled_transcript_capture(tmp_path):
     assert "writes candidates only" in readme
 
 
+def test_run_agent_setup_can_write_low_risk_auto_promote_policy(tmp_path):
+    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+
+    project = tmp_path / "agent-project"
+    result = run_agent_setup(
+        AgentSetupConfig(
+            project_dir=project,
+            scope="shared",
+            agent="automation-agent",
+            features=["core", "mcp", "memory_agents"],
+            automation_schedule_targets="cron",
+            automation_interval_minutes=1440,
+            automation_apply=True,
+            automation_auto_promote_low_risk=True,
+            template_dir=tmp_path / "templates",
+        )
+    )
+
+    policy = Path(result["automation_policy"]["path"]).read_text(encoding="utf-8")
+    readme = Path(result["automation_schedule_templates"]["readme"]).read_text(encoding="utf-8")
+    cron = Path(result["automation_schedule_templates"]["cron"]).read_text(encoding="utf-8")
+
+    assert result["automation_policy"]["status"] == "created"
+    assert result["automation_policy"]["auto_promote_low_risk_candidates"] is True
+    assert "auto_promote_low_risk_candidates: true" in policy
+    assert "- session_capture" in policy
+    assert "- session_lesson" in policy
+    assert "- low" in policy
+    assert "low-risk auto-promote policy: `true`" in readme
+    assert "requires `automation_policy.yaml` plus `--apply`" in readme
+    assert "--apply" in cron
+    assert any("Review low-risk auto-promote policy" in step for step in result["next_steps"])
+
+
+def test_run_agent_setup_low_risk_auto_promote_without_apply_is_preview_only(tmp_path):
+    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+
+    project = tmp_path / "agent-project"
+    result = run_agent_setup(
+        AgentSetupConfig(
+            project_dir=project,
+            scope="shared",
+            agent="automation-agent",
+            features=["core", "mcp"],
+            automation_schedule_targets="cron",
+            automation_auto_promote_low_risk=True,
+            template_dir=tmp_path / "templates",
+        )
+    )
+
+    cron = Path(result["automation_schedule_templates"]["cron"]).read_text(encoding="utf-8")
+    assert "auto_promote_low_risk_candidates: true" in Path(result["automation_policy"]["path"]).read_text(
+        encoding="utf-8"
+    )
+    assert "--apply" not in cron
+    assert any("will preview only until --automation-apply is enabled" in step for step in result["next_steps"])
+
+
 def test_run_agent_setup_writes_agent_roster_and_validation_pack(tmp_path):
     from vault.agent_setup import AgentSetupConfig, run_agent_setup
 
@@ -714,6 +772,7 @@ def test_setup_agent_help_exposes_supabase_sync_options(capsys):
     assert "--automation-workspace-inbox-limit" in captured.out
     assert "--automation-include-transcripts" in captured.out
     assert "--automation-transcript-limit" in captured.out
+    assert "--automation-auto-promote-low-risk" in captured.out
 
 
 def test_cli_version_flag(capsys):
@@ -725,7 +784,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.90" in captured.out
+    assert "vault-for-llm 0.6.91" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -893,7 +952,7 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.6.90" in body
+    assert "vault-for-llm[mcp,supabase]==0.6.91" in body
     assert "headroom-ai" in body
     assert "--agent-project-dir" in body
     assert str(project) in body
@@ -960,6 +1019,7 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
                 "yes",  # write cycle workspace handoff
                 "yes",  # include metadata-only transcript hints in scheduled handoff
                 "no",  # do not auto-capture transcripts into candidates
+                "yes",  # enable low-risk auto-promote policy
             ]
         )
     prompts: list[str] = []
@@ -995,6 +1055,7 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
     assert any("reversible archival" in prompt for prompt in prompts)
     assert any("cycle workspace handoff" in prompt for prompt in prompts)
     assert any("uncaptured transcript hints" in prompt for prompt in prompts)
+    assert any("low-risk auto-promote policy" in prompt for prompt in prompts)
     assert config.remote_reader_targets == "n8n"
     assert config.agent_roster == "profile-agent:profile,remote-agent:remote"
     assert config.validation_pack_targets == "all"
@@ -1006,6 +1067,7 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
     assert config.automation_workspace_inbox_limit == 5
     assert config.automation_include_transcripts is True
     assert config.automation_transcript_limit == 5
+    assert config.automation_auto_promote_low_risk is True
 
 
 def test_interactive_setup_does_not_ask_optional_deps_for_core_mcp_only(tmp_path, monkeypatch):

@@ -58,7 +58,7 @@ Vault-for-LLM 可能不是第一個該拿起來的工具。
 最推薦的方式，是直接把這段交給能執行本機指令的 Agent：
 
 ```text
-幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.90。
+幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.91。
 先問我要 shared、private、domain-specific 還是 temporary vault。
 詢問穩定的 project directory，並為長期任務產生 stable venv script。
 逐項詢問 MCP、semantic search、Supabase、Obsidian import、Headroom 壓縮、
@@ -71,7 +71,7 @@ Agent 會使用安裝精靈：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.90"
+pip install "vault-for-llm[mcp]==0.6.91"
 
 vault setup-agent
 ```
@@ -117,6 +117,7 @@ vault setup-agent \
   --automation-schedule cron \
   --automation-write-workspace \
   --automation-include-transcripts \
+  --automation-auto-promote-low-risk \
   --json
 ```
 
@@ -126,7 +127,7 @@ vault setup-agent \
 ### 手動快速開始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.90"
+pip install "vault-for-llm[mcp]==0.6.91"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -258,7 +259,16 @@ transcript 轉成通過 gate 的候選記憶。它仍然不會自動提升成正
 handoff 也不會包含 transcript 原文或候選內容。
 
 如果你真的想讓「候選記憶」自動進入「正式記憶」，需要在
-`automation_policy.yaml` 明確開啟低風險 auto-promote：
+Agent 安裝時明確開啟低風險 auto-promote：
+
+```bash
+vault setup-agent \
+  --automation-schedule cron \
+  --automation-apply \
+  --automation-auto-promote-low-risk
+```
+
+這會替你寫入 `automation_policy.yaml`。內容等同於：
 
 ```yaml
 auto_promote_low_risk_candidates: true
@@ -299,6 +309,9 @@ report-first；只有使用者明確加上 `--automation-apply`，才會執行 p
 Agent 啟動時先用這條 read-only 指令接手。
 如果希望排程 handoff 同時提示「有哪些對話匯出還沒 capture」，加上
 `--automation-include-transcripts`；它只列路徑與檔案 metadata，不讀原文。
+如果希望安裝精靈直接寫入低風險 auto-promote policy，加上
+`--automation-auto-promote-low-risk`。要讓排程真的提升符合條件的候選，仍然必須
+搭配 `--automation-apply`；沒有 `--apply` 時只會預覽。
 
 自動化細節：[docs/automation.md](docs/automation.md)。
 
@@ -334,7 +347,7 @@ SQLite 仍然是 source of truth。Supabase 是可選的共享層。
 Remote reader 應該直接把搜尋結果的 `id` 傳給 map/read；它可能是整數，也可能是 Supabase UUID。
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.90"
+pip install "vault-for-llm[supabase]==0.6.91"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

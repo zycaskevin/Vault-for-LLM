@@ -309,6 +309,12 @@ explicitly wants the scheduled cycle to read discovered transcript files and
 write gated review candidates. This closes the transcript-to-candidate loop,
 but it still never promotes active memory or includes raw transcript content in
 the generated handoff.
+Add `--automation-auto-promote-low-risk` only when the user explicitly wants
+setup-agent to write `automation_policy.yaml` with low-risk candidate
+auto-promotion enabled. Pair it with `--automation-apply` when scheduled runs
+should actually promote eligible candidates; without `--apply`, scheduled runs
+preview the policy only. The generated schedule README will show whether this
+policy is enabled.
 
 ### Multi-Agent Roster
 

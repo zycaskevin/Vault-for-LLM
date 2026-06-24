@@ -2778,6 +2778,7 @@ def cmd_setup_agent(args):
             automation_transcript_limit=args.automation_transcript_limit,
             automation_capture_transcripts=bool(args.automation_capture_transcripts),
             automation_capture_transcript_limit=args.automation_capture_transcript_limit,
+            automation_auto_promote_low_risk=bool(args.automation_auto_promote_low_risk),
             template_dir=Path(args.template_dir).expanduser() if args.template_dir else None,
             allow_private=bool(args.allow_private),
             stable_venv_path=(
@@ -2837,6 +2838,8 @@ def cmd_setup_agent(args):
             setup_values["automation_include_transcripts"] = True
         if args.automation_capture_transcripts:
             setup_values["automation_capture_transcripts"] = True
+        if args.automation_auto_promote_low_risk:
+            setup_values["automation_auto_promote_low_risk"] = True
         config = interactive_setup(setup_values)
 
     payload = run_agent_setup(config)
@@ -2897,6 +2900,8 @@ def cmd_setup_agent(args):
         print("  automation_schedule_templates:")
         for name, path in payload["automation_schedule_templates"].items():
             print(f"    {name}: {path}")
+    if payload.get("automation_policy"):
+        print(f"  automation_policy: {payload['automation_policy'].get('path')}")
     if payload.get("memory_agents"):
         print("  memory_agents:")
         for name, path in payload["memory_agents"].items():
@@ -3477,6 +3482,8 @@ def main(argv: list[str] | None = None):
                         help="讓 cycle 排程在 --automation-apply 時把 discovered transcripts 寫成候選記憶")
         ap.add_argument("--automation-capture-transcript-limit", type=int, default=3,
                         help="排程最多自動 capture 的 transcript 數（預設 3，上限 20）")
+        ap.add_argument("--automation-auto-promote-low-risk", action="store_true",
+                        help="寫入 policy，允許 --automation-apply 只提升低風險 session_capture/session_lesson 候選")
         ap.add_argument("--stable-venv",
                         help="產生穩定 Python virtualenv bootstrap 腳本，建議 ~/.hermes/venvs/vault-for-llm")
         ap.add_argument("--write-stable-venv-script", action="store_true",

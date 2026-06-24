@@ -175,6 +175,7 @@ Run one full feedback-to-curation cycle:
 ```bash
 vault automation cycle --apply --pretty
 vault automation cycle --write-workspace --include-transcripts --pretty
+vault automation cycle --apply --include-transcripts --capture-transcripts --write-workspace --pretty
 ```
 
 `automation cycle` is the one-command version of the learning loop. It first
@@ -210,6 +211,23 @@ vault automation handoff
 The command is read-only. It prefers `cycle-latest.md`, then falls back to
 `cycle-latest.json` or `inbox-latest.json`.
 
+`--include-transcripts` is discovery-only: it lists likely session transcript
+paths without reading their contents. To close the ingestion loop, add
+`--capture-transcripts --apply`. That opt-in step reads the selected transcript
+files, extracts reusable decisions, pitfalls, workflows, and source-of-truth
+lines, then writes them as gated memory candidates. It still never promotes
+active memory, never hard-deletes, and strips candidate content previews from
+cycle reports and handoffs.
+
+For scheduled jobs, the same behavior can be enabled in policy with:
+
+```yaml
+session_capture_write_candidates: true
+```
+
+Keep that off for early rollouts or shared machines until users are comfortable
+with which transcript directories are being discovered.
+
 ## Policy
 
 `automation_policy.yaml` controls the automation boundary:
@@ -226,6 +244,7 @@ protected_sensitivities:
 auto_apply_safe_metadata: false
 dream_write_candidates: true
 forgetting_write_candidates: true
+session_capture_write_candidates: false
 write_reports: true
 dream_checks:
   - freshness

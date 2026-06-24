@@ -418,6 +418,42 @@ def test_run_agent_setup_can_write_scheduled_cycle_workspace(tmp_path):
     assert "next agent startup command: `vault automation handoff`" in readme
 
 
+def test_run_agent_setup_can_enable_scheduled_transcript_capture(tmp_path):
+    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+
+    project = tmp_path / "agent-project"
+    result = run_agent_setup(
+        AgentSetupConfig(
+            project_dir=project,
+            scope="shared",
+            agent="automation-agent",
+            features=["core", "mcp", "memory_agents"],
+            automation_schedule_targets="all",
+            automation_interval_minutes=1440,
+            automation_apply=True,
+            automation_write_workspace=True,
+            automation_include_transcripts=True,
+            automation_capture_transcripts=True,
+            automation_capture_transcript_limit=2,
+            template_dir=tmp_path / "templates",
+        )
+    )
+
+    cron = Path(result["automation_schedule_templates"]["cron"]).read_text(encoding="utf-8")
+    plist = Path(result["automation_schedule_templates"]["launchagent"]).read_text(encoding="utf-8")
+    workflow = json.loads(Path(result["automation_schedule_templates"]["n8n"]).read_text(encoding="utf-8"))
+    readme = Path(result["automation_schedule_templates"]["readme"]).read_text(encoding="utf-8")
+
+    expected = "--capture-transcripts --capture-transcript-limit 2"
+    assert expected in cron
+    assert expected in plist
+    assert expected in workflow["nodes"][1]["parameters"]["command"]
+    assert expected in readme
+    assert "--apply" in cron
+    assert "auto-capture transcript candidates: `true`" in readme
+    assert "writes candidates only" in readme
+
+
 def test_run_agent_setup_writes_agent_roster_and_validation_pack(tmp_path):
     from vault.agent_setup import AgentSetupConfig, run_agent_setup
 
@@ -689,7 +725,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.88" in captured.out
+    assert "vault-for-llm 0.6.89" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -857,7 +893,7 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.6.88" in body
+    assert "vault-for-llm[mcp,supabase]==0.6.89" in body
     assert "headroom-ai" in body
     assert "--agent-project-dir" in body
     assert str(project) in body
@@ -920,11 +956,12 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
             "cron",  # memory automation schedule
             "balanced",  # memory automation mode
             "",  # default memory automation command: cycle
-            "no",  # no scheduled apply
-            "yes",  # write cycle workspace handoff
-            "yes",  # include metadata-only transcript hints in scheduled handoff
-        ]
-    )
+                "no",  # no scheduled apply
+                "yes",  # write cycle workspace handoff
+                "yes",  # include metadata-only transcript hints in scheduled handoff
+                "no",  # do not auto-capture transcripts into candidates
+            ]
+        )
     prompts: list[str] = []
 
     def fake_input(prompt: str) -> str:

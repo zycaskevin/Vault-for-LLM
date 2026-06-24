@@ -58,7 +58,7 @@ Vault-for-LLM 可能不是第一個該拿起來的工具。
 最推薦的方式，是直接把這段交給能執行本機指令的 Agent：
 
 ```text
-幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.88。
+幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.89。
 先問我要 shared、private、domain-specific 還是 temporary vault。
 詢問穩定的 project directory，並為長期任務產生 stable venv script。
 逐項詢問 MCP、semantic search、Supabase、Obsidian import、Headroom 壓縮、
@@ -71,7 +71,7 @@ Agent 會使用安裝精靈：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.88"
+pip install "vault-for-llm[mcp]==0.6.89"
 
 vault setup-agent
 ```
@@ -126,7 +126,7 @@ vault setup-agent \
 ### 手動快速開始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.88"
+pip install "vault-for-llm[mcp]==0.6.89"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -218,6 +218,7 @@ vault automation plan --write-policy
 vault automation run
 vault automation run --apply
 vault automation cycle --apply
+vault automation cycle --apply --include-transcripts --capture-transcripts --write-workspace
 vault automation inbox --limit 5
 vault automation inbox --include-transcripts --write-handoff
 ```
@@ -252,6 +253,9 @@ privacy blocked、敏感、重複、品質不足、automation 產生的候選排
 如果安裝時加上 `--automation-include-transcripts`，排程 handoff 也會列出尚未
 capture 的 transcript 候選路徑。這只包含 metadata，不讀 transcript 內容，也不會
 自動把對話變成正式記憶。
+如果明確加上 `--capture-transcripts --apply`，cycle 可以把 discovered
+transcript 轉成通過 gate 的候選記憶。它仍然不會自動提升成正式記憶，產生的
+handoff 也不會包含 transcript 原文或候選內容。
 
 拒絕或阻擋候選也可以變成結構化回饋：
 
@@ -311,7 +315,7 @@ SQLite 仍然是 source of truth。Supabase 是可選的共享層。
 Remote reader 應該直接把搜尋結果的 `id` 傳給 map/read；它可能是整數，也可能是 Supabase UUID。
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.88"
+pip install "vault-for-llm[supabase]==0.6.89"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

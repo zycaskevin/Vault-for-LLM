@@ -607,6 +607,75 @@ def test_automation_cycle_writes_compact_workspace_with_transcript_hints(tmp_pat
     assert token not in markdown
 
 
+def test_automation_cycle_can_capture_transcripts_as_candidates_without_active_memory(tmp_path):
+    project = _init_project(tmp_path)
+    token = "sk-proj-1234567890abcdefghij1234567890"
+    sessions = project / "sessions"
+    sessions.mkdir()
+    (sessions / "codex-session.md").write_text(
+        "\n".join(
+            [
+                "Decision: automation cycle should capture reusable session lessons because agents forget context.",
+                f"Fix: automation transcript capture must redact {token} because secrets stay out of handoffs.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    with VaultDB(project / "vault.db") as db:
+        before_active = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge WHERE status = 'active'").fetchone()["n"]
+
+    disabled = automation_cycle(
+        project,
+        mode="balanced",
+        apply=True,
+        limit=10,
+        min_events=1,
+        write_reports=False,
+        write_workspace=True,
+        include_transcripts=True,
+        capture_transcripts=False,
+    )
+    assert disabled["transcript_capture"]["status"] == "disabled"
+    assert disabled["transcript_capture"]["summary"]["candidates_written"] == 0
+
+    payload = automation_cycle(
+        project,
+        mode="balanced",
+        apply=True,
+        limit=10,
+        min_events=1,
+        write_reports=False,
+        write_workspace=True,
+        include_transcripts=True,
+        capture_transcripts=True,
+        capture_transcript_limit=2,
+        capture_max_candidates_per_transcript=5,
+    )
+
+    capture = payload["transcript_capture"]
+    assert capture["status"] == "completed"
+    assert capture["summary"]["transcripts_seen"] == 1
+    assert capture["summary"]["transcripts_captured"] == 1
+    assert capture["summary"]["candidates_written"] >= 1
+    assert capture["safety"]["candidate_first"] is True
+    assert capture["safety"]["auto_promote"] is False
+    assert capture["safety"]["reads_transcript_contents"] is True
+    assert payload["summary"]["transcript_capture_candidates_written"] >= 1
+    assert payload["workspace"]["transcript_capture"]["content_hidden"] is True
+    assert payload["workspace"]["safety"]["transcript_capture_reads_contents"] is True
+    rendered = json.dumps(payload, ensure_ascii=False)
+    assert "content_preview" not in rendered
+    assert token not in rendered
+    markdown = (project / payload["workspace_markdown_path"]).read_text(encoding="utf-8")
+    assert "## Transcript Capture" in markdown
+    assert "candidates written" in markdown
+    assert token not in markdown
+    with VaultDB(project / "vault.db") as db:
+        assert db.conn.execute("SELECT COUNT(*) AS n FROM knowledge WHERE status = 'active'").fetchone()["n"] == before_active
+        rows = db.list_memory_candidates(status=None, limit=20)
+    assert any(row["source"] == "session_capture" and row["memory_type"] == "session_lesson" for row in rows)
+
+
 def test_automation_cycle_blocks_without_vault_db(tmp_path):
     payload = automation_cycle(tmp_path, min_events=1)
 

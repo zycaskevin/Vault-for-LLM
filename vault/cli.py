@@ -1997,6 +1997,10 @@ def cmd_automation(args):
                 inbox_limit=getattr(args, "inbox_limit", 5),
                 include_transcripts=getattr(args, "include_transcripts", False),
                 transcript_limit=getattr(args, "transcript_limit", 5),
+                capture_transcripts=getattr(args, "capture_transcripts", False),
+                capture_transcript_limit=getattr(args, "capture_transcript_limit", 3),
+                capture_max_candidates_per_transcript=getattr(args, "capture_max_candidates_per_transcript", 5),
+                capture_min_score=getattr(args, "capture_min_score", 0.55),
             )
         elif action == "report":
             payload = automation_report(
@@ -2146,6 +2150,16 @@ def cmd_automation(args):
             f"after={summary.get('candidate_count_after', 0)} "
             f"written={summary.get('candidates_written', 0)}"
         )
+        capture = payload.get("transcript_capture") or {}
+        capture_summary = capture.get("summary") or {}
+        if capture:
+            print(
+                "  transcript capture: "
+                f"status={capture.get('status', '')} "
+                f"seen={capture_summary.get('transcripts_seen', 0)} "
+                f"captured={capture_summary.get('transcripts_captured', 0)} "
+                f"candidates_written={capture_summary.get('candidates_written', 0)}"
+            )
         if summary.get("automation_report_path"):
             print(f"  report: {summary.get('automation_report_path')}")
         if payload.get("workspace_path"):
@@ -2748,6 +2762,8 @@ def cmd_setup_agent(args):
             automation_workspace_inbox_limit=args.automation_workspace_inbox_limit,
             automation_include_transcripts=bool(args.automation_include_transcripts),
             automation_transcript_limit=args.automation_transcript_limit,
+            automation_capture_transcripts=bool(args.automation_capture_transcripts),
+            automation_capture_transcript_limit=args.automation_capture_transcript_limit,
             template_dir=Path(args.template_dir).expanduser() if args.template_dir else None,
             allow_private=bool(args.allow_private),
             stable_venv_path=(
@@ -2777,6 +2793,7 @@ def cmd_setup_agent(args):
             "automation_interval_minutes": args.automation_interval_minutes,
             "automation_workspace_inbox_limit": args.automation_workspace_inbox_limit,
             "automation_transcript_limit": args.automation_transcript_limit,
+            "automation_capture_transcript_limit": args.automation_capture_transcript_limit,
             "template_dir": args.template_dir,
             "allow_private": args.allow_private,
             "stable_venv_path": args.stable_venv,
@@ -2804,6 +2821,8 @@ def cmd_setup_agent(args):
             setup_values["automation_write_workspace"] = True
         if args.automation_include_transcripts:
             setup_values["automation_include_transcripts"] = True
+        if args.automation_capture_transcripts:
+            setup_values["automation_capture_transcripts"] = True
         config = interactive_setup(setup_values)
 
     payload = run_agent_setup(config)
@@ -3440,6 +3459,10 @@ def main(argv: list[str] | None = None):
                         help="讓排程 handoff opt-in 加入未 capture transcript 的 metadata-only 候選清單")
         ap.add_argument("--automation-transcript-limit", type=int, default=5,
                         help="排程 handoff 最多列出的 transcript 候選數（預設 5，上限 20）")
+        ap.add_argument("--automation-capture-transcripts", action="store_true",
+                        help="讓 cycle 排程在 --automation-apply 時把 discovered transcripts 寫成候選記憶")
+        ap.add_argument("--automation-capture-transcript-limit", type=int, default=3,
+                        help="排程最多自動 capture 的 transcript 數（預設 3，上限 20）")
         ap.add_argument("--stable-venv",
                         help="產生穩定 Python virtualenv bootstrap 腳本，建議 ~/.hermes/venvs/vault-for-llm")
         ap.add_argument("--write-stable-venv-script", action="store_true",
@@ -3830,6 +3853,10 @@ def main(argv: list[str] | None = None):
     sp.add_argument("--inbox-limit", type=int, default=5, help="maximum review queue items in the cycle workspace")
     sp.add_argument("--include-transcripts", action="store_true", help="include metadata-only transcript discovery hints in the cycle workspace")
     sp.add_argument("--transcript-limit", type=int, default=5, help="maximum transcript discovery hints in the cycle workspace")
+    sp.add_argument("--capture-transcripts", action="store_true", help="with --apply, convert discovered transcripts into review candidates; never promotes")
+    sp.add_argument("--capture-transcript-limit", type=int, default=3, help="maximum transcripts to capture into candidates")
+    sp.add_argument("--capture-max-candidates-per-transcript", type=int, default=5, help="maximum candidates written per captured transcript")
+    sp.add_argument("--capture-min-score", type=float, default=0.55, help="minimum deterministic capture score")
 
     sp = automation_sub.add_parser("report", help="List recent automation reports")
     add_automation_common(sp)

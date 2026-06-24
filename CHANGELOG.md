@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.6.89] - 2026-06-24
+
+### Added
+
+- Added opt-in transcript capture to `vault automation cycle`: `--capture-transcripts --apply` turns discovered session transcripts into gated review candidates without promoting active memory.
+- Added transcript-capture summaries to `cycle-latest.json` and `cycle-latest.md`, including candidate IDs, counts, safety flags, and hidden-content guarantees.
+- Added `vault setup-agent --automation-capture-transcripts` and `--automation-capture-transcript-limit` so generated cron, LaunchAgent, and n8n templates can close the transcript-to-candidate loop when the user explicitly opts in.
+
+### Changed
+
+- Updated automation docs and README guidance to distinguish metadata-only transcript discovery from content-reading transcript capture.
+
 ## [0.6.88] - 2026-06-24
 
 ### Added

@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.88.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.89.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,7 +83,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.88"
+pip install "vault-for-llm[mcp]==0.6.89"
 
 vault setup-agent
 ```
@@ -139,7 +139,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.88"
+pip install "vault-for-llm[mcp]==0.6.89"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -239,6 +239,7 @@ vault automation plan --write-policy
 vault automation run
 vault automation run --apply
 vault automation cycle --apply
+vault automation cycle --apply --include-transcripts --capture-transcripts --write-workspace
 vault automation inbox --limit 5
 vault automation inbox --include-transcripts --write-handoff
 ```
@@ -255,6 +256,10 @@ flow without adding those heavier tools to the everyday `core` profile.
 metadata-only discovery hints in `reports/automation/inbox-latest.json`, so the
 next scheduled agent can see uncaptured transcript exports without reading
 their contents first.
+When you explicitly add `--capture-transcripts --apply`, the cycle can turn
+those discovered transcript files into gated review candidates. It still does
+not promote active memory, and the generated handoffs omit raw transcript and
+candidate content.
 
 Balanced automation can pre-fill the memory candidate queue with Dream and
 Forgetting suggestions when `--apply` is used, but it still never promotes
@@ -365,7 +370,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.88"
+pip install "vault-for-llm[supabase]==0.6.89"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

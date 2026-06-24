@@ -16,7 +16,7 @@ For adjacent systems and design comparisons, see
 ## Fast Prompt For Agents
 
 ```text
-Install Vault-for-LLM for this project with vault-for-llm[mcp]==0.6.88.
+Install Vault-for-LLM for this project with vault-for-llm[mcp]==0.6.89.
 Ask me where the vault database should live, whether it should be private or
 shared, and whether you should use a stable Python virtualenv path instead of a
 temporary one. Enable MCP by default if this agent runtime supports MCP. Ask
@@ -69,7 +69,7 @@ also prefer a stable virtualenv path such as `~/.hermes/venvs/vault-for-llm/`.
 Use the PyPI release unless the user explicitly asks for source development:
 
 ```bash
-python -m pip install "vault-for-llm[mcp]==0.6.88"
+python -m pip install "vault-for-llm[mcp]==0.6.89"
 vault setup-agent
 ```
 
@@ -304,6 +304,11 @@ Add `--automation-include-transcripts` when the next agent should also see
 metadata-only paths for uncaptured transcript exports. The scheduled handoff
 does not read transcript contents and does not write session candidates by
 itself.
+Add `--automation-capture-transcripts --automation-apply` only when the user
+explicitly wants the scheduled cycle to read discovered transcript files and
+write gated review candidates. This closes the transcript-to-candidate loop,
+but it still never promotes active memory or includes raw transcript content in
+the generated handoff.
 
 ### Multi-Agent Roster
 

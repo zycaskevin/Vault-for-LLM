@@ -883,6 +883,8 @@ def automation_schedule_command(
     inbox_limit: int = 5,
     include_transcripts: bool = False,
     transcript_limit: int = 5,
+    capture_transcripts: bool = False,
+    capture_transcript_limit: int = 3,
 ) -> list[str]:
     normalized_command = _normalize_automation_command(command)
     command_args = [
@@ -906,6 +908,14 @@ def automation_schedule_command(
                     "--include-transcripts",
                     "--transcript-limit",
                     str(max(1, min(int(transcript_limit or 5), 20))),
+                ]
+            )
+        if capture_transcripts:
+            command_args.extend(
+                [
+                    "--capture-transcripts",
+                    "--capture-transcript-limit",
+                    str(max(1, min(int(capture_transcript_limit or 3), 20))),
                 ]
             )
     return command_args
@@ -952,6 +962,8 @@ def automation_schedule_with_inbox_command(
     inbox_limit: int = 5,
     include_transcripts: bool = False,
     transcript_limit: int = 5,
+    capture_transcripts: bool = False,
+    capture_transcript_limit: int = 3,
 ) -> list[str]:
     primary = automation_schedule_command(
         project_dir=project_dir,
@@ -963,6 +975,8 @@ def automation_schedule_with_inbox_command(
         inbox_limit=inbox_limit,
         include_transcripts=include_transcripts,
         transcript_limit=transcript_limit,
+        capture_transcripts=capture_transcripts,
+        capture_transcript_limit=capture_transcript_limit,
     )
     inbox = automation_inbox_handoff_command(
         project_dir=project_dir,
@@ -987,6 +1001,8 @@ def write_automation_schedule_templates(
     workspace_inbox_limit: int = 5,
     include_transcripts: bool = False,
     transcript_limit: int = 5,
+    capture_transcripts: bool = False,
+    capture_transcript_limit: int = 3,
 ) -> dict[str, str]:
     out = Path(output_dir).expanduser().resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -1003,6 +1019,8 @@ def write_automation_schedule_templates(
         inbox_limit=workspace_inbox_limit,
         include_transcripts=include_transcripts,
         transcript_limit=transcript_limit,
+        capture_transcripts=capture_transcripts,
+        capture_transcript_limit=capture_transcript_limit,
     )
     scheduled_args = automation_schedule_with_inbox_command(
         project_dir=project_dir,
@@ -1014,6 +1032,8 @@ def write_automation_schedule_templates(
         inbox_limit=workspace_inbox_limit,
         include_transcripts=include_transcripts,
         transcript_limit=transcript_limit,
+        capture_transcripts=capture_transcripts,
+        capture_transcript_limit=capture_transcript_limit,
     )
     inbox_args = automation_inbox_handoff_command(
         project_dir=project_dir,
@@ -1107,6 +1127,8 @@ def write_automation_schedule_templates(
                 "- next agent startup command: `vault automation handoff`",
                 f"- uncaptured transcript hints in scheduled handoff: `{str(bool(include_transcripts)).lower()}`",
                 "- transcript discovery is metadata-only and does not read transcript contents",
+                f"- auto-capture transcript candidates: `{str(bool(capture_transcripts)).lower()}`",
+                "- transcript capture reads selected transcript contents and writes candidates only; it never promotes active memory",
                 "",
                 "Review `automation_policy.yaml` before enabling a scheduled job.",
                 "Keep the Python virtualenv and project directory in stable paths, not `/tmp`.",
@@ -3133,6 +3155,8 @@ class AgentSetupConfig:
     automation_workspace_inbox_limit: int = 5
     automation_include_transcripts: bool = False
     automation_transcript_limit: int = 5
+    automation_capture_transcripts: bool = False
+    automation_capture_transcript_limit: int = 3
     template_dir: Path | None = None
     allow_private: bool = False
     stable_venv_path: Path | None = None
@@ -3378,6 +3402,8 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
             workspace_inbox_limit=config.automation_workspace_inbox_limit,
             include_transcripts=config.automation_include_transcripts,
             transcript_limit=config.automation_transcript_limit,
+            capture_transcripts=config.automation_capture_transcripts,
+            capture_transcript_limit=config.automation_capture_transcript_limit,
         )
         result["next_steps"].append(
             f"Review memory automation schedule: {result['automation_schedule_templates']['readme']}"
@@ -3763,6 +3789,17 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
             False,
         )
     automation_transcript_limit = int(argv_config.get("automation_transcript_limit") or 5)
+    automation_capture_transcripts = bool(argv_config.get("automation_capture_transcripts", False))
+    if (
+        automation_schedule_targets
+        and automation_schedule_targets != "none"
+        and "automation_capture_transcripts" not in argv_config
+    ):
+        automation_capture_transcripts = _ask_yes_no(
+            "Capture discovered transcripts into review candidates during scheduled apply runs?",
+            False,
+        )
+    automation_capture_transcript_limit = int(argv_config.get("automation_capture_transcript_limit") or 3)
 
     stable_venv_path = argv_config.get("stable_venv_path")
     if not stable_venv_path and argv_config.get("write_stable_venv_script"):
@@ -3808,6 +3845,8 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
         automation_workspace_inbox_limit=automation_workspace_inbox_limit,
         automation_include_transcripts=automation_include_transcripts,
         automation_transcript_limit=automation_transcript_limit,
+        automation_capture_transcripts=automation_capture_transcripts,
+        automation_capture_transcript_limit=automation_capture_transcript_limit,
         template_dir=Path(argv_config["template_dir"]) if argv_config.get("template_dir") else None,
         allow_private=bool(argv_config.get("allow_private", False)),
         stable_venv_path=Path(stable_venv_path).expanduser() if stable_venv_path else None,

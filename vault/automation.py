@@ -34,6 +34,7 @@ DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
         "auto_apply_safe_metadata": False,
         "dream_write_candidates": False,
         "forgetting_write_candidates": False,
+        "session_capture_write_candidates": False,
         "write_reports": True,
         "dream_checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
         "review_thresholds": {
@@ -53,6 +54,7 @@ DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
         "auto_apply_safe_metadata": False,
         "dream_write_candidates": True,
         "forgetting_write_candidates": True,
+        "session_capture_write_candidates": False,
         "write_reports": True,
         "dream_checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
         "review_thresholds": {
@@ -72,6 +74,7 @@ DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
         "auto_apply_safe_metadata": False,
         "dream_write_candidates": True,
         "forgetting_write_candidates": True,
+        "session_capture_write_candidates": False,
         "write_reports": True,
         "dream_checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
         "review_thresholds": {
@@ -278,6 +281,10 @@ def automation_cycle(
     inbox_limit: int = 5,
     include_transcripts: bool = False,
     transcript_limit: int = 5,
+    capture_transcripts: bool = False,
+    capture_transcript_limit: int = 3,
+    capture_max_candidates_per_transcript: int = 5,
+    capture_min_score: float = 0.55,
 ) -> dict[str, Any]:
     """Run one closed automation learning cycle.
 
@@ -317,6 +324,16 @@ def automation_cycle(
             "next_action": evaluation.get("next_action", "Initialize the vault before running automation cycle."),
         }
 
+    policy = load_policy(project, mode=mode)
+    transcript_capture = _capture_transcript_candidates_for_cycle(
+        project,
+        apply=apply,
+        enabled=bool(capture_transcripts or policy.get("session_capture_write_candidates", False)),
+        limit=capture_transcript_limit,
+        max_candidates_per_transcript=capture_max_candidates_per_transcript,
+        min_score=capture_min_score,
+    )
+
     run = automation_run(
         project,
         mode=mode,
@@ -338,8 +355,13 @@ def automation_cycle(
         "candidate_count_before": int(run.get("candidate_count_before") or 0),
         "candidate_count_after": int(run.get("candidate_count_after") or 0),
         "candidates_written": int(dream_summary.get("candidates_written") or 0)
-        + int((run.get("forgetting") or {}).get("candidates_written") or 0),
+        + int((run.get("forgetting") or {}).get("candidates_written") or 0)
+        + int((transcript_capture.get("summary") or {}).get("candidates_written") or 0),
         "automation_report_path": run.get("report_path", ""),
+        "transcript_capture_status": transcript_capture.get("status", ""),
+        "transcript_capture_candidates_written": int(
+            (transcript_capture.get("summary") or {}).get("candidates_written") or 0
+        ),
     }
     workspace = _cycle_workspace(
         project,
@@ -347,6 +369,7 @@ def automation_cycle(
         summary=summary,
         evaluation=evaluation,
         run=run,
+        transcript_capture=transcript_capture,
         inbox_limit=inbox_limit,
         include_transcripts=include_transcripts,
         transcript_limit=transcript_limit,
@@ -360,6 +383,7 @@ def automation_cycle(
         "apply": bool(apply),
         "eval": evaluation,
         "run": run,
+        "transcript_capture": transcript_capture,
         "summary": summary,
         "workspace": workspace,
         "workspace_path": "",
@@ -868,6 +892,9 @@ def _render_cycle_workspace_markdown(workspace: dict[str, Any]) -> str:
     transcripts = workspace.get("transcripts_to_capture") or {}
     transcript_summary = transcripts.get("summary") or {}
     transcript_items = transcripts.get("items") or []
+    transcript_capture = workspace.get("transcript_capture") or {}
+    capture_summary = transcript_capture.get("summary") or {}
+    capture_items = transcript_capture.get("items") or []
     curation = workspace.get("curation_policy") or {}
     rules = curation.get("rules") or []
     safety = workspace.get("safety") or {}
@@ -887,6 +914,8 @@ def _render_cycle_workspace_markdown(workspace: dict[str, Any]) -> str:
         f"- pending candidates: `{int(summary.get('pending_candidates') or 0)}`",
         f"- needs review: `{int(summary.get('needs_review') or 0)}`",
         f"- uncaptured transcripts: `{int(summary.get('uncaptured_transcripts') or 0)}`",
+        f"- transcript capture status: `{_md_text(summary.get('transcript_capture_status', ''))}`",
+        f"- transcript candidates written: `{int(summary.get('transcript_capture_candidates_written') or 0)}`",
         f"- learning rules: `{int(summary.get('learning_rules') or 0)}`",
         f"- learning readiness: `{_md_text(summary.get('learning_readiness', ''))}`",
         f"- automation report: `{_md_text(summary.get('automation_report_path', ''))}`",
@@ -976,6 +1005,43 @@ def _render_cycle_workspace_markdown(workspace: dict[str, Any]) -> str:
 
     lines += [
         "",
+        "## Transcript Capture",
+        "",
+        f"- status: `{_md_text(transcript_capture.get('status', ''))}`",
+        f"- enabled: `{str(bool(transcript_capture.get('enabled'))).lower()}`",
+        f"- reads contents: `{str(bool(transcript_capture.get('reads_contents'))).lower()}`",
+        f"- content hidden: `{str(bool(transcript_capture.get('content_hidden', True))).lower()}`",
+        f"- transcripts captured: `{int(capture_summary.get('transcripts_captured') or 0)}`",
+        f"- candidates written: `{int(capture_summary.get('candidates_written') or 0)}`",
+        f"- candidates rejected: `{int(capture_summary.get('candidates_rejected') or 0)}`",
+    ]
+    if capture_items:
+        lines += [
+            "",
+            _md_row(["capture_path", "written", "rejected", "candidate ids"]),
+            _md_row(["---", "---", "---", "---"]),
+        ]
+        for item in capture_items[:10]:
+            if not isinstance(item, dict):
+                continue
+            ids = ", ".join(
+                str(candidate.get("candidate_id", ""))
+                for candidate in item.get("candidates", [])[:5]
+                if isinstance(candidate, dict) and candidate.get("candidate_id")
+            )
+            lines.append(
+                _md_row(
+                    [
+                        item.get("capture_path", ""),
+                        item.get("written", 0),
+                        item.get("rejected", 0),
+                        ids,
+                    ]
+                )
+            )
+
+    lines += [
+        "",
         "## Curation Policy",
         "",
         f"- path: `{_md_text(curation.get('path', ''))}`",
@@ -1012,6 +1078,7 @@ def _render_cycle_workspace_markdown(workspace: dict[str, Any]) -> str:
         f"- hard delete: `{str(bool(safety.get('hard_delete', False))).lower()}`",
         f"- candidate content hidden: `{str(bool(safety.get('candidate_content_hidden', True))).lower()}`",
         f"- transcript discovery reads contents: `{str(bool(safety.get('transcript_discovery_reads_contents', False))).lower()}`",
+        f"- transcript capture reads contents: `{str(bool(safety.get('transcript_capture_reads_contents', False))).lower()}`",
         f"- writes active memory: `{str(bool(safety.get('writes_active_memory', False))).lower()}`",
         "",
         "## Suggested Next Tasks",
@@ -1060,6 +1127,7 @@ def _cycle_workspace(
     summary: dict[str, Any],
     evaluation: dict[str, Any],
     run: dict[str, Any],
+    transcript_capture: dict[str, Any] | None = None,
     inbox_limit: int = 5,
     include_transcripts: bool = False,
     transcript_limit: int = 5,
@@ -1089,6 +1157,8 @@ def _cycle_workspace(
         )
     inbox_summary = inbox.get("summary") or {}
     transcript_discovery = inbox.get("transcript_discovery") or {}
+    capture = transcript_capture or _empty_transcript_capture(project, enabled=False, apply=False)
+    capture_summary = capture.get("summary") or {}
     workspace = {
         "action": "cycle_workspace",
         "generated_at": generated_at,
@@ -1103,6 +1173,8 @@ def _cycle_workspace(
             "learning_readiness": summary.get("learning_readiness", ""),
             "automation_report_path": summary.get("automation_report_path", ""),
             "learning_policy_path": summary.get("learning_policy_path", ""),
+            "transcript_capture_status": capture.get("status", ""),
+            "transcript_capture_candidates_written": int(capture_summary.get("candidates_written") or 0),
         },
         "candidate_review": {
             "summary": inbox_summary,
@@ -1117,6 +1189,12 @@ def _cycle_workspace(
             },
             "items": transcript_discovery.get("transcripts") or [],
         },
+        "transcript_capture": {
+            "summary": capture_summary,
+            "items": capture.get("items", []),
+            "content_hidden": True,
+            "reads_contents": bool((capture.get("safety") or {}).get("reads_transcript_contents", False)),
+        },
         "curation_policy": {
             "path": evaluation.get("learning_policy_path", ""),
             "readiness": evaluation.get("readiness", ""),
@@ -1130,6 +1208,7 @@ def _cycle_workspace(
             "hard_delete": False,
             "candidate_content_hidden": True,
             "transcript_discovery_reads_contents": False,
+            "transcript_capture_reads_contents": bool((capture.get("safety") or {}).get("reads_transcript_contents", False)),
             "writes_active_memory": False,
         },
         "next_action": (
@@ -1144,6 +1223,154 @@ def _cycle_workspace(
     return workspace
 
 
+def _empty_transcript_capture(project: Path, *, enabled: bool, apply: bool) -> dict[str, Any]:
+    return {
+        "action": "cycle_transcript_capture",
+        "status": "disabled" if not enabled else "dry_run",
+        "project_dir": str(project),
+        "enabled": bool(enabled),
+        "apply": bool(apply),
+        "summary": {
+            "transcripts_seen": 0,
+            "transcripts_captured": 0,
+            "candidates_extracted": 0,
+            "candidates_written": 0,
+            "candidates_rejected": 0,
+        },
+        "items": [],
+        "safety": {
+            "candidate_first": True,
+            "auto_promote": False,
+            "hard_delete": False,
+            "reads_transcript_contents": False,
+            "content_hidden": True,
+        },
+        "next_action": (
+            "Pass --capture-transcripts with --apply, or enable session_capture_write_candidates "
+            "in automation_policy.yaml, to turn discovered transcripts into review candidates."
+        ),
+    }
+
+
+def _capture_transcript_candidates_for_cycle(
+    project: Path,
+    *,
+    apply: bool,
+    enabled: bool,
+    limit: int,
+    max_candidates_per_transcript: int,
+    min_score: float,
+) -> dict[str, Any]:
+    """Optionally convert discovered session transcripts into candidates.
+
+    This is deliberately opt-in and candidate-only. The cycle may read selected
+    transcript contents only when both ``apply`` and ``enabled`` are true, and
+    the returned payload strips candidate content previews before reports or
+    handoffs can persist it.
+    """
+    if not enabled or not apply:
+        return _empty_transcript_capture(project, enabled=enabled, apply=apply)
+
+    db_path = project / "vault.db"
+    if not db_path.exists():
+        payload = _empty_transcript_capture(project, enabled=enabled, apply=apply)
+        payload.update({
+            "status": "blocked",
+            "reason": "vault.db missing",
+            "next_action": "Run vault init and compile before transcript capture automation.",
+        })
+        return payload
+
+    from vault.session_capture import capture_session_candidates, discover_session_transcripts
+
+    transcript_limit = max(1, min(int(limit or 3), 20))
+    max_candidates = max(1, min(int(max_candidates_per_transcript or 5), 50))
+    discovery = discover_session_transcripts(project, limit=transcript_limit)
+    transcripts = discovery.get("transcripts") or []
+    items: list[dict[str, Any]] = []
+    extracted = 0
+    written = 0
+    rejected = 0
+
+    with VaultDB(db_path) as db:
+        for transcript in transcripts[:transcript_limit]:
+            capture_path = str(transcript.get("capture_path") or "")
+            if not capture_path:
+                continue
+            payload = capture_session_candidates(
+                db,
+                project / capture_path,
+                input_format=str(transcript.get("format") or "auto"),
+                source_system=str(transcript.get("source_system") or "auto"),
+                agent_id="automation-cycle",
+                write_candidates=True,
+                max_candidates=max_candidates,
+                min_score=min_score,
+                scope="project",
+                sensitivity="low",
+                owner_agent="vault-automation",
+                allowed_agents="",
+                include_content=False,
+            )
+            extracted += int(payload.get("extracted") or 0)
+            written += int(payload.get("written") or 0)
+            rejected += int(payload.get("rejected") or 0)
+            items.append(_compact_capture_result(capture_path, payload))
+
+    return {
+        "action": "cycle_transcript_capture",
+        "status": "completed",
+        "project_dir": str(project),
+        "enabled": True,
+        "apply": True,
+        "summary": {
+            "transcripts_seen": int(discovery.get("count") or 0),
+            "transcripts_captured": len(items),
+            "candidates_extracted": extracted,
+            "candidates_written": written,
+            "candidates_rejected": rejected,
+        },
+        "items": items,
+        "safety": {
+            "candidate_first": True,
+            "auto_promote": False,
+            "hard_delete": False,
+            "reads_transcript_contents": bool(items),
+            "content_hidden": True,
+        },
+        "next_action": "Review captured session candidates through automation inbox before promotion.",
+    }
+
+
+def _compact_capture_result(capture_path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    candidates = []
+    for item in payload.get("candidates") or []:
+        if not isinstance(item, dict):
+            continue
+        candidates.append(
+            {
+                "candidate_id": item.get("candidate_id", ""),
+                "title": item.get("title", ""),
+                "status": item.get("status", ""),
+                "rule": item.get("rule", ""),
+                "score": item.get("score", 0),
+                "source_ref": item.get("source_ref", ""),
+                "gates": item.get("gates", {}),
+            }
+        )
+    return {
+        "capture_path": capture_path,
+        "source_system": payload.get("source_system", ""),
+        "input_format": payload.get("input_format", ""),
+        "units_scanned": int(payload.get("units_scanned") or 0),
+        "extracted": int(payload.get("extracted") or 0),
+        "written": int(payload.get("written") or 0),
+        "rejected": int(payload.get("rejected") or 0),
+        "candidates": candidates,
+        "content_hidden": True,
+    }
+
+
 def _cycle_priority_brief(workspace: dict[str, Any]) -> list[dict[str, Any]]:
     summary = workspace.get("summary") or {}
     curation = workspace.get("curation_policy") or {}
@@ -1151,6 +1378,7 @@ def _cycle_priority_brief(workspace: dict[str, Any]) -> list[dict[str, Any]]:
     queue_count = int(summary.get("candidate_queue_items") or 0)
     needs_review = int(summary.get("needs_review") or 0)
     transcript_count = int(summary.get("uncaptured_transcripts") or 0)
+    captured_candidates = int(summary.get("transcript_capture_candidates_written") or 0)
     learning_rules = int(summary.get("learning_rules") or 0)
     if queue_count or needs_review:
         items.append(
@@ -1170,6 +1398,16 @@ def _cycle_priority_brief(workspace: dict[str, Any]) -> list[dict[str, Any]]:
                 "count": transcript_count,
                 "reason": "Uncaptured transcript files may contain decisions or pitfalls not yet proposed as candidates.",
                 "safe_action": "Inspect paths first; capture only selected files after confirming scope.",
+            }
+        )
+    if captured_candidates:
+        items.append(
+            {
+                "priority": "P1",
+                "title": "Review auto-captured session candidates",
+                "count": captured_candidates,
+                "reason": "Transcript capture wrote candidates only; they need explicit review before active memory changes.",
+                "safe_action": "Open automation inbox, inspect gates, then promote/reject/block deliberately.",
             }
         )
     if learning_rules:
@@ -1229,6 +1467,16 @@ def _cycle_suggested_next_tasks(workspace: dict[str, Any]) -> list[dict[str, Any
             }
         )
         step += 1
+    if int(summary.get("transcript_capture_candidates_written") or 0):
+        tasks.append(
+            {
+                "step": step,
+                "task": "Review newly captured session candidates; they are not active memory yet.",
+                "command": "vault automation inbox --limit 10",
+                "requires_human_approval": True,
+            }
+        )
+        step += 1
     if summary.get("learning_policy_path"):
         tasks.append(
             {
@@ -1265,12 +1513,16 @@ def _cycle_agent_start_prompt(workspace: dict[str, Any]) -> str:
     queue_count = int(summary.get("candidate_queue_items") or 0)
     transcript_count = int(summary.get("uncaptured_transcripts") or 0)
     learning_rules = int(summary.get("learning_rules") or 0)
+    captured_candidates = int(summary.get("transcript_capture_candidates_written") or 0)
     return "\n".join(
         [
             "You are continuing a Vault-for-LLM memory automation cycle.",
             f"Project: {workspace.get('project_dir', '')}",
             "Start from this handoff, not the full raw reports.",
-            f"Candidate queue items: {queue_count}; uncaptured transcripts: {transcript_count}; learning rules: {learning_rules}.",
+            (
+                f"Candidate queue items: {queue_count}; uncaptured transcripts: {transcript_count}; "
+                f"auto-captured candidates: {captured_candidates}; learning rules: {learning_rules}."
+            ),
             "Do not auto-promote candidates, hard-delete memory, or read transcript contents just because a path is listed.",
             "Review priority_brief first, then use suggested_next_tasks one step at a time.",
             "Ask for approval before promoting/rejecting sensitive candidates or capturing private transcripts.",

@@ -65,7 +65,7 @@ changed notes without duplicating unchanged ones.
 | `vault update-status --doctor --json` | Check whether the shared update notice exists, is fresh, includes every registered Agent, and shows runtime attention |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.6.88` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.6.89` | Show the same registry/update status without contacting the network |
 | `vault agent doctor --json` | Run the same shared update-distribution health check through the Agent registry namespace |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md` | Preview applying the generated Codex startup template into a runtime instruction file |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md --apply` | Apply the marked startup block and create a backup before changing an existing file |
@@ -98,6 +98,10 @@ Use `--write-stable-venv-script` for the default long-lived venv path, or
 `--stable-venv PATH` when the user chooses a custom stable virtualenv.
 Memory-agent guidance is opt-in with `--features memory_agents`; it writes
 `README-memory-agents.md` and does not install a model or auto-promote memory.
+Memory automation templates can opt into transcript ingestion with
+`--automation-capture-transcripts`; use it together with `--automation-apply`
+only when scheduled jobs are allowed to read discovered transcript files and
+write review candidates.
 Supabase sync templates are opt-in with `--supabase-sync cron|launchagent|n8n|all`
 and use `python -m scripts.sync_to_supabase --db <project>/vault.db`.
 Supabase remote reader templates are opt-in with

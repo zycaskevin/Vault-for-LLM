@@ -92,6 +92,18 @@ Show the latest report as a review handoff:
 vault automation report --latest --detail --pretty
 ```
 
+Show the compact closed-loop activity feed:
+
+```bash
+vault automation activity --pretty
+```
+
+`automation activity` is the quickest way for a new agent or operator to see
+what the loop recently did: low-risk candidates promoted, low-risk candidates
+that would be promoted in preview mode, and candidates skipped by policy or
+gates. It is read-only, never includes raw candidate content, and hides titles
+for private, high-sensitivity, or restricted skipped candidates.
+
 Show the shortest review inbox:
 
 ```bash
@@ -334,6 +346,8 @@ important review fields are:
 - `auto_promote`: shows whether low-risk auto-promotion was enabled, how many
   candidates would be promoted in preview mode, how many were promoted under
   `--apply`, and why other candidates were skipped.
+- `automation activity`: a compact derived view over recent reports for agent
+  startup, showing promoted/skipped reasons without raw candidate content.
 - `usage_review`: operator-facing buckets such as archiveable expired rows,
   expired-but-used rows, protected expired rows, and top-used memories.
 - `human_review`: whether a person should inspect the run before stronger

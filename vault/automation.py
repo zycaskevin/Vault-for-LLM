@@ -506,6 +506,79 @@ def automation_report(
     }
 
 
+def automation_activity(
+    project_dir: str | Path,
+    *,
+    limit: int = 5,
+    event_limit: int = 20,
+) -> dict[str, Any]:
+    """Return a compact, read-only automation activity feed.
+
+    This is intended for agent startup and operator dashboards. It exposes
+    decisions, reasons, and ids, but never raw candidate content.
+    """
+    project = Path(project_dir)
+    report_dir = project / "reports" / "automation"
+    reports = _automation_report_files(report_dir)[: max(1, int(limit or 5))]
+    max_events = max(1, min(int(event_limit or 20), 100))
+    events: list[dict[str, Any]] = []
+    totals = {
+        "reports_scanned": len(reports),
+        "auto_promote_enabled_runs": 0,
+        "would_promote_count": 0,
+        "promoted_count": 0,
+        "skipped_count": 0,
+        "archive_applied_count": 0,
+        "archive_skipped_count": 0,
+    }
+
+    for path in reports:
+        data = _read_report(path)
+        report_path = str(path.relative_to(project))
+        auto_promote = data.get("auto_promote") or {}
+        if auto_promote.get("enabled"):
+            totals["auto_promote_enabled_runs"] += 1
+        totals["would_promote_count"] += int(auto_promote.get("would_promote_count") or 0)
+        totals["promoted_count"] += int(auto_promote.get("promoted_count") or 0)
+        totals["skipped_count"] += int(auto_promote.get("skipped_count") or 0)
+
+        for item in auto_promote.get("items") or []:
+            if len(events) >= max_events:
+                break
+            events.append(_auto_promote_activity_event(report_path, data, item))
+
+        for item in data.get("action_ledger") or []:
+            status = str(item.get("status") or "")
+            if status == "applied":
+                totals["archive_applied_count"] += 1
+            elif status:
+                totals["archive_skipped_count"] += 1
+            if len(events) >= max_events:
+                continue
+            events.append(_ledger_activity_event(report_path, data, item))
+
+    return {
+        "action": "activity",
+        "generated_at": _now(),
+        "project_dir": str(project),
+        "status": "completed" if reports else "missing",
+        "report_count": len(reports),
+        "totals": totals,
+        "events": events[:max_events],
+        "safety": {
+            "read_only": True,
+            "includes_raw_candidate_content": False,
+            "writes_active_memory": False,
+            "hard_delete": False,
+        },
+        "next_action": (
+            "Review skipped reasons before widening automation policy."
+            if reports
+            else "Run `vault automation cycle --write-workspace` or `vault automation run` first."
+        ),
+    }
+
+
 def automation_handoff(
     project_dir: str | Path,
     *,
@@ -901,6 +974,57 @@ def _relative_to_project(project: Path, path: Path) -> str:
         return str(path.relative_to(project))
     except ValueError:
         return str(path.expanduser().resolve().relative_to(project.expanduser().resolve()))
+
+
+def _auto_promote_activity_event(
+    report_path: str,
+    data: dict[str, Any],
+    item: dict[str, Any],
+) -> dict[str, Any]:
+    promoted = str(item.get("promotion_status") or "") == "promoted"
+    eligible = bool(item.get("eligible", False))
+    if promoted:
+        kind = "auto_promoted_low_risk"
+    elif eligible:
+        kind = "auto_promote_preview"
+    else:
+        kind = "auto_promote_skipped"
+    sensitivity = str(item.get("sensitivity") or "")
+    scope = str(item.get("scope") or "")
+    hide_title = scope == "private" or sensitivity in {"high", "restricted"}
+    return {
+        "kind": kind,
+        "report_path": report_path,
+        "generated_at": data.get("generated_at", ""),
+        "apply": bool(data.get("apply", False)),
+        "candidate_id": item.get("candidate_id", ""),
+        "knowledge_id": item.get("knowledge_id"),
+        "title": "" if hide_title else item.get("title", ""),
+        "title_hidden": hide_title,
+        "source": item.get("source", ""),
+        "source_ref": item.get("source_ref", ""),
+        "memory_type": item.get("memory_type", ""),
+        "scope": scope,
+        "sensitivity": sensitivity,
+        "trust": float(item.get("trust") or 0.0),
+        "reason": item.get("reason", ""),
+        "gate_statuses": item.get("gate_statuses", {}),
+    }
+
+
+def _ledger_activity_event(report_path: str, data: dict[str, Any], item: dict[str, Any]) -> dict[str, Any]:
+    status = str(item.get("status") or "")
+    return {
+        "kind": "archive_applied" if status == "applied" else "archive_skipped",
+        "report_path": report_path,
+        "generated_at": data.get("generated_at", ""),
+        "apply": bool(data.get("apply", False)),
+        "knowledge_id": item.get("knowledge_id"),
+        "operation": item.get("operation", ""),
+        "status": status,
+        "reason": item.get("reason", ""),
+        "risk": item.get("risk", ""),
+    }
 
 
 def _write_cycle_workspace_markdown(

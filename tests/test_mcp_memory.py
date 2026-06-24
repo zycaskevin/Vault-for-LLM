@@ -21,6 +21,7 @@ def test_mcp_memory_tools_are_advertised():
         "vault_capture_discover",
         "vault_capture_session",
         "vault_automation_inbox",
+        "vault_automation_activity",
         "vault_automation_handoff",
         "vault_update_status",
         "vault_dream_run",
@@ -44,12 +45,14 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
         "vault_memory_propose",
         "vault_stats",
         "vault_update_status",
+        "vault_automation_activity",
         "vault_automation_handoff",
     ]
     assert "vault_memory_candidates" not in core_names
 
     review_names = [tool["name"] for tool in select_tools("review")]
     assert "vault_update_status" in review_names
+    assert "vault_automation_activity" in review_names
     assert "vault_automation_handoff" in review_names
     assert "vault_memory_candidates" in review_names
     assert "vault_memory_review" in review_names
@@ -640,6 +643,53 @@ def test_mcp_automation_inbox_can_include_transcript_hints(tmp_path):
     assert inbox["transcript_discovery"]["read_contents"] is False
     assert inbox["transcript_discovery"]["transcripts"][0]["capture_path"] == "sessions/codex-session.md"
     assert token not in rendered
+
+
+def test_mcp_automation_activity_reads_closed_loop_events_without_content(tmp_path):
+    from vault.automation import automation_run
+
+    _set_project_dir(tmp_path)
+    (tmp_path / "automation_policy.yaml").write_text(
+        "\n".join(
+            [
+                "mode: balanced",
+                "auto_promote_low_risk_candidates: true",
+                "auto_promote_max_per_run: 5",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    content = (
+        "Decision: MCP automation activity should explain auto-promote results "
+        "without exposing candidate content."
+    )
+    proposed = _payload(handle_tool_call(
+        "vault_memory_propose",
+        {
+            "title": "MCP automation activity",
+            "content": content,
+            "reason": "Exercise activity feed.",
+            "source": "session_capture",
+            "source_ref": "mcp:activity:1",
+            "tags": "mcp,activity",
+            "memory_type": "session_lesson",
+            "trust": 0.82,
+            "scope": "project",
+            "sensitivity": "low",
+        },
+    ))
+    automation_run(tmp_path, mode="balanced", apply=True, write_reports=True)
+
+    activity = _payload(handle_tool_call("vault_automation_activity", {"limit": 2, "event_limit": 5}))
+    rendered = json.dumps(activity, ensure_ascii=False)
+
+    assert activity["action"] == "activity"
+    assert activity["totals"]["promoted_count"] == 1
+    assert activity["events"][0]["kind"] == "auto_promoted_low_risk"
+    assert activity["events"][0]["candidate_id"] == proposed["candidate_id"]
+    assert activity["safety"]["read_only"] is True
+    assert "without exposing candidate content" not in rendered
 
 
 def test_mcp_vault_add_warns_and_builds_document_map(tmp_path):

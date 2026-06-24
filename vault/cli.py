@@ -1948,6 +1948,7 @@ def cmd_usage(args):
 def cmd_automation(args):
     """Policy-based memory automation workflows."""
     from vault.automation import (
+        automation_activity,
         automation_cycle,
         automation_doctor,
         automation_eval,
@@ -1959,9 +1960,9 @@ def cmd_automation(args):
     )
 
     action = getattr(args, "automation_action", "")
-    if action not in {"plan", "run", "cycle", "report", "inbox", "handoff", "doctor", "eval"}:
+    if action not in {"plan", "run", "cycle", "report", "activity", "inbox", "handoff", "doctor", "eval"}:
         print(
-            "error: automation requires action: plan, run, cycle, report, inbox, handoff, eval, or doctor",
+            "error: automation requires action: plan, run, cycle, report, activity, inbox, handoff, eval, or doctor",
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -2009,6 +2010,12 @@ def cmd_automation(args):
                 latest=args.latest,
                 detail=args.detail,
                 report_path=args.report_path,
+            )
+        elif action == "activity":
+            payload = automation_activity(
+                project_dir,
+                limit=args.limit,
+                event_limit=getattr(args, "event_limit", 20),
             )
         elif action == "inbox":
             payload = automation_inbox(
@@ -2256,6 +2263,34 @@ def cmd_automation(args):
         for item in payload.get("reports", []):
             review = "review" if item.get("human_review", {}).get("required") else "ok"
             print(f"  {item.get('path')} mode={item.get('mode')} status={item.get('status')} {review}")
+        return
+
+    if action == "activity":
+        totals = payload.get("totals") or {}
+        print("📡 Automation activity\n")
+        print(f"  status: {payload.get('status')}")
+        print(f"  reports: {payload.get('report_count', 0)}")
+        print(
+            "  auto-promote: "
+            f"enabled_runs={totals.get('auto_promote_enabled_runs', 0)} "
+            f"would={totals.get('would_promote_count', 0)} "
+            f"promoted={totals.get('promoted_count', 0)} "
+            f"skipped={totals.get('skipped_count', 0)}"
+        )
+        print(
+            "  archive: "
+            f"applied={totals.get('archive_applied_count', 0)} "
+            f"skipped={totals.get('archive_skipped_count', 0)}"
+        )
+        events = payload.get("events") or []
+        if events:
+            print("  events:")
+            for item in events[: args.event_limit]:
+                subject = item.get("candidate_id") or item.get("knowledge_id") or ""
+                print(
+                    f"    - {item.get('kind')} {subject} "
+                    f"reason={item.get('reason', '')}"
+                )
         return
 
     if action == "inbox":
@@ -3884,6 +3919,10 @@ def main(argv: list[str] | None = None):
     sp.add_argument("--latest", action="store_true", help="show the latest automation report summary")
     sp.add_argument("--detail", action="store_true", help="include full report detail and ledger")
     sp.add_argument("--report-path", default="", help="read a specific reports/automation/*.json file")
+
+    sp = automation_sub.add_parser("activity", help="Show compact closed-loop automation activity")
+    add_automation_common(sp)
+    sp.add_argument("--event-limit", type=int, default=20, help="maximum activity events to show")
 
     sp = automation_sub.add_parser("inbox", help="Show the shortest review queue for automation candidates and reports")
     add_automation_common(sp)

@@ -1837,6 +1837,29 @@ TOOLS = [
         }
     },
     {
+        "name": "vault_automation_activity",
+        "description": "Read compact closed-loop automation activity from recent reports. Read-only; returns promoted/skipped reasons without raw candidate content.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum recent reports to scan.",
+                    "default": 5,
+                    "minimum": 1,
+                    "maximum": 20,
+                },
+                "event_limit": {
+                    "type": "integer",
+                    "description": "Maximum activity events to return.",
+                    "default": 20,
+                    "minimum": 1,
+                    "maximum": 100,
+                },
+            },
+        }
+    },
+    {
         "name": "vault_automation_handoff",
         "description": "Read the latest compact startup handoff for this project. Read-only; does not inspect raw transcripts or mutate memory.",
         "inputSchema": {
@@ -2174,6 +2197,7 @@ TOOL_PROFILES = {
         "vault_memory_propose",
         "vault_stats",
         "vault_update_status",
+        "vault_automation_activity",
         "vault_automation_handoff",
     ],
     "review": [
@@ -2182,6 +2206,7 @@ TOOL_PROFILES = {
         "vault_memory_propose",
         "vault_stats",
         "vault_update_status",
+        "vault_automation_activity",
         "vault_automation_handoff",
         "vault_memory_promote",
         "vault_memory_review",
@@ -2197,6 +2222,7 @@ TOOL_PROFILES = {
         "vault_memory_propose",
         "vault_stats",
         "vault_update_status",
+        "vault_automation_activity",
         "vault_automation_handoff",
         "vault_remote_search",
         "vault_remote_map_show",
@@ -2208,6 +2234,7 @@ TOOL_PROFILES = {
         "vault_memory_propose",
         "vault_stats",
         "vault_update_status",
+        "vault_automation_activity",
         "vault_automation_handoff",
         "vault_memory_promote",
         "vault_memory_review",
@@ -2563,6 +2590,21 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     maximum=20,
                 ),
                 write_handoff=bool(arguments.get("write_handoff", False)),
+            )
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
+
+        elif name == "vault_automation_activity":
+            from vault.automation import automation_activity
+
+            payload = automation_activity(
+                Path(DB_PATH).resolve().parent,
+                limit=_clamp_int(arguments.get("limit", 5), default=5, minimum=1, maximum=20),
+                event_limit=_clamp_int(
+                    arguments.get("event_limit", 20),
+                    default=20,
+                    minimum=1,
+                    maximum=100,
+                ),
             )
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 

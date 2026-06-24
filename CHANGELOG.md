@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [0.6.92] - 2026-06-24
+
+### Added
+
+- Added `vault automation activity`, a compact read-only closed-loop activity feed for recent automation reports.
+- Added MCP `vault_automation_activity`, available in the core tool profile, so agents can see recent auto-promote previews, promotions, and skipped reasons without reading raw candidate content.
+
+### Changed
+
+- Automation observability now has a short startup-friendly surface in addition to full `automation report --detail` JSON.
+
 ## [0.6.91] - 2026-06-24
 
 ### Added

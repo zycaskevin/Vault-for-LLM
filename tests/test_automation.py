@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import json
 
 from vault.automation import (
+    automation_activity,
     automation_cycle,
     automation_doctor,
     automation_eval,
@@ -420,6 +421,65 @@ def test_automation_run_auto_promotes_only_low_risk_policy_matches(tmp_path):
         assert db.get_memory_candidate(safe_id)["status"] == "promoted"
         assert db.get_memory_candidate(high_result["candidate_id"])["status"] == "candidate"
         assert db.conn.execute("SELECT COUNT(*) AS n FROM knowledge WHERE status = 'active'").fetchone()["n"] == before_active + 1
+
+
+def test_automation_activity_summarizes_auto_promote_decisions_without_content(tmp_path):
+    project = _init_project(tmp_path)
+    _write_auto_promote_policy(project)
+    with VaultDB(project / "vault.db") as db:
+        safe_id = _create_low_risk_session_candidate(db, title="Visible low-risk activity")
+        high_result = create_candidate(
+            db,
+            title="Skipped high sensitivity activity",
+            content=(
+                "Decision: high sensitivity candidates stay in review because activity "
+                "summaries should explain skip reasons without exposing content."
+            ),
+            reason="High sensitivity should stay review-only.",
+            source="session_capture",
+            source_ref="codex:session:activity#L8-L12",
+            memory_type="session_lesson",
+            category="decision",
+            tags="session-capture,decision,privacy",
+            trust=0.9,
+            scope="project",
+            sensitivity="high",
+        )
+
+    automation_run(project, mode="balanced", apply=True, limit=10, write_reports=True)
+    payload = automation_activity(project, limit=3, event_limit=10)
+
+    assert payload["action"] == "activity"
+    assert payload["status"] == "completed"
+    assert payload["totals"]["auto_promote_enabled_runs"] == 1
+    assert payload["totals"]["promoted_count"] == 1
+    assert payload["totals"]["skipped_count"] >= 1
+    assert payload["safety"]["includes_raw_candidate_content"] is False
+    promoted = [item for item in payload["events"] if item["kind"] == "auto_promoted_low_risk"]
+    skipped = [item for item in payload["events"] if item["kind"] == "auto_promote_skipped"]
+    assert promoted and promoted[0]["candidate_id"] == safe_id
+    assert skipped and skipped[0]["candidate_id"] == high_result["candidate_id"]
+    assert "sensitivity_not_allowed:high" in skipped[0]["reason"]
+    assert skipped[0]["title_hidden"] is True
+    assert skipped[0]["title"] == ""
+    rendered = json.dumps(payload, ensure_ascii=False)
+    assert "summaries should explain skip reasons without exposing content" not in rendered
+    assert "Skipped high sensitivity activity" not in rendered
+
+
+def test_automation_activity_reports_preview_without_promoting(tmp_path):
+    project = _init_project(tmp_path)
+    _write_auto_promote_policy(project)
+    with VaultDB(project / "vault.db") as db:
+        candidate_id = _create_low_risk_session_candidate(db, title="Preview activity lesson")
+
+    automation_run(project, mode="balanced", apply=False, limit=10, write_reports=True)
+    payload = automation_activity(project, limit=1, event_limit=5)
+
+    assert payload["totals"]["would_promote_count"] == 1
+    assert payload["totals"]["promoted_count"] == 0
+    assert payload["events"][0]["kind"] == "auto_promote_preview"
+    assert payload["events"][0]["candidate_id"] == candidate_id
 
 
 def test_automation_apply_does_not_touch_private_or_high_sensitivity_memory(tmp_path):
@@ -925,6 +985,33 @@ def test_automation_cli_report_latest_detail_prints_ledger(tmp_path, monkeypatch
     assert "ledger entries: 1" in out
     assert "action ledger:" in out
     assert "archive_expired applied" in out
+
+
+def test_automation_cli_activity_prints_closed_loop_counts(tmp_path, monkeypatch, capsys):
+    from vault.cli import cmd_automation
+
+    project = _init_project(tmp_path)
+    _write_auto_promote_policy(project)
+    with VaultDB(project / "vault.db") as db:
+        _create_low_risk_session_candidate(db)
+    automation_run(project, mode="balanced", apply=True, write_reports=True)
+    monkeypatch.chdir(project)
+
+    cmd_automation(
+        Namespace(
+            automation_action="activity",
+            mode=None,
+            limit=5,
+            event_limit=5,
+            json=False,
+            pretty=False,
+        )
+    )
+
+    out = capsys.readouterr().out
+    assert "Automation activity" in out
+    assert "promoted=1" in out
+    assert "auto_promoted_low_risk" in out
 
 
 def test_automation_cli_eval_prints_feedback_scores(tmp_path, monkeypatch, capsys):

@@ -118,13 +118,15 @@ agents, shared/private vault paths, and suggested startup handoff commands.
 {
   "latest_version": "",
   "check_pypi": false,
+  "read_status": false,
   "write_status": false
 }
 ```
 
 Agent rule: keep `check_pypi=false` during normal startup unless the user asks
-for a live update check. Keep `write_status=false` unless a durable local status
-file is needed.
+for a live update check. Prefer `read_status=true` first when another local
+runtime may already have written `~/.vault-for-llm/update-status.json`. Keep
+`write_status=false` unless a durable local status file is needed.
 
 ### `vault_automation_handoff`
 

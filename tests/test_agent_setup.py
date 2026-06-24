@@ -213,13 +213,28 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
         "vault_update_status",
         "vault_automation_handoff",
     ]
+    assert mcp_json["startup_sequence"][0]["arguments"]["read_status"] is True
+    assert mcp_json["startup_sequence"][0]["fallback_arguments"]["check_pypi"] is False
     assert mcp_json["safety"]["check_pypi_default"] is False
     assert mcp_json["safety"]["auto_promote_memory"] is False
+    assert mcp_json["safety"]["read_existing_update_status_first"] is True
     assert "vault_update_status" in mcp_readme
     assert "vault_automation_handoff" in mcp_readme
+    update_status = result["update_status_templates"]
+    update_contract = json.loads(Path(update_status["contract"]).read_text(encoding="utf-8"))
+    update_readme = Path(update_status["readme"]).read_text(encoding="utf-8")
+    update_cron = Path(update_status["cron"]).read_text(encoding="utf-8")
+    update_plist = Path(update_status["launchagent"]).read_text(encoding="utf-8")
+    assert update_contract["mcp_read"]["arguments"]["read_status"] is True
+    assert update_contract["mcp_fallback"]["arguments"]["check_pypi"] is False
+    assert update_contract["safety"]["auto_upgrade"] is False
+    assert "vault update-status --read-status --json" in update_readme
+    assert "vault update-status --write-status --json" in update_cron
+    assert "com.zycaskevin.vault-for-llm.update-status" in update_plist
     assert any("memory automation schedule" in step for step in result["next_steps"])
     assert any("vault automation handoff --project-dir" in step for step in result["next_steps"])
     assert any("MCP startup guide" in step for step in result["next_steps"])
+    assert any("Agent update status guide" in step for step in result["next_steps"])
 
 
 def test_run_agent_setup_can_schedule_automation_cycle(tmp_path):
@@ -542,7 +557,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.81" in captured.out
+    assert "vault-for-llm 0.6.82" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -710,7 +725,7 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.6.81" in body
+    assert "vault-for-llm[mcp,supabase]==0.6.82" in body
     assert "headroom-ai" in body
     assert "--agent-project-dir" in body
     assert str(project) in body

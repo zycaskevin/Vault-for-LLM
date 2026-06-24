@@ -1562,6 +1562,9 @@ def write_mcp_startup_guide(
             {
                 "tool": "vault_update_status",
                 "arguments": {
+                    "read_status": True,
+                },
+                "fallback_arguments": {
                     "latest_version": "",
                     "check_pypi": False,
                     "write_status": False,
@@ -1610,6 +1613,7 @@ def write_mcp_startup_guide(
             "handoff_read_only": True,
             "auto_promote_memory": False,
             "read_raw_transcripts_by_default": False,
+            "read_existing_update_status_first": True,
         },
     }
     json_path = out / "mcp-startup.json"
@@ -1631,7 +1635,7 @@ def write_mcp_startup_guide(
                 "",
                 "Startup sequence:",
                 "",
-                "1. `vault_update_status`",
+                "1. `vault_update_status` with `read_status=true`",
                 "2. `vault_automation_handoff`",
                 "3. `vault_search` only when more context is needed",
                 "4. `vault_read_range` before citing memory",
@@ -1639,6 +1643,7 @@ def write_mcp_startup_guide(
                 "",
                 "Default safety:",
                 "",
+                "- first read the existing machine status file; if it is missing, call `vault_update_status` without `read_status`",
                 "- keep `check_pypi=false` unless the user asks for a live update check",
                 "- handoff reads are read-only and stay under `reports/automation`",
                 "- do not read raw transcript contents by default",
@@ -1652,6 +1657,122 @@ def write_mcp_startup_guide(
         encoding="utf-8",
     )
     return {"json": str(json_path), "readme": str(readme_path)}
+
+
+def write_update_status_templates(
+    *,
+    output_dir: str | Path,
+    vault_executable: str = "vault",
+    interval_minutes: int = 60,
+) -> dict[str, str]:
+    from vault.agent_registry import update_status_path
+
+    out = Path(output_dir).expanduser().resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    status_path = update_status_path()
+    write_command = [vault_executable, "update-status", "--write-status", "--json"]
+    read_command = [vault_executable, "update-status", "--read-status", "--json"]
+    contract = {
+        "version": 1,
+        "status_path": str(status_path),
+        "read_command": shell_join(read_command),
+        "write_command": shell_join(write_command),
+        "mcp_read": {
+            "tool": "vault_update_status",
+            "arguments": {"read_status": True},
+        },
+        "mcp_fallback": {
+            "tool": "vault_update_status",
+            "arguments": {"latest_version": "", "check_pypi": False, "write_status": False},
+        },
+        "mcp_write": {
+            "tool": "vault_update_status",
+            "arguments": {"write_status": True, "check_pypi": False},
+        },
+        "safety": {
+            "metadata_only": True,
+            "check_pypi_default": False,
+            "auto_upgrade": False,
+            "shared_machine_status": True,
+        },
+    }
+    contract_path = out / "update-status-contract.json"
+    contract_path.write_text(json.dumps(contract, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    cron_path = out / "update-status.cron"
+    cron_path.write_text(
+        "\n".join(
+            [
+                "# Vault-for-LLM local Agent update status",
+                f"*/{max(1, int(interval_minutes))} * * * * {shell_join(write_command)} >> $HOME/.vault-for-llm/update-status.log 2>&1",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    launchagent_path = out / "update-status.launchagent.plist"
+    launchagent_path.write_text(
+        render_launchagent_plist(
+            command=write_command,
+            label="com.zycaskevin.vault-for-llm.update-status",
+            interval_minutes=interval_minutes,
+            log_basename="update-status",
+        ),
+        encoding="utf-8",
+    )
+
+    readme_path = out / "README-update-status.md"
+    readme_path.write_text(
+        "\n".join(
+            [
+                "# Agent Update Status",
+                "",
+                "This install pack lets multiple local Agent runtimes share one Vault-for-LLM update notice.",
+                "",
+                "Shared status file:",
+                "",
+                f"- `{status_path}`",
+                "",
+                "Read existing status without recomputing:",
+                "",
+                "```bash",
+                shell_join(read_command),
+                "```",
+                "",
+                "Write fresh local status without contacting PyPI:",
+                "",
+                "```bash",
+                shell_join(write_command),
+                "```",
+                "",
+                "MCP startup:",
+                "",
+                "1. call `vault_update_status` with `read_status=true`",
+                "2. if the result has `missing=true`, call `vault_update_status` with `check_pypi=false`",
+                "3. only set `check_pypi=true` when the user asks for a live online version check",
+                "",
+                "Safety:",
+                "",
+                "- this is metadata only: versions, registered Agents, vault paths, and handoff commands",
+                "- it is not an auto-upgrader",
+                "- one updated runtime can write the status; other runtimes can read it",
+                "- install or upgrade each Agent environment explicitly",
+                "",
+                f"Cron example: `{cron_path.name}`",
+                f"LaunchAgent example: `{launchagent_path.name}`",
+                f"Machine-readable contract: `{contract_path.name}`",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return {
+        "contract": str(contract_path),
+        "readme": str(readme_path),
+        "cron": str(cron_path),
+        "launchagent": str(launchagent_path),
+    }
 
 
 def _normalize_validation_pack_targets(raw: str | list[str] | None) -> set[str]:
@@ -2506,6 +2627,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         "stable_venv": {},
         "memory_layout_files": {},
         "mcp_startup": {},
+        "update_status_templates": {},
         "agent_registry": {},
         "next_steps": [
             f"vault search \"test query\" --project-dir {shlex.quote(str(project_path))} --limit 5 --json",
@@ -2540,6 +2662,10 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         agent=config.agent,
     )
     result["next_steps"].append(f"Review MCP startup guide: {result['mcp_startup']['readme']}")
+    result["update_status_templates"] = write_update_status_templates(
+        output_dir=template_dir,
+    )
+    result["next_steps"].append(f"Review Agent update status guide: {result['update_status_templates']['readme']}")
     result["local_smoke"] = write_local_smoke_template(
         output_dir=template_dir,
         project_dir=project_path,

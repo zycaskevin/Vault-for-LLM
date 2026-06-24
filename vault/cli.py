@@ -2876,6 +2876,10 @@ def cmd_setup_agent(args):
         print("  memory_layout_files:")
         for name, path in payload["memory_layout_files"].items():
             print(f"    {name}: {path}")
+    if payload.get("update_status_templates"):
+        print("  update_status_templates:")
+        for name, path in payload["update_status_templates"].items():
+            print(f"    {name}: {path}")
     print("Next steps:")
     for step in payload["next_steps"]:
         print(f"  {step}")
@@ -2883,7 +2887,7 @@ def cmd_setup_agent(args):
 
 def cmd_agent(args):
     """Local agent registry commands."""
-    from vault.agent_registry import build_update_status, list_agents, register_agent
+    from vault.agent_registry import build_update_status, list_agents, read_update_status, register_agent
 
     action = getattr(args, "agent_action", None)
     if action == "register":
@@ -2929,11 +2933,16 @@ def cmd_agent(args):
         return
 
     if action == "status":
-        payload = build_update_status(
-            latest_version=args.latest_version,
-            check_pypi=bool(args.check_pypi),
-        )
-        if args.write_status:
+        if args.read_status and args.write_status:
+            raise SystemExit("--read-status cannot be combined with --write-status")
+        if args.read_status:
+            payload = read_update_status()
+        else:
+            payload = build_update_status(
+                latest_version=args.latest_version,
+                check_pypi=bool(args.check_pypi),
+            )
+        if args.write_status and not args.read_status:
             from vault.agent_registry import write_update_status
 
             payload["status_path"] = str(write_update_status(payload))
@@ -2948,13 +2957,18 @@ def cmd_agent(args):
 
 def cmd_update_status(args):
     """Show local Vault runtime update and agent registry status."""
-    from vault.agent_registry import build_update_status, write_update_status
+    from vault.agent_registry import build_update_status, read_update_status, write_update_status
 
-    payload = build_update_status(
-        latest_version=args.latest_version,
-        check_pypi=bool(args.check_pypi),
-    )
-    if args.write_status:
+    if args.read_status and args.write_status:
+        raise SystemExit("--read-status cannot be combined with --write-status")
+    if args.read_status:
+        payload = read_update_status()
+    else:
+        payload = build_update_status(
+            latest_version=args.latest_version,
+            check_pypi=bool(args.check_pypi),
+        )
+    if args.write_status and not args.read_status:
         payload["status_path"] = str(write_update_status(payload))
     if args.json or args.pretty:
         _json_print(payload, pretty=args.pretty)
@@ -2963,6 +2977,13 @@ def cmd_update_status(args):
 
 
 def _print_update_status(payload: dict) -> None:
+    if payload.get("missing"):
+        print("Vault update status")
+        print(f"  status_path: {payload.get('status_path', '')}")
+        print(f"  missing: {payload.get('missing')}")
+        if payload.get("message"):
+            print(f"  message: {payload['message']}")
+        return
     print("Vault update status")
     print(f"  installed_version: {payload['installed_version']}")
     print(f"  latest_version: {payload['latest_version']}")
@@ -3188,6 +3209,7 @@ def main(argv: list[str] | None = None):
     p = sub.add_parser("update-status", help="顯示本機 Vault 版本、更新與 Agent registry 狀態")
     p.add_argument("--latest-version", default="", help="手動提供最新版本，用於離線比較")
     p.add_argument("--check-pypi", action="store_true", help="連線 PyPI 查詢最新版本")
+    p.add_argument("--read-status", action="store_true", help="讀取既有 ~/.vault-for-llm/update-status.json，不重新計算")
     p.add_argument("--write-status", action="store_true", help="寫入 ~/.vault-for-llm/update-status.json")
     p.add_argument("--json", action="store_true", help="輸出 JSON")
     p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
@@ -3219,6 +3241,7 @@ def main(argv: list[str] | None = None):
     ap = agent_sub.add_parser("status", help="顯示 Agent registry 與更新狀態")
     ap.add_argument("--latest-version", default="", help="手動提供最新版本，用於離線比較")
     ap.add_argument("--check-pypi", action="store_true", help="連線 PyPI 查詢最新版本")
+    ap.add_argument("--read-status", action="store_true", help="讀取既有 ~/.vault-for-llm/update-status.json，不重新計算")
     ap.add_argument("--write-status", action="store_true", help="寫入 ~/.vault-for-llm/update-status.json")
     ap.add_argument("--json", action="store_true", help="輸出 JSON")
     ap.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")

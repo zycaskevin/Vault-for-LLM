@@ -66,7 +66,7 @@ changed notes without duplicating unchanged ones.
 | `vault update-status --doctor --json` | Check whether the shared update notice exists, is fresh, includes every registered Agent, and shows runtime attention |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.6.93` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.6.94` | Show the same registry/update status without contacting the network |
 | `vault agent doctor --json` | Run the same shared update-distribution health check through the Agent registry namespace |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md` | Preview applying the generated Codex startup template into a runtime instruction file |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md --apply` | Apply the marked startup block and create a backup before changing an existing file |
@@ -151,7 +151,8 @@ For per-tool MCP examples, see `docs/mcp_tool_reference.md`.
 | `vault list` | List knowledge entries |
 | `vault remove <id> --confirm` / `vault delete <id> --confirm` | Delete a knowledge entry by ID |
 | `vault stats` | Show vault statistics |
-| `vault usage stats` / `vault usage archive-expired --apply` | Inspect retrieval usage and archive expired memories without deleting them |
+| `vault usage stats` / `vault usage archive-expired --apply` | Inspect retrieval usage and archive expired unused memories without deleting them |
+| `vault usage cold-store-expired --apply` | Summarize and archive expired-but-used memories; skips private/high/restricted/L0/L1 rows and retains original content |
 
 ## Quality And Curation
 
@@ -175,6 +176,7 @@ For per-tool MCP examples, see `docs/mcp_tool_reference.md`.
 | `vault automation report` / `vault automation eval --write-learning-policy` / `vault automation doctor` | Review automation reports, evaluate candidate-outcome feedback into bounded curation hints, and check scheduled-job readiness |
 | `vault freshness` | Experimental freshness/review scheduling |
 | `vault usage archive-expired` | Preview TTL-based archive actions; add `--apply` to mark eligible memories archived |
+| `vault usage cold-store-expired` | Preview summarize-then-cold-store actions for expired-but-used memories; add `--apply` to write summaries and archive eligible rows |
 | `vault dedup` | Detect or merge duplicate entries |
 | `vault converge` | Experimental convergence/self-questioning check |
 | `vault cross-validate` | Experimental cross-model validation |

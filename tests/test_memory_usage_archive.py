@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from argparse import Namespace
+import json
 
 from vault.db import VaultDB
 from vault.search import VaultSearch, calc_usage_boost
@@ -104,6 +105,76 @@ def test_archive_expired_can_skip_used_rows(tmp_path):
         assert db.get_knowledge(used_id)["status"] == "active"
 
 
+def test_cold_store_expired_summarizes_used_rows_without_deleting(tmp_path):
+    now = datetime.now(timezone.utc)
+    expired = (now - timedelta(days=1)).isoformat()
+
+    with VaultDB(tmp_path / "vault.db") as db:
+        used_id = db.add_knowledge(
+            "Used expired deployment SOP",
+            "Rollback by checking the current deployment, selecting the prior build, and verifying traffic.",
+            layer="L2",
+            expires_at=expired,
+        )
+        low_usage_id = db.add_knowledge("Unused expired note", "Short lived", expires_at=expired)
+        private_id = db.add_knowledge(
+            "Private expired note",
+            "Private content should not be cold-stored automatically.",
+            scope="private",
+            expires_at=expired,
+        )
+        l0_id = db.add_knowledge(
+            "Core identity expired",
+            "Core identity should be protected from cold-store automation.",
+            layer="L0",
+            expires_at=expired,
+        )
+        db.record_knowledge_access([used_id], cited=True)
+
+        preview = db.cold_store_expired_knowledge(now=now, dry_run=True)
+        assert preview["applied_count"] == 0
+        assert preview["eligible_count"] == 1
+        assert preview["skipped_low_usage_count"] == 1
+        assert preview["skipped_protected_count"] == 2
+        assert preview["items"][0]["id"] == used_id
+        assert db.get_knowledge(used_id)["status"] == "active"
+
+        applied = db.cold_store_expired_knowledge(now=now, dry_run=False)
+        assert applied["applied_count"] == 1
+        assert applied["summary_count"] == 1
+        assert applied["demoted_count"] == 1
+        assert applied["safety"]["hard_delete"] is False
+        row = db.get_knowledge(used_id)
+        assert row["status"] == "archived"
+        assert row["layer"] == "L3"
+        assert row["content_raw"].startswith("Rollback by checking")
+        assert "Cold-store summary" in row["summary"]
+        assert row["summary_generated_at"]
+        assert db.get_knowledge(low_usage_id)["status"] == "active"
+        assert db.get_knowledge(private_id)["status"] == "active"
+        assert db.get_knowledge(l0_id)["status"] == "active"
+
+
+def test_cold_store_summary_redacts_secret_shapes(tmp_path):
+    now = datetime.now(timezone.utc)
+    expired = (now - timedelta(days=1)).isoformat()
+    token = "sk-proj-1234567890abcdefghij1234567890"
+
+    with VaultDB(tmp_path / "vault.db") as db:
+        used_id = db.add_knowledge(
+            "Expired low sensitivity token lesson",
+            f"Do not store this fake token in summaries: {token}",
+            expires_at=expired,
+        )
+        db.record_knowledge_access([used_id], cited=True)
+        applied = db.cold_store_expired_knowledge(now=now, dry_run=False)
+        rendered = json.dumps(applied, ensure_ascii=False)
+        row = db.get_knowledge(used_id)
+
+    assert token not in rendered
+    assert token not in row["summary"]
+
+
 def test_usage_cli_archive_expired(tmp_path, monkeypatch, capsys):
     from vault.cli import cmd_usage
 
@@ -118,3 +189,28 @@ def test_usage_cli_archive_expired(tmp_path, monkeypatch, capsys):
     cmd_usage(Namespace(usage_action="archive-expired", limit=10, apply=True, json=True, pretty=False))
     payload = capsys.readouterr().out
     assert '"archived_count": 1' in payload
+
+
+def test_usage_cli_cold_store_expired(tmp_path, monkeypatch, capsys):
+    from vault.cli import cmd_usage
+
+    monkeypatch.chdir(tmp_path)
+    expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    with VaultDB(tmp_path / "vault.db") as db:
+        used_id = db.add_knowledge("CLI cold-store memo", "TTL cold-store test", expires_at=expired)
+        db.record_knowledge_access([used_id], cited=True)
+
+    cmd_usage(
+        Namespace(
+            usage_action="cold-store-expired",
+            limit=10,
+            min_usage=1,
+            summary_max_chars=120,
+            apply=True,
+            json=True,
+            pretty=False,
+        )
+    )
+    payload = capsys.readouterr().out
+    assert '"applied_count": 1' in payload
+    assert '"action": "cold-store-expired"' in payload

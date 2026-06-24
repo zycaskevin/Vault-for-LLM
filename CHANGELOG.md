@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [0.6.97] - 2026-06-24
+
+### Added
+
+- `automation inbox` now reads `reports/automation/learning_policy.json` and applies bounded feedback multipliers to candidate review priority.
+- Inbox and review digest items now expose `base_priority`, `learning_multiplier`, `learning_action`, and `learning_reason` so learned ranking remains auditable.
+
+### Changed
+
+- `automation brief` inherits the same learned review ordering through the inbox digest. Learning still only affects ranking; it does not auto-promote, auto-delete, or bypass privacy/access policy.
+
 ## [0.6.96] - 2026-06-24
 
 ### Added

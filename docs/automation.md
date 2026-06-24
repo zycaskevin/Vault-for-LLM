@@ -152,6 +152,11 @@ work. The inbox is read-only, hides candidate content by default, and
 prioritizes privacy-blocked, sensitive, duplicate, weak-quality, and
 automation-generated candidates.
 
+If `reports/automation/learning_policy.json` exists, review candidates also
+include visible `base_priority`, `learning_multiplier`, `learning_action`, and
+`learning_reason` fields. These fields affect ordering only; they never
+authorize promotion or deletion.
+
 Use `--include-transcripts` when a scheduled or reviewer agent should also see
 metadata-only hints for uncaptured session exports. The inbox still does not
 read transcript contents; it only includes the same `capture_path` hints as
@@ -203,11 +208,12 @@ bounded: it can suggest `prefer_candidates`, `downgrade_or_require_review`,
 `keep_observing`, or `observe`, with priority multipliers capped between `0.85`
 and `1.15`. It is a ranking and review hint, not an authorization policy.
 
-On later runs, `vault dream` and `vault automation run` read the same handoff
-file automatically. Matching Dream candidate suggestions are annotated with the
-learning action, confidence, and multiplier, then sorted by bounded priority.
-This helps review agents look at the most promising cleanup work first without
-changing the candidate-first safety boundary.
+On later runs, `vault dream`, `vault automation inbox`, and `vault automation
+brief` read the same handoff file automatically. Matching Dream candidate
+suggestions and inbox review candidates are annotated with the learning action,
+confidence, and multiplier, then sorted by bounded priority. This helps review
+agents look at the most promising cleanup work first without changing the
+candidate-first safety boundary.
 
 Candidate feedback can come from promotion, from explicit CLI review, or from
 MCP review tools:

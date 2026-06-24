@@ -809,6 +809,72 @@ def test_automation_eval_builds_bounded_learning_policy(tmp_path):
     assert written["rules"] == rules
 
 
+def test_automation_inbox_applies_learning_policy_to_review_priority(tmp_path):
+    project = _init_project(tmp_path)
+    with VaultDB(project / "vault.db") as db:
+        for idx in range(3):
+            db.record_memory_feedback(
+                {
+                    "candidate_id": f"dream_good_{idx}",
+                    "source": "dream",
+                    "memory_type": "dream_suggestion",
+                    "category": "dream-review",
+                    "outcome": "promoted",
+                    "score": 1.0,
+                }
+            )
+        for idx in range(3):
+            db.record_memory_feedback(
+                {
+                    "candidate_id": f"import_bad_{idx}",
+                    "source": "import",
+                    "memory_type": "raw_note",
+                    "category": "scratch",
+                    "outcome": "rejected",
+                    "score": 0.0,
+                }
+            )
+        create_candidate(
+            db,
+            title="Dream learned priority",
+            content="Decision: learned feedback should move useful dream suggestions earlier in review.",
+            reason="Learning policy positive group.",
+            source="dream",
+            source_ref="dream:learned:1",
+            memory_type="dream_suggestion",
+            category="dream-review",
+            tags="dream,learning",
+        )
+        create_candidate(
+            db,
+            title="Import learned downgrade",
+            content="Decision: rejected import scratch notes should stay lower in review priority.",
+            reason="Learning policy negative group.",
+            source="import",
+            source_ref="import:learned:1",
+            memory_type="raw_note",
+            category="scratch",
+            tags="import,learning",
+        )
+
+    automation_eval(project, limit=20, min_events=3, write_learning_policy=True)
+    payload = automation_inbox(project, limit=5)
+    queue = payload["review_queue"]
+    by_title = {item["title"]: item for item in queue}
+
+    assert payload["learning_policy"]["status"] == "loaded"
+    assert payload["learning_policy"]["applied_rules"] == 2
+    assert payload["summary"]["learning_policy_applied_rules"] == 2
+    assert by_title["Dream learned priority"]["learning_action"] == "prefer_candidates"
+    assert by_title["Dream learned priority"]["learning_multiplier"] == 1.15
+    assert by_title["Dream learned priority"]["priority"] > by_title["Dream learned priority"]["base_priority"]
+    assert by_title["Import learned downgrade"]["learning_action"] == "downgrade_or_require_review"
+    assert by_title["Import learned downgrade"]["learning_multiplier"] == 0.85
+    assert by_title["Import learned downgrade"]["priority"] < by_title["Import learned downgrade"]["base_priority"]
+    assert payload["review_digest"]["items"][0]["title"] == "Dream learned priority"
+    assert payload["review_digest"]["items"][0]["learning_action"] == "prefer_candidates"
+
+
 def test_automation_cycle_writes_learning_policy_and_runs_dream(tmp_path):
     project = _init_project(tmp_path)
     with VaultDB(project / "vault.db") as db:

@@ -22,6 +22,7 @@ from .privacy import redact_secrets
 AUTOMATION_MODES = {"conservative", "balanced", "autonomous"}
 DEFAULT_MODE = "balanced"
 POLICY_FILE = "automation_policy.yaml"
+LEARNING_POLICY_FILE = Path("reports") / "automation" / "learning_policy.json"
 
 
 DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
@@ -801,10 +802,14 @@ def automation_inbox(
 
     limit_i = max(1, min(int(limit or 5), 50))
     scan_limit = max(limit_i, min(int(candidate_scan_limit or 1000), 5000))
+    learning_policy = _load_automation_learning_policy(project)
     with VaultDB(db_path) as db:
         candidates = db.list_memory_candidates(status=None, limit=scan_limit)
 
-    candidate_items = [_candidate_inbox_item(row, include_content=include_content) for row in candidates]
+    candidate_items = [
+        _candidate_inbox_item(row, include_content=include_content, learning_policy=learning_policy)
+        for row in candidates
+    ]
     candidate_items.sort(key=lambda item: (-int(item["priority"]), item["created_at"], item["id"]), reverse=False)
     # The reverse=False ordering above keeps high priority first because the key
     # negates priority, then keeps older unresolved items ahead within a tie.
@@ -833,6 +838,8 @@ def automation_inbox(
     summary["review_digest_items"] = len(review_digest["items"])
     summary["report_review_items"] = int(review_digest.get("report_item_count") or 0)
     summary["candidate_digest_items"] = int(review_digest.get("candidate_item_count") or 0)
+    summary["learning_policy_status"] = learning_policy.get("status", "missing")
+    summary["learning_policy_applied_rules"] = int(learning_policy.get("applied_rules") or 0)
     payload = {
         "action": "inbox",
         "generated_at": generated_at,
@@ -841,6 +848,12 @@ def automation_inbox(
         "summary": summary,
         "review_queue": candidate_items[:limit_i],
         "review_digest": review_digest,
+        "learning_policy": {
+            "status": learning_policy.get("status", "missing"),
+            "path": learning_policy.get("path", ""),
+            "applied_rules": int(learning_policy.get("applied_rules") or 0),
+            "readiness": learning_policy.get("readiness", ""),
+        },
         "transcript_discovery": transcript_discovery,
         "latest_report": latest_report,
         "inbox_handoff_path": "",
@@ -2282,7 +2295,12 @@ def automation_doctor(project_dir: str | Path, *, mode: str | None = None) -> di
     }
 
 
-def _candidate_inbox_item(row: dict[str, Any], *, include_content: bool = False) -> dict[str, Any]:
+def _candidate_inbox_item(
+    row: dict[str, Any],
+    *,
+    include_content: bool = False,
+    learning_policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     status = str(row.get("status") or "")
     privacy = str(row.get("privacy_status") or "")
     duplicate = str(row.get("duplicate_status") or "")
@@ -2305,6 +2323,7 @@ def _candidate_inbox_item(row: dict[str, Any], *, include_content: bool = False)
         "id": row.get("id", ""),
         "title": row.get("title", ""),
         "status": status,
+        "base_priority": priority,
         "priority": priority,
         "recommended_action": _candidate_recommended_action(
             status=status,
@@ -2339,6 +2358,7 @@ def _candidate_inbox_item(row: dict[str, Any], *, include_content: bool = False)
             "quality": quality,
         },
     }
+    _apply_learning_priority(item, learning_policy or {})
     if include_content:
         item["content"] = redact_secrets(str(row.get("content") or ""))
     return item
@@ -2423,6 +2443,90 @@ def _candidate_review_reason(
     return "Candidate outcome is already recorded; use it as automation feedback."
 
 
+def _load_automation_learning_policy(project: Path) -> dict[str, Any]:
+    path = project / LEARNING_POLICY_FILE
+    if not path.exists():
+        return {
+            "status": "missing",
+            "path": str(LEARNING_POLICY_FILE),
+            "rules": [],
+            "applied_rules": 0,
+        }
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {
+            "status": "invalid",
+            "path": str(LEARNING_POLICY_FILE),
+            "rules": [],
+            "applied_rules": 0,
+        }
+    if not isinstance(payload, dict):
+        return {
+            "status": "invalid",
+            "path": str(LEARNING_POLICY_FILE),
+            "rules": [],
+            "applied_rules": 0,
+        }
+    payload = dict(payload)
+    payload["status"] = "loaded"
+    payload["path"] = str(LEARNING_POLICY_FILE)
+    payload["applied_rules"] = 0
+    return payload
+
+
+def _apply_learning_priority(item: dict[str, Any], learning_policy: dict[str, Any]) -> None:
+    rule = _matching_learning_rule(item, learning_policy)
+    item["learning_multiplier"] = 1.0
+    item["learning_action"] = ""
+    item["learning_reason"] = ""
+    item["learning_rule_confidence"] = 0.0
+    if not rule:
+        return
+    bounds = learning_policy.get("bounds") or {}
+    lower = float(bounds.get("priority_multiplier_min") or 0.85)
+    upper = float(bounds.get("priority_multiplier_max") or 1.15)
+    multiplier = max(lower, min(float(rule.get("priority_multiplier") or 1.0), upper))
+    base = int(item.get("base_priority") or item.get("priority") or 0)
+    item["priority"] = int(round(base * multiplier))
+    item["learning_multiplier"] = multiplier
+    item["learning_action"] = str(rule.get("action") or "")
+    item["learning_reason"] = str(rule.get("reason") or "")
+    item["learning_rule_confidence"] = float(rule.get("confidence") or 0.0)
+    learning_policy["applied_rules"] = int(learning_policy.get("applied_rules") or 0) + 1
+
+
+def _matching_learning_rule(item: dict[str, Any], learning_policy: dict[str, Any]) -> dict[str, Any] | None:
+    rules = learning_policy.get("rules") or []
+    if not isinstance(rules, list):
+        return None
+    candidates: list[tuple[int, float, int, dict[str, Any]]] = []
+    for index, rule in enumerate(rules):
+        if not isinstance(rule, dict):
+            continue
+        selector = rule.get("selector") or {}
+        if not isinstance(selector, dict):
+            continue
+        specificity = 0
+        matched = True
+        for field in ("source", "memory_type", "category"):
+            expected = str(selector.get(field) or "").strip().lower()
+            if not expected:
+                continue
+            actual = str(item.get(field) or "").strip().lower()
+            if expected != actual:
+                matched = False
+                break
+            specificity += 1
+        if not matched or specificity == 0:
+            continue
+        candidates.append((specificity, float(rule.get("confidence") or 0.0), -index, rule))
+    if not candidates:
+        return None
+    candidates.sort(reverse=True)
+    return candidates[0][3]
+
+
 def _empty_review_digest(limit: int) -> dict[str, Any]:
     return {
         "budget": max(1, int(limit or 5)),
@@ -2466,6 +2570,10 @@ def _candidate_review_digest_item(item: dict[str, Any]) -> dict[str, Any]:
         "source": item.get("source", ""),
         "source_ref": item.get("source_ref", ""),
         "created_at": item.get("created_at", ""),
+        "base_priority": int(item.get("base_priority") or item.get("priority") or 0),
+        "learning_multiplier": float(item.get("learning_multiplier") or 1.0),
+        "learning_action": item.get("learning_action", ""),
+        "learning_reason": item.get("learning_reason", ""),
     }
 
 

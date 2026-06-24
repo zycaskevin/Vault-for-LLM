@@ -2429,6 +2429,13 @@ def cmd_automation(args):
         if summary.get("latest_report_path"):
             review = "review" if summary.get("latest_report_review_required") else "ok"
             print(f"  latest report: {summary.get('latest_report_path')} {review}")
+        learning = payload.get("learning_policy") or {}
+        if learning:
+            print(
+                "  learning policy: "
+                f"{learning.get('status', 'missing')} "
+                f"rules_applied={learning.get('applied_rules', 0)}"
+            )
         if payload.get("inbox_handoff_path"):
             print(f"  inbox handoff: {payload.get('inbox_handoff_path')}")
         digest = payload.get("review_digest") or {}
@@ -2444,6 +2451,11 @@ def cmd_automation(args):
                 )
                 print(f"      {item.get('title')}")
                 print(f"      safe: {item.get('safe_action')}")
+                if item.get("learning_action"):
+                    print(
+                        f"      learning: {item.get('learning_action')} "
+                        f"x{item.get('learning_multiplier', 1.0)}"
+                    )
         queue = payload.get("review_queue") or []
         if queue:
             print("\n  Review queue:")

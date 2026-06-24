@@ -65,7 +65,7 @@ changed notes without duplicating unchanged ones.
 | `vault update-status --doctor --json` | Check whether the shared update notice exists, is fresh, includes every registered Agent, and shows runtime attention |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.6.85` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.6.86` | Show the same registry/update status without contacting the network |
 | `vault agent doctor --json` | Run the same shared update-distribution health check through the Agent registry namespace |
 
 `vault install-agent` is an alias for `vault setup-agent`.
@@ -82,6 +82,9 @@ Use `vault agent doctor` after upgrades to verify the shared notice is fresh and
 all registered runtimes appear in the update notice.
 MCP-capable runtimes can call `vault_update_status` and
 `vault_automation_handoff` from the `core` profile for the same startup path.
+They can also call `vault_update_status` with `doctor=true` and their
+`agent_id` for the same update-distribution health check without adding another
+MCP tool.
 The default memory layout is `hybrid`: setup creates the shared project vault
 plus a private Agent vault under `~/Vaults/agents/<agent>/private-memory`, then
 writes `agent-install/hybrid-vault-layout.json`.

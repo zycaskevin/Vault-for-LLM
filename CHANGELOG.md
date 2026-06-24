@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.86] - 2026-06-24
+
+### Added
+
+- MCP `vault_update_status` now supports `doctor=true` and `max_status_age_minutes`, giving MCP-only agents the same update-distribution health check as `vault agent doctor`.
+- `setup-agent` generated update-status and adapter contracts now include MCP doctor calls, so Codex, Claude Code, OpenClaw, Hermes Agent, and other MCP runtimes can validate shared update notices without shell access.
+- Added a multi-Agent shared-vault MCP smoke test covering Codex, Claude Code, OpenClaw, and Hermes-style runtime ids.
+
 ## [0.6.85] - 2026-06-24
 
 ### Added

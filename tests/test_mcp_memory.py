@@ -29,6 +29,9 @@ def test_mcp_memory_tools_are_advertised():
     assert "Prefer vault_memory_propose" in add_tool["description"]
     search_tool = next(tool for tool in TOOLS if tool["name"] == "vault_search")
     assert "semantic" in search_tool["inputSchema"]["properties"]["mode"]["enum"]
+    update_tool = next(tool for tool in TOOLS if tool["name"] == "vault_update_status")
+    assert "doctor" in update_tool["inputSchema"]["properties"]
+    assert "max_status_age_minutes" in update_tool["inputSchema"]["properties"]
 
 
 def test_mcp_tool_profiles_reduce_visible_tool_schemas():
@@ -150,6 +153,53 @@ def test_mcp_update_status_reports_agent_registry(tmp_path, monkeypatch):
     )
     assert conflict_payload["ok"] is False
     assert "cannot be combined" in conflict_payload["error"]
+
+
+def test_mcp_update_status_doctor_handles_multi_agent_shared_vault(tmp_path, monkeypatch):
+    from vault.agent_registry import register_agent
+
+    monkeypatch.setenv("VAULT_AGENT_REGISTRY_DIR", str(tmp_path / "registry"))
+    project = tmp_path / "shared-project"
+    project.mkdir()
+    for agent_id in ["codex", "claude-code", "openclaw", "hermes"]:
+        register_agent(
+            agent=agent_id,
+            project_dir=project,
+            scope="shared",
+            features=["core", "mcp"],
+            memory_layout="shared",
+        )
+
+    write_payload = _payload(handle_tool_call("vault_update_status", {"write_status": True}))
+    assert write_payload["agent_count"] == 4
+
+    doctor_payload = _payload(
+        handle_tool_call(
+            "vault_update_status",
+            {
+                "doctor": True,
+                "agent_id": "openclaw",
+            },
+        )
+    )
+    assert doctor_payload["ok"] is True
+    assert doctor_payload["status_exists"] is True
+    assert doctor_payload["status_current_runtime_mismatch"] is False
+    assert doctor_payload["agent_count"] == 4
+    assert doctor_payload["agents_missing_from_status"] == []
+    assert doctor_payload["agents_needing_attention"] == []
+    assert doctor_payload["startup_agent_id"] == "openclaw"
+    assert doctor_payload["startup_agent_registered"] is True
+    assert doctor_payload["current_agent_needs_attention"] is False
+    assert any("handoff" in step for step in doctor_payload["startup_checklist"])
+
+    stored = json.loads((tmp_path / "registry" / "update-status.json").read_text(encoding="utf-8"))
+    stored["installed_version"] = "0.0.1"
+    (tmp_path / "registry" / "update-status.json").write_text(json.dumps(stored), encoding="utf-8")
+    stale_payload = _payload(handle_tool_call("vault_update_status", {"doctor": True}))
+    assert stale_payload["ok"] is False
+    assert stale_payload["status_current_runtime_mismatch"] is True
+    assert any("0.0.1" in action for action in stale_payload["recommended_actions"])
 
 
 def test_mcp_automation_handoff_reads_existing_compact_handoff(tmp_path):

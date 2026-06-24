@@ -51,6 +51,10 @@ Use runtime-specific adapters only for convenience. The durable contract is:
 `adapter-startup-contract.json`. These templates all use the same sequence:
 update-status -> automation handoff -> search/read only when needed -> propose
 candidate memory.
+When update freshness or multi-runtime rollout state is unclear, MCP-capable
+adapters call the existing `vault_update_status` tool with `doctor=true` and
+their `agent_id`; this keeps the startup profile small while matching
+`vault agent doctor`.
 
 ## Optional Feature Prompts
 
@@ -59,8 +63,8 @@ default small and local.
 
 | Feature | Default | Install when | Install command |
 |---|---|---|---|
-| `core` | yes | Always: Markdown, SQLite, keyword search, local CLI. | `python -m pip install vault-for-llm==0.6.85` |
-| `mcp` | yes for MCP-capable agents | The runtime can connect local stdio MCP tools. | `python -m pip install "vault-for-llm[mcp]==0.6.85"` |
+| `core` | yes | Always: Markdown, SQLite, keyword search, local CLI. | `python -m pip install vault-for-llm==0.6.86` |
+| `mcp` | yes for MCP-capable agents | The runtime can connect local stdio MCP tools. | `python -m pip install "vault-for-llm[mcp]==0.6.86"` |
 | `obsidian_import` | no | The user already has an Obsidian vault and wants those notes searchable through Vault. | built into core CLI |
 | `semantic` | no | The user wants embedding-backed semantic or hybrid search. | `python -m pip install "vault-for-llm[semantic]"` |
 | `supabase` | no | The user wants optional remote sync/read paths. | `python -m pip install "vault-for-llm[supabase]"` |

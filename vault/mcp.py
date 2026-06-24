@@ -1926,6 +1926,17 @@ TOOLS = [
                     "description": "Read existing ~/.vault-for-llm/update-status.json without recomputing. Defaults false.",
                     "default": False,
                 },
+                "doctor": {
+                    "type": "boolean",
+                    "description": "Check shared update-status health without adding a separate MCP tool. Defaults false.",
+                    "default": False,
+                },
+                "max_status_age_minutes": {
+                    "type": "integer",
+                    "description": "Freshness threshold for doctor mode. Defaults 1440 minutes.",
+                    "default": 1440,
+                    "minimum": 0,
+                },
                 "agent_id": {
                     "type": "string",
                     "description": "Optional Agent/runtime id for a focused startup checklist.",
@@ -2624,7 +2635,13 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
             return {"result": json.dumps(stats, ensure_ascii=False, indent=2)}
 
         elif name == "vault_update_status":
-            from vault.agent_registry import build_update_status, focus_update_status_for_agent, read_update_status, write_update_status
+            from vault.agent_registry import (
+                build_update_distribution_health,
+                build_update_status,
+                focus_update_status_for_agent,
+                read_update_status,
+                write_update_status,
+            )
 
             if bool(arguments.get("read_status", False)) and bool(arguments.get("write_status", False)):
                 payload = {
@@ -2633,16 +2650,31 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 }
                 return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
             agent_id = str(arguments.get("agent_id") or "")
-            if bool(arguments.get("read_status", False)):
+            if bool(arguments.get("doctor", False)):
+                payload = build_update_distribution_health(
+                    max_age_minutes=_clamp_int(
+                        arguments.get("max_status_age_minutes"),
+                        default=24 * 60,
+                        minimum=0,
+                        maximum=7 * 24 * 60,
+                    )
+                )
+                if agent_id:
+                    payload = focus_update_status_for_agent(payload, agent_id)
+            elif bool(arguments.get("read_status", False)):
                 payload = read_update_status(agent_id=agent_id)
             else:
                 payload = build_update_status(
                     latest_version=str(arguments.get("latest_version") or ""),
                     check_pypi=bool(arguments.get("check_pypi", False)),
                 )
-            if bool(arguments.get("write_status", False)) and not bool(arguments.get("read_status", False)):
+            if (
+                bool(arguments.get("write_status", False))
+                and not bool(arguments.get("read_status", False))
+                and not bool(arguments.get("doctor", False))
+            ):
                 payload["status_path"] = str(write_update_status(payload))
-            if agent_id and not bool(arguments.get("read_status", False)):
+            if agent_id and not bool(arguments.get("read_status", False)) and not bool(arguments.get("doctor", False)):
                 payload = focus_update_status_for_agent(payload, agent_id)
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 

@@ -120,7 +120,9 @@ agents, shared/private vault paths, and suggested startup handoff commands.
   "check_pypi": false,
   "read_status": false,
   "agent_id": "",
-  "write_status": false
+  "write_status": false,
+  "doctor": false,
+  "max_status_age_minutes": 1440
 }
 ```
 
@@ -130,6 +132,21 @@ runtime may already have written `~/.vault-for-llm/update-status.json`. Keep
 `write_status=false` unless a durable local status file is needed. Pass
 `agent_id` when the runtime wants `current_agent_notice` and `startup_checklist`
 for itself.
+
+Use `doctor=true` when the runtime needs the same update-distribution health
+check as `vault agent doctor` but only has MCP access. Doctor mode checks whether
+the shared status file exists, is fresh, matches the current runtime version,
+includes every registered Agent, and names runtimes that may need attention.
+This intentionally extends `vault_update_status` instead of adding another MCP
+tool, keeping the core profile small.
+
+```json
+{
+  "doctor": true,
+  "agent_id": "codex",
+  "max_status_age_minutes": 1440
+}
+```
 
 ### `vault_automation_handoff`
 

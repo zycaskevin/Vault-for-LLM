@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.6.91] - 2026-06-24
+
+### Added
+
+- Added `vault setup-agent --automation-auto-promote-low-risk`, an explicit installer switch that writes `automation_policy.yaml` with low-risk candidate auto-promotion enabled.
+- Interactive `vault setup-agent` now asks whether scheduled memory automation should enable the low-risk `session_capture` / `session_lesson` auto-promote policy.
+- Generated memory automation README files now show whether low-risk auto-promote policy is enabled and remind agents that it still requires `automation_policy.yaml` plus `--apply`.
+
+### Changed
+
+- Agent setup now surfaces the candidate-to-active-memory closed loop during installation instead of requiring users to hand-edit policy YAML.
+
 ## [0.6.90] - 2026-06-24
 
 ### Added

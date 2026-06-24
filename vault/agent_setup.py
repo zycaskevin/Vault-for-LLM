@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from vault import __version__
 from vault.agent_registry import register_agent
 from vault.db import VaultDB
@@ -1003,6 +1005,7 @@ def write_automation_schedule_templates(
     transcript_limit: int = 5,
     capture_transcripts: bool = False,
     capture_transcript_limit: int = 3,
+    auto_promote_low_risk: bool = False,
 ) -> dict[str, str]:
     out = Path(output_dir).expanduser().resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -1129,6 +1132,8 @@ def write_automation_schedule_templates(
                 "- transcript discovery is metadata-only and does not read transcript contents",
                 f"- auto-capture transcript candidates: `{str(bool(capture_transcripts)).lower()}`",
                 "- transcript capture reads selected transcript contents and writes candidates only; it never promotes active memory",
+                f"- low-risk auto-promote policy: `{str(bool(auto_promote_low_risk)).lower()}`",
+                "- low-risk auto-promote requires `automation_policy.yaml` plus `--apply`; private, sensitive, duplicate, weak, or sourceless candidates stay in review",
                 "",
                 "Review `automation_policy.yaml` before enabling a scheduled job.",
                 "Keep the Python virtualenv and project directory in stable paths, not `/tmp`.",
@@ -1139,6 +1144,64 @@ def write_automation_schedule_templates(
     )
     written["readme"] = str(readme)
     return written
+
+
+def write_automation_policy_template(
+    *,
+    project_dir: str | Path,
+    mode: str = "balanced",
+    auto_promote_low_risk: bool = False,
+) -> dict[str, Any]:
+    from vault.automation import POLICY_FILE, default_policy
+
+    project = Path(project_dir).expanduser().resolve()
+    path = project / POLICY_FILE
+    existed = path.exists()
+    if existed:
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if not isinstance(loaded, dict):
+            raise ValueError(f"{POLICY_FILE} must contain a YAML object")
+        policy = default_policy(str(loaded.get("mode") or mode))
+        policy = _deep_merge_dict(policy, loaded)
+    else:
+        policy = default_policy(mode)
+
+    policy["mode"] = _normalize_automation_mode(str(policy.get("mode") or mode))
+    if auto_promote_low_risk:
+        policy["auto_promote_low_risk_candidates"] = True
+        policy.setdefault("auto_promote_allowed_sources", ["session_capture"])
+        policy.setdefault("auto_promote_allowed_memory_types", ["session_lesson"])
+        policy.setdefault("auto_promote_allowed_scopes", ["project", "shared", "public"])
+        policy.setdefault("auto_promote_allowed_sensitivities", ["low"])
+        policy.setdefault("auto_promote_min_trust", 0.65)
+        policy.setdefault("auto_promote_max_per_run", 3)
+        policy.setdefault("auto_promote_requires_source_ref", True)
+
+    backup_path = ""
+    if existed:
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        backup = path.with_name(f"{path.name}.{stamp}.bak")
+        backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        backup_path = str(backup)
+    path.write_text(yaml.safe_dump(policy, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    return {
+        "path": str(path),
+        "backup_path": backup_path,
+        "status": "updated" if existed else "created",
+        "mode": policy["mode"],
+        "auto_promote_low_risk_candidates": bool(policy.get("auto_promote_low_risk_candidates", False)),
+        "next_action": "Review automation_policy.yaml before enabling scheduled --apply runs.",
+    }
+
+
+def _deep_merge_dict(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge_dict(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
 
 
 def _normalize_remote_reader_targets(raw: str | list[str] | None) -> set[str]:
@@ -3157,6 +3220,7 @@ class AgentSetupConfig:
     automation_transcript_limit: int = 5
     automation_capture_transcripts: bool = False
     automation_capture_transcript_limit: int = 3
+    automation_auto_promote_low_risk: bool = False
     template_dir: Path | None = None
     allow_private: bool = False
     stable_venv_path: Path | None = None
@@ -3211,6 +3275,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         "agent_roster": {},
         "live_validation_pack": {},
         "memory_agents": {},
+        "automation_policy": {},
         "automation_schedule_templates": {},
         "local_smoke": {},
         "stable_venv": {},
@@ -3389,6 +3454,15 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
             result["next_steps"].append(f"Run live validation checklist: {result['live_validation_pack']['readme']}")
 
     automation_targets = _normalize_sync_targets(config.automation_schedule_targets)
+    if config.automation_auto_promote_low_risk:
+        result["automation_policy"] = write_automation_policy_template(
+            project_dir=project_path,
+            mode=config.automation_mode,
+            auto_promote_low_risk=True,
+        )
+        result["next_steps"].append(
+            f"Review low-risk auto-promote policy: {result['automation_policy']['path']}"
+        )
     if automation_targets:
         result["automation_schedule_templates"] = write_automation_schedule_templates(
             output_dir=template_dir,
@@ -3404,6 +3478,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
             transcript_limit=config.automation_transcript_limit,
             capture_transcripts=config.automation_capture_transcripts,
             capture_transcript_limit=config.automation_capture_transcript_limit,
+            auto_promote_low_risk=config.automation_auto_promote_low_risk,
         )
         result["next_steps"].append(
             f"Review memory automation schedule: {result['automation_schedule_templates']['readme']}"
@@ -3411,6 +3486,10 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         result["next_steps"].append(
             f"Next agent startup handoff: vault automation handoff --project-dir {project_path}"
         )
+        if config.automation_auto_promote_low_risk and not config.automation_apply:
+            result["next_steps"].append(
+                "Low-risk auto-promote policy is enabled, but generated schedules omit --apply; scheduled runs will preview only until --automation-apply is enabled."
+            )
 
     return result
 
@@ -3800,6 +3879,16 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
             False,
         )
     automation_capture_transcript_limit = int(argv_config.get("automation_capture_transcript_limit") or 3)
+    automation_auto_promote_low_risk = bool(argv_config.get("automation_auto_promote_low_risk", False))
+    if (
+        automation_schedule_targets
+        and automation_schedule_targets != "none"
+        and "automation_auto_promote_low_risk" not in argv_config
+    ):
+        automation_auto_promote_low_risk = _ask_yes_no(
+            "Enable low-risk auto-promote policy for session_capture/session_lesson candidates?",
+            False,
+        )
 
     stable_venv_path = argv_config.get("stable_venv_path")
     if not stable_venv_path and argv_config.get("write_stable_venv_script"):
@@ -3847,6 +3936,7 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
         automation_transcript_limit=automation_transcript_limit,
         automation_capture_transcripts=automation_capture_transcripts,
         automation_capture_transcript_limit=automation_capture_transcript_limit,
+        automation_auto_promote_low_risk=automation_auto_promote_low_risk,
         template_dir=Path(argv_config["template_dir"]) if argv_config.get("template_dir") else None,
         allow_private=bool(argv_config.get("allow_private", False)),
         stable_venv_path=Path(stable_venv_path).expanduser() if stable_venv_path else None,

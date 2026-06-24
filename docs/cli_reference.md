@@ -57,6 +57,7 @@ changed notes without duplicating unchanged ones.
 | `vault setup-agent --non-interactive --agent profile-agent --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase,memory_agents --agent-roster profile-agent:profile,work-agent:work,remote-agent:remote,n8n:automation --validation-pack all --json` | Generate a multi-agent access matrix plus live Supabase/n8n/Coze validation checklists |
 | `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase --write-stable-venv-script --json` | Generate `agent-install/setup-stable-venv.sh` for reboot-safe scheduled jobs and MCP commands |
 | `vault setup-agent --non-interactive --agent automation-agent --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,memory_agents --automation-schedule all --automation-mode balanced --automation-write-workspace --automation-include-transcripts --json` | Generate cron, LaunchAgent, and n8n templates for report-first memory automation plus cycle workspace and metadata-only uncaptured transcript hints |
+| `vault setup-agent --non-interactive --agent automation-agent --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,memory_agents --automation-schedule cron --automation-apply --automation-auto-promote-low-risk --json` | Write `automation_policy.yaml` for low-risk session-capture auto-promotion and generate a scheduled cycle that can apply it |
 | `vault setup-agent --obsidian-vault ~/Documents/ObsidianVault --import-obsidian --obsidian-sync all` | Run first Obsidian import and write cron, LaunchAgent, and n8n templates |
 | `vault update-status` | Show installed Vault version, local Agent registry, project vaults, per-Agent update notices, and startup handoff commands |
 | `vault update-status --check-pypi --write-status --json` | Check PyPI for the latest release and write the machine-level update notice to `~/.vault-for-llm/update-status.json` |
@@ -65,7 +66,7 @@ changed notes without duplicating unchanged ones.
 | `vault update-status --doctor --json` | Check whether the shared update notice exists, is fresh, includes every registered Agent, and shows runtime attention |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.6.90` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.6.91` | Show the same registry/update status without contacting the network |
 | `vault agent doctor --json` | Run the same shared update-distribution health check through the Agent registry namespace |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md` | Preview applying the generated Codex startup template into a runtime instruction file |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md --apply` | Apply the marked startup block and create a backup before changing an existing file |
@@ -120,6 +121,9 @@ Add `--automation-write-workspace` when those scheduled cycle jobs should write
 as the next-agent workbench.
 Add `--automation-include-transcripts` when those scheduled jobs should write
 metadata-only uncaptured transcript hints into the inbox handoff.
+Add `--automation-auto-promote-low-risk` when setup should write the narrow
+low-risk auto-promote policy; pair it with `--automation-apply` for scheduled
+promotion, otherwise scheduled runs preview only.
 Manual interactive setup asks for `en`, `zh-Hant`, or `zh-CN`; non-interactive
 agent installs can pass `--language`. Supabase setup guide generation is opt-in
 with `--supabase-setup none|simple|advanced`; keep `simple` as the default path

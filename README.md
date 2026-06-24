@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.90.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.91.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,7 +83,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.90"
+pip install "vault-for-llm[mcp]==0.6.91"
 
 vault setup-agent
 ```
@@ -130,6 +130,7 @@ vault setup-agent \
   --automation-schedule cron \
   --automation-write-workspace \
   --automation-include-transcripts \
+  --automation-auto-promote-low-risk \
   --json
 ```
 
@@ -139,7 +140,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.90"
+pip install "vault-for-llm[mcp]==0.6.91"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -267,7 +268,17 @@ candidates by default or hard-delete memory. Use `conservative` mode when
 scheduled jobs should only write reports.
 
 If you want the first real closed loop from candidate to formal memory, enable
-it deliberately in `automation_policy.yaml`:
+it deliberately during agent install:
+
+```bash
+vault setup-agent \
+  --automation-schedule cron \
+  --automation-apply \
+  --automation-auto-promote-low-risk
+```
+
+That installer option writes `automation_policy.yaml` for you. The policy is
+equivalent to:
 
 ```yaml
 auto_promote_low_risk_candidates: true
@@ -351,6 +362,10 @@ as the read-only startup command for the next agent.
 Add `--automation-include-transcripts` only when the scheduled handoff should
 also list uncaptured transcript exports. That list is metadata-only and keeps
 transcript contents out of the generated handoff.
+Add `--automation-auto-promote-low-risk` only when the user wants setup-agent to
+write the low-risk auto-promote policy. Pair it with `--automation-apply` when
+the scheduled cycle should actually promote eligible candidates; without
+`--apply`, scheduled jobs preview only.
 
 Automation details: [docs/automation.md](docs/automation.md).
 
@@ -389,7 +404,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.90"
+pip install "vault-for-llm[supabase]==0.6.91"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

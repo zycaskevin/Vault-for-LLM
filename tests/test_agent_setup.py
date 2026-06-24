@@ -263,6 +263,37 @@ def test_run_agent_setup_memory_automation_apply_is_explicit(tmp_path):
     assert "--apply" in cron
 
 
+def test_run_agent_setup_can_include_transcript_hints_in_scheduled_handoff(tmp_path):
+    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+
+    project = tmp_path / "agent-project"
+    result = run_agent_setup(
+        AgentSetupConfig(
+            project_dir=project,
+            scope="shared",
+            agent="automation-agent",
+            features=["core", "mcp", "memory_agents"],
+            automation_schedule_targets="all",
+            automation_interval_minutes=1440,
+            automation_include_transcripts=True,
+            automation_transcript_limit=7,
+            template_dir=tmp_path / "templates",
+        )
+    )
+
+    cron = Path(result["automation_schedule_templates"]["cron"]).read_text(encoding="utf-8")
+    plist = Path(result["automation_schedule_templates"]["launchagent"]).read_text(encoding="utf-8")
+    workflow = json.loads(Path(result["automation_schedule_templates"]["n8n"]).read_text(encoding="utf-8"))
+    readme = Path(result["automation_schedule_templates"]["readme"]).read_text(encoding="utf-8")
+
+    assert "--include-transcripts --transcript-limit 7" in cron
+    assert "--include-transcripts --transcript-limit 7" in plist
+    assert "--include-transcripts --transcript-limit 7" in workflow["nodes"][1]["parameters"]["command"]
+    assert "--include-transcripts --transcript-limit 7" in readme
+    assert "uncaptured transcript hints in scheduled handoff: `true`" in readme
+    assert "metadata-only and does not read transcript contents" in readme
+
+
 def test_run_agent_setup_writes_agent_roster_and_validation_pack(tmp_path):
     from vault.agent_setup import AgentSetupConfig, run_agent_setup
 
@@ -431,6 +462,8 @@ def test_setup_agent_help_exposes_supabase_sync_options(capsys):
     assert "--automation-mode" in captured.out
     assert "--automation-command" in captured.out
     assert "--automation-apply" in captured.out
+    assert "--automation-include-transcripts" in captured.out
+    assert "--automation-transcript-limit" in captured.out
 
 
 def test_cli_version_flag(capsys):
@@ -442,7 +475,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.69" in captured.out
+    assert "vault-for-llm 0.6.70" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -610,7 +643,7 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.6.69" in body
+    assert "vault-for-llm[mcp,supabase]==0.6.70" in body
     assert "headroom-ai" in body
     assert "--agent-project-dir" in body
     assert str(project) in body
@@ -672,6 +705,7 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
             "balanced",  # memory automation mode
             "",  # default memory automation command: cycle
             "no",  # no scheduled apply
+            "yes",  # include metadata-only transcript hints in scheduled handoff
         ]
     )
     prompts: list[str] = []
@@ -703,6 +737,7 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
     assert any("Memory automation mode" in prompt for prompt in prompts)
     assert any("Memory automation command" in prompt for prompt in prompts)
     assert any("reversible archival" in prompt for prompt in prompts)
+    assert any("uncaptured transcript hints" in prompt for prompt in prompts)
     assert config.remote_reader_targets == "n8n"
     assert config.agent_roster == "profile-agent:profile,remote-agent:remote"
     assert config.validation_pack_targets == "all"
@@ -710,6 +745,8 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
     assert config.automation_mode == "balanced"
     assert config.automation_command == "cycle"
     assert config.automation_apply is False
+    assert config.automation_include_transcripts is True
+    assert config.automation_transcript_limit == 5
 
 
 def test_interactive_setup_does_not_ask_optional_deps_for_core_mcp_only(tmp_path, monkeypatch):

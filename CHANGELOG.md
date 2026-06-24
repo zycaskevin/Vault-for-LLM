@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.70] - 2026-06-24
+
+### Added
+
+- Added `--automation-include-transcripts` and `--automation-transcript-limit` to `vault setup-agent` / `vault install-agent`, so generated cron, LaunchAgent, and n8n automation schedules can opt into metadata-only uncaptured transcript hints.
+- Generated memory automation README templates now document whether scheduled handoffs include transcript hints and reiterate that discovery does not read transcript contents.
+- Interactive agent setup now asks whether scheduled inbox handoffs should include uncaptured transcript hints only after the user opts into memory automation schedules.
+
 ## [0.6.69] - 2026-06-24
 
 ### Added

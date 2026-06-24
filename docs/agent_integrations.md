@@ -56,6 +56,9 @@ read that shared health preface first, then the selected cycle/inbox `content`.
 The same install pack writes `README-runtime-update-playbook.md` and
 `runtime-update-playbook.json` so every runtime can follow the same startup,
 post-upgrade, and stale-notice behavior.
+Run `vault agent startup-doctor --template-dir <project>/agent-install --json`
+when you need to verify whether an older install pack is missing the current
+fleet-aware handoff contract.
 Use `vault agent install-runtime-template --runtime <name> --target <file>` to
 preview a safe marked-block install into `AGENTS.md`, `CLAUDE.md`, or another
 runtime instruction file; add `--apply` only after the preview looks right.

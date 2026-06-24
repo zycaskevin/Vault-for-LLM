@@ -2226,7 +2226,7 @@ def write_agent_adapter_startup_templates(
                 f"2. If missing, compute local status without a live PyPI check: `{shell_join(fallback_status_command)}`.",
                 "3. If the notice is stale, missing Agents, or upgrade state is unclear, run MCP doctor: `vault_update_status` with `doctor=true` and this runtime's `agent_id`.",
                 f"4. Read the compact handoff: `{shell_join(handoff_command)}`.",
-                "   If it includes fleet health, read that shared health preface before the individual handoff.",
+                "   If it includes `fleet_health_content`, read that shared health preface before the individual `content` handoff.",
                 "5. Search/read only when the task needs deeper context.",
                 "",
                 "After one runtime upgrades Vault:",
@@ -2480,6 +2480,223 @@ def install_runtime_template(
             if apply
             else "Re-run with --apply to write the marked startup block."
         ),
+    }
+
+
+EXPECTED_HANDOFF_READ_ORDER = ["fleet_health_content", "content"]
+STARTUP_DOCTOR_JSON_FILES = {
+    "mcp_startup": "mcp-startup.json",
+    "adapter_contract": "adapter-startup-contract.json",
+    "runtime_playbook": "runtime-update-playbook.json",
+}
+STARTUP_DOCTOR_TEMPLATE_FILES = {
+    "codex": "codex-startup.md",
+    "claude_code": "claude-code-startup.md",
+    "openclaw": "openclaw-startup.md",
+    "hermes": "hermes-startup.md",
+}
+STARTUP_DOCTOR_README_FILES = {
+    "mcp_readme": "README-mcp-startup.md",
+    "adapter_readme": "README-agent-adapters.md",
+    "runtime_playbook_readme": "README-runtime-update-playbook.md",
+}
+
+
+def _startup_doctor_check(checks: list[dict[str, Any]], *, name: str, status: str, path: Path, detail: str) -> None:
+    checks.append(
+        {
+            "name": name,
+            "status": status,
+            "path": str(path),
+            "detail": detail,
+        }
+    )
+
+
+def _startup_doctor_json(path: Path, checks: list[dict[str, Any]], *, name: str) -> dict[str, Any]:
+    if not path.exists():
+        _startup_doctor_check(checks, name=name, status="fail", path=path, detail="missing required file")
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        _startup_doctor_check(checks, name=name, status="fail", path=path, detail=f"invalid JSON: {exc}")
+        return {}
+    if not isinstance(payload, dict):
+        _startup_doctor_check(checks, name=name, status="fail", path=path, detail="JSON root must be an object")
+        return {}
+    _startup_doctor_check(checks, name=name, status="pass", path=path, detail="file exists and is valid JSON")
+    return payload
+
+
+def _has_handoff_read_order(value: object) -> bool:
+    return list(value or []) == EXPECTED_HANDOFF_READ_ORDER
+
+
+def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
+    """Check whether setup-agent startup files use the current fleet-aware contract."""
+    root = Path(template_dir).expanduser().resolve()
+    checks: list[dict[str, Any]] = []
+
+    mcp_path = root / STARTUP_DOCTOR_JSON_FILES["mcp_startup"]
+    adapter_path = root / STARTUP_DOCTOR_JSON_FILES["adapter_contract"]
+    playbook_path = root / STARTUP_DOCTOR_JSON_FILES["runtime_playbook"]
+    mcp = _startup_doctor_json(mcp_path, checks, name="mcp_startup_json")
+    adapter = _startup_doctor_json(adapter_path, checks, name="adapter_startup_contract_json")
+    playbook = _startup_doctor_json(playbook_path, checks, name="runtime_update_playbook_json")
+
+    sequence = mcp.get("startup_sequence") if isinstance(mcp.get("startup_sequence"), list) else []
+    tools = [step.get("tool") for step in sequence[:2] if isinstance(step, dict)]
+    _startup_doctor_check(
+        checks,
+        name="mcp_startup_order",
+        status="pass" if tools == ["vault_update_status", "vault_automation_handoff"] else "fail",
+        path=mcp_path,
+        detail=(
+            "starts with update-status then automation handoff"
+            if tools == ["vault_update_status", "vault_automation_handoff"]
+            else "expected first two tools to be vault_update_status then vault_automation_handoff"
+        ),
+    )
+    mcp_handoff = sequence[1] if len(sequence) > 1 and isinstance(sequence[1], dict) else {}
+    mcp_read_order = (mcp_handoff.get("result_contract") or {}).get("read_first") if isinstance(mcp_handoff, dict) else []
+    _startup_doctor_check(
+        checks,
+        name="mcp_handoff_result_contract",
+        status="pass" if _has_handoff_read_order(mcp_read_order) else "fail",
+        path=mcp_path,
+        detail=(
+            "handoff result_contract reads fleet_health_content before content"
+            if _has_handoff_read_order(mcp_read_order)
+            else "missing fleet-aware handoff result_contract read order"
+        ),
+    )
+
+    adapter_order = (adapter.get("handoff_contract") or {}).get("read_order")
+    _startup_doctor_check(
+        checks,
+        name="adapter_handoff_contract",
+        status="pass" if _has_handoff_read_order(adapter_order) else "fail",
+        path=adapter_path,
+        detail=(
+            "adapter contract is fleet-aware"
+            if _has_handoff_read_order(adapter_order)
+            else "missing handoff_contract.read_order fleet_health_content -> content"
+        ),
+    )
+    adapter_sequence = adapter.get("startup_sequence") if isinstance(adapter.get("startup_sequence"), list) else []
+    adapter_handoff = next(
+        (step for step in adapter_sequence if isinstance(step, dict) and step.get("name") == "read_automation_handoff"),
+        {},
+    )
+    adapter_result = adapter_handoff.get("result_contract") if isinstance(adapter_handoff, dict) else {}
+    adapter_result_order = (adapter_result or {}).get("read_first") if isinstance(adapter_result, dict) else []
+    adapter_do_not_replace = bool((adapter_result or {}).get("do_not_replace_content")) if isinstance(adapter_result, dict) else False
+    adapter_result_ok = _has_handoff_read_order(adapter_result_order) and adapter_do_not_replace
+    _startup_doctor_check(
+        checks,
+        name="adapter_handoff_step_result_contract",
+        status="pass" if adapter_result_ok else "fail",
+        path=adapter_path,
+        detail=(
+            "adapter handoff step preserves selected content and reads fleet health first"
+            if adapter_result_ok
+            else "read_automation_handoff step is missing fleet-aware result_contract"
+        ),
+    )
+
+    playbook_order = ((playbook.get("mcp") or {}).get("handoff") or {}).get("read_order")
+    playbook_safety = bool((playbook.get("safety") or {}).get("fleet_health_preface_read_only"))
+    playbook_ok = _has_handoff_read_order(playbook_order) and playbook_safety
+    _startup_doctor_check(
+        checks,
+        name="runtime_playbook_handoff_contract",
+        status="pass" if playbook_ok else "fail",
+        path=playbook_path,
+        detail=(
+            "runtime playbook reads fleet health first and marks it read-only"
+            if playbook_ok
+            else "runtime playbook is missing fleet-aware handoff read order or read-only safety flag"
+        ),
+    )
+
+    for name, filename in STARTUP_DOCTOR_TEMPLATE_FILES.items():
+        path = root / filename
+        if not path.exists():
+            _startup_doctor_check(checks, name=f"{name}_startup_template", status="fail", path=path, detail="missing runtime template")
+            continue
+        text = path.read_text(encoding="utf-8")
+        ok = "fleet_health_content" in text and "vault_automation_handoff" in text
+        _startup_doctor_check(
+            checks,
+            name=f"{name}_startup_template",
+            status="pass" if ok else "fail",
+            path=path,
+            detail=(
+                "runtime template names the fleet-aware handoff contract"
+                if ok
+                else "runtime template is missing fleet_health_content startup guidance"
+            ),
+        )
+
+    for name, filename in STARTUP_DOCTOR_README_FILES.items():
+        path = root / filename
+        if not path.exists():
+            _startup_doctor_check(checks, name=name, status="warn", path=path, detail="missing generated README")
+            continue
+        text = path.read_text(encoding="utf-8")
+        ok = "fleet_health_content" in text
+        _startup_doctor_check(
+            checks,
+            name=name,
+            status="pass" if ok else "warn",
+            path=path,
+            detail=(
+                "README documents fleet-aware startup handoff"
+                if ok
+                else "README does not mention fleet_health_content; regenerate setup files for clearer guidance"
+            ),
+        )
+
+    fail_count = sum(1 for check in checks if check["status"] == "fail")
+    warn_count = sum(1 for check in checks if check["status"] == "warn")
+    status = "fail" if fail_count else "warn" if warn_count else "pass"
+    recommended_actions: list[str] = []
+    if fail_count:
+        recommended_actions.append(
+            "Re-run `vault setup-agent` for this project, then re-apply runtime templates where needed."
+        )
+    if warn_count:
+        recommended_actions.append("Review generated README files; regenerate the install pack if startup guidance is stale.")
+    if not recommended_actions:
+        recommended_actions.append("No startup contract action needed.")
+    return {
+        "ok": fail_count == 0,
+        "action": "startup-doctor",
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "template_dir": str(root),
+        "status": status,
+        "summary": {
+            "check_count": len(checks),
+            "pass": sum(1 for check in checks if check["status"] == "pass"),
+            "warn": warn_count,
+            "fail": fail_count,
+        },
+        "checks": checks,
+        "missing_files": [check["path"] for check in checks if "missing" in check["detail"].lower()],
+        "outdated_files": [
+            check["path"]
+            for check in checks
+            if check["status"] in {"fail", "warn"} and "missing" not in check["detail"].lower()
+        ],
+        "recommended_actions": recommended_actions,
+        "next_action": recommended_actions[0],
+        "safety": {
+            "read_only": True,
+            "does_not_touch_runtime_files": True,
+            "does_not_read_private_memory": True,
+            "does_not_promote_memory": True,
+        },
     }
 
 

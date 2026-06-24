@@ -3404,7 +3404,32 @@ def cmd_agent(args):
         print(f"  next: {payload['next_step']}")
         return
 
-    raise SystemExit("agent subcommand required: register, list, status, doctor, or install-runtime-template")
+    if action == "startup-doctor":
+        from vault.agent_setup import startup_contract_doctor
+
+        template_dir = Path(args.template_dir).expanduser() if args.template_dir else (find_project_dir() / "agent-install")
+        payload = startup_contract_doctor(template_dir)
+        if args.json or args.pretty:
+            _json_print(payload, pretty=args.pretty)
+            return
+        print("Agent startup contract doctor")
+        print(f"  status: {payload['status']}")
+        print(f"  template_dir: {payload['template_dir']}")
+        summary = payload.get("summary", {})
+        print(
+            "  checks: pass={pass_count} warn={warn_count} fail={fail_count}".format(
+                pass_count=summary.get("pass", 0),
+                warn_count=summary.get("warn", 0),
+                fail_count=summary.get("fail", 0),
+            )
+        )
+        for check in payload.get("checks", []):
+            if check.get("status") != "pass":
+                print(f"  - {check.get('status')}: {check.get('name')} ({check.get('detail')})")
+        print(f"  next: {payload.get('next_action')}")
+        return
+
+    raise SystemExit("agent subcommand required: register, list, status, doctor, startup-doctor, or install-runtime-template")
 
 
 def cmd_update_status(args):
@@ -3781,6 +3806,11 @@ def main(argv: list[str] | None = None):
     ap.add_argument("--template-dir", help="setup-agent 產生的 agent-install 目錄；預設 project/agent-install")
     ap.add_argument("--apply", action="store_true", help="實際寫入；預設只做 dry-run preview")
     ap.add_argument("--no-backup", action="store_true", help="寫入既有檔案時不要產生 .bak 備份")
+    ap.add_argument("--json", action="store_true", help="輸出 JSON")
+    ap.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    ap = agent_sub.add_parser("startup-doctor", help="檢查 setup-agent 產生的啟動契約是否為最新版")
+    ap.add_argument("--template-dir", help="setup-agent 產生的 agent-install 目錄；預設 project/agent-install")
     ap.add_argument("--json", action="store_true", help="輸出 JSON")
     ap.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 

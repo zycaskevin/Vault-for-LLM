@@ -106,6 +106,9 @@ reuse the same update-status -> handoff -> search/read/propose startup flow.
 It also writes `agent-install/README-runtime-update-playbook.md` and
 `runtime-update-playbook.json`, a copyable cross-runtime rule for what to do at
 startup, after one runtime upgrades Vault, and when the shared notice is stale.
+Use `vault agent startup-doctor --template-dir <project>/agent-install --json`
+to verify that an existing install pack still has the current fleet-aware
+handoff contract.
 To safely paste one generated startup template into a runtime instruction file,
 preview first and then apply:
 

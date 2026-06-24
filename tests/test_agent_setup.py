@@ -288,7 +288,7 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert runtime_playbook["safety"]["auto_upgrade"] is False
     assert sorted(runtime_playbook["runtime_targets"]) == ["claude_code", "codex", "hermes", "openclaw"]
     assert "Runtime Update Playbook" in runtime_playbook_readme
-    assert "fleet health" in runtime_playbook_readme
+    assert "fleet_health_content" in runtime_playbook_readme
     assert "one shared project vault" in runtime_playbook_readme
     assert "not an auto-upgrader" in runtime_playbook_readme
     assert "README-runtime-update-playbook.md" in adapter_readme
@@ -701,6 +701,94 @@ def test_agent_install_runtime_template_is_dry_run_then_apply(tmp_path, capsys):
     assert "Old Vault Template" in Path(replaced["backup"]).read_text(encoding="utf-8")
 
 
+def test_agent_startup_doctor_passes_current_setup_pack(tmp_path, capsys):
+    from vault.cli import main
+
+    project = tmp_path / "agent-project"
+    main(
+        [
+            "setup-agent",
+            "--non-interactive",
+            "--agent",
+            "codex",
+            "--scope",
+            "shared",
+            "--agent-project-dir",
+            str(project),
+            "--features",
+            "core,mcp",
+            "--json",
+        ]
+    )
+    capsys.readouterr()
+
+    main(
+        [
+            "agent",
+            "startup-doctor",
+            "--template-dir",
+            str(project / "agent-install"),
+            "--json",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["status"] == "pass"
+    assert payload["summary"]["fail"] == 0
+    assert payload["safety"]["read_only"] is True
+    assert any(check["name"] == "mcp_handoff_result_contract" for check in payload["checks"])
+    assert any(check["name"] == "adapter_handoff_contract" for check in payload["checks"])
+
+
+def test_agent_startup_doctor_fails_old_handoff_contract(tmp_path, capsys):
+    from vault.cli import main
+
+    project = tmp_path / "agent-project"
+    main(
+        [
+            "setup-agent",
+            "--non-interactive",
+            "--agent",
+            "codex",
+            "--scope",
+            "shared",
+            "--agent-project-dir",
+            str(project),
+            "--features",
+            "core,mcp",
+            "--json",
+        ]
+    )
+    capsys.readouterr()
+    install_dir = project / "agent-install"
+    mcp_path = install_dir / "mcp-startup.json"
+    mcp_json = json.loads(mcp_path.read_text(encoding="utf-8"))
+    mcp_json["startup_sequence"][1].pop("result_contract", None)
+    mcp_path.write_text(json.dumps(mcp_json), encoding="utf-8")
+    codex_path = install_dir / "codex-startup.md"
+    codex_path.write_text(
+        codex_path.read_text(encoding="utf-8").replace("fleet_health_content", "old_handoff_field"),
+        encoding="utf-8",
+    )
+
+    main(
+        [
+            "agent",
+            "startup-doctor",
+            "--template-dir",
+            str(install_dir),
+            "--json",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["status"] == "fail"
+    assert payload["summary"]["fail"] >= 2
+    assert any(check["name"] == "mcp_handoff_result_contract" and check["status"] == "fail" for check in payload["checks"])
+    assert any(check["name"] == "codex_startup_template" and check["status"] == "fail" for check in payload["checks"])
+    assert any("setup-agent" in action for action in payload["recommended_actions"])
+
+
 def test_setup_agent_accepts_global_project_dir_for_missing_directory(tmp_path, capsys):
     from vault.cli import main
 
@@ -802,7 +890,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.106" in captured.out
+    assert "vault-for-llm 0.6.107" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -970,7 +1058,7 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.6.106" in body
+    assert "vault-for-llm[mcp,supabase]==0.6.107" in body
     assert "headroom-ai" in body
     assert "--agent-project-dir" in body
     assert str(project) in body

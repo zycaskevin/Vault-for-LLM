@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [0.6.95] - 2026-06-24
+
+### Added
+
+- Automation runs now include `cold_store_expired` previews and, when policy plus `--apply` allow it, summarize-then-cold-store expired-but-used memories.
+- Automation reports, activity feeds, brief summaries, dry-run diffs, and CLI output now show cold-store preview/applied/skipped counts.
+
+### Changed
+
+- Balanced and autonomous automation policies enable `cold_store_used_expired` by default, while conservative mode keeps it off.
+
 ## [0.6.94] - 2026-06-24
 
 ### Added

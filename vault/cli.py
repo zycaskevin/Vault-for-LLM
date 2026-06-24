@@ -2129,11 +2129,21 @@ def cmd_automation(args):
             f"skipped_policy={archive.get('skipped_protected_count', 0)} "
             f"dry_run={archive.get('dry_run')}"
         )
+        cold_store = payload.get("cold_store_expired", {})
+        print(
+            f"  cold-store expired: eligible={cold_store.get('eligible_count', 0)} "
+            f"applied={cold_store.get('applied_count', 0)} "
+            f"skipped_usage={cold_store.get('skipped_low_usage_count', 0)} "
+            f"skipped_policy={cold_store.get('skipped_protected_count', 0)} "
+            f"dry_run={cold_store.get('dry_run')}"
+        )
         diff = payload.get("dry_run_diff") or {}
         if diff:
             print(
                 f"  diff: would_archive={diff.get('would_archive_count', 0)} "
                 f"applied={diff.get('applied_count', 0)} "
+                f"would_cold_store={diff.get('would_cold_store_count', 0)} "
+                f"cold_stored={diff.get('cold_store_applied_count', 0)} "
                 f"policy_skips={diff.get('skipped_policy_count', 0)} "
                 f"hard_delete={diff.get('hard_delete')}"
             )
@@ -2258,10 +2268,17 @@ def cmd_automation(args):
                 f"skipped_used={item.get('skipped_used_count', 0)} "
                 f"skipped_policy={item.get('skipped_policy_count', 0)}"
             )
+            print(
+                f"  cold-store: eligible={item.get('cold_store_eligible_count', 0)} "
+                f"applied={item.get('cold_store_applied_count', 0)} "
+                f"skipped_policy={item.get('cold_store_skipped_protected_count', 0)}"
+            )
             diff = item.get("dry_run_diff") or {}
             print(
                 f"  diff: would_archive={diff.get('would_archive_count', 0)} "
                 f"applied={diff.get('applied_count', 0)} "
+                f"would_cold_store={diff.get('would_cold_store_count', 0)} "
+                f"cold_stored={diff.get('cold_store_applied_count', 0)} "
                 f"hard_delete={diff.get('hard_delete')} "
                 f"permission_changes={diff.get('permission_changes')}"
             )
@@ -2315,6 +2332,12 @@ def cmd_automation(args):
             f"applied={totals.get('archive_applied_count', 0)} "
             f"skipped={totals.get('archive_skipped_count', 0)}"
         )
+        print(
+            "  cold-store: "
+            f"preview={totals.get('cold_store_preview_count', 0)} "
+            f"applied={totals.get('cold_store_applied_count', 0)} "
+            f"skipped={totals.get('cold_store_skipped_count', 0)}"
+        )
         events = payload.get("events") or []
         if events:
             print("  events:")
@@ -2359,6 +2382,11 @@ def cmd_automation(args):
             f"archiveable={forgetting.get('archiveable_count', 0)} "
             f"used_expired={forgetting.get('used_expired_count', 0)} "
             f"protected={forgetting.get('protected_expired_count', 0)}"
+        )
+        print(
+            "  cold-store: "
+            f"preview={summary.get('cold_store_preview', 0)} "
+            f"applied={summary.get('cold_store_applied', 0)}"
         )
         print(f"  agent health: registered={agent_health.get('agent_count', 0)}")
         if payload.get("brief_path"):

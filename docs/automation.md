@@ -129,6 +129,11 @@ move to `status=archived`, and leave normal recall, but their original content
 stays in `vault.db` for audit or restore. Private, high/restricted, and L0/L1
 memories are skipped.
 
+`vault automation run` and `vault automation cycle` include the same cold-store
+lifecycle. The action remains policy-gated: balanced/autonomous policies enable
+`cold_store_used_expired`, conservative mode keeps it off, and no rows are
+changed unless the command is run with `--apply`.
+
 Show the shortest review inbox:
 
 ```bash
@@ -379,6 +384,8 @@ important review fields are:
 - `cold-store-expired`: explicit summarize-then-cold-store action for expired
   memories that are still used. It is dry-run-first, skips protected rows, and
   retains original content.
+- `cold_store_expired`: the same lifecycle result inside automation reports,
+  activity feeds, dry-run diffs, and brief summaries.
 - `usage_review`: operator-facing buckets such as archiveable expired rows,
   expired-but-used rows, protected expired rows, and top-used memories.
 - `human_review`: whether a person should inspect the run before stronger

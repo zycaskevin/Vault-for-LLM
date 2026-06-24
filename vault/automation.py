@@ -28,6 +28,7 @@ DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
     "conservative": {
         "mode": "conservative",
         "auto_archive_expired": False,
+        "cold_store_used_expired": False,
         "protect_used_expired": True,
         "protected_scopes": ["private"],
         "protected_sensitivities": ["high", "restricted"],
@@ -56,6 +57,7 @@ DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
     "balanced": {
         "mode": "balanced",
         "auto_archive_expired": True,
+        "cold_store_used_expired": True,
         "protect_used_expired": True,
         "protected_scopes": ["private"],
         "protected_sensitivities": ["high", "restricted"],
@@ -84,6 +86,7 @@ DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
     "autonomous": {
         "mode": "autonomous",
         "auto_archive_expired": True,
+        "cold_store_used_expired": True,
         "protect_used_expired": True,
         "protected_scopes": ["private"],
         "protected_sensitivities": ["high", "restricted"],
@@ -229,9 +232,25 @@ def automation_run(
             protected_scopes=_policy_list(policy, "protected_scopes"),
             protected_sensitivities=_policy_list(policy, "protected_sensitivities"),
         )
+        cold_store_allowed = bool(policy.get("cold_store_used_expired", False))
+        cold_store_apply = bool(apply and cold_store_allowed)
+        cold_store_result = db.cold_store_expired_knowledge(
+            limit=limit,
+            dry_run=not cold_store_apply,
+            min_usage=_policy_int(policy, "cold_store_min_usage", 1),
+            summary_max_chars=_policy_int(policy, "cold_store_summary_max_chars", 360),
+            protected_scopes=_policy_list(policy, "protected_scopes"),
+            protected_sensitivities=_policy_list(policy, "protected_sensitivities"),
+            protected_layers=_policy_list(policy, "cold_store_protected_layers") or ["L0", "L1"],
+            target_layer=str(policy.get("cold_store_target_layer") or "L3"),
+        )
         usage_review_before = _usage_review(policy, before_usage, archive_result)
         archive_ledger = _archive_action_ledger(archive_result, applied=archive_apply)
-        dry_run_diff = _dry_run_diff(archive_ledger, apply_requested=bool(apply), archive_allowed=archive_allowed)
+        cold_store_ledger = _cold_store_action_ledger(cold_store_result, applied=cold_store_apply)
+        action_ledger = [*archive_ledger, *cold_store_ledger]
+        dry_run_diff = _dry_run_diff(action_ledger, apply_requested=bool(apply), archive_allowed=archive_allowed)
+        dry_run_diff["would_cold_store_count"] = int(cold_store_result.get("eligible_count") or 0)
+        dry_run_diff["cold_store_applied_count"] = int(cold_store_result.get("applied_count") or 0)
         forgetting_results = (
             _write_forgetting_candidates(db, usage_review_before)
             if bool(apply and policy.get("forgetting_write_candidates", False))
@@ -270,6 +289,10 @@ def automation_run(
         "status": "completed",
         "policy": {
             "auto_archive_expired": archive_allowed,
+            "cold_store_used_expired": cold_store_allowed,
+            "cold_store_requires_apply": True,
+            "cold_store_min_usage": _policy_int(policy, "cold_store_min_usage", 1),
+            "cold_store_target_layer": str(policy.get("cold_store_target_layer") or "L3"),
             "protect_used_expired": bool(policy.get("protect_used_expired", True)),
             "protected_scopes": _policy_list(policy, "protected_scopes"),
             "protected_sensitivities": _policy_list(policy, "protected_sensitivities"),
@@ -293,7 +316,8 @@ def automation_run(
         "candidate_count_before": candidate_count_before,
         "candidate_count_after": candidate_count_after,
         "archive_expired": archive_result,
-        "action_ledger": archive_ledger,
+        "cold_store_expired": cold_store_result,
+        "action_ledger": action_ledger,
         "dry_run_diff": dry_run_diff,
         "forgetting": forgetting,
         "forgetting_results": forgetting_results,
@@ -306,12 +330,15 @@ def automation_run(
             dream,
             usage_review_before,
             forgetting,
+            cold_store_result,
             auto_promote,
         ),
         "next_action": "Review human_review and report_path; adjust automation_policy.yaml before stronger autonomy.",
     }
     if apply and not archive_allowed:
         payload["warning"] = "apply requested, but policy auto_archive_expired is false"
+    if apply and not cold_store_allowed and int(cold_store_result.get("eligible_count") or 0):
+        payload["cold_store_warning"] = "apply requested, but policy cold_store_used_expired is false"
     if report_enabled:
         payload["report_path"] = _write_report(project, payload)
     return payload
@@ -530,6 +557,9 @@ def automation_activity(
         "skipped_count": 0,
         "archive_applied_count": 0,
         "archive_skipped_count": 0,
+        "cold_store_applied_count": 0,
+        "cold_store_preview_count": 0,
+        "cold_store_skipped_count": 0,
     }
 
     for path in reports:
@@ -549,7 +579,14 @@ def automation_activity(
 
         for item in data.get("action_ledger") or []:
             status = str(item.get("status") or "")
-            if status == "applied":
+            operation = str(item.get("operation") or "")
+            if operation == "cold_store_expired" and status == "applied":
+                totals["cold_store_applied_count"] += 1
+            elif operation == "cold_store_expired" and status == "preview":
+                totals["cold_store_preview_count"] += 1
+            elif operation == "cold_store_expired" and status:
+                totals["cold_store_skipped_count"] += 1
+            elif status == "applied":
                 totals["archive_applied_count"] += 1
             elif status:
                 totals["archive_skipped_count"] += 1
@@ -1085,13 +1122,24 @@ def _auto_promote_activity_event(
 
 def _ledger_activity_event(report_path: str, data: dict[str, Any], item: dict[str, Any]) -> dict[str, Any]:
     status = str(item.get("status") or "")
+    operation = str(item.get("operation") or "")
     return {
-        "kind": "archive_applied" if status == "applied" else "archive_skipped",
+        "kind": (
+            "cold_store_applied"
+            if operation == "cold_store_expired" and status == "applied"
+            else "cold_store_preview"
+            if operation == "cold_store_expired" and status == "preview"
+            else "cold_store_skipped"
+            if operation == "cold_store_expired"
+            else "archive_applied"
+            if status == "applied"
+            else "archive_skipped"
+        ),
         "report_path": report_path,
         "generated_at": data.get("generated_at", ""),
         "apply": bool(data.get("apply", False)),
         "knowledge_id": item.get("knowledge_id"),
-        "operation": item.get("operation", ""),
+        "operation": operation,
         "status": status,
         "reason": item.get("reason", ""),
         "risk": item.get("risk", ""),
@@ -1120,6 +1168,8 @@ def _brief_summary(
         "used_expired": int(forgetting_strategy.get("used_expired_count") or 0),
         "auto_promote_promoted": int(activity_totals.get("promoted_count") or 0),
         "auto_promote_skipped": int(activity_totals.get("skipped_count") or 0),
+        "cold_store_applied": int(activity_totals.get("cold_store_applied_count") or 0),
+        "cold_store_preview": int(activity_totals.get("cold_store_preview_count") or 0),
     }
 
 
@@ -1355,6 +1405,8 @@ def _write_brief_markdown(project: Path, payload: dict[str, Any], *, brief_path:
         f"- auto-promote skipped: `{int(summary.get('auto_promote_skipped') or 0)}`",
         f"- learning readiness: `{_md_text(summary.get('learning_readiness', ''))}`",
         f"- expired active: `{int(summary.get('expired_active') or 0)}`",
+        f"- cold-store preview: `{int(summary.get('cold_store_preview') or 0)}`",
+        f"- cold-store applied: `{int(summary.get('cold_store_applied') or 0)}`",
         "",
         "## Human Review 5%",
         "",
@@ -2427,6 +2479,14 @@ def _planned_actions(
             "reason": "Archival is reversible and never hard-deletes rows; automation protects expired memories that still show usage.",
         },
         {
+            "id": "cold_store_used_expired",
+            "risk": "medium",
+            "autonomy": "policy-gated",
+            "enabled": bool(policy.get("cold_store_used_expired", False)),
+            "command": "vault usage cold-store-expired --apply --json",
+            "reason": "Summarize expired-but-used memories, archive them out of normal recall, and retain original content for audit/restore.",
+        },
+        {
             "id": "dream_report",
             "risk": "low",
             "autonomy": "automatic-report",
@@ -2796,6 +2856,7 @@ def _review_summary(
     dream: dict[str, Any],
     usage_review: dict[str, Any] | None = None,
     forgetting: dict[str, Any] | None = None,
+    cold_store: dict[str, Any] | None = None,
     auto_promote: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     thresholds = policy.get("review_thresholds") or {}
@@ -2824,6 +2885,12 @@ def _review_summary(
     forgetting_suggestions = int((forgetting or {}).get("candidate_suggestions", 0) or 0)
     if forgetting_suggestions:
         items.append({"kind": "forgetting_candidate_suggestions", "count": forgetting_suggestions})
+    cold_store_preview = int((cold_store or {}).get("eligible_count") or 0)
+    cold_store_applied = int((cold_store or {}).get("applied_count") or 0)
+    if cold_store_applied:
+        items.append({"kind": "cold_stored_expired", "count": cold_store_applied})
+    elif cold_store_preview:
+        items.append({"kind": "cold_store_expired_preview", "count": cold_store_preview})
     auto_promote_preview = int((auto_promote or {}).get("would_promote_count") or 0)
     auto_promoted = int((auto_promote or {}).get("promoted_count") or 0)
     if auto_promote_preview:
@@ -2857,6 +2924,7 @@ def _report_summary(project: Path, path: Path, data: dict[str, Any]) -> dict[str
     diff = data.get("dry_run_diff") or {}
     ledger = data.get("action_ledger") or []
     archive = data.get("archive_expired") or {}
+    cold_store = data.get("cold_store_expired") or {}
     forgetting = data.get("forgetting") or {}
     auto_promote = data.get("auto_promote") or {}
     dream = data.get("dream") or {}
@@ -2878,6 +2946,9 @@ def _report_summary(project: Path, path: Path, data: dict[str, Any]) -> dict[str
         "forgetting_candidate_suggestions": int(forgetting.get("candidate_suggestions") or 0),
         "forgetting_candidates_written": int(forgetting.get("candidates_written") or 0),
         "forgetting_candidates_skipped_existing": int(forgetting.get("candidates_skipped_existing") or 0),
+        "cold_store_eligible_count": int(cold_store.get("eligible_count") or 0),
+        "cold_store_applied_count": int(cold_store.get("applied_count") or 0),
+        "cold_store_skipped_protected_count": int(cold_store.get("skipped_protected_count") or 0),
         "auto_promote_enabled": bool(auto_promote.get("enabled", False)),
         "auto_promote_would_promote_count": int(auto_promote.get("would_promote_count") or 0),
         "auto_promote_promoted_count": int(auto_promote.get("promoted_count") or 0),
@@ -2890,6 +2961,10 @@ def _report_summary(project: Path, path: Path, data: dict[str, Any]) -> dict[str
             "applied_count": int(diff.get("applied_count") or 0),
             "skipped_usage_count": int(diff.get("skipped_usage_count") or 0),
             "skipped_policy_count": int(diff.get("skipped_policy_count") or 0),
+            "would_cold_store_count": int(diff.get("would_cold_store_count") or 0),
+            "cold_store_applied_count": int(diff.get("cold_store_applied_count") or 0),
+            "cold_store_skipped_usage_count": int(diff.get("cold_store_skipped_usage_count") or 0),
+            "cold_store_skipped_policy_count": int(diff.get("cold_store_skipped_policy_count") or 0),
             "hard_delete": bool(diff.get("hard_delete", False)),
             "promote_candidates": bool(diff.get("promote_candidates", False)),
             "permission_changes": bool(diff.get("permission_changes", False)),
@@ -3021,15 +3096,89 @@ def _archive_action_ledger(archive_result: dict[str, Any], *, applied: bool) -> 
     return ledger
 
 
+def _cold_store_action_ledger(cold_store_result: dict[str, Any], *, applied: bool) -> list[dict[str, Any]]:
+    ledger: list[dict[str, Any]] = []
+    for row in cold_store_result.get("items", []) or []:
+        item = _compact_memory_item(row)
+        ledger.append(
+            {
+                "operation": "cold_store_expired",
+                "knowledge_id": item["id"],
+                "title": item["title"],
+                "status": "applied" if applied else "preview",
+                "before": {"status": item.get("status") or "active", "layer": item.get("layer", "")},
+                "after": (
+                    {"status": "archived", "layer": row.get("target_layer", "L3"), "summary": "written"}
+                    if applied
+                    else {"status": item.get("status") or "active", "layer": item.get("layer", "")}
+                ),
+                "reason": "memory is expired but still used; summarize before moving it out of normal recall.",
+                "risk": "medium",
+                "scope": item.get("scope", ""),
+                "sensitivity": item.get("sensitivity", ""),
+            }
+        )
+    for row in cold_store_result.get("skipped_low_usage", []) or []:
+        item = _compact_memory_item(row)
+        ledger.append(
+            {
+                "operation": "cold_store_expired",
+                "knowledge_id": item["id"],
+                "title": item["title"],
+                "status": "skipped_usage",
+                "before": {"status": item.get("status") or "active"},
+                "after": {"status": item.get("status") or "active"},
+                "reason": "memory is expired but does not meet the cold-store usage threshold.",
+                "risk": "low",
+                "scope": item.get("scope", ""),
+                "sensitivity": item.get("sensitivity", ""),
+            }
+        )
+    for row in cold_store_result.get("skipped_protected", []) or []:
+        item = _compact_memory_item(row)
+        ledger.append(
+            {
+                "operation": "cold_store_expired",
+                "knowledge_id": item["id"],
+                "title": item["title"],
+                "status": "skipped_policy",
+                "before": {"status": item.get("status") or "active"},
+                "after": {"status": item.get("status") or "active"},
+                "reason": "memory layer, scope, or sensitivity is protected from cold-store automation.",
+                "risk": "policy-blocked",
+                "scope": item.get("scope", ""),
+                "sensitivity": item.get("sensitivity", ""),
+            }
+        )
+    return ledger
+
+
 def _dry_run_diff(
     ledger: list[dict[str, Any]],
     *,
     apply_requested: bool,
     archive_allowed: bool,
 ) -> dict[str, Any]:
-    would_archive = [item for item in ledger if item.get("status") in {"preview", "applied"}]
-    skipped_usage = [item for item in ledger if item.get("status") == "skipped_usage"]
-    skipped_policy = [item for item in ledger if item.get("status") == "skipped_policy"]
+    would_archive = [
+        item for item in ledger
+        if item.get("operation") == "archive_expired" and item.get("status") in {"preview", "applied"}
+    ]
+    skipped_usage = [
+        item for item in ledger
+        if item.get("operation") == "archive_expired" and item.get("status") == "skipped_usage"
+    ]
+    skipped_policy = [
+        item for item in ledger
+        if item.get("operation") == "archive_expired" and item.get("status") == "skipped_policy"
+    ]
+    cold_store_skipped_usage = [
+        item for item in ledger
+        if item.get("operation") == "cold_store_expired" and item.get("status") == "skipped_usage"
+    ]
+    cold_store_skipped_policy = [
+        item for item in ledger
+        if item.get("operation") == "cold_store_expired" and item.get("status") == "skipped_policy"
+    ]
     return {
         "apply_requested": bool(apply_requested),
         "policy_allows_archive": bool(archive_allowed),
@@ -3037,6 +3186,8 @@ def _dry_run_diff(
         "applied_count": len([item for item in would_archive if item.get("status") == "applied"]),
         "skipped_usage_count": len(skipped_usage),
         "skipped_policy_count": len(skipped_policy),
+        "cold_store_skipped_usage_count": len(cold_store_skipped_usage),
+        "cold_store_skipped_policy_count": len(cold_store_skipped_policy),
         "fields_changed": ["status", "archived_at", "updated_at"] if would_archive else [],
         "hard_delete": False,
         "promote_candidates": False,

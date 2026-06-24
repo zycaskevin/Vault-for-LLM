@@ -1783,6 +1783,281 @@ def write_update_status_templates(
     }
 
 
+def write_agent_adapter_startup_templates(
+    *,
+    output_dir: str | Path,
+    project_dir: str | Path,
+    tool_profile: str,
+    agent: str,
+    vault_executable: str = "vault",
+) -> dict[str, str]:
+    out = Path(output_dir).expanduser().resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    project_path = Path(project_dir).expanduser().resolve()
+    safe_agent = _safe_slug(agent, default="generic")
+    read_status_command = [
+        vault_executable,
+        "update-status",
+        "--read-status",
+        "--agent",
+        safe_agent,
+        "--json",
+    ]
+    fallback_status_command = [
+        vault_executable,
+        "update-status",
+        "--agent",
+        safe_agent,
+        "--json",
+    ]
+    handoff_command = [
+        vault_executable,
+        "automation",
+        "handoff",
+        "--project-dir",
+        str(project_path),
+    ]
+    mcp_command = [
+        "vault-mcp",
+        "--project-dir",
+        str(project_path),
+        "--tool-profile",
+        tool_profile,
+    ]
+    startup_sequence = [
+        {
+            "name": "read_update_status",
+            "cli": shell_join(read_status_command),
+            "mcp": {
+                "tool": "vault_update_status",
+                "arguments": {"read_status": True, "agent_id": safe_agent},
+            },
+            "fallback": {
+                "cli": shell_join(fallback_status_command),
+                "mcp": {
+                    "tool": "vault_update_status",
+                    "arguments": {
+                        "latest_version": "",
+                        "check_pypi": False,
+                        "write_status": False,
+                        "agent_id": safe_agent,
+                    },
+                },
+            },
+        },
+        {
+            "name": "read_automation_handoff",
+            "cli": shell_join(handoff_command),
+            "mcp": {
+                "tool": "vault_automation_handoff",
+                "arguments": {"source": "auto", "handoff_path": ""},
+            },
+        },
+        {
+            "name": "search_when_needed",
+            "mcp": {
+                "tool": "vault_search",
+                "arguments": {"query": "<task keyword>", "limit": 5, "compact": True},
+            },
+        },
+        {
+            "name": "read_bounded_evidence",
+            "mcp": {
+                "tool": "vault_read_range",
+                "arguments": {"knowledge_id": "<id>", "line_start": 1, "line_end": 40},
+            },
+        },
+        {
+            "name": "propose_durable_memory",
+            "mcp": {
+                "tool": "vault_memory_propose",
+                "arguments": {
+                    "title": "<durable lesson>",
+                    "content": "<reviewable memory>",
+                    "reason": "<why this should be remembered>",
+                },
+            },
+        },
+    ]
+    adapters = {
+        "codex": {
+            "file": "codex-startup.md",
+            "where_to_put": "project AGENTS.md or Codex project instructions",
+            "note": "Use before touching code so Codex sees update status and handoff context first.",
+        },
+        "claude_code": {
+            "file": "claude-code-startup.md",
+            "where_to_put": "project CLAUDE.md or Claude Code project memory",
+            "note": "Keep Vault startup short: status, handoff, then bounded searches.",
+        },
+        "openclaw": {
+            "file": "openclaw-startup.md",
+            "where_to_put": "OpenClaw workspace bootstrap or skill instructions",
+            "note": "If a compact latest-context.md exists, read it before deeper Vault searches.",
+        },
+        "hermes": {
+            "file": "hermes-startup.md",
+            "where_to_put": "Hermes profile AGENTS.md, MEMORY.md, or runtime bootstrap",
+            "note": "Point each profile at the same shared project vault but keep profile identity private.",
+        },
+    }
+    contract = {
+        "version": 1,
+        "agent": safe_agent,
+        "project_dir": str(project_path),
+        "db_path": str(project_path / "vault.db"),
+        "tool_profile": tool_profile,
+        "mcp_server": {
+            "command": "vault-mcp",
+            "args": [
+                "--project-dir",
+                str(project_path),
+                "--tool-profile",
+                tool_profile,
+            ],
+        },
+        "commands": {
+            "read_update_status": shell_join(read_status_command),
+            "fallback_update_status": shell_join(fallback_status_command),
+            "handoff": shell_join(handoff_command),
+            "mcp_server": shell_join(mcp_command),
+        },
+        "startup_sequence": startup_sequence,
+        "adapters": adapters,
+        "safety": {
+            "auto_upgrade": False,
+            "check_pypi_default": False,
+            "read_raw_transcripts_by_default": False,
+            "auto_promote_memory": False,
+            "candidate_first_memory": True,
+            "bounded_reads_before_citation": True,
+            "tool_profile_is_not_auth": True,
+        },
+    }
+    contract_path = out / "adapter-startup-contract.json"
+    contract_path.write_text(json.dumps(contract, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    def adapter_markdown(title: str, *, target: str, note: str, openclaw: bool = False) -> str:
+        lines = [
+            f"# {title}",
+            "",
+            f"Target location: {target}.",
+            "",
+            note,
+            "",
+            "Startup order:",
+            "",
+            f"1. Read update status: `{shell_join(read_status_command)}`.",
+            f"2. If status is missing, run bounded fallback: `{shell_join(fallback_status_command)}`.",
+            f"3. Read the compact automation handoff: `{shell_join(handoff_command)}`.",
+            "4. Search only when the task needs more context.",
+            "5. Use bounded reads before citing memory.",
+            "6. Propose durable lessons as candidates; do not auto-promote them.",
+            "",
+            "MCP server:",
+            "",
+            "```bash",
+            shell_join(mcp_command),
+            "```",
+            "",
+            "First MCP calls:",
+            "",
+            f"- `vault_update_status` with `read_status=true`, `agent_id={safe_agent}`.",
+            "- `vault_automation_handoff` with `source=auto`.",
+            "- `vault_search` and `vault_read_range` only when needed.",
+            "- `vault_memory_propose` for new durable lessons.",
+            "",
+            "Safety rules:",
+            "",
+            "- Do not auto-upgrade another Agent runtime.",
+            "- Do not read raw transcript contents by default.",
+            "- Do not auto-promote memory.",
+            "- Treat tool profiles as schema-size filters, not permissions.",
+            "",
+        ]
+        if openclaw:
+            lines.extend(
+                [
+                    "OpenClaw note:",
+                    "",
+                    "- If `latest-context.md` exists in the workspace, read that compact context first.",
+                    "- Use Vault search only when the compact context is not enough.",
+                    "",
+                ]
+            )
+        lines.extend(
+            [
+                f"Machine-readable contract: `{contract_path.name}`",
+                "",
+            ]
+        )
+        return "\n".join(lines)
+
+    files: dict[str, str] = {"contract": str(contract_path)}
+    for adapter_id, adapter in adapters.items():
+        filename = adapter["file"]
+        path = out / filename
+        path.write_text(
+            adapter_markdown(
+                {
+                    "codex": "Codex Startup Template",
+                    "claude_code": "Claude Code Startup Template",
+                    "openclaw": "OpenClaw Startup Template",
+                    "hermes": "Hermes Agent Startup Template",
+                }[adapter_id],
+                target=adapter["where_to_put"],
+                note=adapter["note"],
+                openclaw=adapter_id == "openclaw",
+            ),
+            encoding="utf-8",
+        )
+        files[adapter_id] = str(path)
+
+    readme_path = out / "README-agent-adapters.md"
+    readme_path.write_text(
+        "\n".join(
+            [
+                "# Agent Adapter Startup Templates",
+                "",
+                "Use these templates when one machine has multiple Agent runtimes connected to the same Vault project.",
+                "",
+                "The shared rule is simple: update-status -> automation handoff -> search/read/propose.",
+                "",
+                "Generated files:",
+                "",
+                "- `codex-startup.md`",
+                "- `claude-code-startup.md`",
+                "- `openclaw-startup.md`",
+                "- `hermes-startup.md`",
+                "- `adapter-startup-contract.json`",
+                "",
+                "What each Agent should do at startup:",
+                "",
+                f"1. Read the shared update notice with `{shell_join(read_status_command)}`.",
+                f"2. If no notice exists, run `{shell_join(fallback_status_command)}` without a live PyPI check.",
+                f"3. Read `{shell_join(handoff_command)}` for the latest compact memory automation handoff.",
+                "4. Search only when the task or handoff needs more detail.",
+                "5. Read bounded evidence before citing memory.",
+                "6. Propose new durable memory as candidates.",
+                "",
+                "Safety boundary:",
+                "",
+                "- no auto-upgrade",
+                "- no raw transcript reads by default",
+                "- no automatic memory promotion",
+                "- one shared project vault can coexist with private per-Agent identity/profile memory",
+                "- tool profiles reduce token/schema size but are not an authorization boundary",
+                "",
+                f"MCP server command: `{shell_join(mcp_command)}`",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    files["readme"] = str(readme_path)
+    return files
+
+
 def _normalize_validation_pack_targets(raw: str | list[str] | None) -> set[str]:
     if raw is None:
         return set()
@@ -2636,6 +2911,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         "memory_layout_files": {},
         "mcp_startup": {},
         "update_status_templates": {},
+        "agent_adapter_startup": {},
         "agent_registry": {},
         "next_steps": [
             f"vault search \"test query\" --project-dir {shlex.quote(str(project_path))} --limit 5 --json",
@@ -2675,6 +2951,13 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         agent=config.agent,
     )
     result["next_steps"].append(f"Review Agent update status guide: {result['update_status_templates']['readme']}")
+    result["agent_adapter_startup"] = write_agent_adapter_startup_templates(
+        output_dir=template_dir,
+        project_dir=project_path,
+        tool_profile=config.tool_profile,
+        agent=config.agent,
+    )
+    result["next_steps"].append(f"Review Agent adapter startup guide: {result['agent_adapter_startup']['readme']}")
     result["local_smoke"] = write_local_smoke_template(
         output_dir=template_dir,
         project_dir=project_path,

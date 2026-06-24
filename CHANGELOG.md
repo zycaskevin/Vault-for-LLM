@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.84] - 2026-06-24
+
+### Added
+
+- `vault setup-agent` now writes `agent-install/README-agent-adapters.md`, Codex, Claude Code, OpenClaw, and Hermes Agent startup templates, plus `adapter-startup-contract.json`.
+- The generated adapter templates make common runtimes follow the same startup order: read update status, read automation handoff, search/read only when needed, and propose candidate-first memory.
+- Added a decision record for public-safe Agent adapter startup templates.
+
 ## [0.6.83] - 2026-06-24
 
 ### Added

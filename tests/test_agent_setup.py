@@ -235,9 +235,26 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert "vault update-status --read-status --agent automation-agent --json" in update_readme
     assert "vault update-status --write-status --json" in update_cron
     assert "com.zycaskevin.vault-for-llm.update-status" in update_plist
+    adapters = result["agent_adapter_startup"]
+    adapter_contract = json.loads(Path(adapters["contract"]).read_text(encoding="utf-8"))
+    adapter_readme = Path(adapters["readme"]).read_text(encoding="utf-8")
+    codex_template = Path(adapters["codex"]).read_text(encoding="utf-8")
+    openclaw_template = Path(adapters["openclaw"]).read_text(encoding="utf-8")
+    assert sorted(adapter_contract["adapters"]) == ["claude_code", "codex", "hermes", "openclaw"]
+    assert adapter_contract["agent"] == "automation-agent"
+    assert adapter_contract["startup_sequence"][0]["mcp"]["arguments"]["read_status"] is True
+    assert adapter_contract["startup_sequence"][0]["mcp"]["arguments"]["agent_id"] == "automation-agent"
+    assert adapter_contract["startup_sequence"][0]["fallback"]["mcp"]["arguments"]["check_pypi"] is False
+    assert adapter_contract["safety"]["auto_upgrade"] is False
+    assert adapter_contract["safety"]["candidate_first_memory"] is True
+    assert "update-status -> automation handoff -> search/read/propose" in adapter_readme
+    assert "no auto-upgrade" in adapter_readme
+    assert "vault update-status --read-status --agent automation-agent --json" in codex_template
+    assert "latest-context.md" in openclaw_template
     assert any("memory automation schedule" in step for step in result["next_steps"])
     assert any("vault automation handoff --project-dir" in step for step in result["next_steps"])
     assert any("MCP startup guide" in step for step in result["next_steps"])
+    assert any("Agent adapter startup guide" in step for step in result["next_steps"])
     assert any("Agent update status guide" in step for step in result["next_steps"])
 
 
@@ -561,7 +578,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.6.83" in captured.out
+    assert "vault-for-llm 0.6.84" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -729,7 +746,7 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.6.83" in body
+    assert "vault-for-llm[mcp,supabase]==0.6.84" in body
     assert "headroom-ai" in body
     assert "--agent-project-dir" in body
     assert str(project) in body

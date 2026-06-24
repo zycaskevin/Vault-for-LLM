@@ -65,7 +65,7 @@ changed notes without duplicating unchanged ones.
 | `vault update-status --doctor --json` | Check whether the shared update notice exists, is fresh, includes every registered Agent, and shows runtime attention |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.6.89` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.6.90` | Show the same registry/update status without contacting the network |
 | `vault agent doctor --json` | Run the same shared update-distribution health check through the Agent registry namespace |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md` | Preview applying the generated Codex startup template into a runtime instruction file |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md --apply` | Apply the marked startup block and create a backup before changing an existing file |
@@ -159,7 +159,7 @@ For per-tool MCP examples, see `docs/mcp_tool_reference.md`.
 | `vault candidate-review <id> --outcome rejected --reason "..."` | Record rejected/blocked candidate feedback without promoting memory |
 | `vault capture session <transcript> --write-candidates` | Capture decisions, pitfalls, workflows, and source-of-truth lines from JSONL/Markdown/text transcripts as gated candidates |
 | `vault automation plan --write-policy` | Create a policy-based maintenance plan and starter `automation_policy.yaml` |
-| `vault automation run` / `vault automation run --apply` | Run report-first memory automation; reports include a dry-run diff and action ledger, and `--apply` only performs policy-allowed reversible actions |
+| `vault automation run` / `vault automation run --apply` | Run report-first memory automation; reports include a dry-run diff and action ledger, and `--apply` only performs policy-allowed reversible actions or explicit low-risk auto-promote matches |
 | `vault automation cycle --apply` | Run one safe feedback-to-curation loop: evaluate reviewed candidate outcomes, write `learning_policy.json`, then run policy-based automation so Dream can consume the latest hints |
 | `vault automation cycle --write-workspace --include-transcripts` | Write `reports/automation/cycle-latest.json` and `.md`: compact candidate review, metadata-only transcript paths, priority brief, suggested next tasks, and learning-policy summary for the next agent |
 | `vault automation handoff` | Print the latest compact automation handoff for the next agent; prefers `cycle-latest.md` |

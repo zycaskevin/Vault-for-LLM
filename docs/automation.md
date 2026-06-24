@@ -14,6 +14,8 @@ reversible:
   unless the policy is intentionally changed
 - preview expired-memory archival
 - optionally archive expired memories when policy and `--apply` both allow it
+- optionally promote only low-risk, policy-matching candidates when policy and
+  `--apply` both allow it
 - write an action ledger and dry-run diff explaining what changed or was skipped
 - run a Dream report for stale, duplicate, weak, or orphaned knowledge
 - produce an automation report for operators and agents
@@ -182,8 +184,9 @@ vault automation cycle --apply --include-transcripts --capture-transcripts --wri
 runs `automation eval --write-learning-policy`, then runs policy-based
 automation so Dream can consume the freshly written learning policy. The cycle
 is still bounded: it can write review candidates and reversible archive actions
-only when policy plus `--apply` allow them. It never promotes candidates,
-hard-deletes memory, or overrides privacy/access policy.
+only when policy plus `--apply` allow them. It does not auto-promote by default,
+hard-delete memory, or override privacy/access policy. Low-risk promotion is a
+separate opt-in policy with narrow gates.
 
 Add `--write-workspace` when the next agent should start from one compact
 handoff instead of reading full reports. This writes
@@ -215,9 +218,9 @@ The command is read-only. It prefers `cycle-latest.md`, then falls back to
 paths without reading their contents. To close the ingestion loop, add
 `--capture-transcripts --apply`. That opt-in step reads the selected transcript
 files, extracts reusable decisions, pitfalls, workflows, and source-of-truth
-lines, then writes them as gated memory candidates. It still never promotes
-active memory, never hard-deletes, and strips candidate content previews from
-cycle reports and handoffs.
+lines, then writes them as gated memory candidates. It still does not promote
+active memory by default, never hard-deletes, and strips candidate content
+previews from cycle reports and handoffs.
 
 For scheduled jobs, the same behavior can be enabled in policy with:
 
@@ -245,6 +248,20 @@ auto_apply_safe_metadata: false
 dream_write_candidates: true
 forgetting_write_candidates: true
 session_capture_write_candidates: false
+auto_promote_low_risk_candidates: false
+auto_promote_allowed_sources:
+  - session_capture
+auto_promote_allowed_memory_types:
+  - session_lesson
+auto_promote_allowed_scopes:
+  - project
+  - shared
+  - public
+auto_promote_allowed_sensitivities:
+  - low
+auto_promote_min_trust: 0.65
+auto_promote_max_per_run: 3
+auto_promote_requires_source_ref: true
 write_reports: true
 dream_checks:
   - freshness
@@ -277,6 +294,16 @@ memories that were not archived because they are still used or protected by
 scope/sensitivity policy. These candidates use `memory_type:
 forgetting_suggestion`, never delete rows, and never change permissions.
 
+`auto_promote_low_risk_candidates` is off by default, including in
+`autonomous` mode. When a user intentionally enables it, `vault automation run
+--apply` or `vault automation cycle --apply` can promote only candidates that
+match the narrow policy: default source `session_capture`, default memory type
+`session_lesson`, default scope `project/shared/public`, default sensitivity
+`low`, trust at or above `0.65`, a non-empty `source_ref`, and pass results for
+privacy, duplicate, metadata, and quality gates. Without `--apply`, Vault only
+previews the candidates that would be promoted. Private, high-sensitivity,
+restricted, weak, duplicate, or sourceless candidates stay in the review queue.
+
 `protect_used_expired` keeps automation from archiving memories that are expired
 but still have retrieval or citation usage. Those rows appear in
 `usage_review.expired_but_used` and `human_review.items` so the user can decide
@@ -296,13 +323,17 @@ important review fields are:
 
 - `dry_run_diff`: count of rows that would be archived, were archived, or were
   skipped by usage/policy. It also states that automation performs no hard
-  delete, no candidate promotion, and no permission changes.
+  delete and no permission changes. Candidate promotion is reported separately
+  and only happens when the low-risk auto-promote policy plus `--apply` allow it.
 - `action_ledger`: per-memory entries with `knowledge_id`, operation, before
   status, after status, risk, and reason.
 - `dream.summary`: counts Dream findings, candidate suggestions,
   `candidates_written`, and `candidates_skipped_existing`.
 - `forgetting`: counts candidate-only forgetting suggestions written or skipped
   because an equivalent review candidate already exists.
+- `auto_promote`: shows whether low-risk auto-promotion was enabled, how many
+  candidates would be promoted in preview mode, how many were promoted under
+  `--apply`, and why other candidates were skipped.
 - `usage_review`: operator-facing buckets such as archiveable expired rows,
   expired-but-used rows, protected expired rows, and top-used memories.
 - `human_review`: whether a person should inspect the run before stronger
@@ -374,8 +405,9 @@ Add `--automation-write-workspace` when generated schedules should also pass
 `--write-workspace` to the scheduled cycle. This writes
 `reports/automation/cycle-latest.json` and `reports/automation/cycle-latest.md`
 during the scheduled run. It is still a compact handoff only: candidate content
-stays hidden by default and the cycle does not promote candidates or hard-delete
-memory.
+stays hidden by default. The cycle does not hard-delete memory, and candidate
+promotion remains off unless the explicit low-risk auto-promote policy is
+enabled and the scheduled command includes `--apply`.
 
 The generated `README-memory-automation.md` also includes the startup command
 the next agent should run:

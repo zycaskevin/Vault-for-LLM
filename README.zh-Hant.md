@@ -58,7 +58,7 @@ Vault-for-LLM 可能不是第一個該拿起來的工具。
 最推薦的方式，是直接把這段交給能執行本機指令的 Agent：
 
 ```text
-幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.89。
+幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.90。
 先問我要 shared、private、domain-specific 還是 temporary vault。
 詢問穩定的 project directory，並為長期任務產生 stable venv script。
 逐項詢問 MCP、semantic search、Supabase、Obsidian import、Headroom 壓縮、
@@ -71,7 +71,7 @@ Agent 會使用安裝精靈：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.89"
+pip install "vault-for-llm[mcp]==0.6.90"
 
 vault setup-agent
 ```
@@ -126,7 +126,7 @@ vault setup-agent \
 ### 手動快速開始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.89"
+pip install "vault-for-llm[mcp]==0.6.90"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -229,7 +229,7 @@ automation 可以排序與整理，但 promotion 仍然需要明確審核。
 
 `vault automation cycle` 會先評估已審核的候選結果，寫出 bounded
 `learning_policy.json`，再跑一次安全自動化，讓 Dream 用最新的整理提示排序候選。
-它仍然不會自動 promote、硬刪記憶，或繞過隱私與權限規則。
+它預設仍然不會自動 promote、硬刪記憶，或繞過隱私與權限規則。
 加上 `--write-workspace` 時，會寫出
 `reports/automation/cycle-latest.json`：一份給下一個 Agent 用的短版工作台，
 包含候選審核、可選的 transcript 路徑，以及最新 curation policy 摘要。
@@ -256,6 +256,25 @@ capture 的 transcript 候選路徑。這只包含 metadata，不讀 transcript 
 如果明確加上 `--capture-transcripts --apply`，cycle 可以把 discovered
 transcript 轉成通過 gate 的候選記憶。它仍然不會自動提升成正式記憶，產生的
 handoff 也不會包含 transcript 原文或候選內容。
+
+如果你真的想讓「候選記憶」自動進入「正式記憶」，需要在
+`automation_policy.yaml` 明確開啟低風險 auto-promote：
+
+```yaml
+auto_promote_low_risk_candidates: true
+auto_promote_allowed_sources: [session_capture]
+auto_promote_allowed_memory_types: [session_lesson]
+auto_promote_allowed_sensitivities: [low]
+auto_promote_min_trust: 0.65
+auto_promote_max_per_run: 3
+auto_promote_requires_source_ref: true
+```
+
+開啟後，`vault automation cycle --apply` 只會提升同時符合這些條件的候選：
+來自 session capture、類型是 session lesson、低敏感度、有 source reference、
+trust 達標，而且 privacy、duplicate、metadata、quality 四個 gate 全部通過。
+沒有 `--apply` 時只會預覽，不會真的提升。private、高敏感、重複、品質不足或
+缺來源的候選仍然留在 review queue。
 
 拒絕或阻擋候選也可以變成結構化回饋：
 
@@ -315,7 +334,7 @@ SQLite 仍然是 source of truth。Supabase 是可選的共享層。
 Remote reader 應該直接把搜尋結果的 `id` 傳給 map/read；它可能是整數，也可能是 Supabase UUID。
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.89"
+pip install "vault-for-llm[supabase]==0.6.90"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

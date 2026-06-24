@@ -28,6 +28,49 @@ def _init_project(tmp_path):
     return project
 
 
+def _write_auto_promote_policy(project):
+    (project / "automation_policy.yaml").write_text(
+        "\n".join(
+            [
+                "mode: balanced",
+                "auto_promote_low_risk_candidates: true",
+                "auto_promote_max_per_run: 5",
+                "auto_promote_min_trust: 0.65",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _create_low_risk_session_candidate(db: VaultDB, *, title: str = "Reusable session lesson") -> str:
+    result = create_candidate(
+        db,
+        title=title,
+        content=(
+            "Decision: automation may promote low-risk session lessons because the candidate "
+            "passed privacy, duplicate, metadata, and quality gates with a source reference."
+        ),
+        reason="Reusable low-risk lesson captured from a reviewed session.",
+        source="session_capture",
+        source_ref="codex:session:test#L1-L4",
+        memory_type="session_lesson",
+        category="decision",
+        tags="session-capture,decision,automation",
+        trust=0.82,
+        scope="project",
+        sensitivity="low",
+    )
+    assert result["status"] == "candidate_created"
+    assert result["gates"] == {
+        "privacy": "pass",
+        "duplicate": "pass",
+        "metadata": "pass",
+        "quality": "pass",
+    }
+    return result["candidate_id"]
+
+
 def test_automation_plan_writes_default_policy(tmp_path):
     project = _init_project(tmp_path)
 
@@ -42,6 +85,7 @@ def test_automation_plan_writes_default_policy(tmp_path):
     assert policy["protect_used_expired"] is True
     assert policy["dream_write_candidates"] is True
     assert policy["forgetting_write_candidates"] is True
+    assert policy["auto_promote_low_risk_candidates"] is False
     assert any(item["id"] == "ttl_archive_apply" for item in payload["planned_actions"])
     dream_candidate_action = next(
         item for item in payload["planned_actions"] if item["id"] == "dream_candidate_suggestions"
@@ -294,6 +338,90 @@ def test_automation_run_without_apply_does_not_write_dream_candidates(tmp_path):
         assert db.list_memory_candidates() == []
 
 
+def test_automation_run_does_not_auto_promote_by_default(tmp_path):
+    project = _init_project(tmp_path)
+    with VaultDB(project / "vault.db") as db:
+        candidate_id = _create_low_risk_session_candidate(db)
+        before_active = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge WHERE status = 'active'").fetchone()["n"]
+
+    payload = automation_run(project, mode="balanced", apply=True, limit=10, write_reports=False)
+
+    assert payload["policy"]["auto_promote_low_risk_candidates"] is False
+    assert payload["auto_promote"]["enabled"] is False
+    assert payload["auto_promote"]["promoted_count"] == 0
+    assert payload["dry_run_diff"]["promote_candidates"] is False
+    with VaultDB(project / "vault.db") as db:
+        assert db.get_memory_candidate(candidate_id)["status"] == "candidate"
+        assert db.conn.execute("SELECT COUNT(*) AS n FROM knowledge WHERE status = 'active'").fetchone()["n"] == before_active
+
+
+def test_automation_run_previews_low_risk_auto_promote_without_apply(tmp_path):
+    project = _init_project(tmp_path)
+    _write_auto_promote_policy(project)
+    with VaultDB(project / "vault.db") as db:
+        candidate_id = _create_low_risk_session_candidate(db)
+        before_active = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge WHERE status = 'active'").fetchone()["n"]
+
+    payload = automation_run(project, mode="balanced", apply=False, limit=10, write_reports=False)
+
+    assert payload["auto_promote"]["enabled"] is True
+    assert payload["auto_promote"]["status"] == "preview"
+    assert payload["auto_promote"]["would_promote_count"] == 1
+    assert payload["auto_promote"]["promoted_count"] == 0
+    assert payload["dry_run_diff"]["promote_candidates"] is True
+    assert {"kind": "auto_promote_low_risk_preview", "count": 1} in payload["human_review"]["items"]
+    with VaultDB(project / "vault.db") as db:
+        assert db.get_memory_candidate(candidate_id)["status"] == "candidate"
+        assert db.conn.execute("SELECT COUNT(*) AS n FROM knowledge WHERE status = 'active'").fetchone()["n"] == before_active
+
+
+def test_automation_run_auto_promotes_only_low_risk_policy_matches(tmp_path):
+    project = _init_project(tmp_path)
+    _write_auto_promote_policy(project)
+    with VaultDB(project / "vault.db") as db:
+        safe_id = _create_low_risk_session_candidate(db, title="Safe session lesson for promotion")
+        high_result = create_candidate(
+            db,
+            title="High sensitivity session lesson stays candidate",
+            content=(
+                "Decision: high sensitivity memories require human review because automated promotion "
+                "must preserve the private memory boundary and audit trail."
+            ),
+            reason="High sensitivity should not be promoted by the low-risk policy.",
+            source="session_capture",
+            source_ref="codex:session:test#L8-L12",
+            memory_type="session_lesson",
+            category="decision",
+            tags="session-capture,decision,privacy",
+            trust=0.9,
+            scope="project",
+            sensitivity="high",
+        )
+        assert high_result["status"] == "candidate_created"
+        before_active = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge WHERE status = 'active'").fetchone()["n"]
+
+    payload = automation_run(project, mode="balanced", apply=True, limit=10, write_reports=False)
+
+    assert payload["auto_promote"]["enabled"] is True
+    assert payload["auto_promote"]["status"] == "completed"
+    assert payload["auto_promote"]["would_promote_count"] == 1
+    assert payload["auto_promote"]["promoted_count"] == 1
+    assert payload["dry_run_diff"]["promote_candidates"] is True
+    assert payload["dry_run_diff"]["applied_promotions_count"] == 1
+    assert {"kind": "auto_promote_low_risk_preview", "count": 1} in payload["human_review"]["items"]
+    assert {"kind": "auto_promoted_low_risk", "count": 1} in payload["human_review"]["items"]
+    skipped_reasons = {
+        item.get("reason", "")
+        for item in payload["auto_promote"]["items"]
+        if item.get("candidate_id") == high_result["candidate_id"]
+    }
+    assert any("sensitivity_not_allowed:high" in reason for reason in skipped_reasons)
+    with VaultDB(project / "vault.db") as db:
+        assert db.get_memory_candidate(safe_id)["status"] == "promoted"
+        assert db.get_memory_candidate(high_result["candidate_id"])["status"] == "candidate"
+        assert db.conn.execute("SELECT COUNT(*) AS n FROM knowledge WHERE status = 'active'").fetchone()["n"] == before_active + 1
+
+
 def test_automation_apply_does_not_touch_private_or_high_sensitivity_memory(tmp_path):
     project = _init_project(tmp_path)
     expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
@@ -521,7 +649,7 @@ def test_automation_cycle_writes_learning_policy_and_runs_dream(tmp_path):
     assert payload["summary"]["automation_report_path"].startswith("reports/automation/")
     assert (project / payload["summary"]["learning_policy_path"]).exists()
     assert (project / payload["summary"]["automation_report_path"]).exists()
-    assert "does not auto-promote" in payload["principle"]
+    assert "does not auto-promote by default" in payload["principle"]
     with VaultDB(project / "vault.db") as db:
         assert db.conn.execute("SELECT COUNT(*) AS n FROM knowledge WHERE status = 'active'").fetchone()["n"] == before_active
         candidates = db.list_memory_candidates(limit=20)
@@ -578,6 +706,8 @@ def test_automation_cycle_writes_compact_workspace_with_transcript_hints(tmp_pat
     assert workspace["action"] == "cycle_workspace"
     assert workspace["workspace_markdown_path"] == "reports/automation/cycle-latest.md"
     assert workspace["summary"]["learning_rules"] >= 1
+    assert workspace["summary"]["auto_promote_enabled"] is False
+    assert workspace["summary"]["auto_promote_promoted_count"] == 0
     assert workspace["candidate_review"]["content_hidden"] is True
     assert workspace["transcripts_to_capture"]["summary"]["count"] == 1
     assert workspace["transcripts_to_capture"]["summary"]["read_contents"] is False
@@ -589,6 +719,7 @@ def test_automation_cycle_writes_compact_workspace_with_transcript_hints(tmp_pat
     assert workspace["suggested_next_tasks"]
     assert workspace["suggested_next_tasks"][0]["requires_human_approval"] is True
     assert "Candidate queue items:" in workspace["agent_start_prompt"]
+    assert "auto-promoted: 0" in workspace["agent_start_prompt"]
     assert workspace["safety"]["auto_promote"] is False
     assert workspace["safety"]["transcript_discovery_reads_contents"] is False
     assert token not in json.dumps(workspace)
@@ -674,6 +805,41 @@ def test_automation_cycle_can_capture_transcripts_as_candidates_without_active_m
         assert db.conn.execute("SELECT COUNT(*) AS n FROM knowledge WHERE status = 'active'").fetchone()["n"] == before_active
         rows = db.list_memory_candidates(status=None, limit=20)
     assert any(row["source"] == "session_capture" and row["memory_type"] == "session_lesson" for row in rows)
+
+
+def test_automation_cycle_reports_low_risk_auto_promote_workspace_boundary(tmp_path):
+    project = _init_project(tmp_path)
+    _write_auto_promote_policy(project)
+    with VaultDB(project / "vault.db") as db:
+        candidate_id = _create_low_risk_session_candidate(db, title="Cycle low-risk session lesson")
+        before_active = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge WHERE status = 'active'").fetchone()["n"]
+
+    payload = automation_cycle(
+        project,
+        mode="balanced",
+        apply=True,
+        limit=10,
+        min_events=1,
+        write_reports=True,
+        write_workspace=True,
+    )
+
+    assert payload["summary"]["auto_promote_enabled"] is True
+    assert payload["summary"]["auto_promote_promoted_count"] == 1
+    assert payload["workspace"]["summary"]["auto_promote_promoted_count"] == 1
+    assert payload["workspace"]["safety"]["auto_promote"] is True
+    assert payload["workspace"]["safety"]["writes_active_memory"] is True
+    assert "Review auto-promoted low-risk memories" in {
+        item["title"] for item in payload["workspace"]["priority_brief"]
+    }
+    assert any(
+        task["command"] == "vault automation report --latest --detail"
+        for task in payload["workspace"]["suggested_next_tasks"]
+    )
+    assert "auto-promoted: 1" in payload["workspace"]["agent_start_prompt"]
+    with VaultDB(project / "vault.db") as db:
+        assert db.get_memory_candidate(candidate_id)["status"] == "promoted"
+        assert db.conn.execute("SELECT COUNT(*) AS n FROM knowledge WHERE status = 'active'").fetchone()["n"] == before_active + 1
 
 
 def test_automation_cycle_blocks_without_vault_db(tmp_path):
@@ -846,7 +1012,7 @@ def test_automation_cli_cycle_prints_learning_summary(tmp_path, monkeypatch, cap
     assert "dream learning: loaded" in out
     assert "workspace: reports/automation/cycle-latest.json" in out
     assert "workspace markdown: reports/automation/cycle-latest.md" in out
-    assert "does not auto-promote" in out
+    assert "does not auto-promote by default" in out
 
 
 def test_automation_cli_handoff_prints_markdown(tmp_path, monkeypatch, capsys):

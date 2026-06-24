@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.6.90] - 2026-06-24
+
+### Added
+
+- Added policy-gated low-risk candidate auto-promotion for automation runs. It is off by default, requires explicit `auto_promote_low_risk_candidates: true`, and only runs with `--apply`.
+- Added low-risk promotion safety checks for source, memory type, scope, sensitivity, trust, source reference, and all candidate gates before a candidate can enter active memory.
+- Added automation report, cycle workspace, CLI, and human-review summaries for low-risk auto-promote previews and applied promotions.
+
+### Changed
+
+- Updated automation docs and README guidance to distinguish candidate capture, candidate-only curation, and explicit low-risk promotion into active memory.
+
 ## [0.6.89] - 2026-06-24
 
 ### Added

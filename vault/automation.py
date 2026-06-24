@@ -35,6 +35,14 @@ DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
         "dream_write_candidates": False,
         "forgetting_write_candidates": False,
         "session_capture_write_candidates": False,
+        "auto_promote_low_risk_candidates": False,
+        "auto_promote_allowed_sources": ["session_capture"],
+        "auto_promote_allowed_memory_types": ["session_lesson"],
+        "auto_promote_allowed_scopes": ["project", "shared", "public"],
+        "auto_promote_allowed_sensitivities": ["low"],
+        "auto_promote_min_trust": 0.65,
+        "auto_promote_max_per_run": 3,
+        "auto_promote_requires_source_ref": True,
         "write_reports": True,
         "dream_checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
         "review_thresholds": {
@@ -55,6 +63,14 @@ DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
         "dream_write_candidates": True,
         "forgetting_write_candidates": True,
         "session_capture_write_candidates": False,
+        "auto_promote_low_risk_candidates": False,
+        "auto_promote_allowed_sources": ["session_capture"],
+        "auto_promote_allowed_memory_types": ["session_lesson"],
+        "auto_promote_allowed_scopes": ["project", "shared", "public"],
+        "auto_promote_allowed_sensitivities": ["low"],
+        "auto_promote_min_trust": 0.65,
+        "auto_promote_max_per_run": 3,
+        "auto_promote_requires_source_ref": True,
         "write_reports": True,
         "dream_checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
         "review_thresholds": {
@@ -75,6 +91,14 @@ DEFAULT_POLICIES: dict[str, dict[str, Any]] = {
         "dream_write_candidates": True,
         "forgetting_write_candidates": True,
         "session_capture_write_candidates": False,
+        "auto_promote_low_risk_candidates": False,
+        "auto_promote_allowed_sources": ["session_capture"],
+        "auto_promote_allowed_memory_types": ["session_lesson"],
+        "auto_promote_allowed_scopes": ["project", "shared", "public"],
+        "auto_promote_allowed_sensitivities": ["low"],
+        "auto_promote_min_trust": 0.65,
+        "auto_promote_max_per_run": 3,
+        "auto_promote_requires_source_ref": True,
         "write_reports": True,
         "dream_checks": ["freshness", "dedup", "convergence", "metadata", "orphans"],
         "review_thresholds": {
@@ -224,10 +248,19 @@ def automation_run(
         backup=False,
     )
     with VaultDB(db_path) as db:
+        auto_promote = _auto_promote_low_risk_candidates(
+            db,
+            project=project,
+            policy=policy,
+            apply=apply,
+        )
         after_usage = db.usage_stats(limit=limit)
         candidate_count_after = len(db.list_memory_candidates(status="candidate", limit=1000))
 
     forgetting = _forgetting_summary(forgetting_results)
+    dry_run_diff["promote_candidates"] = bool(auto_promote.get("would_promote_count") or auto_promote.get("promoted_count"))
+    if auto_promote.get("promoted_count"):
+        dry_run_diff["applied_promotions_count"] = int(auto_promote.get("promoted_count") or 0)
     payload = {
         "action": "run",
         "mode": mode_name,
@@ -245,6 +278,13 @@ def automation_run(
             "dream_write_candidates_requires_apply": True,
             "forgetting_write_candidates": bool(policy.get("forgetting_write_candidates", False)),
             "forgetting_write_candidates_requires_apply": True,
+            "auto_promote_low_risk_candidates": bool(policy.get("auto_promote_low_risk_candidates", False)),
+            "auto_promote_requires_apply": True,
+            "auto_promote_allowed_sources": _policy_list(policy, "auto_promote_allowed_sources"),
+            "auto_promote_allowed_memory_types": _policy_list(policy, "auto_promote_allowed_memory_types"),
+            "auto_promote_allowed_scopes": _policy_list(policy, "auto_promote_allowed_scopes"),
+            "auto_promote_allowed_sensitivities": _policy_list(policy, "auto_promote_allowed_sensitivities"),
+            "auto_promote_min_trust": _policy_float(policy, "auto_promote_min_trust", 0.65),
         },
         "usage_before": before_usage,
         "usage_after": after_usage,
@@ -257,8 +297,17 @@ def automation_run(
         "dry_run_diff": dry_run_diff,
         "forgetting": forgetting,
         "forgetting_results": forgetting_results,
+        "auto_promote": auto_promote,
         "dream": dream,
-        "human_review": _review_summary(policy, after_usage, candidate_count_after, dream, usage_review_before, forgetting),
+        "human_review": _review_summary(
+            policy,
+            after_usage,
+            candidate_count_after,
+            dream,
+            usage_review_before,
+            forgetting,
+            auto_promote,
+        ),
         "next_action": "Review human_review and report_path; adjust automation_policy.yaml before stronger autonomy.",
     }
     if apply and not archive_allowed:
@@ -344,6 +393,7 @@ def automation_cycle(
     dream = run.get("dream") or {}
     dream_learning = dream.get("learning_policy") or {}
     dream_summary = dream.get("summary") or {}
+    auto_promote = run.get("auto_promote") or {}
     learning_policy = evaluation.get("learning_policy") or {}
     summary = {
         "feedback_events": int(evaluation.get("event_count") or 0),
@@ -362,6 +412,9 @@ def automation_cycle(
         "transcript_capture_candidates_written": int(
             (transcript_capture.get("summary") or {}).get("candidates_written") or 0
         ),
+        "auto_promote_enabled": bool(auto_promote.get("enabled", False)),
+        "auto_promote_would_promote_count": int(auto_promote.get("would_promote_count") or 0),
+        "auto_promote_promoted_count": int(auto_promote.get("promoted_count") or 0),
     }
     workspace = _cycle_workspace(
         project,
@@ -916,6 +969,9 @@ def _render_cycle_workspace_markdown(workspace: dict[str, Any]) -> str:
         f"- uncaptured transcripts: `{int(summary.get('uncaptured_transcripts') or 0)}`",
         f"- transcript capture status: `{_md_text(summary.get('transcript_capture_status', ''))}`",
         f"- transcript candidates written: `{int(summary.get('transcript_capture_candidates_written') or 0)}`",
+        f"- auto-promote enabled: `{str(bool(summary.get('auto_promote_enabled', False))).lower()}`",
+        f"- auto-promote would promote: `{int(summary.get('auto_promote_would_promote_count') or 0)}`",
+        f"- auto-promote promoted: `{int(summary.get('auto_promote_promoted_count') or 0)}`",
         f"- learning rules: `{int(summary.get('learning_rules') or 0)}`",
         f"- learning readiness: `{_md_text(summary.get('learning_readiness', ''))}`",
         f"- automation report: `{_md_text(summary.get('automation_report_path', ''))}`",
@@ -1159,6 +1215,8 @@ def _cycle_workspace(
     transcript_discovery = inbox.get("transcript_discovery") or {}
     capture = transcript_capture or _empty_transcript_capture(project, enabled=False, apply=False)
     capture_summary = capture.get("summary") or {}
+    auto_promote_enabled = bool(summary.get("auto_promote_enabled", False))
+    auto_promote_promoted = int(summary.get("auto_promote_promoted_count") or 0)
     workspace = {
         "action": "cycle_workspace",
         "generated_at": generated_at,
@@ -1175,6 +1233,9 @@ def _cycle_workspace(
             "learning_policy_path": summary.get("learning_policy_path", ""),
             "transcript_capture_status": capture.get("status", ""),
             "transcript_capture_candidates_written": int(capture_summary.get("candidates_written") or 0),
+            "auto_promote_enabled": auto_promote_enabled,
+            "auto_promote_would_promote_count": int(summary.get("auto_promote_would_promote_count") or 0),
+            "auto_promote_promoted_count": auto_promote_promoted,
         },
         "candidate_review": {
             "summary": inbox_summary,
@@ -1204,16 +1265,16 @@ def _cycle_workspace(
         },
         "safety": {
             "read_only": True,
-            "auto_promote": False,
+            "auto_promote": auto_promote_enabled,
             "hard_delete": False,
             "candidate_content_hidden": True,
             "transcript_discovery_reads_contents": False,
             "transcript_capture_reads_contents": bool((capture.get("safety") or {}).get("reads_transcript_contents", False)),
-            "writes_active_memory": False,
+            "writes_active_memory": auto_promote_promoted > 0,
         },
         "next_action": (
-            "Review candidate_review.queue, capture selected transcript paths with `vault capture session`, "
-            "then promote or reject candidates explicitly."
+            "Review candidate_review.queue, auto-promote summary, and selected transcript paths; "
+            "keep promotion policy narrow unless the user explicitly widens it."
         ),
         "workspace_path": "",
     }
@@ -1379,6 +1440,8 @@ def _cycle_priority_brief(workspace: dict[str, Any]) -> list[dict[str, Any]]:
     needs_review = int(summary.get("needs_review") or 0)
     transcript_count = int(summary.get("uncaptured_transcripts") or 0)
     captured_candidates = int(summary.get("transcript_capture_candidates_written") or 0)
+    auto_promoted = int(summary.get("auto_promote_promoted_count") or 0)
+    auto_promote_preview = int(summary.get("auto_promote_would_promote_count") or 0)
     learning_rules = int(summary.get("learning_rules") or 0)
     if queue_count or needs_review:
         items.append(
@@ -1408,6 +1471,26 @@ def _cycle_priority_brief(workspace: dict[str, Any]) -> list[dict[str, Any]]:
                 "count": captured_candidates,
                 "reason": "Transcript capture wrote candidates only; they need explicit review before active memory changes.",
                 "safe_action": "Open automation inbox, inspect gates, then promote/reject/block deliberately.",
+            }
+        )
+    if auto_promoted:
+        items.append(
+            {
+                "priority": "P1",
+                "title": "Review auto-promoted low-risk memories",
+                "count": auto_promoted,
+                "reason": "Policy allowed low-risk candidates to enter active memory automatically.",
+                "safe_action": "Inspect promoted knowledge ids and feedback events before widening policy.",
+            }
+        )
+    elif auto_promote_preview:
+        items.append(
+            {
+                "priority": "P2",
+                "title": "Review auto-promote preview",
+                "count": auto_promote_preview,
+                "reason": "Policy found candidates that would be auto-promoted if --apply is used.",
+                "safe_action": "Verify gates, source_ref, sensitivity, and scope before applying.",
             }
         )
     if learning_rules:
@@ -1477,6 +1560,16 @@ def _cycle_suggested_next_tasks(workspace: dict[str, Any]) -> list[dict[str, Any
             }
         )
         step += 1
+    if int(summary.get("auto_promote_promoted_count") or 0):
+        tasks.append(
+            {
+                "step": step,
+                "task": "Review auto-promoted knowledge and keep the policy narrow.",
+                "command": "vault automation report --latest --detail",
+                "requires_human_approval": False,
+            }
+        )
+        step += 1
     if summary.get("learning_policy_path"):
         tasks.append(
             {
@@ -1514,6 +1607,7 @@ def _cycle_agent_start_prompt(workspace: dict[str, Any]) -> str:
     transcript_count = int(summary.get("uncaptured_transcripts") or 0)
     learning_rules = int(summary.get("learning_rules") or 0)
     captured_candidates = int(summary.get("transcript_capture_candidates_written") or 0)
+    auto_promoted = int(summary.get("auto_promote_promoted_count") or 0)
     return "\n".join(
         [
             "You are continuing a Vault-for-LLM memory automation cycle.",
@@ -1521,9 +1615,10 @@ def _cycle_agent_start_prompt(workspace: dict[str, Any]) -> str:
             "Start from this handoff, not the full raw reports.",
             (
                 f"Candidate queue items: {queue_count}; uncaptured transcripts: {transcript_count}; "
-                f"auto-captured candidates: {captured_candidates}; learning rules: {learning_rules}."
+                f"auto-captured candidates: {captured_candidates}; auto-promoted: {auto_promoted}; "
+                f"learning rules: {learning_rules}."
             ),
-            "Do not auto-promote candidates, hard-delete memory, or read transcript contents just because a path is listed.",
+            "Do not widen auto-promote policy, hard-delete memory, or read transcript contents just because a path is listed.",
             "Review priority_brief first, then use suggested_next_tasks one step at a time.",
             "Ask for approval before promoting/rejecting sensitive candidates or capturing private transcripts.",
         ]
@@ -1533,7 +1628,8 @@ def _cycle_agent_start_prompt(workspace: dict[str, Any]) -> str:
 def _cycle_principle() -> str:
     return (
         "cycle updates bounded curation hints and candidate ordering only; "
-        "it does not auto-promote candidates, hard-delete memory, or override privacy/access policy"
+        "it does not auto-promote by default, hard-delete memory, or override privacy/access policy; "
+        "low-risk promotion requires explicit policy opt-in and --apply"
     )
 
 
@@ -2026,6 +2122,149 @@ def _write_forgetting_candidates(db: VaultDB, usage_review: dict[str, Any]) -> l
     return results
 
 
+def _auto_promote_low_risk_candidates(
+    db: VaultDB,
+    *,
+    project: Path,
+    policy: dict[str, Any],
+    apply: bool,
+) -> dict[str, Any]:
+    """Preview or apply policy-gated promotion for the lowest-risk candidates."""
+    enabled = bool(policy.get("auto_promote_low_risk_candidates", False))
+    max_per_run = max(0, min(_policy_int(policy, "auto_promote_max_per_run", 3), 20))
+    payload = {
+        "action": "auto_promote_low_risk_candidates",
+        "enabled": enabled,
+        "apply": bool(apply),
+        "status": "disabled" if not enabled else "dry_run",
+        "would_promote_count": 0,
+        "promoted_count": 0,
+        "skipped_count": 0,
+        "items": [],
+        "safety": {
+            "policy_gated": True,
+            "requires_apply": True,
+            "privacy_gate_required": True,
+            "duplicate_gate_required": True,
+            "quality_gate_required": True,
+            "metadata_gate_required": True,
+            "hard_delete": False,
+        },
+        "next_action": "Review auto-promote policy before enabling candidate promotion.",
+    }
+    if not enabled or max_per_run <= 0:
+        return payload
+
+    rows = db.list_memory_candidates(status="candidate", limit=1000)
+    eligible: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for row in rows:
+        decision = _auto_promote_candidate_decision(row, policy)
+        item = {
+            "candidate_id": row.get("id", ""),
+            "title": row.get("title", ""),
+            "source": row.get("source", ""),
+            "source_ref": row.get("source_ref", ""),
+            "memory_type": row.get("memory_type", ""),
+            "scope": row.get("scope", ""),
+            "sensitivity": row.get("sensitivity", ""),
+            "trust": float(row.get("trust") or 0.0),
+            **decision,
+        }
+        if decision["eligible"] and len(eligible) < max_per_run:
+            eligible.append(item)
+        else:
+            if decision["eligible"]:
+                item["eligible"] = False
+                item["reason"] = "auto_promote_max_per_run reached"
+            skipped.append(item)
+
+    payload["would_promote_count"] = len(eligible)
+    payload["skipped_count"] = len(skipped)
+    payload["status"] = "preview" if not apply else "completed"
+    payload["items"] = eligible + skipped[: max(0, 20 - len(eligible))]
+    payload["next_action"] = (
+        "Re-run with --apply to promote eligible low-risk candidates."
+        if not apply
+        else "Review promoted knowledge ids and automation feedback before widening policy."
+    )
+    if not apply:
+        return payload
+
+    from .memory import promote_candidate
+
+    promoted_items: list[dict[str, Any]] = []
+    for item in eligible:
+        result = promote_candidate(
+            db,
+            str(item.get("candidate_id", "")),
+            confirm=True,
+            project_dir=project,
+            compile=True,
+            build_map=True,
+        )
+        promoted_items.append(
+            {
+                **item,
+                "promotion_status": result.get("status", ""),
+                "knowledge_id": result.get("knowledge_id"),
+                "raw_path": result.get("raw_path", ""),
+                "gates": result.get("gates", {}),
+            }
+        )
+    payload["promoted_count"] = len([item for item in promoted_items if item.get("promotion_status") == "promoted"])
+    payload["items"] = promoted_items + skipped[: max(0, 20 - len(promoted_items))]
+    return payload
+
+
+def _auto_promote_candidate_decision(row: dict[str, Any], policy: dict[str, Any]) -> dict[str, Any]:
+    reasons: list[str] = []
+    gate_payload = _candidate_gate_payload(row)
+    metadata_status = str((gate_payload.get("metadata") or {}).get("status") or "")
+    required_statuses = {
+        "privacy": str(row.get("privacy_status") or ""),
+        "duplicate": str(row.get("duplicate_status") or ""),
+        "quality": str(row.get("quality_status") or ""),
+        "metadata": metadata_status,
+    }
+    for name, status in required_statuses.items():
+        if status != "pass":
+            reasons.append(f"{name}_gate_not_pass:{status or 'unknown'}")
+
+    source = str(row.get("source") or "").strip().lower()
+    memory_type = str(row.get("memory_type") or "").strip().lower()
+    scope = str(row.get("scope") or "").strip().lower()
+    sensitivity = str(row.get("sensitivity") or "").strip().lower()
+    source_ref = str(row.get("source_ref") or "").strip()
+    trust = float(row.get("trust") or 0.0)
+    if source not in set(_policy_list(policy, "auto_promote_allowed_sources")):
+        reasons.append(f"source_not_allowed:{source or 'empty'}")
+    if memory_type not in set(_policy_list(policy, "auto_promote_allowed_memory_types")):
+        reasons.append(f"memory_type_not_allowed:{memory_type or 'empty'}")
+    if scope not in set(_policy_list(policy, "auto_promote_allowed_scopes")):
+        reasons.append(f"scope_not_allowed:{scope or 'empty'}")
+    if sensitivity not in set(_policy_list(policy, "auto_promote_allowed_sensitivities")):
+        reasons.append(f"sensitivity_not_allowed:{sensitivity or 'empty'}")
+    if trust < _policy_float(policy, "auto_promote_min_trust", 0.65):
+        reasons.append("trust_below_threshold")
+    if bool(policy.get("auto_promote_requires_source_ref", True)) and not source_ref:
+        reasons.append("missing_source_ref")
+    return {
+        "eligible": not reasons,
+        "reason": "eligible low-risk candidate" if not reasons else "; ".join(reasons),
+        "gate_statuses": required_statuses,
+    }
+
+
+def _candidate_gate_payload(row: dict[str, Any]) -> dict[str, Any]:
+    raw = row.get("gate_payload_json") or "{}"
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def _review_summary(
     policy: dict[str, Any],
     usage: dict[str, Any],
@@ -2033,6 +2272,7 @@ def _review_summary(
     dream: dict[str, Any],
     usage_review: dict[str, Any] | None = None,
     forgetting: dict[str, Any] | None = None,
+    auto_promote: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     thresholds = policy.get("review_thresholds") or {}
     dream_summary = dream.get("summary", {}) if isinstance(dream, dict) else {}
@@ -2060,6 +2300,12 @@ def _review_summary(
     forgetting_suggestions = int((forgetting or {}).get("candidate_suggestions", 0) or 0)
     if forgetting_suggestions:
         items.append({"kind": "forgetting_candidate_suggestions", "count": forgetting_suggestions})
+    auto_promote_preview = int((auto_promote or {}).get("would_promote_count") or 0)
+    auto_promoted = int((auto_promote or {}).get("promoted_count") or 0)
+    if auto_promote_preview:
+        items.append({"kind": "auto_promote_low_risk_preview", "count": auto_promote_preview})
+    if auto_promoted:
+        items.append({"kind": "auto_promoted_low_risk", "count": auto_promoted})
     return {
         "required": bool(items),
         "items": items,
@@ -2088,6 +2334,7 @@ def _report_summary(project: Path, path: Path, data: dict[str, Any]) -> dict[str
     ledger = data.get("action_ledger") or []
     archive = data.get("archive_expired") or {}
     forgetting = data.get("forgetting") or {}
+    auto_promote = data.get("auto_promote") or {}
     dream = data.get("dream") or {}
     dream_learning = dream.get("learning_policy") or {}
     return {
@@ -2107,6 +2354,9 @@ def _report_summary(project: Path, path: Path, data: dict[str, Any]) -> dict[str
         "forgetting_candidate_suggestions": int(forgetting.get("candidate_suggestions") or 0),
         "forgetting_candidates_written": int(forgetting.get("candidates_written") or 0),
         "forgetting_candidates_skipped_existing": int(forgetting.get("candidates_skipped_existing") or 0),
+        "auto_promote_enabled": bool(auto_promote.get("enabled", False)),
+        "auto_promote_would_promote_count": int(auto_promote.get("would_promote_count") or 0),
+        "auto_promote_promoted_count": int(auto_promote.get("promoted_count") or 0),
         "archived_count": int(archive.get("archived_count") or 0),
         "eligible_count": int(archive.get("eligible_count") or 0),
         "skipped_used_count": int(archive.get("skipped_used_count") or 0),
@@ -2297,6 +2547,20 @@ def _policy_list(policy: dict[str, Any], key: str) -> list[str]:
     else:
         values = []
     return [part.lower() for part in values if part]
+
+
+def _policy_float(policy: dict[str, Any], key: str, default: float) -> float:
+    try:
+        return float(policy.get(key, default))
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _policy_int(policy: dict[str, Any], key: str, default: int) -> int:
+    try:
+        return int(policy.get(key, default))
+    except (TypeError, ValueError):
+        return int(default)
 
 
 def _check(name: str, ok: bool, detail: str = "") -> dict[str, Any]:

@@ -1010,6 +1010,13 @@ def write_automation_schedule_templates(
         include_transcripts=include_transcripts,
         transcript_limit=transcript_limit,
     )
+    handoff_args = [
+        vault_executable,
+        "automation",
+        "handoff",
+        "--project-dir",
+        str(Path(project_dir).expanduser()),
+    ]
 
     written: dict[str, str] = {}
     if "cron" in selected:
@@ -1061,6 +1068,13 @@ def write_automation_schedule_templates(
                 "",
                 f"```bash\n{shell_join(inbox_args)}\n```",
                 "",
+                "Next agent startup handoff:",
+                "",
+                f"```bash\n{shell_join(handoff_args)}\n```",
+                "",
+                "Run this at the start of the next agent session. It is read-only and prefers",
+                "`reports/automation/cycle-latest.md` before falling back to JSON handoffs.",
+                "",
                 "Recommended first step:",
                 "",
                 "```bash",
@@ -1079,6 +1093,7 @@ def write_automation_schedule_templates(
                 f"- scheduled cycle workspace: `{str(bool(write_workspace and normalized_command == 'cycle')).lower()}`",
                 "- cycle workspace path: `reports/automation/cycle-latest.json` when enabled",
                 "- cycle workspace Markdown: `reports/automation/cycle-latest.md` when enabled",
+                "- next agent startup command: `vault automation handoff`",
                 f"- uncaptured transcript hints in scheduled handoff: `{str(bool(include_transcripts)).lower()}`",
                 "- transcript discovery is metadata-only and does not read transcript contents",
                 "",
@@ -2402,6 +2417,9 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         )
         result["next_steps"].append(
             f"Review memory automation schedule: {result['automation_schedule_templates']['readme']}"
+        )
+        result["next_steps"].append(
+            f"Next agent startup handoff: vault automation handoff --project-dir {project_path}"
         )
 
     return result

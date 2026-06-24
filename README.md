@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.75.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.76.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,7 +83,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.75"
+pip install "vault-for-llm[mcp]==0.6.76"
 
 vault setup-agent
 ```
@@ -112,7 +112,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.75"
+pip install "vault-for-llm[mcp]==0.6.76"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -290,6 +290,8 @@ Add `--automation-write-workspace` when generated schedules should write
 `reports/automation/cycle-latest.json` and `reports/automation/cycle-latest.md`
 after the cycle, so the next agent starts from the daily memory workbench
 instead of full reports.
+Generated schedule README files include `vault automation handoff --project-dir ...`
+as the read-only startup command for the next agent.
 Add `--automation-include-transcripts` only when the scheduled handoff should
 also list uncaptured transcript exports. That list is metadata-only and keeps
 transcript contents out of the generated handoff.
@@ -331,7 +333,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.75"
+pip install "vault-for-llm[supabase]==0.6.76"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

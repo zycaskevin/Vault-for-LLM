@@ -24,6 +24,7 @@ def test_mcp_memory_tools_are_advertised():
         "vault_automation_activity",
         "vault_automation_brief",
         "vault_automation_handoff",
+        "vault_cold_store_expired",
         "vault_update_status",
         "vault_dream_run",
     }.issubset(names)
@@ -65,7 +66,11 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
     assert "vault_capture_discover" not in core_names
     assert "vault_capture_session" not in core_names
     assert "vault_automation_inbox" not in core_names
+    assert "vault_cold_store_expired" not in core_names
     assert "vault_memory_review" not in core_names
+
+    maintenance_names = {tool["name"] for tool in select_tools("maintenance")}
+    assert "vault_cold_store_expired" in maintenance_names
 
     full_names = {tool["name"] for tool in select_tools("full")}
     assert "vault_add" in full_names
@@ -73,6 +78,7 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
     assert "vault_update_status" in full_names
     assert "vault_automation_brief" in full_names
     assert "vault_automation_handoff" in full_names
+    assert "vault_cold_store_expired" in full_names
     assert "vault_remote_read_range" in full_names
     assert len(full_names) > len(core_names)
 
@@ -738,6 +744,37 @@ def test_mcp_automation_brief_returns_intelligence_without_raw_content(tmp_path)
     assert brief["forgetting_strategy"]["used_expired_count"] == 1
     assert any(item["id"] == proposed["candidate_id"] for item in brief["human_review_5_percent"]["items"])
     assert "candidate content outside the payload" not in rendered
+
+
+def test_mcp_cold_store_expired_defaults_to_dry_run_and_can_apply(tmp_path):
+    _set_project_dir(tmp_path)
+    expired = "2000-01-01T00:00:00+00:00"
+    with VaultDB(tmp_path / "vault.db") as db:
+        used_id = db.add_knowledge(
+            "MCP cold-store used SOP",
+            "MCP cold-store keeps original content for audit while archiving daily recall.",
+            expires_at=expired,
+        )
+        db.record_knowledge_access([used_id], cited=True)
+
+    preview = _payload(handle_tool_call("vault_cold_store_expired", {"limit": 10}))
+    with VaultDB(tmp_path / "vault.db") as db:
+        assert db.get_knowledge(used_id)["status"] == "active"
+
+    assert preview["action"] == "cold-store-expired"
+    assert preview["dry_run"] is True
+    assert preview["eligible_count"] == 1
+    assert preview["safety"]["hard_delete"] is False
+
+    applied = _payload(handle_tool_call("vault_cold_store_expired", {"limit": 10, "apply": True}))
+    with VaultDB(tmp_path / "vault.db") as db:
+        row = db.get_knowledge(used_id)
+
+    assert applied["dry_run"] is False
+    assert applied["applied_count"] == 1
+    assert row["status"] == "archived"
+    assert "Cold-store summary" in row["summary"]
+    assert row["content_raw"].startswith("MCP cold-store keeps original content")
 
 
 def test_mcp_vault_add_warns_and_builds_document_map(tmp_path):

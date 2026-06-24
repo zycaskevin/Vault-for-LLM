@@ -14,7 +14,7 @@ the model context and fewer ways for an agent to choose the wrong action.
 | `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats`, `vault_update_status`, `vault_automation_activity`, `vault_automation_brief`, `vault_automation_handoff` | Daily agent work: start from status/activity/brief/handoff, find memory, read bounded evidence, propose new memory. |
 | `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_capture_discover`, `vault_capture_session`, `vault_automation_inbox`, `vault_dream_run` | A reviewer agent or operator session that discovers/captures, approves, rejects, or blocks candidate memories. |
 | `remote` | Core plus `vault_remote_search`, `vault_remote_map_show`, `vault_remote_read_range` | Hosted or cross-host agents reading a Supabase-synced vault. |
-| `maintenance` | Review plus Obsidian import, freshness, convergence, and curation tools | Scheduled maintenance or explicit operator-led cleanup. |
+| `maintenance` | Review plus cold-store lifecycle, Obsidian import, freshness, convergence, and curation tools | Scheduled maintenance or explicit operator-led cleanup. |
 | `full` | Every MCP tool, including low-level compatibility tools | Trusted local operators and backwards compatibility. |
 
 ```bash
@@ -181,6 +181,24 @@ health, and the smallest human-review queue.
 
 Agent rule: call this before opening full automation reports. It is read-only,
 does not include raw candidate content, and treats forgetting as strategy only.
+
+### `vault_cold_store_expired`
+
+Preview or apply summarize-then-cold-store for expired-but-used memories.
+
+```json
+{
+  "limit": 100,
+  "min_usage": 1,
+  "summary_max_chars": 360,
+  "apply": false
+}
+```
+
+This tool is not in the `core` profile. Use it only from `maintenance` or
+`full`, and keep `apply=false` unless the user or scheduled policy explicitly
+allows lifecycle writes. It skips private, high/restricted, and L0/L1 memories,
+retains original content for audit/restore, and never hard-deletes rows.
 
 ## Candidate Memory Tools
 

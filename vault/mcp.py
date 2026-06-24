@@ -1910,6 +1910,41 @@ TOOLS = [
         }
     },
     {
+        "name": "vault_cold_store_expired",
+        "description": "Preview or apply summarize-then-cold-store for expired-but-used memories. Defaults to dry-run; skips private, high/restricted, and L0/L1 memories.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum expired memories to inspect.",
+                    "default": 100,
+                    "minimum": 1,
+                    "maximum": 1000,
+                },
+                "min_usage": {
+                    "type": "integer",
+                    "description": "Minimum access_count + citation_count required before cold-store.",
+                    "default": 1,
+                    "minimum": 1,
+                    "maximum": 1000,
+                },
+                "summary_max_chars": {
+                    "type": "integer",
+                    "description": "Maximum characters to keep in the cold-store summary.",
+                    "default": 360,
+                    "minimum": 80,
+                    "maximum": 2000,
+                },
+                "apply": {
+                    "type": "boolean",
+                    "description": "Actually write summary and archive eligible rows. Defaults false.",
+                    "default": False,
+                },
+            },
+        }
+    },
+    {
         "name": "vault_obsidian_import",
         "description": "Import an existing Obsidian vault into raw/obsidian/. Run dry_run first; compile only after user confirmation.",
         "inputSchema": {
@@ -2276,6 +2311,7 @@ TOOL_PROFILES = {
         "vault_capture_discover",
         "vault_capture_session",
         "vault_automation_inbox",
+        "vault_cold_store_expired",
         "vault_obsidian_import",
         "vault_dream_run",
         "vault_converge",
@@ -2662,6 +2698,23 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 source=str(arguments.get("source") or "auto"),
                 handoff_path=str(arguments.get("handoff_path") or ""),
             )
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
+
+        elif name == "vault_cold_store_expired":
+            from vault.db import VaultDB
+
+            with VaultDB(DB_PATH) as db:
+                payload = db.cold_store_expired_knowledge(
+                    limit=_clamp_int(arguments.get("limit", 100), default=100, minimum=1, maximum=1000),
+                    dry_run=not bool(arguments.get("apply", False)),
+                    min_usage=_clamp_int(arguments.get("min_usage", 1), default=1, minimum=1, maximum=1000),
+                    summary_max_chars=_clamp_int(
+                        arguments.get("summary_max_chars", 360),
+                        default=360,
+                        minimum=80,
+                        maximum=2000,
+                    ),
+                )
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 
         elif name == "vault_obsidian_import":

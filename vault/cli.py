@@ -1892,8 +1892,8 @@ def cmd_usage(args):
     from vault.db import VaultDB
 
     action = getattr(args, "usage_action", "")
-    if action not in {"stats", "archive-expired"}:
-        print("error: usage requires action: stats or archive-expired", file=sys.stderr)
+    if action not in {"stats", "archive-expired", "cold-store-expired"}:
+        print("error: usage requires action: stats, archive-expired, or cold-store-expired", file=sys.stderr)
         raise SystemExit(2)
 
     try:
@@ -1903,10 +1903,17 @@ def cmd_usage(args):
                     "action": "stats",
                     **db.usage_stats(limit=args.limit),
                 }
-            else:
+            elif action == "archive-expired":
                 payload = db.archive_expired_knowledge(
                     limit=args.limit,
                     dry_run=not args.apply,
+                )
+            else:
+                payload = db.cold_store_expired_knowledge(
+                    limit=args.limit,
+                    dry_run=not args.apply,
+                    min_usage=getattr(args, "min_usage", 1),
+                    summary_max_chars=getattr(args, "summary_max_chars", 360),
                 )
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -1938,11 +1945,27 @@ def cmd_usage(args):
         return
 
     verb = "would archive" if payload.get("dry_run") else "archived"
-    print(f"🗄️  TTL archive {verb}: {payload.get('eligible_count', 0)} eligible")
+    if action == "archive-expired":
+        print(f"🗄️  TTL archive {verb}: {payload.get('eligible_count', 0)} eligible")
+        if payload.get("dry_run"):
+            print("   Add --apply to archive these memories.")
+        for row in payload.get("items", [])[: args.limit]:
+            print(f"  #{row.get('id')} {row.get('title')} expires_at={row.get('expires_at')}")
+        return
+
+    verb = "would cold-store" if payload.get("dry_run") else "cold-stored"
+    print(f"🧊 TTL cold-store {verb}: {payload.get('eligible_count', 0)} eligible")
+    print(
+        f"   skipped_low_usage={payload.get('skipped_low_usage_count', 0)} "
+        f"skipped_protected={payload.get('skipped_protected_count', 0)}"
+    )
     if payload.get("dry_run"):
-        print("   Add --apply to archive these memories.")
+        print("   Add --apply to summarize and archive these memories.")
     for row in payload.get("items", [])[: args.limit]:
-        print(f"  #{row.get('id')} {row.get('title')} expires_at={row.get('expires_at')}")
+        print(
+            f"  #{row.get('id')} {row.get('title')} "
+            f"usage={row.get('usage_count', 0)} layer={row.get('layer')}->{row.get('target_layer')}"
+        )
 
 
 def cmd_automation(args):
@@ -3447,6 +3470,13 @@ def main(argv: list[str] | None = None):
     up = usage_sub.add_parser("archive-expired", help="歸檔 expires_at 已到期的 active 記憶")
     up.add_argument("--limit", "-n", type=int, default=100)
     up.add_argument("--apply", action="store_true", help="實際歸檔；預設只 dry-run")
+    up.add_argument("--json", action="store_true", help="輸出 JSON")
+    up.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+    up = usage_sub.add_parser("cold-store-expired", help="摘要並冷存已到期但仍常被使用的記憶")
+    up.add_argument("--limit", "-n", type=int, default=100)
+    up.add_argument("--min-usage", type=int, default=1, help="最小 access+citation 次數")
+    up.add_argument("--summary-max-chars", type=int, default=360, help="摘要最大字元數")
+    up.add_argument("--apply", action="store_true", help="實際寫入 summary 並歸檔；預設只 dry-run")
     up.add_argument("--json", action="store_true", help="輸出 JSON")
     up.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 

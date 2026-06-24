@@ -117,6 +117,18 @@ memory usage weights, long-term forgetting pressure, shared agent health, and
 the 5% human-review queue. It does not promote candidates, read raw candidate
 content, compress memories, or move rows to cold storage by itself.
 
+When that brief recommends `summarize_then_cold_store`, run a dry-run first:
+
+```bash
+vault usage cold-store-expired --pretty
+vault usage cold-store-expired --apply --pretty
+```
+
+Cold-store is reversible by design. Eligible rows receive a compact summary,
+move to `status=archived`, and leave normal recall, but their original content
+stays in `vault.db` for audit or restore. Private, high/restricted, and L0/L1
+memories are skipped.
+
 Show the shortest review inbox:
 
 ```bash
@@ -364,6 +376,9 @@ important review fields are:
 - `automation brief`: a single read-only intelligence view for startup and
   dashboards: learning hints, memory weights, forgetting pressure, shared agent
   health, and the 5% human-review queue.
+- `cold-store-expired`: explicit summarize-then-cold-store action for expired
+  memories that are still used. It is dry-run-first, skips protected rows, and
+  retains original content.
 - `usage_review`: operator-facing buckets such as archiveable expired rows,
   expired-but-used rows, protected expired rows, and top-used memories.
 - `human_review`: whether a person should inspect the run before stronger

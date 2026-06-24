@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [0.6.94] - 2026-06-24
+
+### Added
+
+- Added `vault usage cold-store-expired`, a dry-run-first lifecycle command for expired-but-used memories.
+- Added MCP `vault_cold_store_expired` in the maintenance/full tool profiles. It defaults to preview mode and skips private, high/restricted, and L0/L1 memories.
+
+### Changed
+
+- Long-term forgetting can now move from strategy to a reversible first action: write a compact summary, demote eligible rows to the daily-detail layer, mark them archived, and retain original content for audit/restore.
+
 ## [0.6.93] - 2026-06-24
 
 ### Added

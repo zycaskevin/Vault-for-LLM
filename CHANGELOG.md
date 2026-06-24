@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.80] - 2026-06-24
+
+### Added
+
+- `vault setup-agent` now writes `agent-install/mcp-startup.json` and `agent-install/README-mcp-startup.md` so MCP-capable agents can follow the same startup order as CLI agents.
+- The generated local smoke script now verifies that the MCP `core` profile includes `vault_update_status` and `vault_automation_handoff`.
+- Agent setup next steps now point reviewers to the generated MCP startup guide.
+
 ## [0.6.79] - 2026-06-24
 
 ### Added

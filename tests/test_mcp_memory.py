@@ -116,6 +116,10 @@ def test_mcp_update_status_reports_agent_registry(tmp_path, monkeypatch):
     assert payload["agents"][0]["agent_id"] == "codex"
     assert payload["private_projects"] == [str(private_project.resolve())]
     assert f"vault automation handoff --project-dir {project.resolve()}" in payload["startup_commands"]
+    assert payload["agent_update_notice_count"] == 1
+    assert payload["agent_update_notices"][0]["agent_id"] == "codex"
+    assert payload["agent_update_notices"][0]["behind_latest_known"] is True
+    assert "9.9.9" in payload["agent_update_notices"][0]["recommended_action"]
     assert (tmp_path / "registry" / "update-status.json").exists()
 
 

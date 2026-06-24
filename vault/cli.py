@@ -2979,6 +2979,20 @@ def _print_update_status(payload: dict) -> None:
         )
         if agent.get("private_project_dir"):
             print(f"      private: {agent['private_project_dir']}")
+    notices = payload.get("agent_update_notices", [])
+    if notices:
+        print("Agent update notices:")
+        for notice in notices:
+            marker = "!" if notice.get("needs_attention") else "-"
+            print(
+                "  {marker} {agent_id}: {status} "
+                "(registered={registered_version}, latest={latest_known_version})".format(
+                    marker=marker,
+                    **notice,
+                )
+            )
+            if notice.get("needs_attention"):
+                print(f"      {notice['recommended_action']}")
     print("Startup commands:")
     for command in payload.get("startup_commands", []):
         print(f"  {command}")

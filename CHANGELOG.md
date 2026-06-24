@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.81] - 2026-06-24
+
+### Added
+
+- `vault update-status` and MCP `vault_update_status` now include `agent_update_notices`, a per-Agent advisory list showing registered runtime versions, project/private vault paths, and whether each Agent may need an upgrade or restart.
+- Human-readable `vault update-status` output now prints Agent update notices so local runtimes can share the same machine-level update message.
+- Added a decision record for local multi-Agent update notification through the Agent registry and `update-status.json`.
+
 ## [0.6.80] - 2026-06-24
 
 ### Added

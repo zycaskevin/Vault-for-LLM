@@ -196,6 +196,11 @@ def build_update_status(
     private_projects = sorted(
         {agent.get("private_project_dir", "") for agent in registry["agents"] if agent.get("private_project_dir")}
     )
+    agent_update_notices = build_agent_update_notices(
+        registry["agents"],
+        current_version=__version__,
+        latest_version=resolved_latest or __version__,
+    )
     startup_commands = ["vault update-status"]
     for project in projects:
         startup_commands.append(f"vault automation handoff --project-dir {project}")
@@ -211,18 +216,83 @@ def build_update_status(
         "agents": registry["agents"],
         "projects": projects,
         "private_projects": private_projects,
+        "agent_update_notices": agent_update_notices,
+        "agent_update_notice_count": sum(1 for item in agent_update_notices if item["needs_attention"]),
         "startup_commands": startup_commands,
-        "next_steps": _update_next_steps(update_available=update_available, latest_version=resolved_latest, projects=projects),
+        "next_steps": _update_next_steps(
+            update_available=update_available,
+            latest_version=resolved_latest,
+            projects=projects,
+            agent_update_notices=agent_update_notices,
+        ),
     }
     return payload
 
 
-def _update_next_steps(*, update_available: bool, latest_version: str, projects: list[str]) -> list[str]:
+def build_agent_update_notices(
+    agents: list[dict[str, Any]],
+    *,
+    current_version: str = __version__,
+    latest_version: str = "",
+) -> list[dict[str, Any]]:
+    """Build advisory per-Agent update notices from the local registry."""
+    notices: list[dict[str, Any]] = []
+    latest = latest_version or current_version
+    for agent in agents:
+        recorded_version = str(agent.get("vault_version") or "").strip()
+        has_recorded_version = bool(recorded_version)
+        behind_current = (not has_recorded_version) or is_newer_version(current_version, recorded_version)
+        behind_latest = bool(latest and ((not has_recorded_version) or is_newer_version(latest, recorded_version)))
+        if behind_latest:
+            status = "behind_latest"
+            recommended_action = f"Upgrade or restart this Agent runtime with Vault-for-LLM {latest}."
+        elif behind_current:
+            status = "behind_current_runtime"
+            recommended_action = (
+                f"Restart or re-register this Agent runtime so it records Vault-for-LLM {current_version}."
+            )
+        else:
+            status = "current"
+            recommended_action = "No update action needed for the known version source."
+        if not has_recorded_version:
+            status = "unknown_registered_version"
+            recommended_action = "Re-run `vault setup-agent` or `vault agent register` from this Agent runtime."
+        notices.append(
+            {
+                "agent_id": agent.get("agent_id", ""),
+                "scope": agent.get("scope", ""),
+                "memory_layout": agent.get("memory_layout", ""),
+                "project_dir": agent.get("project_dir", ""),
+                "private_project_dir": agent.get("private_project_dir", ""),
+                "tool_profile": agent.get("tool_profile", ""),
+                "registered_version": recorded_version or "unknown",
+                "current_runtime_version": current_version,
+                "latest_known_version": latest,
+                "behind_current_runtime": behind_current,
+                "behind_latest_known": behind_latest,
+                "needs_attention": behind_current or behind_latest or not has_recorded_version,
+                "status": status,
+                "recommended_action": recommended_action,
+            }
+        )
+    return notices
+
+
+def _update_next_steps(
+    *,
+    update_available: bool,
+    latest_version: str,
+    projects: list[str],
+    agent_update_notices: list[dict[str, Any]] | None = None,
+) -> list[str]:
     steps: list[str] = []
     if update_available:
         steps.append(f"Review release notes and upgrade Vault-for-LLM to {latest_version}.")
     else:
         steps.append("Vault-for-LLM is up to date for the known version source.")
+    notices = agent_update_notices or []
+    if any(item.get("needs_attention") for item in notices):
+        steps.append("Review `agent_update_notices` for registered runtimes that may need an upgrade or restart.")
     if projects:
         steps.append("Run the latest automation handoff before starting agent work.")
     else:

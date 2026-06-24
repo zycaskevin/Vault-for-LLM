@@ -58,11 +58,11 @@ changed notes without duplicating unchanged ones.
 | `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,supabase --write-stable-venv-script --json` | Generate `agent-install/setup-stable-venv.sh` for reboot-safe scheduled jobs and MCP commands |
 | `vault setup-agent --non-interactive --agent automation-agent --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,memory_agents --automation-schedule all --automation-mode balanced --automation-write-workspace --automation-include-transcripts --json` | Generate cron, LaunchAgent, and n8n templates for report-first memory automation plus cycle workspace and metadata-only uncaptured transcript hints |
 | `vault setup-agent --obsidian-vault ~/Documents/ObsidianVault --import-obsidian --obsidian-sync all` | Run first Obsidian import and write cron, LaunchAgent, and n8n templates |
-| `vault update-status` | Show installed Vault version, local Agent registry, project vaults, and startup handoff commands |
-| `vault update-status --check-pypi --write-status --json` | Check PyPI for the latest release and write `~/.vault-for-llm/update-status.json` |
+| `vault update-status` | Show installed Vault version, local Agent registry, project vaults, per-Agent update notices, and startup handoff commands |
+| `vault update-status --check-pypi --write-status --json` | Check PyPI for the latest release and write the machine-level update notice to `~/.vault-for-llm/update-status.json` |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.6.80` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.6.81` | Show the same registry/update status without contacting the network |
 
 `vault install-agent` is an alias for `vault setup-agent`.
 Interactive setup asks before installing optional dependencies. Non-interactive
@@ -71,6 +71,9 @@ with `--install-embedding-model zh|en|mix`.
 `vault setup-agent` also registers the Agent in
 `~/.vault-for-llm/agent-registry.json`, so other local runtimes can discover the
 same project vault and startup handoff path through `vault update-status`.
+The status payload includes `agent_update_notices`; if one Agent updates Vault
+and writes status, other local runtimes can see whether their registered
+environment is behind the current or latest known version.
 MCP-capable runtimes can call `vault_update_status` and
 `vault_automation_handoff` from the `core` profile for the same startup path.
 The default memory layout is `hybrid`: setup creates the shared project vault

@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.69] - 2026-06-24
+
+### Added
+
+- Added optional transcript discovery hints to `vault automation inbox` via `--include-transcripts`, keeping discovery metadata-only and content-free.
+- Added `include_transcripts` and `transcript_limit` to MCP `vault_automation_inbox`, so review agents can see uncaptured session exports in the same compact handoff.
+- Inbox handoff JSON can now include `transcript_discovery` and `summary.uncaptured_transcripts` when explicitly requested.
+
 ## [0.6.68] - 2026-06-24
 
 ### Added

@@ -454,6 +454,33 @@ def test_mcp_automation_inbox_can_write_handoff(tmp_path):
     assert (tmp_path / inbox["inbox_handoff_path"]).exists()
 
 
+def test_mcp_automation_inbox_can_include_transcript_hints(tmp_path):
+    _set_project_dir(tmp_path)
+    with VaultDB(tmp_path / "vault.db"):
+        pass
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    token = "sk-proj-1234567890abcdefghij1234567890"
+    (sessions / "codex-session.md").write_text(
+        f"Decision: MCP automation inbox discovery must not expose {token} from transcript content.",
+        encoding="utf-8",
+    )
+
+    inbox = _payload(handle_tool_call(
+        "vault_automation_inbox",
+        {
+            "include_transcripts": True,
+            "transcript_limit": 2,
+        },
+    ))
+    rendered = json.dumps(inbox, ensure_ascii=False)
+
+    assert inbox["summary"]["uncaptured_transcripts"] == 1
+    assert inbox["transcript_discovery"]["read_contents"] is False
+    assert inbox["transcript_discovery"]["transcripts"][0]["capture_path"] == "sessions/codex-session.md"
+    assert token not in rendered
+
+
 def test_mcp_vault_add_warns_and_builds_document_map(tmp_path):
     _set_project_dir(tmp_path)
     payload = _payload(handle_tool_call(

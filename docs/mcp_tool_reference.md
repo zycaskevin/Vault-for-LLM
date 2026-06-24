@@ -284,6 +284,8 @@ Read the compact automation review queue. This tool is available in the
 {
   "limit": 5,
   "include_content": false,
+  "include_transcripts": false,
+  "transcript_limit": 5,
   "write_handoff": false
 }
 ```
@@ -296,7 +298,8 @@ Typical result fields:
   "summary": {
     "pending_candidates": 3,
     "privacy_blocked": 1,
-    "needs_review": 4
+    "needs_review": 4,
+    "uncaptured_transcripts": 1
   },
   "review_queue": [
     {
@@ -310,6 +313,8 @@ Typical result fields:
 
 Agent rule: call this before reading full automation reports. It is read-only by
 default and hides candidate content unless `include_content` is explicitly set.
+Set `include_transcripts=true` when the agent also needs metadata-only hints for
+session exports that have not yet been captured.
 
 ## Remote Supabase Tools
 

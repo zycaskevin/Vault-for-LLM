@@ -48,7 +48,7 @@ changed notes without duplicating unchanged ones.
 
 | Command | Purpose |
 |---|---|
-| `vault setup-agent` | Ask for scope, setup language, optional features, Obsidian import, sync templates, and generate `agent-install/local-smoke.sh` |
+| `vault setup-agent` | Ask for scope, setup language, optional features, Obsidian import, sync templates, and generate `agent-install/local-smoke.sh` plus common Agent adapter startup templates |
 | `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,obsidian_import` | Agent-friendly scripted install |
 | `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --memory-layout hybrid --features core,mcp --json` | Create a shared project vault plus private Agent vault and write `hybrid-vault-layout.json` |
 | `vault setup-agent --non-interactive --agent codex --scope shared --agent-project-dir ~/Vaults/my-project --features core,mcp,semantic,supabase,headroom --language en --install-optional-deps --install-embedding-model mix --supabase-setup simple --json` | Install selected optional dependencies and configure a local semantic model |
@@ -64,7 +64,7 @@ changed notes without duplicating unchanged ones.
 | `vault update-status --read-status --agent codex --json` | Read the shared notice and add a focused startup checklist for one Agent/runtime |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.6.83` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.6.84` | Show the same registry/update status without contacting the network |
 
 `vault install-agent` is an alias for `vault setup-agent`.
 Interactive setup asks before installing optional dependencies. Non-interactive

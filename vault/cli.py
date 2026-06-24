@@ -2880,6 +2880,10 @@ def cmd_setup_agent(args):
         print("  update_status_templates:")
         for name, path in payload["update_status_templates"].items():
             print(f"    {name}: {path}")
+    if payload.get("agent_adapter_startup"):
+        print("  agent_adapter_startup:")
+        for name, path in payload["agent_adapter_startup"].items():
+            print(f"    {name}: {path}")
     print("Next steps:")
     for step in payload["next_steps"]:
         print(f"  {step}")

@@ -58,7 +58,7 @@ Vault-for-LLM 可能不是第一個該拿起來的工具。
 最推薦的方式，是直接把這段交給能執行本機指令的 Agent：
 
 ```text
-幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.95。
+幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.96。
 先問我要 shared、private、domain-specific 還是 temporary vault。
 詢問穩定的 project directory，並為長期任務產生 stable venv script。
 逐項詢問 MCP、semantic search、Supabase、Obsidian import、Headroom 壓縮、
@@ -71,7 +71,7 @@ Agent 會使用安裝精靈：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.95"
+pip install "vault-for-llm[mcp]==0.6.96"
 
 vault setup-agent
 ```
@@ -127,7 +127,7 @@ vault setup-agent \
 ### 手動快速開始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.95"
+pip install "vault-for-llm[mcp]==0.6.96"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -217,6 +217,10 @@ vault usage cold-store-expired --apply
 private、high/restricted、L0/L1 記憶。
 當 `cold_store_used_expired` 和 `--apply` 都啟用時，`vault automation run` /
 `vault automation cycle` 也會走同一條 cold-store 路徑。
+`vault automation inbox` 和 `vault automation brief` 會把這些 report-level
+訊號整理成短版 review digest，讓人類審核面保持很小：先看受保護 TTL
+決策、過期但仍被使用的記憶、cold-store 摘要與 promotion preview，再決定
+是否打開原始候選內容。
 
 設計說明：[docs/memory_governance.md](docs/memory_governance.md)。
 
@@ -368,7 +372,7 @@ SQLite 仍然是 source of truth。Supabase 是可選的共享層。
 Remote reader 應該直接把搜尋結果的 `id` 傳給 map/read；它可能是整數，也可能是 Supabase UUID。
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.95"
+pip install "vault-for-llm[supabase]==0.6.96"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

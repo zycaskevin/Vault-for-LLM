@@ -613,6 +613,34 @@ def test_automation_apply_does_not_touch_private_or_high_sensitivity_memory(tmp_
     assert len(forgetting_candidates) == 2
 
 
+def test_automation_inbox_prioritizes_latest_report_review_digest(tmp_path):
+    project = _init_project(tmp_path)
+    expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    with VaultDB(project / "vault.db") as db:
+        db.add_knowledge(
+            "Protected expired digest",
+            "Private TTL review should become a compact human-review digest item.",
+            expires_at=expired,
+            scope="private",
+        )
+
+    automation_run(project, mode="balanced", apply=True, limit=10, write_reports=True)
+    payload = automation_inbox(project, limit=3)
+    digest = payload["review_digest"]
+
+    assert payload["summary"]["latest_report_review_required"] is True
+    assert payload["summary"]["report_review_items"] >= 1
+    assert digest["items"][0]["kind"] == "report_review"
+    assert digest["items"][0]["id"] == "protected_expired"
+    assert digest["items"][0]["recommended_action"] == "approve_keep_extend_or_redact"
+    assert digest["items"][0]["safe_action"]
+    assert digest["items"][0]["report_path"].startswith("reports/automation/")
+
+    brief = automation_brief(project, limit=3, review_limit=3, min_events=1)
+    assert brief["human_review_5_percent"]["items"][0]["kind"] == "report_review"
+    assert brief["human_review_5_percent"]["items"][0]["id"] == "protected_expired"
+
+
 def test_automation_run_without_apply_does_not_write_forgetting_candidates(tmp_path):
     project = _init_project(tmp_path)
     expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
@@ -1450,6 +1478,7 @@ def test_automation_cli_inbox_prints_short_review_queue(tmp_path, monkeypatch, c
     out = capsys.readouterr().out
     assert "Automation inbox" in out
     assert "pending=1" in out
+    assert "Review digest:" in out
     assert "Review queue:" in out
     assert "review_for_promotion" in out
 

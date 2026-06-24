@@ -785,10 +785,11 @@ def automation_inbox(
                 "rejected_candidates": 0,
                 "privacy_blocked": 0,
                 "needs_review": 0,
-                "review_budget": max(1, int(limit or 5)),
-                "uncaptured_transcripts": 0,
+            "review_budget": max(1, int(limit or 5)),
+            "uncaptured_transcripts": 0,
             },
             "review_queue": [],
+            "review_digest": _empty_review_digest(max(1, int(limit or 5))),
             "transcript_discovery": {},
             "latest_report": {},
             "inbox_handoff_path": "",
@@ -828,6 +829,10 @@ def automation_inbox(
         transcript_discovery=transcript_discovery,
         review_budget=limit_i,
     )
+    review_digest = _inbox_review_digest(candidate_items, latest_report, limit=limit_i)
+    summary["review_digest_items"] = len(review_digest["items"])
+    summary["report_review_items"] = int(review_digest.get("report_item_count") or 0)
+    summary["candidate_digest_items"] = int(review_digest.get("candidate_item_count") or 0)
     payload = {
         "action": "inbox",
         "generated_at": generated_at,
@@ -835,6 +840,7 @@ def automation_inbox(
         "status": "completed",
         "summary": summary,
         "review_queue": candidate_items[:limit_i],
+        "review_digest": review_digest,
         "transcript_discovery": transcript_discovery,
         "latest_report": latest_report,
         "inbox_handoff_path": "",
@@ -1326,6 +1332,26 @@ def _brief_agent_health(project: Path) -> dict[str, Any]:
 def _brief_human_review(inbox: dict[str, Any], activity: dict[str, Any], *, limit: int = 5) -> dict[str, Any]:
     max_items = max(1, min(int(limit or 5), 20))
     items = []
+    digest = inbox.get("review_digest") or {}
+    for row in digest.get("items") or []:
+        items.append(
+            {
+                "kind": row.get("kind", ""),
+                "id": row.get("id", ""),
+                "title": row.get("title", ""),
+                "priority": row.get("priority", 0),
+                "reason": row.get("reason", ""),
+                "recommended_action": row.get("recommended_action", ""),
+            }
+        )
+        if len(items) >= max_items:
+            break
+    if len(items) >= max_items:
+        return {
+            "budget": max_items,
+            "items": items[:max_items],
+            "principle": "Show the smallest set of decisions a human should inspect; keep everything else agent-handled.",
+        }
     for row in inbox.get("review_queue") or []:
         items.append(
             {
@@ -2395,6 +2421,175 @@ def _candidate_review_reason(
     if status == "candidate":
         return "Pending candidate with passing gates."
     return "Candidate outcome is already recorded; use it as automation feedback."
+
+
+def _empty_review_digest(limit: int) -> dict[str, Any]:
+    return {
+        "budget": max(1, int(limit or 5)),
+        "items": [],
+        "report_item_count": 0,
+        "candidate_item_count": 0,
+        "principle": "show report-level decisions first, then only the smallest candidate queue",
+    }
+
+
+def _inbox_review_digest(
+    candidate_items: list[dict[str, Any]],
+    latest_report: dict[str, Any],
+    *,
+    limit: int,
+) -> dict[str, Any]:
+    budget = max(1, min(int(limit or 5), 50))
+    report_items = _report_review_digest_items(latest_report)
+    candidate_digest = [_candidate_review_digest_item(item) for item in candidate_items]
+    combined = [*report_items, *candidate_digest]
+    combined.sort(key=lambda item: (-int(item.get("priority") or 0), str(item.get("created_at") or ""), str(item.get("id") or "")))
+    return {
+        "budget": budget,
+        "items": combined[:budget],
+        "report_item_count": len(report_items),
+        "candidate_item_count": len(candidate_digest),
+        "principle": "show report-level decisions first, then only the smallest candidate queue",
+    }
+
+
+def _candidate_review_digest_item(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "kind": "candidate_review",
+        "id": item.get("id", ""),
+        "title": item.get("title", ""),
+        "priority": int(item.get("priority") or 0),
+        "count": 1,
+        "reason": item.get("reason", ""),
+        "recommended_action": item.get("recommended_action", ""),
+        "safe_action": "Use vault promote only after approval, or vault candidate-review to record reject/block feedback.",
+        "source": item.get("source", ""),
+        "source_ref": item.get("source_ref", ""),
+        "created_at": item.get("created_at", ""),
+    }
+
+
+def _report_review_digest_items(latest_report: dict[str, Any]) -> list[dict[str, Any]]:
+    human_review = latest_report.get("human_review") or {}
+    report_path = str(latest_report.get("path") or latest_report.get("report_path") or "")
+    items: list[dict[str, Any]] = []
+    for raw in human_review.get("items") or []:
+        kind = str(raw.get("kind") or "")
+        count = int(raw.get("count") or 0)
+        if not kind or count <= 0:
+            continue
+        meta = _report_review_kind_meta(kind)
+        items.append(
+            {
+                "kind": "report_review",
+                "id": kind,
+                "title": meta["title"],
+                "priority": meta["priority"],
+                "count": count,
+                "reason": meta["reason"],
+                "recommended_action": meta["recommended_action"],
+                "safe_action": meta["safe_action"],
+                "report_path": report_path,
+            }
+        )
+    return items
+
+
+def _report_review_kind_meta(kind: str) -> dict[str, Any]:
+    meta = {
+        "protected_expired": {
+            "title": "Protected expired memories",
+            "priority": 95,
+            "reason": "Private, high-sensitivity, restricted, or protected-layer memory reached TTL but policy blocked automation.",
+            "recommended_action": "approve_keep_extend_or_redact",
+            "safe_action": "Inspect bounded metadata first; do not widen policy until sensitivity and ownership are clear.",
+        },
+        "expired_but_used": {
+            "title": "Expired but still used memories",
+            "priority": 90,
+            "reason": "These memories are past TTL but still retrieved or cited, so the system needs a keep/cold-store decision.",
+            "recommended_action": "decide_keep_refresh_or_cold_store",
+            "safe_action": "Prefer refresh or cold-store over deletion; check citations before changing TTL.",
+        },
+        "cold_stored_expired": {
+            "title": "Cold-stored used memories",
+            "priority": 82,
+            "reason": "Automation summarized and archived expired-but-used memory under reversible cold-store policy.",
+            "recommended_action": "spot_check_cold_store_summary",
+            "safe_action": "Spot-check summaries before making cold-store policy broader.",
+        },
+        "cold_store_expired_preview": {
+            "title": "Cold-store preview",
+            "priority": 78,
+            "reason": "Automation found expired-but-used memory that would be summarized and archived if apply is enabled.",
+            "recommended_action": "review_before_apply",
+            "safe_action": "Run a dry-run report first; apply only after policy is reviewed.",
+        },
+        "auto_promoted_low_risk": {
+            "title": "Auto-promoted low-risk memories",
+            "priority": 88,
+            "reason": "Policy allowed low-risk candidates to enter active memory automatically.",
+            "recommended_action": "spot_check_auto_promotions",
+            "safe_action": "Inspect promoted ids and keep promotion rules narrow.",
+        },
+        "auto_promote_low_risk_preview": {
+            "title": "Auto-promote preview",
+            "priority": 76,
+            "reason": "Automation found candidates that would be promoted if apply is enabled.",
+            "recommended_action": "review_gates_before_apply",
+            "safe_action": "Check source_ref, scope, sensitivity, and gate status before applying.",
+        },
+        "dream_candidate_suggestions": {
+            "title": "Dream candidate suggestions",
+            "priority": 65,
+            "reason": "Dream found possible cleanup or consolidation candidates; these remain review-only.",
+            "recommended_action": "review_or_ignore_suggestions",
+            "safe_action": "Treat suggestions as queue ordering hints, not active memory changes.",
+        },
+        "forgetting_candidate_suggestions": {
+            "title": "Forgetting candidate suggestions",
+            "priority": 72,
+            "reason": "Lifecycle review proposed candidate records for expired, protected, or still-used memory.",
+            "recommended_action": "review_lifecycle_candidates",
+            "safe_action": "Promote only reusable conclusions; reject vague or overly private suggestions.",
+        },
+        "pending_candidates": {
+            "title": "Pending candidate queue",
+            "priority": 70,
+            "reason": "Candidate memory is waiting for explicit promote, reject, or block decisions.",
+            "recommended_action": "review_candidate_queue",
+            "safe_action": "Use the compact inbox first; open raw content only when needed.",
+        },
+        "duplicate_groups": {
+            "title": "Duplicate memory groups",
+            "priority": 68,
+            "reason": "Dream detected likely duplicated memory that may need merge or rejection.",
+            "recommended_action": "merge_or_reject_duplicates",
+            "safe_action": "Prefer source-preserving merge decisions over blind deletion.",
+        },
+        "weak_metadata": {
+            "title": "Weak metadata",
+            "priority": 55,
+            "reason": "Some memory items lack enough metadata for reliable retrieval or governance.",
+            "recommended_action": "clarify_metadata",
+            "safe_action": "Patch title, source, category, or tags without changing factual content.",
+        },
+        "expired_active": {
+            "title": "Expired active memories",
+            "priority": 60,
+            "reason": "Active memory is past TTL and should be archived, refreshed, or deliberately kept.",
+            "recommended_action": "review_ttl_policy",
+            "safe_action": "Archive only reversible, non-protected rows under reviewed policy.",
+        },
+    }
+    fallback = {
+        "title": kind.replace("_", " ").strip().title() or "Automation review item",
+        "priority": 50,
+        "reason": "Automation surfaced this report item for human review.",
+        "recommended_action": "inspect_report_item",
+        "safe_action": "Read the compact report before changing policy or memory.",
+    }
+    return meta.get(kind, fallback)
 
 
 def _inbox_summary(

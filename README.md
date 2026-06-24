@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.89.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.90.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,7 +83,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.89"
+pip install "vault-for-llm[mcp]==0.6.90"
 
 vault setup-agent
 ```
@@ -139,7 +139,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.89"
+pip install "vault-for-llm[mcp]==0.6.90"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -262,9 +262,28 @@ not promote active memory, and the generated handoffs omit raw transcript and
 candidate content.
 
 Balanced automation can pre-fill the memory candidate queue with Dream and
-Forgetting suggestions when `--apply` is used, but it still never promotes
-candidates or hard-deletes memory. Use `conservative` mode when scheduled jobs
-should only write reports.
+Forgetting suggestions when `--apply` is used, but it still does not promote
+candidates by default or hard-delete memory. Use `conservative` mode when
+scheduled jobs should only write reports.
+
+If you want the first real closed loop from candidate to formal memory, enable
+it deliberately in `automation_policy.yaml`:
+
+```yaml
+auto_promote_low_risk_candidates: true
+auto_promote_allowed_sources: [session_capture]
+auto_promote_allowed_memory_types: [session_lesson]
+auto_promote_allowed_sensitivities: [low]
+auto_promote_min_trust: 0.65
+auto_promote_max_per_run: 3
+auto_promote_requires_source_ref: true
+```
+
+With that policy, `vault automation cycle --apply` can promote only low-risk
+session lessons that pass privacy, duplicate, metadata, and quality gates and
+include a source reference. Without `--apply`, Vault only previews what would be
+promoted. Private, high-sensitivity, duplicate, weak, or sourceless candidates
+stay in the review queue.
 
 `vault automation eval` reads promoted/rejected/blocked candidate outcomes and
 shows which suggestion sources are earning trust over time. The signal guides
@@ -370,7 +389,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.89"
+pip install "vault-for-llm[supabase]==0.6.90"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

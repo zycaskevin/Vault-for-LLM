@@ -2126,6 +2126,15 @@ def cmd_automation(args):
                 f"written={forgetting.get('candidates_written', 0)} "
                 f"skipped_existing={forgetting.get('candidates_skipped_existing', 0)}"
             )
+        auto_promote = payload.get("auto_promote") or {}
+        if auto_promote:
+            print(
+                "  auto-promote: "
+                f"enabled={auto_promote.get('enabled', False)} "
+                f"would={auto_promote.get('would_promote_count', 0)} "
+                f"promoted={auto_promote.get('promoted_count', 0)} "
+                f"skipped={auto_promote.get('skipped_count', 0)}"
+            )
         if payload.get("human_review", {}).get("required"):
             print("  review: required")
         return
@@ -2226,6 +2235,11 @@ def cmd_automation(args):
                 f"  forgetting candidates: suggested={item.get('forgetting_candidate_suggestions', 0)} "
                 f"written={item.get('forgetting_candidates_written', 0)} "
                 f"skipped_existing={item.get('forgetting_candidates_skipped_existing', 0)}"
+            )
+            print(
+                f"  auto-promote: enabled={item.get('auto_promote_enabled', False)} "
+                f"would={item.get('auto_promote_would_promote_count', 0)} "
+                f"promoted={item.get('auto_promote_promoted_count', 0)}"
             )
             detail = payload.get("detail") or {}
             ledger = detail.get("action_ledger") or []

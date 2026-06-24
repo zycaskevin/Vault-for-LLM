@@ -84,11 +84,16 @@ def test_automation_plan_writes_default_policy(tmp_path):
     assert (project / "automation_policy.yaml").exists()
     policy = load_policy(project)
     assert policy["auto_archive_expired"] is True
+    assert policy["cold_store_used_expired"] is True
     assert policy["protect_used_expired"] is True
     assert policy["dream_write_candidates"] is True
     assert policy["forgetting_write_candidates"] is True
     assert policy["auto_promote_low_risk_candidates"] is False
     assert any(item["id"] == "ttl_archive_apply" for item in payload["planned_actions"])
+    cold_store_action = next(
+        item for item in payload["planned_actions"] if item["id"] == "cold_store_used_expired"
+    )
+    assert cold_store_action["enabled"] is True
     dream_candidate_action = next(
         item for item in payload["planned_actions"] if item["id"] == "dream_candidate_suggestions"
     )
@@ -125,26 +130,39 @@ def test_automation_run_balanced_apply_archives_expired_memory(tmp_path):
         assert db.get_knowledge(future_id)["status"] == "active"
 
 
-def test_automation_run_protects_expired_but_used_memory(tmp_path):
+def test_automation_run_cold_stores_expired_but_used_memory(tmp_path):
     project = _init_project(tmp_path)
     expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
     with VaultDB(project / "vault.db") as db:
-        expired_id = db.add_knowledge("Still useful expired SOP", "Deployment rollback", expires_at=expired)
-        db.record_knowledge_access([expired_id])
+        expired_id = db.add_knowledge(
+            "Still useful expired SOP",
+            "Deployment rollback should be summarized before it leaves daily recall.",
+            layer="L2",
+            expires_at=expired,
+        )
+        db.record_knowledge_access([expired_id], cited=True)
 
     payload = automation_run(project, mode="balanced", apply=True, limit=10, write_reports=False)
 
     assert payload["archive_expired"]["archived_count"] == 0
     assert payload["archive_expired"]["skipped_used_count"] == 1
+    assert payload["cold_store_expired"]["applied_count"] == 1
+    assert payload["dry_run_diff"]["would_cold_store_count"] == 1
+    assert payload["dry_run_diff"]["cold_store_applied_count"] == 1
     assert payload["dry_run_diff"]["skipped_usage_count"] == 1
     assert payload["usage_review"]["expired_used_review_count"] == 1
     assert payload["forgetting"]["candidates_written"] == 1
-    assert payload["action_ledger"][0]["status"] == "skipped_usage"
+    assert any(item["operation"] == "archive_expired" and item["status"] == "skipped_usage" for item in payload["action_ledger"])
+    assert any(item["operation"] == "cold_store_expired" and item["status"] == "applied" for item in payload["action_ledger"])
     assert payload["human_review"]["required"] is True
     assert {"kind": "expired_but_used", "count": 1} in payload["human_review"]["items"]
+    assert {"kind": "cold_stored_expired", "count": 1} in payload["human_review"]["items"]
     assert {"kind": "forgetting_candidate_suggestions", "count": 1} in payload["human_review"]["items"]
     with VaultDB(project / "vault.db") as db:
-        assert db.get_knowledge(expired_id)["status"] == "active"
+        row = db.get_knowledge(expired_id)
+        assert row["status"] == "archived"
+        assert row["layer"] == "L3"
+        assert "Cold-store summary" in row["summary"]
         forgetting_candidates = [
             item for item in db.list_memory_candidates(limit=20)
             if item["memory_type"] == "forgetting_suggestion"
@@ -483,6 +501,28 @@ def test_automation_activity_reports_preview_without_promoting(tmp_path):
     assert payload["events"][0]["candidate_id"] == candidate_id
 
 
+def test_automation_activity_and_report_include_cold_store_results(tmp_path):
+    project = _init_project(tmp_path)
+    expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    with VaultDB(project / "vault.db") as db:
+        used_id = db.add_knowledge(
+            "Activity cold-store SOP",
+            "Cold-store activity should show summarize-then-archive results.",
+            expires_at=expired,
+        )
+        db.record_knowledge_access([used_id], cited=True)
+
+    run = automation_run(project, mode="balanced", apply=True, limit=10, write_reports=True)
+    activity = automation_activity(project, limit=3, event_limit=10)
+    latest = automation_report(project, latest=True)
+
+    assert run["cold_store_expired"]["applied_count"] == 1
+    assert activity["totals"]["cold_store_applied_count"] == 1
+    assert any(item["kind"] == "cold_store_applied" for item in activity["events"])
+    assert latest["report"]["cold_store_applied_count"] == 1
+    assert latest["report"]["dry_run_diff"]["cold_store_applied_count"] == 1
+
+
 def test_automation_brief_combines_learning_weights_forgetting_and_review(tmp_path):
     project = _init_project(tmp_path)
     expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
@@ -584,8 +624,11 @@ def test_automation_run_without_apply_does_not_write_forgetting_candidates(tmp_p
 
     assert payload["policy"]["forgetting_write_candidates"] is True
     assert payload["policy"]["forgetting_write_candidates_requires_apply"] is True
+    assert payload["cold_store_expired"]["dry_run"] is True
+    assert payload["cold_store_expired"]["applied_count"] == 0
     assert payload["forgetting"]["candidates_written"] == 0
     with VaultDB(project / "vault.db") as db:
+        assert db.get_knowledge(expired_id)["status"] == "active"
         assert [
             item for item in db.list_memory_candidates(limit=20)
             if item["memory_type"] == "forgetting_suggestion"
@@ -594,6 +637,19 @@ def test_automation_run_without_apply_does_not_write_forgetting_candidates(tmp_p
 
 def test_automation_forgetting_candidates_skip_existing(tmp_path):
     project = _init_project(tmp_path)
+    (project / "automation_policy.yaml").write_text(
+        "\n".join(
+            [
+                "mode: balanced",
+                "auto_archive_expired: true",
+                "protect_used_expired: true",
+                "cold_store_used_expired: false",
+                "forgetting_write_candidates: true",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
     expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
     with VaultDB(project / "vault.db") as db:
         expired_id = db.add_knowledge("Recurring forgetting", "Repeated forgetting candidates should be skipped.", expires_at=expired)

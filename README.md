@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.94.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.95.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,7 +83,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.94"
+pip install "vault-for-llm[mcp]==0.6.95"
 
 vault setup-agent
 ```
@@ -140,7 +140,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.94"
+pip install "vault-for-llm[mcp]==0.6.95"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -236,6 +236,9 @@ vault usage cold-store-expired --apply
 it writes a compact summary, moves the row out of normal recall with
 `status: archived`, keeps the original content for audit/restore, and skips
 private, high/restricted, and L0/L1 memory.
+Policy automation can run the same cold-store path during `vault automation run`
+or `vault automation cycle` when `cold_store_used_expired` and `--apply` are
+enabled.
 
 Design notes: [docs/memory_governance.md](docs/memory_governance.md).
 
@@ -426,7 +429,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.94"
+pip install "vault-for-llm[supabase]==0.6.95"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

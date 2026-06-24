@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [0.6.76] - 2026-06-24
+
+### Added
+
+- Generated memory automation schedule README files now include a "Next agent startup handoff" command using `vault automation handoff --project-dir ...`.
+- `vault setup-agent` next steps now remind the next agent to start from `vault automation handoff` when memory automation schedules are generated.
+- The generated README safety checklist now names `vault automation handoff` as the read-only startup command for scheduled-agent handoffs.
+
 ## [0.6.75] - 2026-06-24
 
 ### Added

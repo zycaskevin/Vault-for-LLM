@@ -358,6 +358,13 @@ during the scheduled run. It is still a compact handoff only: candidate content
 stays hidden by default and the cycle does not promote candidates or hard-delete
 memory.
 
+The generated `README-memory-automation.md` also includes the startup command
+the next agent should run:
+
+```bash
+vault automation handoff --project-dir /path/to/project
+```
+
 Add `--automation-include-transcripts` when the scheduled handoff should also
 show uncaptured transcript exports for the next reviewer. This only passes
 metadata through to `automation inbox`; it does not read transcript contents or

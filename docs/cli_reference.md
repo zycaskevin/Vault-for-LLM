@@ -66,7 +66,7 @@ changed notes without duplicating unchanged ones.
 | `vault update-status --doctor --json` | Check whether the shared update notice exists, is fresh, includes every registered Agent, and shows runtime attention |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.6.92` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.6.93` | Show the same registry/update status without contacting the network |
 | `vault agent doctor --json` | Run the same shared update-distribution health check through the Agent registry namespace |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md` | Preview applying the generated Codex startup template into a runtime instruction file |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md --apply` | Apply the marked startup block and create a backup before changing an existing file |
@@ -167,6 +167,8 @@ For per-tool MCP examples, see `docs/mcp_tool_reference.md`.
 | `vault automation cycle --apply` | Run one safe feedback-to-curation loop: evaluate reviewed candidate outcomes, write `learning_policy.json`, then run policy-based automation so Dream can consume the latest hints |
 | `vault automation cycle --write-workspace --include-transcripts` | Write `reports/automation/cycle-latest.json` and `.md`: compact candidate review, metadata-only transcript paths, priority brief, suggested next tasks, and learning-policy summary for the next agent |
 | `vault automation activity --pretty` | Show a compact read-only activity feed for recent auto-promote previews, promotions, and skipped reasons |
+| `vault automation brief --pretty` | Show one compact intelligence brief: learning hints, memory weights, forgetting pressure, shared agent health, and the 5% human-review queue |
+| `vault automation brief --write-brief` | Write `reports/automation/brief-latest.json` and `.md` for dashboards or the next agent |
 | `vault automation handoff` | Print the latest compact automation handoff for the next agent; prefers `cycle-latest.md` |
 | `vault automation inbox --limit 5 --write-handoff` | Show the shortest read-only review queue and write `reports/automation/inbox-latest.json` |
 | `vault automation inbox --include-transcripts --write-handoff` | Add metadata-only uncaptured transcript hints to the inbox handoff |

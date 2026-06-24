@@ -1860,6 +1860,36 @@ TOOLS = [
         }
     },
     {
+        "name": "vault_automation_brief",
+        "description": "Read a compact automation intelligence brief: learning hints, memory weights, forgetting pressure, shared agent health, and the 5% human-review queue. Read-only.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum learning rules, usage weights, and forgetting preview rows to include.",
+                    "default": 5,
+                    "minimum": 1,
+                    "maximum": 20,
+                },
+                "review_limit": {
+                    "type": "integer",
+                    "description": "Maximum human-review items to include.",
+                    "default": 5,
+                    "minimum": 1,
+                    "maximum": 20,
+                },
+                "min_events": {
+                    "type": "integer",
+                    "description": "Minimum feedback events before a group is considered learnable.",
+                    "default": 5,
+                    "minimum": 1,
+                    "maximum": 100,
+                },
+            },
+        }
+    },
+    {
         "name": "vault_automation_handoff",
         "description": "Read the latest compact startup handoff for this project. Read-only; does not inspect raw transcripts or mutate memory.",
         "inputSchema": {
@@ -2198,6 +2228,7 @@ TOOL_PROFILES = {
         "vault_stats",
         "vault_update_status",
         "vault_automation_activity",
+        "vault_automation_brief",
         "vault_automation_handoff",
     ],
     "review": [
@@ -2207,6 +2238,7 @@ TOOL_PROFILES = {
         "vault_stats",
         "vault_update_status",
         "vault_automation_activity",
+        "vault_automation_brief",
         "vault_automation_handoff",
         "vault_memory_promote",
         "vault_memory_review",
@@ -2223,6 +2255,7 @@ TOOL_PROFILES = {
         "vault_stats",
         "vault_update_status",
         "vault_automation_activity",
+        "vault_automation_brief",
         "vault_automation_handoff",
         "vault_remote_search",
         "vault_remote_map_show",
@@ -2235,6 +2268,7 @@ TOOL_PROFILES = {
         "vault_stats",
         "vault_update_status",
         "vault_automation_activity",
+        "vault_automation_brief",
         "vault_automation_handoff",
         "vault_memory_promote",
         "vault_memory_review",
@@ -2605,6 +2639,18 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     minimum=1,
                     maximum=100,
                 ),
+            )
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
+
+        elif name == "vault_automation_brief":
+            from vault.automation import automation_brief
+
+            payload = automation_brief(
+                Path(DB_PATH).resolve().parent,
+                limit=_clamp_int(arguments.get("limit", 5), default=5, minimum=1, maximum=20),
+                review_limit=_clamp_int(arguments.get("review_limit", 5), default=5, minimum=1, maximum=20),
+                min_events=_clamp_int(arguments.get("min_events", 5), default=5, minimum=1, maximum=100),
+                write_brief=False,
             )
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 

@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.6.93] - 2026-06-24
+
+### Added
+
+- Added `vault automation brief`, a compact read-only intelligence view that joins learning hints, memory usage weights, forgetting pressure, shared agent health, and the shortest human-review queue.
+- Added MCP `vault_automation_brief` to the core tool profile, so Codex, Claude Code, OpenClaw, Hermes-style agents, and other MCP runtimes can read the same automation health surface without raw candidate content.
+- Added JSON and Markdown brief export via `vault automation brief --write-brief`.
+
+### Changed
+
+- Automation observability now has a single startup-friendly "5% human review" view before deeper reports, cycle workspaces, or candidate content are needed.
+
 ## [0.6.92] - 2026-06-24
 
 ### Added

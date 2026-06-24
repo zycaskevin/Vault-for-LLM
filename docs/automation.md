@@ -104,6 +104,19 @@ that would be promoted in preview mode, and candidates skipped by policy or
 gates. It is read-only, never includes raw candidate content, and hides titles
 for private, high-sensitivity, or restricted skipped candidates.
 
+Show the shortest intelligence brief:
+
+```bash
+vault automation brief --pretty
+vault automation brief --write-brief --pretty
+```
+
+`automation brief` is the daily startup surface for the memory loop. It joins
+five signals into one small read-only payload: promote/reject learning hints,
+memory usage weights, long-term forgetting pressure, shared agent health, and
+the 5% human-review queue. It does not promote candidates, read raw candidate
+content, compress memories, or move rows to cold storage by itself.
+
 Show the shortest review inbox:
 
 ```bash
@@ -348,6 +361,9 @@ important review fields are:
   `--apply`, and why other candidates were skipped.
 - `automation activity`: a compact derived view over recent reports for agent
   startup, showing promoted/skipped reasons without raw candidate content.
+- `automation brief`: a single read-only intelligence view for startup and
+  dashboards: learning hints, memory weights, forgetting pressure, shared agent
+  health, and the 5% human-review queue.
 - `usage_review`: operator-facing buckets such as archiveable expired rows,
   expired-but-used rows, protected expired rows, and top-used memories.
 - `human_review`: whether a person should inspect the run before stronger

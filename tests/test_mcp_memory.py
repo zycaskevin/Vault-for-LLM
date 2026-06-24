@@ -22,6 +22,7 @@ def test_mcp_memory_tools_are_advertised():
         "vault_capture_session",
         "vault_automation_inbox",
         "vault_automation_activity",
+        "vault_automation_brief",
         "vault_automation_handoff",
         "vault_update_status",
         "vault_dream_run",
@@ -46,6 +47,7 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
         "vault_stats",
         "vault_update_status",
         "vault_automation_activity",
+        "vault_automation_brief",
         "vault_automation_handoff",
     ]
     assert "vault_memory_candidates" not in core_names
@@ -53,6 +55,7 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
     review_names = [tool["name"] for tool in select_tools("review")]
     assert "vault_update_status" in review_names
     assert "vault_automation_activity" in review_names
+    assert "vault_automation_brief" in review_names
     assert "vault_automation_handoff" in review_names
     assert "vault_memory_candidates" in review_names
     assert "vault_memory_review" in review_names
@@ -68,6 +71,7 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
     assert "vault_add" in full_names
     assert "vault_memory_review" in full_names
     assert "vault_update_status" in full_names
+    assert "vault_automation_brief" in full_names
     assert "vault_automation_handoff" in full_names
     assert "vault_remote_read_range" in full_names
     assert len(full_names) > len(core_names)
@@ -690,6 +694,50 @@ def test_mcp_automation_activity_reads_closed_loop_events_without_content(tmp_pa
     assert activity["events"][0]["candidate_id"] == proposed["candidate_id"]
     assert activity["safety"]["read_only"] is True
     assert "without exposing candidate content" not in rendered
+
+
+def test_mcp_automation_brief_returns_intelligence_without_raw_content(tmp_path):
+    _set_project_dir(tmp_path)
+    expired = "2000-01-01T00:00:00+00:00"
+    with VaultDB(tmp_path / "vault.db") as db:
+        used_id = db.add_knowledge(
+            "MCP brief cited SOP",
+            "MCP brief should expose usage weights without dumping raw content.",
+            expires_at=expired,
+            category="workflow",
+            tags="mcp,brief",
+        )
+        db.record_knowledge_access([used_id], cited=True)
+    content = (
+        "Decision: MCP brief should show a short review queue while keeping "
+        "candidate content outside the payload."
+    )
+    proposed = _payload(handle_tool_call(
+        "vault_memory_propose",
+        {
+            "title": "MCP brief review lesson",
+            "content": content,
+            "reason": "Exercise automation brief.",
+            "source": "session_capture",
+            "source_ref": "mcp:brief:1",
+            "tags": "mcp,brief",
+            "memory_type": "session_lesson",
+            "trust": 0.82,
+            "scope": "project",
+            "sensitivity": "low",
+        },
+    ))
+
+    brief = _payload(handle_tool_call("vault_automation_brief", {"limit": 5, "review_limit": 5, "min_events": 1}))
+    rendered = json.dumps(brief, ensure_ascii=False)
+
+    assert brief["action"] == "brief"
+    assert brief["safety"]["read_only"] is True
+    assert brief["safety"]["includes_raw_candidate_content"] is False
+    assert brief["memory_weights"]["top_used"][0]["knowledge_id"] == used_id
+    assert brief["forgetting_strategy"]["used_expired_count"] == 1
+    assert any(item["id"] == proposed["candidate_id"] for item in brief["human_review_5_percent"]["items"])
+    assert "candidate content outside the payload" not in rendered
 
 
 def test_mcp_vault_add_warns_and_builds_document_map(tmp_path):

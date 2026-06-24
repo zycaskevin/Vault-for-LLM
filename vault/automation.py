@@ -579,6 +579,77 @@ def automation_activity(
     }
 
 
+def automation_brief(
+    project_dir: str | Path,
+    *,
+    limit: int = 5,
+    review_limit: int = 5,
+    min_events: int = 5,
+    write_brief: bool = False,
+    brief_path: str | Path = "",
+) -> dict[str, Any]:
+    """Build a compact automation intelligence brief.
+
+    The brief joins the main closed-loop signals into one startup-safe payload:
+    learning rules, usage weights, forgetting pressure, agent registry health,
+    and the smallest useful human review list.
+    """
+    project = Path(project_dir)
+    generated_at = _now()
+    activity = automation_activity(project, limit=limit, event_limit=max(5, review_limit * 2))
+    inbox = automation_inbox(project, limit=review_limit, include_content=False)
+    evaluation = automation_eval(project, limit=1000, min_events=min_events)
+    policy = load_policy(project)
+    usage: dict[str, Any] = {}
+    forgetting_strategy: dict[str, Any] = _empty_forgetting_strategy()
+    db_path = project / "vault.db"
+    if db_path.exists():
+        with VaultDB(db_path) as db:
+            usage = db.usage_stats(limit=max(1, min(int(limit or 5), 50)))
+            archive_preview = db.archive_expired_knowledge(
+                limit=max(1, min(int(limit or 5) * 5, 100)),
+                dry_run=True,
+                skip_used=bool(policy.get("protect_used_expired", True)),
+                protected_scopes=_policy_list(policy, "protected_scopes"),
+                protected_sensitivities=_policy_list(policy, "protected_sensitivities"),
+            )
+        forgetting_strategy = _brief_forgetting_strategy(usage, archive_preview)
+
+    payload = {
+        "action": "brief",
+        "generated_at": generated_at,
+        "project_dir": str(project),
+        "status": "completed" if db_path.exists() else "blocked",
+        "summary": _brief_summary(activity, inbox, evaluation, usage, forgetting_strategy),
+        "learning": _brief_learning(evaluation, limit=limit),
+        "memory_weights": _brief_memory_weights(usage, limit=limit),
+        "forgetting_strategy": forgetting_strategy,
+        "agent_health": _brief_agent_health(project),
+        "human_review_5_percent": _brief_human_review(inbox, activity, limit=review_limit),
+        "activity": {
+            "totals": activity.get("totals", {}),
+            "events": (activity.get("events") or [])[: max(1, min(int(review_limit or 5), 20))],
+        },
+        "safety": {
+            "read_only": True,
+            "writes_active_memory": False,
+            "writes_candidates": False,
+            "hard_delete": False,
+            "includes_raw_candidate_content": False,
+            "learning_is_ranking_hint_only": True,
+            "forgetting_is_strategy_only": True,
+        },
+        "brief_path": "",
+        "brief_markdown_path": "",
+        "next_action": "Review human_review_5_percent first; keep automation policy narrow until repeated outcomes support widening.",
+    }
+    if write_brief:
+        payload["brief_path"] = _write_brief(project, payload, brief_path=brief_path)
+        payload["brief_markdown_path"] = _write_brief_markdown(project, payload, brief_path=payload["brief_path"])
+        _write_brief(project, payload, brief_path=payload["brief_path"])
+    return payload
+
+
 def automation_handoff(
     project_dir: str | Path,
     *,
@@ -1025,6 +1096,335 @@ def _ledger_activity_event(report_path: str, data: dict[str, Any], item: dict[st
         "reason": item.get("reason", ""),
         "risk": item.get("risk", ""),
     }
+
+
+def _brief_summary(
+    activity: dict[str, Any],
+    inbox: dict[str, Any],
+    evaluation: dict[str, Any],
+    usage: dict[str, Any],
+    forgetting_strategy: dict[str, Any],
+) -> dict[str, Any]:
+    activity_totals = activity.get("totals") or {}
+    inbox_summary = inbox.get("summary") or {}
+    return {
+        "pending_candidates": int(inbox_summary.get("pending_candidates") or 0),
+        "needs_review": int(inbox_summary.get("needs_review") or 0),
+        "human_review_items": len(inbox.get("review_queue") or []),
+        "learning_readiness": evaluation.get("readiness", "blocked"),
+        "feedback_events": int(evaluation.get("event_count") or 0),
+        "learning_rules": len((evaluation.get("learning_policy") or {}).get("rules") or []),
+        "top_used_memories": len(usage.get("top_used") or []),
+        "expired_active": int(usage.get("expired_active_count") or 0),
+        "archiveable_expired": int(forgetting_strategy.get("archiveable_count") or 0),
+        "used_expired": int(forgetting_strategy.get("used_expired_count") or 0),
+        "auto_promote_promoted": int(activity_totals.get("promoted_count") or 0),
+        "auto_promote_skipped": int(activity_totals.get("skipped_count") or 0),
+    }
+
+
+def _brief_learning(evaluation: dict[str, Any], *, limit: int = 5) -> dict[str, Any]:
+    policy = evaluation.get("learning_policy") or {}
+    rules = []
+    for item in policy.get("rules") or []:
+        if not isinstance(item, dict):
+            continue
+        rules.append(
+            {
+                "selector": item.get("selector", {}),
+                "action": item.get("action", ""),
+                "confidence": float(item.get("confidence") or 0.0),
+                "priority_multiplier": float(item.get("priority_multiplier") or 1.0),
+                "reason": item.get("reason", ""),
+            }
+        )
+    rules.sort(key=lambda item: item["confidence"], reverse=True)
+    return {
+        "readiness": evaluation.get("readiness", ""),
+        "event_count": int(evaluation.get("event_count") or 0),
+        "outcome_counts": evaluation.get("outcome_counts", {}),
+        "top_rules": rules[: max(1, min(int(limit or 5), 20))],
+        "principle": "Learning rules sort future review work; they are not permission to auto-promote.",
+    }
+
+
+def _brief_memory_weights(usage: dict[str, Any], *, limit: int = 5) -> dict[str, Any]:
+    items = []
+    for row in usage.get("top_used") or []:
+        access = int(row.get("access_count") or 0)
+        citations = int(row.get("citation_count") or 0)
+        score = access + citations * 2
+        items.append(
+            {
+                "knowledge_id": row.get("id"),
+                "title": row.get("title", ""),
+                "layer": row.get("layer", ""),
+                "category": row.get("category", ""),
+                "trust": float(row.get("trust") or 0.0),
+                "status": row.get("status", ""),
+                "access_count": access,
+                "citation_count": citations,
+                "last_accessed_at": row.get("last_accessed_at", ""),
+                "weight_score": score,
+                "recommendation": "protect_or_summarize_before_forgetting" if score > 0 else "observe",
+            }
+        )
+    items.sort(key=lambda item: (item["weight_score"], item["trust"]), reverse=True)
+    return {
+        "knowledge_count": int(usage.get("knowledge_count") or 0),
+        "total_accesses": int(usage.get("total_accesses") or 0),
+        "total_citations": int(usage.get("total_citations") or 0),
+        "top_used": items[: max(1, min(int(limit or 5), 20))],
+        "principle": "Usage weight is a small protection and ranking signal, not a source-of-truth override.",
+    }
+
+
+def _empty_forgetting_strategy() -> dict[str, Any]:
+    return {
+        "expired_active_count": 0,
+        "archiveable_count": 0,
+        "used_expired_count": 0,
+        "protected_expired_count": 0,
+        "strategy": "initialize_vault_first",
+        "recommendations": [],
+    }
+
+
+def _brief_forgetting_strategy(usage: dict[str, Any], archive_preview: dict[str, Any]) -> dict[str, Any]:
+    archiveable = int(len(archive_preview.get("items") or []))
+    used_expired = int(len(archive_preview.get("skipped_used") or []))
+    protected_expired = int(len(archive_preview.get("skipped_protected") or []))
+    recommendations = []
+    if archiveable:
+        recommendations.append(
+            {
+                "action": "archive_candidate_or_apply_policy",
+                "count": archiveable,
+                "reason": "Expired memories have no usage/protection signal in the current policy preview.",
+            }
+        )
+    if used_expired:
+        recommendations.append(
+            {
+                "action": "summarize_then_cold_store",
+                "count": used_expired,
+                "reason": "Expired memories are still used; compress or summarize before removing from daily recall.",
+            }
+        )
+    if protected_expired:
+        recommendations.append(
+            {
+                "action": "human_review_required",
+                "count": protected_expired,
+                "reason": "Protected scope or sensitivity should not be automatically archived.",
+            }
+        )
+    if not recommendations:
+        recommendations.append(
+            {
+                "action": "keep_observing",
+                "count": 0,
+                "reason": "No urgent forgetting pressure was found.",
+            }
+        )
+    return {
+        "expired_active_count": int(usage.get("expired_active_count") or 0),
+        "archiveable_count": archiveable,
+        "used_expired_count": used_expired,
+        "protected_expired_count": protected_expired,
+        "strategy": "archive_unused_summarize_used_review_protected",
+        "recommendations": recommendations,
+    }
+
+
+def _brief_agent_health(project: Path) -> dict[str, Any]:
+    try:
+        from vault.agent_registry import list_agents
+
+        registry = list_agents()
+    except Exception as exc:
+        return {
+            "status": "unavailable",
+            "agent_count": 0,
+            "agents": [],
+            "reason": str(exc),
+        }
+    agents = []
+    project_resolved = str(project.expanduser().resolve())
+    for item in registry.get("agents") or []:
+        project_dir = str(item.get("project_dir") or "")
+        agents.append(
+            {
+                "agent_id": item.get("agent_id", ""),
+                "scope": item.get("scope", ""),
+                "tool_profile": item.get("tool_profile", ""),
+                "memory_layout": item.get("memory_layout", ""),
+                "vault_version": item.get("vault_version", ""),
+                "last_seen_at": item.get("last_seen_at", ""),
+                "uses_this_project": project_dir == project_resolved,
+            }
+        )
+    return {
+        "status": "completed",
+        "registry_path": registry.get("registry_path", ""),
+        "agent_count": int(registry.get("agent_count") or 0),
+        "agents": agents,
+        "principle": "Shared health is local registry metadata only; it does not expose private memories.",
+    }
+
+
+def _brief_human_review(inbox: dict[str, Any], activity: dict[str, Any], *, limit: int = 5) -> dict[str, Any]:
+    max_items = max(1, min(int(limit or 5), 20))
+    items = []
+    for row in inbox.get("review_queue") or []:
+        items.append(
+            {
+                "kind": "candidate_review",
+                "id": row.get("id", ""),
+                "title": row.get("title", ""),
+                "priority": row.get("priority", 0),
+                "reason": row.get("reason", ""),
+                "recommended_action": row.get("recommended_action", ""),
+            }
+        )
+        if len(items) >= max_items:
+            break
+    if len(items) < max_items:
+        for event in activity.get("events") or []:
+            if event.get("kind") not in {"auto_promote_skipped", "archive_skipped"}:
+                continue
+            items.append(
+                {
+                    "kind": event.get("kind", ""),
+                    "id": event.get("candidate_id") or event.get("knowledge_id") or "",
+                    "title": "" if event.get("title_hidden") else event.get("title", ""),
+                    "priority": 70,
+                    "reason": event.get("reason", ""),
+                    "recommended_action": "review_policy_or_gate_reason",
+                }
+            )
+            if len(items) >= max_items:
+                break
+    return {
+        "budget": max_items,
+        "items": items[:max_items],
+        "principle": "Show the smallest set of decisions a human should inspect; keep everything else agent-handled.",
+    }
+
+
+def _write_brief(project: Path, payload: dict[str, Any], *, brief_path: str | Path = "") -> str:
+    report_dir = project / "reports" / "automation"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    if brief_path:
+        raw = Path(brief_path)
+        candidate = raw if raw.is_absolute() else project / raw
+        try:
+            resolved = candidate.expanduser().resolve()
+            allowed = report_dir.expanduser().resolve()
+        except Exception as exc:
+            raise ValueError(f"unable to resolve automation brief path: {exc}") from exc
+        if allowed != resolved and allowed not in resolved.parents:
+            raise ValueError("automation brief path must stay under reports/automation")
+        path = resolved
+    else:
+        path = report_dir / "brief-latest.json"
+    data = dict(payload)
+    data["brief_path"] = _relative_to_project(project, path)
+    data["brief_markdown_path"] = str(data.get("brief_markdown_path") or "")
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return _relative_to_project(project, path)
+
+
+def _write_brief_markdown(project: Path, payload: dict[str, Any], *, brief_path: str | Path) -> str:
+    json_path = project / brief_path if not Path(brief_path).is_absolute() else Path(brief_path)
+    path = json_path.with_suffix(".md")
+    summary = payload.get("summary") or {}
+    review = payload.get("human_review_5_percent") or {}
+    learning = payload.get("learning") or {}
+    weights = payload.get("memory_weights") or {}
+    forgetting = payload.get("forgetting_strategy") or {}
+    agent_health = payload.get("agent_health") or {}
+    lines = [
+        "# Vault Automation Intelligence Brief",
+        "",
+        f"- generated_at: `{_md_text(payload.get('generated_at', ''))}`",
+        f"- status: `{_md_text(payload.get('status', ''))}`",
+        f"- pending candidates: `{int(summary.get('pending_candidates') or 0)}`",
+        f"- needs review: `{int(summary.get('needs_review') or 0)}`",
+        f"- auto-promoted: `{int(summary.get('auto_promote_promoted') or 0)}`",
+        f"- auto-promote skipped: `{int(summary.get('auto_promote_skipped') or 0)}`",
+        f"- learning readiness: `{_md_text(summary.get('learning_readiness', ''))}`",
+        f"- expired active: `{int(summary.get('expired_active') or 0)}`",
+        "",
+        "## Human Review 5%",
+        "",
+    ]
+    items = review.get("items") or []
+    if items:
+        lines += [_md_row(["kind", "id", "title", "action", "reason"]), _md_row(["---", "---", "---", "---", "---"])]
+        for item in items:
+            lines.append(
+                _md_row(
+                    [
+                        item.get("kind", ""),
+                        item.get("id", ""),
+                        item.get("title", ""),
+                        item.get("recommended_action", ""),
+                        item.get("reason", ""),
+                    ]
+                )
+            )
+    else:
+        lines.append("No urgent human-review items.")
+    lines += [
+        "",
+        "## Learning",
+        "",
+        f"- readiness: `{_md_text(learning.get('readiness', ''))}`",
+        f"- feedback events: `{int(learning.get('event_count') or 0)}`",
+        f"- top rules: `{len(learning.get('top_rules') or [])}`",
+        "",
+        "## Memory Weights",
+        "",
+    ]
+    top_used = weights.get("top_used") or []
+    if top_used:
+        lines += [_md_row(["id", "title", "weight", "access", "citations"]), _md_row(["---", "---", "---", "---", "---"])]
+        for item in top_used[:10]:
+            lines.append(
+                _md_row(
+                    [
+                        item.get("knowledge_id", ""),
+                        item.get("title", ""),
+                        item.get("weight_score", 0),
+                        item.get("access_count", 0),
+                        item.get("citation_count", 0),
+                    ]
+                )
+            )
+    else:
+        lines.append("No usage-weight signal yet.")
+    lines += [
+        "",
+        "## Forgetting Strategy",
+        "",
+        f"- archiveable expired: `{int(forgetting.get('archiveable_count') or 0)}`",
+        f"- used expired: `{int(forgetting.get('used_expired_count') or 0)}`",
+        f"- protected expired: `{int(forgetting.get('protected_expired_count') or 0)}`",
+        "",
+        "## Agent Health",
+        "",
+        f"- registered agents: `{int(agent_health.get('agent_count') or 0)}`",
+        "",
+        "## Safety",
+        "",
+        "- read-only brief",
+        "- no raw candidate content",
+        "- no auto-promote policy widening",
+        "- forgetting strategy only; no compression or cold-store mutation",
+    ]
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return _relative_to_project(project, path)
 
 
 def _write_cycle_workspace_markdown(

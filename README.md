@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.92.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.6.93.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -83,7 +83,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.92"
+pip install "vault-for-llm[mcp]==0.6.93"
 
 vault setup-agent
 ```
@@ -140,7 +140,7 @@ MCP commands do not depend on a disposable `/tmp` virtualenv.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.92"
+pip install "vault-for-llm[mcp]==0.6.93"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -351,6 +351,17 @@ shows recent auto-promote previews, promotions, and skipped reasons without raw
 candidate content. MCP-capable agents can call `vault_automation_activity` from
 the `core` profile.
 
+`vault automation brief` is the shortest daily intelligence view. It combines
+learning hints from promote/reject feedback, memory usage weights, forgetting
+pressure, shared agent health, and the 5% human-review queue. Use it before
+opening full reports:
+
+```bash
+vault automation brief --pretty
+```
+
+MCP-capable agents can call `vault_automation_brief` from the `core` profile.
+
 Agent installers can generate cron, LaunchAgent, or n8n templates with
 `vault setup-agent --automation-schedule cron|launchagent|n8n|all`. Scheduled
 templates default to `vault automation cycle`, so long-running agents can learn
@@ -408,7 +419,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.92"
+pip install "vault-for-llm[supabase]==0.6.93"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

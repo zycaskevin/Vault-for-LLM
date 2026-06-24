@@ -1949,6 +1949,7 @@ def cmd_automation(args):
     """Policy-based memory automation workflows."""
     from vault.automation import (
         automation_activity,
+        automation_brief,
         automation_cycle,
         automation_doctor,
         automation_eval,
@@ -1960,9 +1961,9 @@ def cmd_automation(args):
     )
 
     action = getattr(args, "automation_action", "")
-    if action not in {"plan", "run", "cycle", "report", "activity", "inbox", "handoff", "doctor", "eval"}:
+    if action not in {"plan", "run", "cycle", "report", "activity", "brief", "inbox", "handoff", "doctor", "eval"}:
         print(
-            "error: automation requires action: plan, run, cycle, report, activity, inbox, handoff, eval, or doctor",
+            "error: automation requires action: plan, run, cycle, report, activity, brief, inbox, handoff, eval, or doctor",
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -2016,6 +2017,15 @@ def cmd_automation(args):
                 project_dir,
                 limit=args.limit,
                 event_limit=getattr(args, "event_limit", 20),
+            )
+        elif action == "brief":
+            payload = automation_brief(
+                project_dir,
+                limit=args.limit,
+                review_limit=getattr(args, "review_limit", 5),
+                min_events=getattr(args, "min_events", 5),
+                write_brief=getattr(args, "write_brief", False),
+                brief_path=getattr(args, "brief_path", ""),
             )
         elif action == "inbox":
             payload = automation_inbox(
@@ -2291,6 +2301,57 @@ def cmd_automation(args):
                     f"    - {item.get('kind')} {subject} "
                     f"reason={item.get('reason', '')}"
                 )
+        return
+
+    if action == "brief":
+        summary = payload.get("summary") or {}
+        review = payload.get("human_review_5_percent") or {}
+        forgetting = payload.get("forgetting_strategy") or {}
+        learning = payload.get("learning") or {}
+        weights = payload.get("memory_weights") or {}
+        agent_health = payload.get("agent_health") or {}
+        print("🧠 Automation intelligence brief\n")
+        print(f"  status: {payload.get('status')}")
+        print(
+            "  review: "
+            f"pending={summary.get('pending_candidates', 0)} "
+            f"needs_review={summary.get('needs_review', 0)} "
+            f"shown={len(review.get('items') or [])}/{review.get('budget', 0)}"
+        )
+        print(
+            "  learning: "
+            f"readiness={learning.get('readiness') or summary.get('learning_readiness', '')} "
+            f"events={learning.get('event_count', 0)} "
+            f"rules={len(learning.get('top_rules') or [])}"
+        )
+        print(
+            "  weights: "
+            f"top_used={len(weights.get('top_used') or [])} "
+            f"accesses={weights.get('total_accesses', 0)} "
+            f"citations={weights.get('total_citations', 0)}"
+        )
+        print(
+            "  forgetting: "
+            f"expired={forgetting.get('expired_active_count', 0)} "
+            f"archiveable={forgetting.get('archiveable_count', 0)} "
+            f"used_expired={forgetting.get('used_expired_count', 0)} "
+            f"protected={forgetting.get('protected_expired_count', 0)}"
+        )
+        print(f"  agent health: registered={agent_health.get('agent_count', 0)}")
+        if payload.get("brief_path"):
+            print(f"  brief: {payload.get('brief_path')}")
+        if payload.get("brief_markdown_path"):
+            print(f"  brief markdown: {payload.get('brief_markdown_path')}")
+        items = review.get("items") or []
+        if items:
+            print("\n  Human review 5%:")
+            for item in items:
+                print(
+                    f"    - {item.get('kind')} {item.get('id')} "
+                    f"action={item.get('recommended_action')} reason={item.get('reason')}"
+                )
+        else:
+            print("\n  Human review 5%: empty")
         return
 
     if action == "inbox":
@@ -3923,6 +3984,13 @@ def main(argv: list[str] | None = None):
     sp = automation_sub.add_parser("activity", help="Show compact closed-loop automation activity")
     add_automation_common(sp)
     sp.add_argument("--event-limit", type=int, default=20, help="maximum activity events to show")
+
+    sp = automation_sub.add_parser("brief", help="Show a compact automation intelligence brief")
+    add_automation_common(sp)
+    sp.add_argument("--review-limit", type=int, default=5, help="maximum human-review items to show")
+    sp.add_argument("--min-events", type=int, default=5, help="minimum feedback events before a group is considered learnable")
+    sp.add_argument("--write-brief", action="store_true", help="write reports/automation/brief-latest.json and .md")
+    sp.add_argument("--brief-path", default="", help="custom reports/automation/*.json brief path")
 
     sp = automation_sub.add_parser("inbox", help="Show the shortest review queue for automation candidates and reports")
     add_automation_common(sp)

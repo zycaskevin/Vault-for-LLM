@@ -6,6 +6,7 @@ import json
 
 from vault.automation import (
     automation_activity,
+    automation_brief,
     automation_cycle,
     automation_doctor,
     automation_eval,
@@ -480,6 +481,57 @@ def test_automation_activity_reports_preview_without_promoting(tmp_path):
     assert payload["totals"]["promoted_count"] == 0
     assert payload["events"][0]["kind"] == "auto_promote_preview"
     assert payload["events"][0]["candidate_id"] == candidate_id
+
+
+def test_automation_brief_combines_learning_weights_forgetting_and_review(tmp_path):
+    project = _init_project(tmp_path)
+    expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    with VaultDB(project / "vault.db") as db:
+        used_id = db.add_knowledge(
+            "Expired but cited deployment SOP",
+            "Deployment rollback remains important even after its TTL.",
+            expires_at=expired,
+            category="workflow",
+            tags="deployment,rollback",
+        )
+        db.record_knowledge_access([used_id], cited=True)
+        db.add_knowledge(
+            "Unused expired temporary note",
+            "Temporary note can move out of daily recall.",
+            expires_at=expired,
+        )
+        _create_low_risk_session_candidate(db, title="Brief review lesson")
+        db.record_memory_feedback(
+            {
+                "candidate_id": "brief_promoted",
+                "source": "session_capture",
+                "memory_type": "session_lesson",
+                "category": "decision",
+                "outcome": "promoted",
+                "score": 1.0,
+                "reason": "review accepted",
+            }
+        )
+
+    payload = automation_brief(project, limit=5, review_limit=5, min_events=1, write_brief=True)
+
+    assert payload["action"] == "brief"
+    assert payload["status"] == "completed"
+    assert payload["safety"]["read_only"] is True
+    assert payload["safety"]["forgetting_is_strategy_only"] is True
+    assert payload["learning"]["readiness"] == "learning"
+    assert payload["learning"]["top_rules"]
+    assert payload["memory_weights"]["top_used"][0]["knowledge_id"] == used_id
+    assert payload["memory_weights"]["top_used"][0]["weight_score"] == 3
+    assert payload["forgetting_strategy"]["used_expired_count"] == 1
+    assert payload["forgetting_strategy"]["archiveable_count"] == 1
+    assert payload["human_review_5_percent"]["items"]
+    assert payload["brief_path"] == "reports/automation/brief-latest.json"
+    assert payload["brief_markdown_path"] == "reports/automation/brief-latest.md"
+    assert (project / payload["brief_path"]).exists()
+    assert (project / payload["brief_markdown_path"]).exists()
+    written = json.loads((project / payload["brief_path"]).read_text(encoding="utf-8"))
+    assert written["brief_markdown_path"] == "reports/automation/brief-latest.md"
 
 
 def test_automation_apply_does_not_touch_private_or_high_sensitivity_memory(tmp_path):
@@ -1012,6 +1064,38 @@ def test_automation_cli_activity_prints_closed_loop_counts(tmp_path, monkeypatch
     assert "Automation activity" in out
     assert "promoted=1" in out
     assert "auto_promoted_low_risk" in out
+
+
+def test_automation_cli_brief_prints_short_human_review(tmp_path, monkeypatch, capsys):
+    from vault.cli import cmd_automation
+
+    project = _init_project(tmp_path)
+    expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    with VaultDB(project / "vault.db") as db:
+        used_id = db.add_knowledge("Brief CLI used expired", "Used expired memory.", expires_at=expired)
+        db.record_knowledge_access([used_id], cited=True)
+        _create_low_risk_session_candidate(db, title="Brief CLI review lesson")
+    monkeypatch.chdir(project)
+
+    cmd_automation(
+        Namespace(
+            automation_action="brief",
+            mode=None,
+            limit=5,
+            review_limit=5,
+            min_events=1,
+            write_brief=True,
+            brief_path="",
+            json=False,
+            pretty=False,
+        )
+    )
+
+    out = capsys.readouterr().out
+    assert "Automation intelligence brief" in out
+    assert "Human review 5%" in out
+    assert "used_expired=1" in out
+    assert "brief: reports/automation/brief-latest.json" in out
 
 
 def test_automation_cli_eval_prints_feedback_scores(tmp_path, monkeypatch, capsys):

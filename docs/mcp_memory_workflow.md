@@ -11,7 +11,7 @@ Use the smallest MCP tool profile that fits the session:
 
 | Profile | Tools | Use when |
 |---|---|---|
-| `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats`, `vault_update_status`, `vault_automation_handoff` | Daily agent use with startup status and compact handoff |
+| `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats`, `vault_update_status`, `vault_automation_activity`, `vault_automation_brief`, `vault_automation_handoff` | Daily agent use with startup status, compact intelligence brief, and compact handoff |
 | `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_capture_discover`, `vault_capture_session`, `vault_automation_inbox`, `vault_dream_run` | Discovering/capturing sessions and reviewing, rejecting, blocking, or promoting candidate memory |
 | `remote` | Core plus `vault_remote_search`, `vault_remote_map_show`, `vault_remote_read_range` | Reading a Supabase-synced cross-host memory view |
 | `maintenance` | Review plus Obsidian import and freshness/convergence checks | Scheduled or operator-led curation |
@@ -33,7 +33,8 @@ selected project directory.
 ```text
 1. vault_update_status       # see version, registry, shared/private vaults
 2. vault_update_status       # optional doctor=true when update freshness is unclear
-3. vault_automation_handoff  # read the compact project handoff when present
+3. vault_automation_brief    # read the 5% review and automation health view
+4. vault_automation_handoff  # read the compact project handoff when present
 4. vault_search              # find active memory
 5. vault_read_range          # read bounded source range and cite it
 6. vault_memory_propose      # candidate-first write with gates

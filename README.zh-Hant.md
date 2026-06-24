@@ -58,7 +58,7 @@ Vault-for-LLM 可能不是第一個該拿起來的工具。
 最推薦的方式，是直接把這段交給能執行本機指令的 Agent：
 
 ```text
-幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.92。
+幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.93。
 先問我要 shared、private、domain-specific 還是 temporary vault。
 詢問穩定的 project directory，並為長期任務產生 stable venv script。
 逐項詢問 MCP、semantic search、Supabase、Obsidian import、Headroom 壓縮、
@@ -71,7 +71,7 @@ Agent 會使用安裝精靈：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.92"
+pip install "vault-for-llm[mcp]==0.6.93"
 
 vault setup-agent
 ```
@@ -127,7 +127,7 @@ vault setup-agent \
 ### 手動快速開始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.92"
+pip install "vault-for-llm[mcp]==0.6.93"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -254,6 +254,16 @@ privacy blocked、敏感、重複、品質不足、automation 產生的候選排
 `vault automation activity` 是同一個閉環的最短稽核入口：它只顯示最近
 auto-promote 的 preview、實際提升、被擋原因，不顯示候選原文。MCP-capable
 Agent 可以在 `core` profile 直接呼叫 `vault_automation_activity`。
+
+`vault automation brief` 是每天最短的智慧總覽：它把 promote/reject feedback
+學到的排序提示、記憶使用權重、遺忘壓力、多 Agent 健康狀態，以及 5% 需要人看的
+review queue 合在一起。先看這份，再決定要不要打開完整報告：
+
+```bash
+vault automation brief --pretty
+```
+
+MCP-capable Agent 可以在 `core` profile 直接呼叫 `vault_automation_brief`。
 如果安裝時加上 `--automation-include-transcripts`，排程 handoff 也會列出尚未
 capture 的 transcript 候選路徑。這只包含 metadata，不讀 transcript 內容，也不會
 自動把對話變成正式記憶。
@@ -350,7 +360,7 @@ SQLite 仍然是 source of truth。Supabase 是可選的共享層。
 Remote reader 應該直接把搜尋結果的 `id` 傳給 map/read；它可能是整數，也可能是 Supabase UUID。
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.92"
+pip install "vault-for-llm[supabase]==0.6.93"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## [0.6.82] - 2026-06-24
+
+### Added
+
+- Added `vault update-status --read-status` and MCP `vault_update_status(read_status=true)` so Agents can read an existing machine-level update notice without recomputing status or contacting PyPI.
+- `vault setup-agent` now writes `agent-install/README-update-status.md`, `update-status-contract.json`, cron, and LaunchAgent templates for shared local Agent update notices.
+- MCP startup guides now read existing update status first and document the no-network fallback path.
+- Added a decision record for the Agent update-status install flow.
+
 ## [0.6.81] - 2026-06-24
 
 ### Added

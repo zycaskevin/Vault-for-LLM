@@ -305,3 +305,26 @@ def write_update_status(payload: dict[str, Any], path: str | Path | None = None)
     status_file.parent.mkdir(parents=True, exist_ok=True)
     status_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return status_file
+
+
+def read_update_status(path: str | Path | None = None) -> dict[str, Any]:
+    """Read the machine-level update status without recomputing it."""
+    status_file = Path(path).expanduser() if path else update_status_path()
+    if not status_file.exists():
+        return {
+            "ok": False,
+            "action": "read_status",
+            "missing": True,
+            "status_path": str(status_file),
+            "message": "No update status file found. Run `vault update-status --write-status` to create one.",
+        }
+    try:
+        payload = json.loads(status_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid update status JSON: {status_file}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"invalid update status payload: {status_file}")
+    payload.setdefault("ok", True)
+    payload["action"] = "read_status"
+    payload["status_path"] = str(status_file)
+    return payload

@@ -122,6 +122,30 @@ def test_mcp_update_status_reports_agent_registry(tmp_path, monkeypatch):
     assert "9.9.9" in payload["agent_update_notices"][0]["recommended_action"]
     assert (tmp_path / "registry" / "update-status.json").exists()
 
+    read_payload = _payload(
+        handle_tool_call(
+            "vault_update_status",
+            {
+                "read_status": True,
+            },
+        )
+    )
+    assert read_payload["ok"] is True
+    assert read_payload["action"] == "read_status"
+    assert read_payload["agent_update_notices"][0]["latest_known_version"] == "9.9.9"
+
+    conflict_payload = _payload(
+        handle_tool_call(
+            "vault_update_status",
+            {
+                "read_status": True,
+                "write_status": True,
+            },
+        )
+    )
+    assert conflict_payload["ok"] is False
+    assert "cannot be combined" in conflict_payload["error"]
+
 
 def test_mcp_automation_handoff_reads_existing_compact_handoff(tmp_path):
     _set_project_dir(tmp_path)

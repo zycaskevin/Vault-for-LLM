@@ -55,6 +55,27 @@ def test_agent_register_and_update_status_cli(tmp_path, monkeypatch, capsys):
     assert "9.9.9" in notice["recommended_action"]
     assert (tmp_path / "registry" / "update-status.json").exists()
 
+    main(["update-status", "--read-status", "--json"])
+    read_status = json.loads(capsys.readouterr().out)
+    assert read_status["ok"] is True
+    assert read_status["action"] == "read_status"
+    assert read_status["status_path"] == str(tmp_path / "registry" / "update-status.json")
+    assert read_status["agent_update_notice_count"] == 1
+    assert read_status["agent_update_notices"][0]["latest_known_version"] == "9.9.9"
+
+
+def test_update_status_read_missing_file_is_non_fatal(tmp_path, monkeypatch, capsys):
+    from vault.cli import main
+
+    monkeypatch.setenv("VAULT_AGENT_REGISTRY_DIR", str(tmp_path / "registry"))
+
+    main(["update-status", "--read-status", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["missing"] is True
+    assert payload["status_path"] == str(tmp_path / "registry" / "update-status.json")
+    assert "write-status" in payload["message"]
+
 
 def test_build_update_status_reports_agent_versions_behind_current_runtime(tmp_path, monkeypatch):
     from vault import __version__

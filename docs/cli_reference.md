@@ -60,9 +60,10 @@ changed notes without duplicating unchanged ones.
 | `vault setup-agent --obsidian-vault ~/Documents/ObsidianVault --import-obsidian --obsidian-sync all` | Run first Obsidian import and write cron, LaunchAgent, and n8n templates |
 | `vault update-status` | Show installed Vault version, local Agent registry, project vaults, per-Agent update notices, and startup handoff commands |
 | `vault update-status --check-pypi --write-status --json` | Check PyPI for the latest release and write the machine-level update notice to `~/.vault-for-llm/update-status.json` |
+| `vault update-status --read-status --json` | Read the existing machine-level update notice without recomputing or contacting PyPI |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.6.81` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.6.82` | Show the same registry/update status without contacting the network |
 
 `vault install-agent` is an alias for `vault setup-agent`.
 Interactive setup asks before installing optional dependencies. Non-interactive

@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## [0.6.78] - 2026-06-24
+
+### Added
+
+- Added `vault setup-agent --memory-layout hybrid|shared|private`.
+- Hybrid setup now creates a shared project vault plus a private Agent vault, writes `agent-install/hybrid-vault-layout.json`, and documents startup commands in `README-hybrid-vault-layout.md`.
+- The local agent registry now records `memory_layout`, `private_project_dir`, and `private_db_path`.
+- `vault update-status` now reports private Agent vault paths for hybrid installs.
+
 ## [0.6.77] - 2026-06-24
 
 ### Added

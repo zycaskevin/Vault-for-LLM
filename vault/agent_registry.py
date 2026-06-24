@@ -105,10 +105,13 @@ def register_agent(
     features: list[str] | tuple[str, ...] | None = None,
     tool_profile: str = "core",
     source: str = "manual",
+    memory_layout: str = "shared",
+    private_project_dir: str | Path | None = None,
     path: str | Path | None = None,
 ) -> dict[str, Any]:
     agent_id = safe_agent_id(agent)
     project_path = Path(project_dir).expanduser().resolve()
+    private_path = Path(private_project_dir).expanduser().resolve() if private_project_dir else None
     now = utc_now_iso()
     registry = load_registry(path)
     previous = registry["agents"].get(agent_id, {})
@@ -118,6 +121,9 @@ def register_agent(
         "scope": scope,
         "project_dir": str(project_path),
         "db_path": str(project_path / "vault.db"),
+        "memory_layout": memory_layout,
+        "private_project_dir": str(private_path) if private_path else "",
+        "private_db_path": str(private_path / "vault.db") if private_path else "",
         "features": sorted(str(item) for item in (features or []) if str(item).strip()),
         "tool_profile": tool_profile,
         "source": source,
@@ -187,6 +193,9 @@ def build_update_status(
             latest_error = str(exc)
     update_available = bool(resolved_latest and is_newer_version(resolved_latest, __version__))
     projects = sorted({agent.get("project_dir", "") for agent in registry["agents"] if agent.get("project_dir")})
+    private_projects = sorted(
+        {agent.get("private_project_dir", "") for agent in registry["agents"] if agent.get("private_project_dir")}
+    )
     startup_commands = ["vault update-status"]
     for project in projects:
         startup_commands.append(f"vault automation handoff --project-dir {project}")
@@ -201,6 +210,7 @@ def build_update_status(
         "agent_count": registry["agent_count"],
         "agents": registry["agents"],
         "projects": projects,
+        "private_projects": private_projects,
         "startup_commands": startup_commands,
         "next_steps": _update_next_steps(update_available=update_available, latest_version=resolved_latest, projects=projects),
     }

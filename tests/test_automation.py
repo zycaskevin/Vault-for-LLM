@@ -14,6 +14,7 @@ from vault.automation import (
     automation_inbox,
     automation_plan,
     automation_report,
+    automation_review_feedback,
     automation_review_summary,
     automation_run,
     load_policy,
@@ -702,6 +703,54 @@ def test_automation_review_summary_writes_short_approval_cards(tmp_path):
     markdown = (project / payload["review_summary_markdown_path"]).read_text(encoding="utf-8")
     assert "# Vault Automation Review Summary" in markdown
     assert "importance is a ranking hint only" in markdown
+
+
+def test_automation_review_feedback_teaches_review_card_ranking(tmp_path):
+    project = _init_project(tmp_path)
+    expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    with VaultDB(project / "vault.db") as db:
+        used_id = db.add_knowledge(
+            "Review feedback cited SOP",
+            "Cited expired memory should be learned as useful review feedback.",
+            layer="L2",
+            expires_at=expired,
+            trust=0.8,
+        )
+        db.record_knowledge_access([used_id], cited=True)
+
+    summary = automation_review_summary(project, limit=5, min_events=1, write_summary=True)
+    card = next(item for item in summary["cards"] if item["kind"] == "memory_importance")
+    payload = automation_review_feedback(
+        project,
+        card_kind="memory_importance",
+        card_id=str(card["id"]),
+        decision="accept",
+        reason="This card correctly protected an expired but still cited memory.",
+        min_events=1,
+        write_learning_policy=True,
+    )
+
+    assert payload["action"] == "review-feedback"
+    assert payload["status"] == "completed"
+    assert payload["feedback"]["outcome"] == "accepted"
+    assert payload["safety"]["feedback_only"] is True
+    assert payload["safety"]["applies_recommended_action"] is False
+    assert payload["learning"]["learning_policy_path"] == "reports/automation/learning_policy.json"
+    with VaultDB(project / "vault.db") as db:
+        events = db.list_memory_feedback(source="review-summary", limit=10)
+    assert len(events) == 1
+    assert events[0]["event_type"] == "review_card_outcome"
+    assert events[0]["memory_type"] == "memory_importance"
+    assert events[0]["outcome"] == "accepted"
+    policy = json.loads((project / "reports" / "automation" / "learning_policy.json").read_text(encoding="utf-8"))
+    rule = policy["rules"][0]
+    assert rule["selector"]["source"] == "review-summary"
+    assert rule["selector"]["memory_type"] == "memory_importance"
+    assert rule["action"] == "prefer_candidates"
+    learned = automation_review_summary(project, limit=5, min_events=1)
+    learned_card = next(item for item in learned["cards"] if item["kind"] == "memory_importance")
+    assert learned_card["learning_action"] == "prefer_candidates"
+    assert learned_card["learning_multiplier"] == 1.15
 
 
 def test_automation_apply_does_not_touch_private_or_high_sensitivity_memory(tmp_path):
@@ -1407,6 +1456,44 @@ def test_automation_cli_review_summary_prints_approval_cards(tmp_path, monkeypat
     assert "Review cards" in out
     assert "requires_human_decision=True" in out
     assert "summary: reports/automation/review-summary-latest.json" in out
+
+
+def test_automation_cli_review_feedback_records_card_decision(tmp_path, monkeypatch, capsys):
+    from vault.cli import cmd_automation
+
+    project = _init_project(tmp_path)
+    expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    with VaultDB(project / "vault.db") as db:
+        used_id = db.add_knowledge("Review feedback CLI SOP", "Used expired memory.", layer="L2", expires_at=expired)
+        db.record_knowledge_access([used_id], cited=True)
+    summary = automation_review_summary(project, limit=5, min_events=1, write_summary=True)
+    card = next(item for item in summary["cards"] if item["kind"] == "memory_importance")
+    monkeypatch.chdir(project)
+
+    cmd_automation(
+        Namespace(
+            automation_action="review-feedback",
+            mode=None,
+            limit=5,
+            kind="memory_importance",
+            card_id=str(card["id"]),
+            decision="accept",
+            reason="Correct card.",
+            recommended_action="",
+            score=None,
+            summary_path="",
+            min_events=1,
+            write_learning_policy=True,
+            json=False,
+            pretty=False,
+        )
+    )
+
+    out = capsys.readouterr().out
+    assert "Automation review feedback" in out
+    assert "decision=accept" in out
+    assert "outcome=accepted" in out
+    assert "learning policy written: reports/automation/learning_policy.json" in out
 
 
 def test_automation_cli_eval_prints_feedback_scores(tmp_path, monkeypatch, capsys):

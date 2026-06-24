@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [0.6.101] - 2026-06-24
+
+### Added
+
+- Added `vault automation review-feedback`, a feedback-only command for recording `accept`, `reject`, or `defer` decisions on `review-summary` cards.
+- Review-card feedback now flows into the existing bounded learning-policy pipeline, so repeated approvals can raise similar cards and repeated rejections can lower them.
+
+### Changed
+
+- `vault automation review-summary` now applies bounded learned ranking hints from prior review-card feedback while remaining read-only.
+
 ## [0.6.100] - 2026-06-24
 
 ### Added

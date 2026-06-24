@@ -1980,14 +1980,15 @@ def cmd_automation(args):
         automation_inbox,
         automation_plan,
         automation_report,
+        automation_review_feedback,
         automation_review_summary,
         automation_run,
     )
 
     action = getattr(args, "automation_action", "")
-    if action not in {"plan", "run", "cycle", "report", "activity", "brief", "review-summary", "inbox", "handoff", "doctor", "eval"}:
+    if action not in {"plan", "run", "cycle", "report", "activity", "brief", "review-summary", "review-feedback", "inbox", "handoff", "doctor", "eval"}:
         print(
-            "error: automation requires action: plan, run, cycle, report, activity, brief, review-summary, inbox, handoff, eval, or doctor",
+            "error: automation requires action: plan, run, cycle, report, activity, brief, review-summary, review-feedback, inbox, handoff, eval, or doctor",
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -2058,6 +2059,19 @@ def cmd_automation(args):
                 min_events=getattr(args, "min_events", 5),
                 write_summary=getattr(args, "write_summary", False),
                 summary_path=getattr(args, "summary_path", ""),
+            )
+        elif action == "review-feedback":
+            payload = automation_review_feedback(
+                project_dir,
+                card_kind=getattr(args, "kind", ""),
+                card_id=getattr(args, "card_id", ""),
+                decision=getattr(args, "decision", ""),
+                reason=getattr(args, "reason", ""),
+                recommended_action=getattr(args, "recommended_action", ""),
+                score=getattr(args, "score", None),
+                summary_path=getattr(args, "summary_path", ""),
+                min_events=getattr(args, "min_events", 5),
+                write_learning_policy=getattr(args, "write_learning_policy", False),
             )
         elif action == "inbox":
             payload = automation_inbox(
@@ -2448,6 +2462,38 @@ def cmd_automation(args):
                 print(f"      safe: {card.get('safe_action')}")
         else:
             print("\n  Review cards: empty")
+        return
+
+    if action == "review-feedback":
+        print("✅ Automation review feedback\n")
+        print(f"  status: {payload.get('status')}")
+        print(f"  event_id: {payload.get('event_id', '')}")
+        card = payload.get("card") or {}
+        feedback = payload.get("feedback") or {}
+        learning = payload.get("learning") or {}
+        print(
+            "  card: "
+            f"kind={card.get('kind', '')} "
+            f"id={card.get('id', '')} "
+            f"found={card.get('found_in_summary', False)}"
+        )
+        if card.get("title"):
+            print(f"  title: {card.get('title')}")
+        print(
+            "  feedback: "
+            f"decision={feedback.get('decision', '')} "
+            f"outcome={feedback.get('outcome', '')} "
+            f"score={feedback.get('score', 0)}"
+        )
+        print(f"  reason: {feedback.get('reason', '')}")
+        print(
+            "  learning: "
+            f"readiness={learning.get('readiness', '')} "
+            f"events={learning.get('event_count', 0)}"
+        )
+        if learning.get("learning_policy_path"):
+            print(f"  learning policy written: {learning.get('learning_policy_path')}")
+        print("  safety: feedback-only; no memory promotion, archive, or delete")
         return
 
     if action == "inbox":
@@ -4125,6 +4171,18 @@ def main(argv: list[str] | None = None):
     sp.add_argument("--min-events", type=int, default=5, help="minimum feedback events before a group is considered learnable")
     sp.add_argument("--write-summary", action="store_true", help="write reports/automation/review-summary-latest.json and .md")
     sp.add_argument("--summary-path", default="", help="custom reports/automation/*.json review summary path")
+
+    sp = automation_sub.add_parser("review-feedback", help="Record accept/reject/defer feedback for a review-summary card")
+    add_automation_common(sp)
+    sp.add_argument("--kind", required=True, help="review card kind, for example memory_importance or report_review")
+    sp.add_argument("--card-id", default="", help="review card id from review-summary output")
+    sp.add_argument("--decision", choices=["accept", "reject", "defer"], required=True, help="human or agent review decision")
+    sp.add_argument("--reason", required=True, help="short reason for this feedback")
+    sp.add_argument("--recommended-action", default="", help="optional action label to group learning feedback")
+    sp.add_argument("--score", type=float, default=None, help="optional 0..1 feedback score; defaults depend on decision")
+    sp.add_argument("--summary-path", default="", help="review-summary JSON path to enrich the feedback event")
+    sp.add_argument("--min-events", type=int, default=5, help="minimum feedback events before a group is considered learnable")
+    sp.add_argument("--write-learning-policy", action="store_true", help="rewrite reports/automation/learning_policy.json after recording feedback")
 
     sp = automation_sub.add_parser("inbox", help="Show the shortest review queue for automation candidates and reports")
     add_automation_common(sp)

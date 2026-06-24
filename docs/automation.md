@@ -110,6 +110,9 @@ Show the shortest intelligence brief:
 vault automation brief --pretty
 vault automation brief --write-brief --pretty
 vault automation review-summary --write-summary
+vault automation review-feedback --kind memory_importance --card-id 12 \
+  --decision accept --reason "Correctly protected an expired but cited memory" \
+  --write-learning-policy
 ```
 
 `automation brief` is the daily startup surface for the memory loop. It joins
@@ -141,6 +144,12 @@ cards from the brief, inbox, and latest report, hides raw candidate content, and
 writes `reports/automation/review-summary-latest.json` plus `.md` when
 `--write-summary` is used. Use it before opening full reports or raw candidate
 content.
+
+`automation review-feedback` records the decision for one review-summary card:
+`accept`, `reject`, or `defer`. It writes a feedback event only; it does not
+apply the recommended lifecycle action. With `--write-learning-policy`, the
+event immediately refreshes `reports/automation/learning_policy.json`, so
+future review-summary cards can be ranked by repeated outcomes.
 
 When that brief recommends `summarize_then_cold_store`, run a dry-run first:
 
@@ -419,6 +428,8 @@ important review fields are:
   pressure, shared agent health, and the 5% human-review digest.
 - `automation review-summary`: the shortest approval-card view for humans,
   derived from brief/inbox/report signals without raw candidate content.
+- `automation review-feedback`: feedback-only accept/reject/defer events for
+  review-summary cards, used by `automation eval` as bounded ranking hints.
 - `automation inbox`: the shortest daily review surface. It starts with
   `review_digest` cards from the latest report's `human_review.items`, then
   shows the candidate queue. This lets humans review policy-level decisions

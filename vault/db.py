@@ -1629,23 +1629,27 @@ class VaultDB:
                     "memory_type": key[1],
                     "category": key[2],
                     "total": 0,
+                    "accepted": 0,
                     "promoted": 0,
                     "rejected": 0,
                     "blocked": 0,
+                    "deferred": 0,
                     "score_sum": 0.0,
                 },
             )
             group["total"] += 1
             group["score_sum"] += float(row.get("score") or 0.0)
-            if outcome in {"promoted", "rejected", "blocked"}:
+            if outcome in {"accepted", "promoted", "rejected", "blocked", "deferred"}:
                 group[outcome] += 1
 
         grouped = []
         for group in groups.values():
             total = int(group["total"] or 0)
+            accepted = int(group["accepted"] or 0)
             promoted = int(group["promoted"] or 0)
             score_sum = float(group.pop("score_sum", 0.0))
-            group["acceptance_rate"] = promoted / total if total else 0.0
+            group["positive_outcomes"] = accepted + promoted
+            group["acceptance_rate"] = (accepted + promoted) / total if total else 0.0
             group["average_score"] = score_sum / total if total else 0.0
             grouped.append(group)
         grouped.sort(key=lambda item: (item["acceptance_rate"], item["total"]), reverse=True)

@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.6.118] - 2026-06-25
+
+### Changed
+
+- Split automation inbox, candidate queue priority, review digest, and inbox handoff helpers into `vault.automation_inbox`.
+- Kept `vault.automation.automation_inbox` available through the existing import path for CLI, MCP, and downstream callers.
+- Lowered the `vault/automation.py` module-size baseline after the split.
+
+### Safety
+
+- Automation inbox remains read-only by default: it does not auto-promote, hard-delete, or expose candidate content unless `include_content` is explicitly requested.
+
 ## [0.6.117] - 2026-06-25
 
 ### Changed

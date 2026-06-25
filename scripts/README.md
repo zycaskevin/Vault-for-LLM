@@ -19,6 +19,7 @@ Run scripts from the repository root unless a script documents another root opti
 | `artifact_audit.py` | Report generated caches, review-only runtime folders, and archive candidates. | Read-only |
 | `artifact_cleanup.py` | Delete only reproducible cache artifacts. | Dry-run; deletion requires `--execute --safe-only` |
 | `check_release_parity.py` | Verify release tag, `pyproject.toml`, `vault.__version__`, and `CHANGELOG.md` parity. | Read-only |
+| `module_size_gate.py` | Prevent large Python modules from quietly growing past their reviewed baseline. | Read-only |
 
 Examples:
 
@@ -29,6 +30,7 @@ python scripts/artifact_audit.py --root .
 python scripts/artifact_cleanup.py --root .              # dry-run
 python scripts/artifact_cleanup.py --root . --execute --safe-only
 python scripts/check_release_parity.py --tag v0.5.0
+python scripts/module_size_gate.py
 ```
 
 ## Local knowledge-quality helpers

@@ -138,7 +138,23 @@ git diff --cached --check
 python -m pytest tests/test_repo_hygiene_tools.py -q
 ```
 
-## 5. Design principle
+## 5. Module-size rule
+
+Large modules hide security and behavior changes. Before adding major logic to an existing large module, prefer extracting a focused helper module with tests.
+
+The CI module-size gate is baseline-based:
+
+- New `vault/*.py` modules must stay under the default line limit.
+- Existing oversized modules are allowed only up to their recorded baseline.
+- If an oversized module grows, split code out or update the baseline with an explicit decision record explaining why the growth is temporary and how it will be paid down.
+
+Run locally:
+
+```bash
+python scripts/module_size_gate.py
+```
+
+## 6. Design principle
 
 The tools are intentionally conservative:
 
@@ -146,3 +162,4 @@ The tools are intentionally conservative:
 - Cleanup defaults to dry-run.
 - Execute mode requires `--safe-only`.
 - Public PR gate fails closed when the diff is large or contains internal-only files/strings.
+- Module-size gate fails closed when oversized files grow beyond their reviewed baseline.

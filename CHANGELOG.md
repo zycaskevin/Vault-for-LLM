@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.6.110] - 2026-06-25
+
+### Added
+
+- Added `scripts/module_size_gate.py`, a baseline-based module-size guard for `vault/*.py`.
+- Added `scripts/module_size_baseline.json` to record current oversized modules without allowing silent growth.
+- Added CI coverage for the module-size gate.
+
+### Docs
+
+- Documented the module-size rule in repo governance, scripts guide, a decision record, and the short release note.
+
 ## [0.6.109] - 2026-06-25
 
 ### Changed

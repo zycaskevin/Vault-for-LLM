@@ -198,6 +198,24 @@ jobs:
           fi
           echo "Release tag $GITHUB_REF_NAME resolves to checked commit $head_commit"
 
+  module-size:
+    name: Module size gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Check module size baseline
+        run: python scripts/module_size_gate.py
+
   lint-knowledge:
     name: Lint raw/ knowledge files
     runs-on: ubuntu-latest

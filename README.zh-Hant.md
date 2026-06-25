@@ -58,7 +58,7 @@ Vault-for-LLM 可能不是第一個該拿起來的工具。
 最推薦的方式，是直接把這段交給能執行本機指令的 Agent：
 
 ```text
-幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.7.5。
+幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.7.6。
 先問我要 shared、private、domain-specific 還是 temporary vault。
 詢問穩定的 project directory，並為長期任務產生 stable venv script。
 逐項詢問 MCP、semantic search、Supabase、Obsidian import、Headroom 壓縮、
@@ -72,7 +72,7 @@ Agent 會使用安裝精靈：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.7.5"
+pip install "vault-for-llm[mcp]==0.7.6"
 
 vault setup-agent
 ```
@@ -138,7 +138,7 @@ propose smoke test 再用 `vault remember` 驗證 candidate-first 流程。
 ### 手動快速開始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.7.5"
+pip install "vault-for-llm[mcp]==0.7.6"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -398,16 +398,19 @@ Agent 安裝精靈可以用
 `vault setup-agent --automation-schedule cron|launchagent|n8n|all` 產生 cron、
 LaunchAgent 或 n8n 模板。排程現在會跑完整的每日閉環：`vault memory
 pipeline --write-candidates`、`vault memory reflection --write-candidates`、
-`vault automation cycle`、`vault automation inbox --write-handoff`、以及
-`vault automation learning-health --write-health`。長期 Agent 可以先把對話
-教訓寫成候選，再產生反思 review card，接著從已審核結果寫出 bounded learning
-policy，最後留下短版 handoff。排程仍然是 report-first；只有使用者明確加上
+`vault automation cycle`、`vault automation inbox --write-handoff`、
+`vault automation review-summary --write-summary`、以及 `vault automation
+learning-health --write-health`。長期 Agent 可以先把對話教訓寫成候選，
+再產生反思 review card，接著從已審核結果寫出 bounded learning policy，
+最後留下短版 handoff 和 5% 人類審核卡。排程仍然是 report-first；只有使用者明確加上
 `--automation-apply`，才會執行 policy 允許的可逆歸檔。想要更單純的維護 cycle
 步驟，可以加 `--automation-command run`。
 產生的排程每次跑完也會寫出
 `reports/automation/learning-health-latest.json` 和 `.md`，讓人類和不同
 Agent 看到同一份很短的學習健康狀態：還在 cold start、運作健康、需要觀察，
 或有太多 reject 需要檢查。
+也會寫出 `reports/automation/review-summary-latest.json` 和 `.md`，讓人類
+先看幾張壓縮過的 decision card，而不是打開原始候選內容或完整報告。
 如果希望排程自動寫出每日記憶工作台，加上 `--automation-write-workspace`，
 它會產生 `reports/automation/cycle-latest.json` 和
 `reports/automation/cycle-latest.md`，讓下一個 Agent 先看短版工作台，不用翻完整報告。
@@ -456,7 +459,7 @@ SQLite 仍然是 source of truth。Supabase 是可選的共享層。
 Remote reader 應該直接把搜尋結果的 `id` 傳給 map/read；它可能是整數，也可能是 Supabase UUID。
 
 ```bash
-pip install "vault-for-llm[supabase]==0.7.5"
+pip install "vault-for-llm[supabase]==0.7.6"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

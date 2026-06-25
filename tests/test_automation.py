@@ -704,6 +704,9 @@ def test_automation_review_summary_writes_short_approval_cards(tmp_path):
     )
     markdown = (project / payload["review_summary_markdown_path"]).read_text(encoding="utf-8")
     assert "# Vault Automation Review Summary" in markdown
+    assert "## What To Review First" in markdown
+    assert "suggested decision" in markdown
+    assert "safe next step" in markdown
     assert "importance is a ranking hint only" in markdown
 
 
@@ -1218,7 +1221,7 @@ def test_automation_cycle_writes_learning_policy_and_runs_dream(tmp_path):
 
 def test_automation_cycle_writes_compact_workspace_with_transcript_hints(tmp_path):
     project = _init_project(tmp_path)
-    token = "sk-proj-1234567890abcdefghij1234567890"
+    token = "ghp_FAKEFAKEFAKEFAKEFAKEFAKE"
     sessions = project / "sessions"
     sessions.mkdir()
     (sessions / "codex-session.md").write_text(
@@ -1300,7 +1303,7 @@ def test_automation_cycle_writes_compact_workspace_with_transcript_hints(tmp_pat
 
 def test_automation_cycle_can_capture_transcripts_as_candidates_without_active_memory(tmp_path):
     project = _init_project(tmp_path)
-    token = "sk-proj-1234567890abcdefghij1234567890"
+    token = "ghp_FAKEFAKEFAKEFAKEFAKEFAKE"
     sessions = project / "sessions"
     sessions.mkdir()
     (sessions / "codex-session.md").write_text(
@@ -1892,7 +1895,7 @@ def test_automation_cli_handoff_prints_fleet_health_before_cycle(tmp_path, monke
 
 def test_automation_inbox_prioritizes_privacy_blocked_candidates(tmp_path):
     project = _init_project(tmp_path)
-    token = "sk-proj-1234567890abcdefghij1234567890"
+    token = "ghp_FAKEFAKEFAKEFAKEFAKEFAKE"
     with VaultDB(project / "vault.db") as db:
         safe = create_candidate(
             db,
@@ -1936,7 +1939,7 @@ def test_automation_inbox_prioritizes_privacy_blocked_candidates(tmp_path):
 
 def test_automation_inbox_can_include_redacted_content(tmp_path):
     project = _init_project(tmp_path)
-    token = "sk-proj-1234567890abcdefghij1234567890"
+    token = "ghp_FAKEFAKEFAKEFAKEFAKEFAKE"
     with VaultDB(project / "vault.db") as db:
         create_candidate(
             db,
@@ -1987,7 +1990,7 @@ def test_automation_inbox_can_include_transcript_discovery_hints(tmp_path):
     project = _init_project(tmp_path)
     sessions = project / "sessions"
     sessions.mkdir()
-    token = "sk-proj-1234567890abcdefghij1234567890"
+    token = "ghp_FAKEFAKEFAKEFAKEFAKEFAKE"
     (sessions / "codex-session.md").write_text(
         f"Decision: automation inbox discovery must not expose {token} from transcript content.",
         encoding="utf-8",

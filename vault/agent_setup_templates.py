@@ -503,6 +503,22 @@ def automation_learning_health_command(
     ]
 
 
+def automation_review_summary_command(
+    *,
+    project_dir: str | Path,
+    vault_executable: str = "vault",
+) -> list[str]:
+    return [
+        vault_executable,
+        "automation",
+        "review-summary",
+        "--project-dir",
+        str(Path(project_dir).expanduser()),
+        "--write-summary",
+        "--pretty",
+    ]
+
+
 def memory_pipeline_command(
     *,
     project_dir: str | Path,
@@ -575,6 +591,10 @@ def automation_schedule_with_inbox_command(
         project_dir=project_dir,
         vault_executable=vault_executable,
     )
+    review_summary = automation_review_summary_command(
+        project_dir=project_dir,
+        vault_executable=vault_executable,
+    )
     pipeline = memory_pipeline_command(
         project_dir=project_dir,
         vault_executable=vault_executable,
@@ -587,7 +607,7 @@ def automation_schedule_with_inbox_command(
     return [
         "sh",
         "-lc",
-        f"{shell_join(pipeline)} && {shell_join(reflection)} && {shell_join(primary)} && {shell_join(inbox)} && {shell_join(health)}",
+        f"{shell_join(pipeline)} && {shell_join(reflection)} && {shell_join(primary)} && {shell_join(inbox)} && {shell_join(review_summary)} && {shell_join(health)}",
     ]
 
 
@@ -647,6 +667,10 @@ def write_automation_schedule_templates(
         transcript_limit=transcript_limit,
     )
     health_args = automation_learning_health_command(
+        project_dir=project_dir,
+        vault_executable=vault_executable,
+    )
+    review_summary_args = automation_review_summary_command(
         project_dir=project_dir,
         vault_executable=vault_executable,
     )
@@ -717,6 +741,10 @@ def write_automation_schedule_templates(
                 "",
                 f"```bash\n{shell_join(inbox_args)}\n```",
                 "",
+                "Scheduled templates also write the shortest human-review card deck:",
+                "",
+                f"```bash\n{shell_join(review_summary_args)}\n```",
+                "",
                 "Scheduled templates also run the automatic memory pipeline and reflection pass before the handoff:",
                 "",
                 f"```bash\n{shell_join(pipeline_args)}\n{shell_join(reflection_args)}\n```",
@@ -747,6 +775,7 @@ def write_automation_schedule_templates(
                 "- automation never hard-deletes memory",
                 "- expired memories with usage are protected and sent to human review",
                 "- scheduled runs write `reports/automation/inbox-latest.json` as the next-agent handoff",
+                "- scheduled runs write `reports/automation/review-summary-latest.json` and `.md` as the 5% human-review card deck",
                 "- scheduled runs write `reports/automation/learning-health-latest.json` and `.md` as the short learning dashboard",
                 "- scheduled runs write session lessons as candidate memories through `vault memory pipeline`",
                 "- scheduled runs write reflection review cards through `vault memory reflection`",

@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.6.120] - 2026-06-25
+
+### Changed
+
+- Split lightweight reranking, cross-encoder reranking, freshness, graph-depth, and usage-boost scoring helpers into `vault.search_rerank`.
+- Kept `vault.search` compatibility imports for `LightweightReranker`, `CrossEncoderReranker`, `calc_freshness`, `calc_graph_depth`, and `calc_usage_boost`.
+- Lowered the `vault/search.py` module-size baseline after the split.
+
+### Safety
+
+- Search behavior, access filtering, active-memory filtering, and rerank score fields are unchanged.
+- The split does not add any new model loading path or remote dependency.
+
 ## [0.6.119] - 2026-06-25
 
 ### Changed

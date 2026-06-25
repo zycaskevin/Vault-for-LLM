@@ -6,6 +6,6 @@
     "vault/cli.py": 3572,
     "vault/db.py": 2279,
     "vault/mcp.py": 2248,
-    "vault/search.py": 3070
+    "vault/search.py": 2578
   }
 }

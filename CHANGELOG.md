@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.6.121] - 2026-06-25
+
+### Changed
+
+- Split semantic index CLI handlers, provider construction, QA query loading, and cache payload helpers into `vault.cli_semantic`.
+- Kept `vault.cli` compatibility imports for `cmd_semantic` and existing semantic helper functions.
+- Lowered the `vault/cli.py` module-size baseline after the split.
+
+### Safety
+
+- `vault semantic rebuild`, `warm`, `smoke`, `cache-stats`, `cache-prune`, `startup`, and `daemon` behavior is unchanged.
+- The split does not add any new embedding provider, model loading path, remote dependency, or automatic memory mutation.
+
 ## [0.6.120] - 2026-06-25
 
 ### Changed

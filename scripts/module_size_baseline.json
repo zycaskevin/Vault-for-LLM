@@ -3,7 +3,7 @@
   "files": {
     "vault/agent_setup.py": 1688,
     "vault/automation.py": 2656,
-    "vault/cli.py": 3572,
+    "vault/cli.py": 3275,
     "vault/db.py": 2279,
     "vault/mcp.py": 2248,
     "vault/search.py": 2578

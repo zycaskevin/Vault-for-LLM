@@ -70,12 +70,13 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.0rc2.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.0.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
 Obsidian import, Headroom compression, and memory-agent guidance. Install only
-the optional dependencies I approve. Finish with a search/read/propose smoke test.
+the optional dependencies I approve. Finish with two smoke checks: add/search/read
+against an active test note, then remember/propose as a candidate-only test.
 ```
 
 The agent should use the guided installer:
@@ -83,7 +84,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.7.0rc2"
+pip install "vault-for-llm[mcp]==0.7.0"
 
 vault setup-agent
 ```
@@ -143,10 +144,15 @@ vault setup-agent \
 This can generate `agent-install/setup-stable-venv.sh`, so scheduled jobs and
 MCP commands do not depend on a disposable `/tmp` virtualenv.
 
+Smoke-test note: `vault remember` creates a candidate memory. It should not
+appear in normal `vault search` until reviewed and promoted. Use `vault add` for
+the temporary active note in a search/read smoke test, then use `vault remember`
+to verify the candidate-first propose path.
+
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.7.0rc2"
+pip install "vault-for-llm[mcp]==0.7.0"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -485,7 +491,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.7.0rc2"
+pip install "vault-for-llm[supabase]==0.7.0"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

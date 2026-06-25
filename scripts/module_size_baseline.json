@@ -5,7 +5,7 @@
     "vault/automation.py": 2656,
     "vault/cli.py": 3275,
     "vault/db.py": 2279,
-    "vault/mcp.py": 1631,
+    "vault/mcp.py": 1549,
     "vault/search.py": 2578
   }
 }

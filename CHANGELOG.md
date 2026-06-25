@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.6.123] - 2026-06-25
+
+### Changed
+
+- Split MCP memory write, candidate review, candidate listing, promotion, and session-capture handlers into `vault.mcp_memory`.
+- Kept `vault.mcp` compatibility imports for memory candidate formatting and transcript path resolution helpers.
+- Lowered the `vault/mcp.py` module-size baseline after the split.
+
+### Safety
+
+- MCP write policy checks, privacy gates, candidate-first behavior, session transcript path restrictions, and direct `vault_add` warnings are unchanged.
+- This split does not add any new MCP tool, write permission, auto-promote path, or remote sync behavior.
+
 ## [0.6.122] - 2026-06-25
 
 ### Changed

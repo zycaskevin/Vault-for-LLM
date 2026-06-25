@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.6.122] - 2026-06-25
+
+### Changed
+
+- Split local MCP Document Map and bounded-read helpers into `vault.mcp_read`.
+- Kept `vault.mcp` compatibility imports for `vault_map_show`, `vault_read_range`, local read payload helpers, citation helpers, and local error helpers.
+- Lowered the `vault/mcp.py` module-size baseline after the split.
+
+### Safety
+
+- Local `vault_map_show` and `vault_read_range` behavior is unchanged, including read-policy filtering, range limits, citations, and error `next_action` payloads.
+- Remote Supabase MCP tools remain routed through `vault.mcp_remote`; this split does not change remote access-control behavior or add any new write path.
+
 ## [0.6.121] - 2026-06-25
 
 ### Changed

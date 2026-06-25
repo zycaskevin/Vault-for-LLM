@@ -13,7 +13,7 @@ with the daily loop in the README and only use these commands when needed.
 | `vault capture discover --pretty` | List likely session transcript exports without reading transcript contents |
 | `vault capture session codex-session.jsonl --pretty` | Preview candidate memories extracted from an agent session transcript |
 | `vault capture session codex-session.jsonl --write-candidates` | Write extracted session lessons into the candidate queue, not active knowledge |
-| `vault memory pipeline --search-dir sessions --write-candidates` | Run the automatic conversation-memory pipeline: discover transcripts, extract lessons, gate them, and write candidates |
+| `vault memory pipeline --search-dir sessions --write-candidates --write-report` | Run the automatic conversation-memory pipeline: discover transcripts, extract lessons, gate them, write candidates, and leave a compact ingestion receipt |
 | `vault memory temporal status` / `vault memory temporal list --state past` | Inspect current, past, future, and timeless fact windows |
 | `vault candidates` | List pending candidate memories without dumping full raw content |
 | `vault promote <candidate_id> --confirm` | Promote reviewed candidate memory |
@@ -68,7 +68,7 @@ changed notes without duplicating unchanged ones.
 | `vault update-status --doctor --json` | Check whether the shared update notice exists, is fresh, includes every registered Agent, and shows runtime attention |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.7.8` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.7.9` | Show the same registry/update status without contacting the network |
 | `vault agent doctor --json` | Run the same shared update-distribution health check through the Agent registry namespace |
 | `vault agent startup-doctor --template-dir ./agent-install --json` | Check whether generated startup contracts include the current fleet-aware handoff order |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md` | Preview applying the generated Codex startup template into a runtime instruction file |
@@ -125,7 +125,8 @@ Add `--automation-write-workspace` when those scheduled cycle jobs should write
 `reports/automation/cycle-latest.json` and `reports/automation/cycle-latest.md`
 as the next-agent workbench.
 Generated memory automation jobs also write
-`reports/automation/review-summary-latest.json` plus
+`reports/automation/pipeline-latest.json` plus `.md`,
+`reports/automation/review-summary-latest.json` plus `.md`, and
 `reports/automation/learning-health-latest.json` and `.md` after each pass.
 Add `--automation-include-transcripts` when those scheduled jobs should write
 metadata-only uncaptured transcript hints into the inbox handoff.

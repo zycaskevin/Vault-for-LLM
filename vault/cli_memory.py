@@ -33,6 +33,7 @@ def cmd_memory(
                 scope=args.scope,
                 sensitivity=args.sensitivity,
                 include_content=args.include_content,
+                write_report=args.write_report,
             )
         elif action == "temporal":
             from .db import VaultDB
@@ -81,6 +82,7 @@ def add_memory_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--scope", choices=["private", "project", "shared", "public"], default="project")
     p.add_argument("--sensitivity", choices=["low", "medium", "high", "restricted"], default="low")
     p.add_argument("--include-content", action="store_true", help="輸出候選完整內容；預設只 preview")
+    p.add_argument("--write-report", action="store_true", help="寫入 reports/automation/pipeline-latest.json/.md")
     p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     p = memory_sub.add_parser("temporal", help="檢視事實有效性窗口")

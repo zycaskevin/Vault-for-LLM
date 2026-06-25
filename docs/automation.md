@@ -296,6 +296,13 @@ write the inbox handoff, then write the learning-health dashboard. The final
 read-only health step makes scheduled automation observable without adding a
 new MCP tool or asking humans to inspect full reports by default.
 
+The scheduled memory-ingestion step also runs `vault memory pipeline
+--write-candidates --write-report`. The report lands at
+`reports/automation/pipeline-latest.json` plus `.md` and acts as a compact
+receipt: transcript counts, candidate counts, rejected counts, and next action.
+It strips candidate body fields from the report so the receipt does not become
+another raw transcript or full candidate dump.
+
 Add `--write-workspace` when the next agent should start from one compact
 handoff instead of reading full reports. This writes
 `reports/automation/cycle-latest.json` and the readable companion
@@ -532,7 +539,7 @@ This writes `agent-install/memory-automation.cron`,
 
 Generated schedules now run the candidate-first memory closed loop:
 
-1. `vault memory pipeline --write-candidates`
+1. `vault memory pipeline --write-candidates --write-report`
 2. `vault memory reflection --write-candidates`
 3. `vault automation cycle`
 4. `vault automation inbox --write-handoff`
@@ -544,10 +551,12 @@ candidates. `vault automation cycle` then evaluates reviewed candidate outcomes,
 writes `reports/automation/learning_policy.json`, and runs normal policy-based
 automation. After a successful scheduled run, the generated cron, LaunchAgent,
 and n8n templates write `reports/automation/inbox-latest.json` as the
-next-agent handoff, `reports/automation/review-summary-latest.json` as the
+next-agent handoff, `reports/automation/pipeline-latest.json` as the
+memory-ingestion receipt, `reports/automation/review-summary-latest.json` as the
 5% human-review card deck, and `reports/automation/learning-health-latest.json`
-as the shared learning-health panel. `vault automation handoff` exposes those
-latest files as startup prefaces when they exist. Use `--automation-command run` when you want a
+as the shared learning-health panel. `vault automation handoff` exposes the
+review and learning panels as startup prefaces when they exist; the pipeline
+receipt stays available as a separate ingestion audit file. Use `--automation-command run` when you want a
 maintenance-only cycle step without the feedback-learning phase.
 
 Add `--automation-write-workspace` when generated schedules should also pass

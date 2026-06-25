@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.7.9] - 2026-06-25
+
+### Added
+
+- `vault memory pipeline --write-report` now writes `reports/automation/pipeline-latest.json` and `pipeline-latest.md` as a compact memory-ingestion receipt.
+- Generated setup-agent cron, LaunchAgent, and n8n schedules now include `--write-report` on the memory pipeline step, so scheduled ingestion leaves a visible artifact for the next agent.
+- Added a decision record and short release note for pipeline ingestion receipts.
+
+### Safety
+
+- Pipeline reports strip raw candidate body fields, content previews, and gate payloads from persisted receipts.
+- The pipeline remains candidate-first: reports do not promote active memory, read extra transcript contents, hard-delete rows, or bypass privacy gates.
+
 ## [0.7.8] - 2026-06-25
 
 ### Added

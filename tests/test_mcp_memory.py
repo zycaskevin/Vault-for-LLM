@@ -733,6 +733,7 @@ def test_mcp_memory_pipeline_temporal_and_reflection(tmp_path):
         {
             "search_dirs": ["sessions"],
             "write_candidates": True,
+            "write_report": True,
             "transcript_limit": 2,
             "source_system": "codex",
         },
@@ -743,6 +744,8 @@ def test_mcp_memory_pipeline_temporal_and_reflection(tmp_path):
 
     assert pipeline["action"] == "memory_pipeline_run"
     assert pipeline["candidate_count"] == 2
+    assert pipeline["report_path"] == "reports/automation/pipeline-latest.json"
+    assert (tmp_path / pipeline["report_markdown_path"]).exists()
     assert temporal["counts"]["current"] == 1
     assert temporal["counts"]["past"] == 1
     assert past["items"][0]["title"] == "Past location"

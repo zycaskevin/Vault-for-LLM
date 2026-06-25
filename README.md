@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.8.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.9.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -84,7 +84,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.7.8"
+pip install "vault-for-llm[mcp]==0.7.9"
 
 vault setup-agent
 ```
@@ -152,7 +152,7 @@ to verify the candidate-first propose path.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.7.8"
+pip install "vault-for-llm[mcp]==0.7.9"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -184,7 +184,7 @@ Agents can also turn a completed session transcript into reviewable candidates:
 vault capture discover --project-dir ~/Vaults/my-project --pretty
 vault capture session codex-session.jsonl --project-dir ~/Vaults/my-project --pretty
 vault capture session codex-session.jsonl --project-dir ~/Vaults/my-project --write-candidates
-vault memory pipeline --search-dir sessions --write-candidates
+vault memory pipeline --search-dir sessions --write-candidates --write-report
 ```
 
 Discovery lists likely transcript files without reading their contents. Session
@@ -192,7 +192,10 @@ capture previews by default. `--write-candidates` writes candidate memories
 only; it does not promote active knowledge.
 `vault memory pipeline` packages the same idea into one automatic path:
 discover transcripts, extract reusable lessons, pass the normal gates, and
-optionally write candidates for later review.
+optionally write candidates for later review. Add `--write-report` to persist
+`reports/automation/pipeline-latest.json` and `.md`, a compact receipt that
+shows discovered transcript counts, candidate counts, gate results, and next
+action without storing raw candidate content in the report.
 
 For MCP-capable runtimes:
 
@@ -464,7 +467,7 @@ individual cycle/inbox handoff when those files exist.
 Agent installers can generate cron, LaunchAgent, or n8n templates with
 `vault setup-agent --automation-schedule cron|launchagent|n8n|all`. Scheduled
 templates now run the daily closed loop: `vault memory pipeline
---write-candidates`, `vault memory reflection --write-candidates`, `vault
+--write-candidates --write-report`, `vault memory reflection --write-candidates`, `vault
 automation cycle`, `vault automation inbox --write-handoff`, `vault automation
 review-summary --write-summary`, and `vault automation learning-health
 --write-health`. Long-running agents can ingest session lessons, propose
@@ -480,6 +483,9 @@ still in cold start.
 They also write `reports/automation/review-summary-latest.json` and `.md`, so
 the human approval surface starts from compact decision cards instead of raw
 candidate content or full automation reports.
+They also write `reports/automation/pipeline-latest.json` and `.md`, so the
+memory-ingestion step leaves a small receipt for the next agent instead of
+disappearing into a log file.
 Add `--automation-write-workspace` when generated schedules should write
 `reports/automation/cycle-latest.json` and `reports/automation/cycle-latest.md`
 after the cycle, so the next agent starts from the daily memory workbench
@@ -534,7 +540,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.7.8"
+pip install "vault-for-llm[supabase]==0.7.9"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

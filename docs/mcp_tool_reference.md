@@ -382,6 +382,30 @@ By default, relative transcript paths are resolved under the current Vault
 project directory. Absolute paths require `allow_absolute_path=true`; use this
 only when the user explicitly points the agent at an exported transcript.
 
+### `vault_memory_pipeline`
+
+Run the automatic conversation-memory ingestion path. It discovers transcript
+exports, extracts reusable session lessons, runs the normal candidate gates, and
+previews by default. It writes candidate memories only when
+`write_candidates=true`, and writes a compact receipt only when
+`write_report=true`.
+
+```json
+{
+  "search_dirs": ["sessions"],
+  "source_system": "codex",
+  "agent_id": "codex",
+  "write_candidates": true,
+  "write_report": true,
+  "transcript_limit": 3
+}
+```
+
+When report writing is enabled, the tool returns
+`reports/automation/pipeline-latest.json` plus `.md`. Those reports show
+transcript counts, candidate counts, rejected counts, and next action while
+omitting raw candidate body fields.
+
 ### `vault_automation_inbox`
 
 Read the compact automation review queue. This tool is available in the

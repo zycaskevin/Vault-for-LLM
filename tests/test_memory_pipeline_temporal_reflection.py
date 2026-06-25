@@ -76,6 +76,39 @@ def test_memory_pipeline_previews_then_writes_candidates(tmp_path):
     assert all(row["source"] == "session_capture" for row in rows)
 
 
+def test_memory_pipeline_writes_safe_latest_report(tmp_path):
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    (sessions / "codex-session.md").write_text(
+        "Decision: Pipeline reports should show ingestion counts without raw candidate content.",
+        encoding="utf-8",
+    )
+    with VaultDB(tmp_path / "vault.db"):
+        pass
+
+    payload = run_memory_pipeline(
+        tmp_path,
+        search_dirs=["sessions"],
+        source_system="codex",
+        transcript_limit=1,
+        write_candidates=True,
+        include_content=True,
+        write_report=True,
+    )
+    report = tmp_path / payload["report_path"]
+    markdown = tmp_path / payload["report_markdown_path"]
+    report_payload = json.loads(report.read_text(encoding="utf-8"))
+
+    assert payload["report_path"] == "reports/automation/pipeline-latest.json"
+    assert payload["report_markdown_path"] == "reports/automation/pipeline-latest.md"
+    assert report_payload["candidate_count"] >= 1
+    for capture in report_payload["captures"]:
+        for candidate in capture["candidates"]:
+            assert "content" not in candidate
+            assert "content_preview" not in candidate
+            assert "gate_payload" not in candidate
+
+
 def test_reflection_run_is_report_first_and_does_not_promote(tmp_path):
     with VaultDB(tmp_path / "vault.db") as db:
         db.add_knowledge("Duplicate", "A workflow decision because it explains a fix.")
@@ -119,7 +152,8 @@ def test_cli_memory_group_smoke(tmp_path):
         check=False,
     )
     assert pipeline.returncode == 0, pipeline.stderr
-    assert json.loads(pipeline.stdout)["candidate_count"] >= 1
+    pipeline_payload = json.loads(pipeline.stdout)
+    assert pipeline_payload["candidate_count"] >= 1
 
     temporal = subprocess.run(
         [sys.executable, "-m", "vault.cli", "memory", "temporal", "status", "--pretty"],

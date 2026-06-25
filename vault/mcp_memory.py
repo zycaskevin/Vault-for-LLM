@@ -33,6 +33,7 @@ MCP_MEMORY_LOOP_TOOLS = [
                 "min_score": {"type": "number", "default": 0.55},
                 "scope": {"type": "string", "enum": ["private", "project", "shared", "public"], "default": "project"},
                 "sensitivity": {"type": "string", "enum": ["low", "medium", "high", "restricted"], "default": "low"},
+                "write_report": {"type": "boolean", "description": "Write reports/automation/pipeline-latest.json/.md. Defaults false.", "default": False},
             },
         },
     },
@@ -420,6 +421,7 @@ def handle_memory_tool_call(name: str, arguments: dict) -> dict | None:
             scope=str(arguments.get("scope") or "project"),
             sensitivity=str(arguments.get("sensitivity") or "low"),
             include_content=bool(arguments.get("include_content", False)),
+            write_report=bool(arguments.get("write_report", False)),
         )
         return _json_result(payload)
 

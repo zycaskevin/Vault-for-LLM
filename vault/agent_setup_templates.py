@@ -534,6 +534,7 @@ def memory_pipeline_command(
         "--write-candidates",
         "--transcript-limit",
         str(max(1, min(int(transcript_limit or 3), 20))),
+        "--write-report",
         "--pretty",
     ]
 
@@ -778,6 +779,7 @@ def write_automation_schedule_templates(
                 "- scheduled runs write `reports/automation/review-summary-latest.json` and `.md` as the 5% human-review card deck",
                 "- scheduled runs write `reports/automation/learning-health-latest.json` and `.md` as the short learning dashboard",
                 "- scheduled runs write session lessons as candidate memories through `vault memory pipeline`",
+                "- scheduled runs write `reports/automation/pipeline-latest.json` and `.md` as the memory-ingestion receipt",
                 "- scheduled runs write reflection review cards through `vault memory reflection`",
                 f"- scheduled cycle workspace: `{str(bool(write_workspace and normalized_command == 'cycle')).lower()}`",
                 "- cycle workspace path: `reports/automation/cycle-latest.json` when enabled",

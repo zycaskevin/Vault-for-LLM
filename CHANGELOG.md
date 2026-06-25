@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.6.115] - 2026-06-25
+
+### Changed
+
+- Split Agent setup startup, update-status, runtime adapter, and startup-doctor helpers into `vault.agent_setup_startup`.
+- Kept `vault.agent_setup` compatibility imports for CLI and downstream callers.
+- Lowered the `vault/agent_setup.py` module-size baseline after the split.
+
+### Safety
+
+- `vault setup-agent`, generated MCP startup files, update-status templates, runtime adapter templates, runtime template install behavior, and startup doctor output remain unchanged.
+
 ## [0.6.114] - 2026-06-25
 
 ### Changed

@@ -8,7 +8,6 @@ import sqlite3
 import sys
 import os
 import re
-import time
 from pathlib import Path
 
 try:
@@ -21,7 +20,12 @@ VAULT_DIR = str(Path(__file__).parent.parent)
 if VAULT_DIR not in sys.path:
     sys.path.insert(0, VAULT_DIR)
 
-from vault.access_policy import can_read_memory, can_write_memory, normalize_read_policy, normalize_write_policy
+from vault.access_policy import can_read_memory, normalize_read_policy
+from vault.mcp_security import (
+    check_mcp_rate_limit as _check_mcp_rate_limit,
+    check_write_allowed as _check_write_allowed,
+    reset_rate_limiter as _reset_rate_limiter,
+)
 
 DB_PATH = os.path.join(
     os.environ.get("VAULT_PATH") or VAULT_DIR,
@@ -62,9 +66,6 @@ MCP_ALLOWED_SEARCH_FIELDS = {
     "content_preview",
 }
 MCP_MEMORY_CANDIDATE_MAX_LIMIT = 100
-MCP_RATE_LIMIT_PER_MINUTE = 300
-MCP_RATE_LIMIT_BURST = 60
-_RATE_BUCKETS: dict[tuple[str, str], tuple[float, float]] = {}
 
 
 def _set_project_dir(project_dir: str | os.PathLike[str]) -> None:
@@ -74,92 +75,9 @@ def _set_project_dir(project_dir: str | os.PathLike[str]) -> None:
     DB_PATH = str(project_path / "vault.db")
 
 
-def _reset_rate_limiter() -> None:
-    """Reset in-memory MCP rate buckets. Intended for tests."""
-    _RATE_BUCKETS.clear()
-
-
 def _canonical_tool_name(name: str) -> str:
     """Return the public Vault MCP tool name unchanged."""
     return name
-
-
-def _rate_limit_config() -> tuple[int, int]:
-    try:
-        per_minute = int(os.environ.get("VAULT_MCP_RATE_LIMIT_PER_MINUTE", MCP_RATE_LIMIT_PER_MINUTE))
-    except ValueError:
-        per_minute = MCP_RATE_LIMIT_PER_MINUTE
-    try:
-        burst = int(os.environ.get("VAULT_MCP_RATE_LIMIT_BURST", MCP_RATE_LIMIT_BURST))
-    except ValueError:
-        burst = MCP_RATE_LIMIT_BURST
-    return max(0, per_minute), max(1, burst)
-
-
-def _check_mcp_rate_limit(tool_name: str, arguments: dict) -> dict | None:
-    per_minute, burst = _rate_limit_config()
-    if per_minute <= 0:
-        return None
-    agent_id = str(arguments.get("agent_id") or arguments.get("owner_agent") or "anonymous").strip().lower()
-    key = (agent_id or "anonymous", tool_name)
-    now = time.monotonic()
-    tokens, updated_at = _RATE_BUCKETS.get(key, (float(burst), now))
-    refill_per_second = per_minute / 60.0
-    tokens = min(float(burst), tokens + max(0.0, now - updated_at) * refill_per_second)
-    if tokens < 1.0:
-        retry_after = max(1, int((1.0 - tokens) / refill_per_second) if refill_per_second else 60)
-        _RATE_BUCKETS[key] = (tokens, now)
-        return {
-            "error": "rate_limited",
-            "failure_mode": "mcp_rate_limited",
-            "message": f"MCP tool rate limit exceeded for {tool_name}. Retry after about {retry_after}s.",
-            "retry_after_seconds": retry_after,
-            "tool": tool_name,
-            "agent_id": agent_id,
-            "next_action": {
-                "tool": tool_name,
-                "arguments": arguments or {},
-                "instruction": "Retry later or lower the calling cadence for this agent/tool.",
-            },
-        }
-    _RATE_BUCKETS[key] = (tokens - 1.0, now)
-    return None
-
-
-def _write_policy_from_arguments(arguments: dict) -> object:
-    return normalize_write_policy(
-        agent_id=arguments.get("agent_id") or arguments.get("owner_agent") or "",
-        allow_shared=bool(arguments.get("allow_shared", False)),
-        allow_private=bool(arguments.get("allow_private", False)),
-        allow_high_sensitivity=bool(arguments.get("allow_high_sensitivity", False)),
-        allow_restricted=bool(arguments.get("allow_restricted", False)),
-    )
-
-
-def _write_denied_payload(operation: str, reason: str, metadata: dict) -> dict:
-    return {
-        "success": False,
-        "error": "write_access_denied",
-        "failure_mode": "write_access_denied",
-        "operation": operation,
-        "message": reason,
-        "scope": str(metadata.get("scope") or "project"),
-        "sensitivity": str(metadata.get("sensitivity") or "low"),
-        "next_action": {
-            "tool": operation,
-            "instruction": (
-                "Use candidate review for normal writes, or pass an agent_id plus the explicit "
-                "allow_* flag only after the user has approved that scope/sensitivity."
-            ),
-        },
-    }
-
-
-def _check_write_allowed(operation: str, arguments: dict, metadata: dict) -> dict | None:
-    allowed, reason = can_write_memory(metadata, _write_policy_from_arguments(arguments))
-    if allowed:
-        return None
-    return _write_denied_payload(operation, reason, metadata)
 
 
 def _get_db():

@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.6.109] - 2026-06-25
+
+### Changed
+
+- Split MCP rate limiting and write-governance checks into `vault.mcp_security`, keeping the public MCP router behavior unchanged.
+- Added focused tests for the extracted MCP security helper module.
+
+### Safety
+
+- The MCP write boundary now has a smaller, reusable module surface for future tools instead of living inline inside the main MCP router.
+- Existing rate-limit and write-denial payloads remain compatible.
+
 ## [0.6.108] - 2026-06-25
 
 ### Added

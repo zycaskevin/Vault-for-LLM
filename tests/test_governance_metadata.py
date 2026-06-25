@@ -26,6 +26,9 @@ def test_normalize_governance_metadata_accepts_csv_json_and_lists():
         "allowed_agents": '["work-agent", "product-agent"]',
         "memory_type": "care_summary",
         "expires_at": "2026-07-01T00:00:00Z",
+        "valid_from": "",
+        "valid_until": "",
+        "supersedes_id": None,
     }
 
 
@@ -41,6 +44,8 @@ def test_add_knowledge_persists_governance_metadata(tmp_path):
             allowed_agents=["work-agent", "product-agent"],
             memory_type="decision",
             expires_at="2026-07-01T00:00:00Z",
+            valid_from="2026-06-01T00:00:00Z",
+            valid_until="2026-12-31T00:00:00Z",
         )
         row = db.get_knowledge(kid)
 
@@ -50,6 +55,8 @@ def test_add_knowledge_persists_governance_metadata(tmp_path):
     assert json.loads(row["allowed_agents"]) == ["work-agent", "product-agent"]
     assert row["memory_type"] == "decision"
     assert row["expires_at"] == "2026-07-01T00:00:00Z"
+    assert row["valid_from"] == "2026-06-01T00:00:00Z"
+    assert row["valid_until"] == "2026-12-31T00:00:00Z"
 
 
 def test_candidate_promotion_preserves_governance_metadata(tmp_path):

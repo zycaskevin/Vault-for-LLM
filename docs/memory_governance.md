@@ -148,6 +148,21 @@ vault usage archive-expired --apply
 Archival changes `status` to `archived`; it does not delete the row. This keeps
 old memories reviewable while keeping normal retrieval focused on active memory.
 
+Temporal fact windows are a separate idea from TTL. Use `valid_from`,
+`valid_until`, and `supersedes_id` when a fact changes over time:
+
+```yaml
+valid_from: 2026-06-25
+valid_until:
+supersedes_id: 42
+```
+
+In this model, `valid_until` means "this fact is no longer current." It should
+stay searchable as history and evidence. `expires_at` means "this memory can
+leave daily recall after this date." Agents should use `vault memory temporal
+status` and `vault memory temporal list --state past` when they need to explain
+what changed, not only what is true now.
+
 ## Multi-Agent Sharing
 
 For Hermes Agent, OpenClaw, Codex, Claude Code, n8n, Coze, or other runtimes:

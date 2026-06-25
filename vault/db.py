@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from typing import Optional, Any
 
 from .diagnostics import embedding_stats
+from .governance import normalize_allowed_agents, normalize_governance_metadata
 from .importance import compute_memory_importance
 
 # sqlite-vec 是可選依賴
@@ -29,67 +30,10 @@ except ImportError:
     pass
 
 
-_VALID_SCOPES = {"private", "project", "shared", "public"}
-_VALID_SENSITIVITIES = {"low", "medium", "high", "restricted"}
-
-
-def normalize_allowed_agents(value: Any = None) -> str:
-    """Return allowed agent names as a compact JSON array string."""
-    if value is None or value == "":
-        return "[]"
-    if isinstance(value, (list, tuple, set)):
-        items = [str(item).strip() for item in value if str(item).strip()]
-        return json.dumps(items, ensure_ascii=False)
-    text = str(value).strip()
-    if not text:
-        return "[]"
-    if text.startswith("["):
-        try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError:
-            parsed = None
-        if isinstance(parsed, list):
-            items = [str(item).strip() for item in parsed if str(item).strip()]
-            return json.dumps(items, ensure_ascii=False)
-    items = [part.strip() for part in text.split(",") if part.strip()]
-    return json.dumps(items, ensure_ascii=False)
-
-
-def normalize_governance_metadata(
-    *,
-    scope: str = "project",
-    sensitivity: str = "low",
-    owner_agent: str = "",
-    allowed_agents: Any = None,
-    memory_type: str = "knowledge",
-    expires_at: str = "",
-) -> dict[str, str]:
-    """Normalize memory-governance fields shared by DB, CLI, MCP, and sync."""
-    norm_scope = str(scope or "project").strip().lower()
-    if norm_scope not in _VALID_SCOPES:
-        norm_scope = "project"
-    norm_sensitivity = str(sensitivity or "low").strip().lower()
-    if norm_sensitivity not in _VALID_SENSITIVITIES:
-        norm_sensitivity = "low"
-    norm_memory_type = str(memory_type or "knowledge").strip() or "knowledge"
-    if hasattr(expires_at, "isoformat"):
-        norm_expires_at = expires_at.isoformat()
-    else:
-        norm_expires_at = str(expires_at or "").strip()
-    return {
-        "scope": norm_scope,
-        "sensitivity": norm_sensitivity,
-        "owner_agent": str(owner_agent or "").strip(),
-        "allowed_agents": normalize_allowed_agents(allowed_agents),
-        "memory_type": norm_memory_type,
-        "expires_at": norm_expires_at,
-    }
-
-
 class VaultDB:
     """Vault-for-LLM 資料庫層。"""
 
-    SCHEMA_VERSION = 10
+    SCHEMA_VERSION = 11
     KNOWLEDGE_UPDATE_COLUMNS = {
         "title",
         "layer",
@@ -113,6 +57,9 @@ class VaultDB:
         "allowed_agents",
         "memory_type",
         "expires_at",
+        "valid_from",
+        "valid_until",
+        "supersedes_id",
         "status",
         "archived_at",
         "last_accessed_at",
@@ -143,6 +90,9 @@ class VaultDB:
         "allowed_agents",
         "memory_type",
         "expires_at",
+        "valid_from",
+        "valid_until",
+        "supersedes_id",
     }
     SKILL_UPDATE_COLUMNS = {
         "name",
@@ -169,6 +119,7 @@ class VaultDB:
         8: "governance_metadata_columns",
         9: "memory_usage_and_archive_columns",
         10: "memory_feedback_events",
+        11: "temporal_validity_columns",
     }
 
     @staticmethod
@@ -270,6 +221,9 @@ class VaultDB:
                 allowed_agents     TEXT NOT NULL DEFAULT '[]',
                 memory_type        TEXT NOT NULL DEFAULT 'knowledge',
                 expires_at         TEXT NOT NULL DEFAULT '',
+                valid_from         TEXT NOT NULL DEFAULT '',
+                valid_until        TEXT NOT NULL DEFAULT '',
+                supersedes_id      INTEGER DEFAULT NULL,
                 status             TEXT NOT NULL DEFAULT 'active',
                 archived_at        TEXT NOT NULL DEFAULT '',
                 last_accessed_at   TEXT NOT NULL DEFAULT '',
@@ -297,6 +251,9 @@ class VaultDB:
                 "allowed_agents": "TEXT NOT NULL DEFAULT '[]'",
                 "memory_type": "TEXT NOT NULL DEFAULT 'knowledge'",
                 "expires_at": "TEXT NOT NULL DEFAULT ''",
+                "valid_from": "TEXT NOT NULL DEFAULT ''",
+                "valid_until": "TEXT NOT NULL DEFAULT ''",
+                "supersedes_id": "INTEGER DEFAULT NULL",
                 "status": "TEXT NOT NULL DEFAULT 'active'",
                 "archived_at": "TEXT NOT NULL DEFAULT ''",
                 "last_accessed_at": "TEXT NOT NULL DEFAULT ''",
@@ -312,6 +269,8 @@ class VaultDB:
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_owner_agent ON knowledge(owner_agent)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_memory_type ON knowledge(memory_type)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_expires_at ON knowledge(expires_at)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_valid_window ON knowledge(valid_from, valid_until)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_supersedes ON knowledge(supersedes_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_status ON knowledge(status)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_last_accessed ON knowledge(last_accessed_at)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_access_count ON knowledge(access_count)")
@@ -480,6 +439,9 @@ class VaultDB:
                 allowed_agents TEXT NOT NULL DEFAULT '[]',
                 memory_type TEXT NOT NULL DEFAULT 'knowledge',
                 expires_at TEXT NOT NULL DEFAULT '',
+                valid_from TEXT NOT NULL DEFAULT '',
+                valid_until TEXT NOT NULL DEFAULT '',
+                supersedes_id INTEGER DEFAULT NULL,
                 FOREIGN KEY (promoted_knowledge_id) REFERENCES knowledge(id)
             )
         """)
@@ -496,6 +458,9 @@ class VaultDB:
                 "allowed_agents": "TEXT NOT NULL DEFAULT '[]'",
                 "memory_type": "TEXT NOT NULL DEFAULT 'knowledge'",
                 "expires_at": "TEXT NOT NULL DEFAULT ''",
+                "valid_from": "TEXT NOT NULL DEFAULT ''",
+                "valid_until": "TEXT NOT NULL DEFAULT ''",
+                "supersedes_id": "INTEGER DEFAULT NULL",
             },
         )
         c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_quality ON memory_candidates(quality_status)")
@@ -503,6 +468,7 @@ class VaultDB:
         c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_sensitivity ON memory_candidates(sensitivity)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_owner_agent ON memory_candidates(owner_agent)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_memory_type ON memory_candidates(memory_type)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_memory_candidates_valid_window ON memory_candidates(valid_from, valid_until)")
 
         # Feedback events give automation a learning loop without letting it
         # silently rewrite policy. They record outcomes such as promoted,
@@ -954,6 +920,9 @@ class VaultDB:
         allowed_agents: Any = None,
         memory_type: str = "knowledge",
         expires_at: str = "",
+        valid_from: str = "",
+        valid_until: str = "",
+        supersedes_id: int | str | None = None,
     ) -> int:
         """新增一筆知識，回傳 id。"""
         now = datetime.now(timezone.utc).isoformat()
@@ -965,6 +934,9 @@ class VaultDB:
             allowed_agents=allowed_agents,
             memory_type=memory_type,
             expires_at=expires_at,
+            valid_from=valid_from,
+            valid_until=valid_until,
+            supersedes_id=supersedes_id,
         )
 
         cursor = self.conn.execute(
@@ -973,13 +945,15 @@ class VaultDB:
                 content_raw, content_aaak, content_hash, source,
                 summary, summary_generated_at,
                 scope, sensitivity, owner_agent, allowed_agents, memory_type, expires_at,
+                valid_from, valid_until, supersedes_id,
                 created_at, updated_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (title, layer, category, tags, trust,
              content_raw, content_aaak, content_hash, source,
              summary, now if summary else '',
              governance["scope"], governance["sensitivity"], governance["owner_agent"],
              governance["allowed_agents"], governance["memory_type"], governance["expires_at"],
+             governance["valid_from"], governance["valid_until"], governance["supersedes_id"],
              now, now),
         )
         knowledge_id = int(cursor.lastrowid)
@@ -1480,6 +1454,9 @@ class VaultDB:
             allowed_agents=values.get("allowed_agents"),
             memory_type=values.get("memory_type", "knowledge"),
             expires_at=values.get("expires_at", ""),
+            valid_from=values.get("valid_from", ""),
+            valid_until=values.get("valid_until", ""),
+            supersedes_id=values.get("supersedes_id"),
         )
         values.update(governance)
         self.conn.execute(
@@ -1488,8 +1465,9 @@ class VaultDB:
                 tags, trust, source, source_ref, reason, status,
                 privacy_status, duplicate_status, quality_status, gate_payload_json,
                 promoted_knowledge_id,
-                scope, sensitivity, owner_agent, allowed_agents, memory_type, expires_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                scope, sensitivity, owner_agent, allowed_agents, memory_type, expires_at,
+                valid_from, valid_until, supersedes_id)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 values["id"], values["created_at"], values["updated_at"],
                 values["title"], values["content"], values["layer"],
@@ -1501,6 +1479,7 @@ class VaultDB:
                 values.get("promoted_knowledge_id"),
                 values["scope"], values["sensitivity"], values["owner_agent"],
                 values["allowed_agents"], values["memory_type"], values["expires_at"],
+                values["valid_from"], values["valid_until"], values["supersedes_id"],
             ),
         )
         self.conn.commit()

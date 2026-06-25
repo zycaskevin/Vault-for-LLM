@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.2.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.3.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -84,7 +84,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.7.2"
+pip install "vault-for-llm[mcp]==0.7.3"
 
 vault setup-agent
 ```
@@ -152,7 +152,7 @@ to verify the candidate-first propose path.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.7.2"
+pip install "vault-for-llm[mcp]==0.7.3"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -184,11 +184,15 @@ Agents can also turn a completed session transcript into reviewable candidates:
 vault capture discover --project-dir ~/Vaults/my-project --pretty
 vault capture session codex-session.jsonl --project-dir ~/Vaults/my-project --pretty
 vault capture session codex-session.jsonl --project-dir ~/Vaults/my-project --write-candidates
+vault memory pipeline --search-dir sessions --write-candidates
 ```
 
 Discovery lists likely transcript files without reading their contents. Session
 capture previews by default. `--write-candidates` writes candidate memories
 only; it does not promote active knowledge.
+`vault memory pipeline` packages the same idea into one automatic path:
+discover transcripts, extract reusable lessons, pass the normal gates, and
+optionally write candidates for later review.
 
 For MCP-capable runtimes:
 
@@ -234,6 +238,9 @@ Access is not controlled by layer alone. Use governance metadata for policy:
 - `allowed_agents`
 - `memory_type`
 - `expires_at`
+- `valid_from`
+- `valid_until`
+- `supersedes_id`
 
 MCP writes use the same governance boundary. Low-sensitivity `project` writes
 remain compatible, but `shared`/`public`, `private`, `high`, and `restricted`
@@ -250,6 +257,15 @@ overriding source relevance, trust, freshness, or access policy.
 `importance_score` with visible components for access, citation, recency, trust,
 freshness, TTL pressure, and protection hints. The score is for ranking and
 review guidance only; it never bypasses governance or promotes memory by itself.
+
+Temporal fact windows are separate from TTL/lifecycle metadata. `expires_at`
+means "move this memory out of normal recall after this time." `valid_until`
+means "this fact stopped being true, but keep it for history and audit." Use:
+
+```bash
+vault memory temporal status
+vault memory temporal list --state past
+```
 
 Short-lived memories with `expires_at` can be moved to `status: archived`
 instead of deleted:
@@ -300,7 +316,13 @@ vault automation cycle --apply
 vault automation cycle --apply --include-transcripts --capture-transcripts --write-workspace
 vault automation inbox --limit 5
 vault automation inbox --include-transcripts --write-handoff
+vault memory reflection --write-candidates
 ```
+
+`vault memory reflection` runs a report-first Dream pass plus lifecycle
+automation from one command. It can propose consolidation, archive, or
+cold-store review items, but it does not hard-delete or silently promote active
+knowledge.
 
 `vault capture discover` and `vault capture session` are the ingestion side of
 that loop. Discovery finds likely transcript files without reading their
@@ -497,7 +519,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.7.2"
+pip install "vault-for-llm[supabase]==0.7.3"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

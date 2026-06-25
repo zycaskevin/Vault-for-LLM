@@ -184,6 +184,9 @@ def cmd_add(args):
         allowed_agents=_arg_value(args, "allowed_agents", ""),
         memory_type=_arg_value(args, "memory_type", "knowledge"),
         expires_at=_arg_value(args, "expires_at", ""),
+        valid_from=_arg_value(args, "valid_from", ""),
+        valid_until=_arg_value(args, "valid_until", ""),
+        supersedes_id=_arg_value(args, "supersedes_id", None),
     )
 
     with VaultDB(str(project_dir / "vault.db")) as db:
@@ -1695,6 +1698,9 @@ def cmd_remember(args):
                 allowed_agents=_arg_value(args, "allowed_agents", ""),
                 memory_type=_arg_value(args, "memory_type", "knowledge"),
                 expires_at=_arg_value(args, "expires_at", ""),
+                valid_from=_arg_value(args, "valid_from", ""),
+                valid_until=_arg_value(args, "valid_until", ""),
+                supersedes_id=_arg_value(args, "supersedes_id", None),
             )
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -1760,6 +1766,9 @@ def _format_memory_candidate(row: dict, *, include_content: bool = False, includ
         "allowed_agents": row.get("allowed_agents"),
         "memory_type": row.get("memory_type"),
         "expires_at": row.get("expires_at"),
+        "valid_from": row.get("valid_from"),
+        "valid_until": row.get("valid_until"),
+        "supersedes_id": row.get("supersedes_id"),
         "source": row.get("source"),
         "source_ref": row.get("source_ref"),
         "reason": row.get("reason"),
@@ -2520,15 +2529,6 @@ def _print_update_status(payload: dict) -> None:
 
 # ── CLI 入口 ─────────────────────────────────────────────
 
-def _add_governance_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--scope", choices=["private", "project", "shared", "public"], default="project", help="記憶範圍：private/project/shared/public")
-    parser.add_argument("--sensitivity", choices=["low", "medium", "high", "restricted"], default="low", help="敏感度：low/medium/high/restricted")
-    parser.add_argument("--owner-agent", default="", help="擁有者 Agent，例如 profile-agent、work-agent、codex")
-    parser.add_argument("--allowed-agents", default="", help="可讀 Agent 清單；可用 JSON array 或逗號分隔")
-    parser.add_argument("--memory-type", default="knowledge", help="記憶類型，例如 knowledge/profile/dream/care_summary/decision")
-    parser.add_argument("--expires-at", default="", help="可選過期時間，ISO-8601 字串")
-
-
 def main(argv: list[str] | None = None):
     global _PROJECT_DIR_OVERRIDE
     raw_argv = list(sys.argv[1:] if argv is None else argv)
@@ -2549,6 +2549,8 @@ def main(argv: list[str] | None = None):
     p.add_argument("project_dir", nargs="?", default=".")
 
     # add
+    from vault.cli_common import add_governance_args
+
     p = sub.add_parser("add", help="新增知識")
     p.add_argument("title", help="標題")
     p.add_argument("--content", "-c", default="", help="內容")
@@ -2559,7 +2561,7 @@ def main(argv: list[str] | None = None):
     p.add_argument("--trust", type=float, default=0.5)
     p.add_argument("--source", default="cli", help="來源標籤或檔案路徑")
     p.add_argument("--allow-private", action="store_true", help="允許含秘密模式的內容直接寫入本機 vault")
-    _add_governance_args(p)
+    add_governance_args(p)
 
     # remember/promote — safe memory curator workflow
     p = sub.add_parser("remember", help="提出記憶候選（預設不寫入 active knowledge）")
@@ -2574,7 +2576,7 @@ def main(argv: list[str] | None = None):
     p.add_argument("--trust", type=float, default=0.5)
     p.add_argument("--source", default="cli")
     p.add_argument("--source-ref", default="")
-    _add_governance_args(p)
+    add_governance_args(p)
     p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     p = sub.add_parser("promote", help="將記憶候選提升為 active knowledge")
@@ -3201,8 +3203,10 @@ def main(argv: list[str] | None = None):
 
     # automation — policy-based memory maintenance
     from vault.cli_automation import add_automation_parser
+    from vault.cli_memory import add_memory_parser
 
     add_automation_parser(sub)
+    add_memory_parser(sub)
     args = parser.parse_args(normalized_argv)
 
     previous_project_dir_override = _PROJECT_DIR_OVERRIDE
@@ -3234,6 +3238,7 @@ def main(argv: list[str] | None = None):
         "stats": cmd_stats,
         "usage": cmd_usage,
         "automation": cmd_automation,
+        "memory": lambda parsed: __import__("vault.cli_memory", fromlist=["cmd_memory"]).cmd_memory(parsed, find_project_dir=find_project_dir, json_print=_json_print),
         "install-embedding": cmd_install_embedding,
         "update-status": cmd_update_status,
         "agent": cmd_agent,

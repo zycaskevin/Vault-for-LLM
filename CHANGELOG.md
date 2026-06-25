@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## [0.7.3] - 2026-06-25
+
+### Added
+
+- Added `vault memory pipeline`, a preview-first automatic conversation-memory pipeline that discovers transcripts, extracts reusable session lessons, deduplicates through the existing candidate gates, and optionally writes candidate memories.
+- Added temporal fact-window metadata (`valid_from`, `valid_until`, `supersedes_id`) for active knowledge and memory candidates, plus `vault memory temporal status/list` to separate current, past, future, and timeless facts.
+- Added `vault memory reflection`, a first-class reflection wrapper around Dream curation and lifecycle automation so agents can run report-first memory consolidation, archive, and cold-store review from one command.
+- Added a decision record for automatic, temporal, and reflective memory boundaries.
+
+### Safety
+
+- The memory pipeline previews by default and writes candidates only with `--write-candidates`; it does not promote active knowledge.
+- Temporal windows preserve old facts for audit instead of deleting them.
+- Reflection remains report-first, candidate-first, and hard-delete-free; lifecycle changes require existing policy controls and explicit `--apply`.
+
 ## [0.7.2] - 2026-06-25
 
 ### Changed

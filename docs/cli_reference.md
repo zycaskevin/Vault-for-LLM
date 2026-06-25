@@ -66,7 +66,7 @@ changed notes without duplicating unchanged ones.
 | `vault update-status --doctor --json` | Check whether the shared update notice exists, is fresh, includes every registered Agent, and shows runtime attention |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.7.0rc1` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.7.0rc2` | Show the same registry/update status without contacting the network |
 | `vault agent doctor --json` | Run the same shared update-distribution health check through the Agent registry namespace |
 | `vault agent startup-doctor --template-dir ./agent-install --json` | Check whether generated startup contracts include the current fleet-aware handoff order |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md` | Preview applying the generated Codex startup template into a runtime instruction file |
@@ -111,7 +111,9 @@ Supabase remote reader templates are opt-in with
 `vault remote smoke --agent-id <agent> --json`.
 Multi-agent roster templates are opt-in with `--agent-roster`; each entry uses
 `agent_id:role[:scope[:max_sensitivity]]`, for example
-`profile-agent:profile,work-agent:work,remote-agent:remote,n8n:automation`. Live external validation
+`profile-agent:profile,work-agent:work,remote-agent:remote,n8n:automation`.
+Allowed roles are `work`, `profile`, `care`, `dream`, `remote`,
+`automation`, and `observer`. Live external validation
 files are opt-in with `--validation-pack remote|n8n|coze|all`.
 Memory automation schedule files are opt-in with
 `--automation-schedule cron|launchagent|n8n|all`; generated jobs default to

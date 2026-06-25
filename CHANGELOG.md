@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.7.0rc2] - 2026-06-25
+
+### Changed
+
+- Clarified `setup-agent --agent-roster` role values in CLI help and setup documentation after v0.7.0rc1 install smoke testing.
+- Added a v0.7.0rc2 validation note for the packaged `setup-agent` path.
+- Updated packaged install examples and release claim references to `0.7.0rc2`.
+
+### Safety
+
+- This release candidate does not add a new memory mutation path, hosted dependency, MCP permission, or background automation trigger.
+- The RC keeps the v0.7 platform boundary and focuses on install-path clarity before the stable v0.7.0 release.
+
 ## [0.7.0rc1] - 2026-06-25
 
 ### Changed

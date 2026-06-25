@@ -145,6 +145,8 @@ Keep `SUPABASE_SERVICE_ROLE_KEY` only on trusted sync hosts.
 examples. `--validation-pack all` writes live verification files for remote CLI,
 n8n, and Coze so the operator can prove the hosted paths work after real
 credentials are configured.
+Roster roles are intentionally fixed, not free-form labels: `work`, `profile`,
+`care`, `dream`, `remote`, `automation`, and `observer`.
 
 Supabase is a sync/read target, not the source of truth. Ask again before using
 `--include-content`.

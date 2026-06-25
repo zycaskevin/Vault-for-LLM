@@ -252,7 +252,7 @@ Important: PyPI docs and GitHub docs both warn that this trust relationship is e
    git tag vX.Y.Z
    git push origin main --tags
    ```
-   For release candidates, use the PEP 440 shape, for example `v0.7.0rc1`.
+   For release candidates, use the PEP 440 shape, for example `v0.7.0rc2`.
 6. Create a GitHub Release for `vX.Y.Z` or the matching RC tag.
 7. GitHub Actions builds from clean checkout and publishes via Trusted Publishing.
 8. Verify PyPI from a fresh environment:
@@ -291,7 +291,7 @@ Important: PyPI docs and GitHub docs both warn that this trust relationship is e
 **Acceptance criteria:**
 
 - Accepts tag `v0.4.3` when `pyproject.toml`, `vault.__version__`, and `CHANGELOG.md` top entry are all `0.4.3`.
-- Accepts release-candidate tag `v0.7.0rc1` when `pyproject.toml`, `vault.__version__`, and `CHANGELOG.md` top entry are all `0.7.0rc1`.
+- Accepts release-candidate tag `v0.7.0rc2` when `pyproject.toml`, `vault.__version__`, and `CHANGELOG.md` top entry are all `0.7.0rc2`.
 - Fails with clear messages for version mismatch.
 - Can run locally without network.
 

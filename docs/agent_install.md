@@ -342,6 +342,8 @@ vault setup-agent \
 
 `--agent-roster` writes `agent-roster.json`, `AGENT_ACCESS_MATRIX.md`,
 `agent-env/*.env.example`, and `agent-setup-commands.sh`.
+Roster roles are intentionally fixed so access defaults stay reviewable:
+`work`, `profile`, `care`, `dream`, `remote`, `automation`, and `observer`.
 
 ## MCP Profiles
 

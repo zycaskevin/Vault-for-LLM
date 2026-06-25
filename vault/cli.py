@@ -2819,7 +2819,7 @@ def main(argv: list[str] | None = None):
         ap.add_argument("--remote-reader-query", default="deployment SOP",
                         help="remote reader smoke/template 使用的示範查詢")
         ap.add_argument("--agent-roster",
-                        help="產生多 Agent roster/access matrix，例如 profile-agent:profile,work-agent:work,remote-agent:remote")
+                        help="產生多 Agent roster/access matrix；role: work/profile/care/dream/remote/automation/observer")
         ap.add_argument("--validation-pack", choices=["none", "remote", "n8n", "coze", "all"],
                         default="none", help="產生 Supabase/n8n/Coze live validation pack")
         ap.add_argument("--automation-schedule", choices=["none", "cron", "launchagent", "n8n", "all"],

@@ -122,9 +122,9 @@ backs up existing target files before changing them.
 The installer also writes `agent-install/mcp-startup.json` and
 `agent-install/README-mcp-startup.md`, which define the MCP startup sequence:
 `vault_update_status` -> `vault_automation_handoff` -> search/read/propose.
-When the handoff payload includes `fleet_health_content`, generated startup
-guides tell agents to read that shared health preface before the selected
-cycle/inbox `content`.
+When the handoff payload includes `fleet_health_content` or
+`pipeline_receipt_content`, generated startup guides tell agents to read those
+startup prefaces before the selected cycle/inbox `content`.
 It also writes `agent-install/README-update-status.md`,
 `agent-install/update-status-contract.json`, cron, and LaunchAgent templates for
 sharing local update notices across Agent runtimes.

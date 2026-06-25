@@ -58,7 +58,7 @@ Vault-for-LLM 可能不是第一個該拿起來的工具。
 最推薦的方式，是直接把這段交給能執行本機指令的 Agent：
 
 ```text
-幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.7.9。
+幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.7.10。
 先問我要 shared、private、domain-specific 還是 temporary vault。
 詢問穩定的 project directory，並為長期任務產生 stable venv script。
 逐項詢問 MCP、semantic search、Supabase、Obsidian import、Headroom 壓縮、
@@ -72,7 +72,7 @@ Agent 會使用安裝精靈：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.7.9"
+pip install "vault-for-llm[mcp]==0.7.10"
 
 vault setup-agent
 ```
@@ -138,7 +138,7 @@ propose smoke test 再用 `vault remember` 驗證 candidate-first 流程。
 ### 手動快速開始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.7.9"
+pip install "vault-for-llm[mcp]==0.7.10"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -321,7 +321,8 @@ MCP-capable Agent 可以在 `core` profile 直接用 `vault_automation_handoff`
 如果 startup prefaces 已存在，handoff 也會在選定的 cycle/inbox handoff
 之前帶上它們。CLI 會先顯示 fleet health、review-summary cards 和
 learning-health；MCP 則保留原本主要 handoff 在 `content`，並用
-`fleet_health_content`、`review_summary_content`、`learning_health_content`
+`fleet_health_content`、`pipeline_receipt_content`、`review_summary_content`、
+`learning_health_content`
 額外提供這些啟動摘要。
 
 `vault automation inbox` 是這個閉環的短版審核入口。它不會修改記憶，只會把
@@ -466,7 +467,7 @@ SQLite 仍然是 source of truth。Supabase 是可選的共享層。
 Remote reader 應該直接把搜尋結果的 `id` 傳給 map/read；它可能是整數，也可能是 Supabase UUID。
 
 ```bash
-pip install "vault-for-llm[supabase]==0.7.9"
+pip install "vault-for-llm[supabase]==0.7.10"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

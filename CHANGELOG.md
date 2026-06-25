@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.7.10] - 2026-06-25
+
+### Added
+
+- `vault automation handoff` and MCP `vault_automation_handoff` now expose `pipeline_receipt_content` as a read-only startup preface when `reports/automation/pipeline-latest.md` or `.json` exists.
+- Generated setup-agent MCP startup guides, adapter startup contracts, and runtime playbooks now use this read order: `fleet_health_content`, `pipeline_receipt_content`, `review_summary_content`, `learning_health_content`, then the selected handoff `content`.
+- Added `vault/automation_handoff.py` to keep startup handoff assembly out of the already-large automation workflow module.
+
+### Safety
+
+- The selected `content` handoff remains stable for existing cycle/inbox readers.
+- Pipeline receipt prefaces are read-only and do not include raw transcript contents or candidate body fields.
+
 ## [0.7.9] - 2026-06-25
 
 ### Added

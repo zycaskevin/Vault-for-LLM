@@ -262,6 +262,10 @@ def test_mcp_automation_handoff_exposes_fleet_health_preface(tmp_path):
         "# Daily handoff\n\n- Continue the cycle task.\n",
         encoding="utf-8",
     )
+    (report_dir / "pipeline-latest.md").write_text(
+        "# Memory Pipeline\n\n- candidates_written: `2`\n",
+        encoding="utf-8",
+    )
     (report_dir / "review-summary-latest.md").write_text(
         "# Review Summary\n\n- Human card is ready.\n",
         encoding="utf-8",
@@ -276,13 +280,16 @@ def test_mcp_automation_handoff_exposes_fleet_health_preface(tmp_path):
     assert payload["action"] == "handoff"
     assert payload["handoff_path"] == "reports/automation/cycle-latest.md"
     assert payload["fleet_health_path"] == "reports/automation/fleet-health-latest.md"
+    assert payload["pipeline_receipt_path"] == "reports/automation/pipeline-latest.md"
     assert payload["review_summary_path"] == "reports/automation/review-summary-latest.md"
     assert payload["learning_health_path"] == "reports/automation/learning-health-latest.md"
     assert "Shared health panel" in payload["fleet_health_content"]
+    assert "candidates_written" in payload["pipeline_receipt_content"]
     assert "Human card is ready" in payload["review_summary_content"]
     assert "Feedback loop is healthy" in payload["learning_health_content"]
     assert "Continue the cycle task" in payload["content"]
     assert "Shared health panel" not in payload["content"]
+    assert "candidates_written" not in payload["content"]
     assert "Human card is ready" not in payload["content"]
     assert "Feedback loop is healthy" not in payload["content"]
 

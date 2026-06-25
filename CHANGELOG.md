@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.6.113] - 2026-06-25
+
+### Changed
+
+- Split automation CLI command handling and parser registration into `vault.cli_automation`.
+- Kept `vault.cli.cmd_automation` as a compatibility wrapper for existing tests and downstream imports.
+- Lowered the `vault/cli.py` module-size baseline after the split.
+
+### Safety
+
+- Public `vault automation ...` command names, options, JSON payloads, and human-readable output behavior remain unchanged.
+
 ## [0.6.112] - 2026-06-25
 
 ### Changed

@@ -839,15 +839,22 @@ def test_run_agent_setup_writes_executable_local_smoke(tmp_path):
     assert "--json" in body
     assert "$VAULT remember" in body
     assert "$VAULT candidates" in body
+    assert "VAULT_SHEBANG" in body
     assert "vault_update_status" in body
     assert "vault_automation_handoff" in body
     assert any("local-smoke.sh" in step for step in result["next_steps"])
 
-    env = {
-        **os.environ,
-        "VAULT": f"{sys.executable} -m vault.cli",
-        "PYTHON": sys.executable,
-    }
+    fake_vault = tmp_path / "fake-vault"
+    fake_vault.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "from vault.cli import main\n"
+        "main(sys.argv[1:])\n",
+        encoding="utf-8",
+    )
+    fake_vault.chmod(0o755)
+    env = {**os.environ, "VAULT": str(fake_vault)}
+    env.pop("PYTHON", None)
     completed = subprocess.run([str(script)], capture_output=True, text=True, check=False, env=env)
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
@@ -891,7 +898,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.7.3" in captured.out
+    assert "vault-for-llm 0.7.4" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -1059,7 +1066,7 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.7.3" in body
+    assert "vault-for-llm[mcp,supabase]==0.7.4" in body
     assert "headroom-ai" in body
     assert "--agent-project-dir" in body
     assert str(project) in body

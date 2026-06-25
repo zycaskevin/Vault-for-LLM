@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## [0.7.4] - 2026-06-25
+
+### Fixed
+
+- Updated generated `agent-install/local-smoke.sh` to derive its default Python interpreter from the installed `vault` console script when `PYTHON` is not explicitly set. This keeps agent installer self-tests aligned with the venv or packaged environment that actually owns Vault-for-LLM.
+
+### Testing
+
+- Verified the v0.7.3 PyPI package exposed automatic memory pipeline, temporal memory status/list, reflection candidates, and setup-agent artifacts before cutting this installer-smoke patch.
+
 ## [0.7.3] - 2026-06-25
 
 ### Added

@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.6.111] - 2026-06-25
+
+### Changed
+
+- Split Supabase remote MCP reader helpers into `vault.mcp_remote`.
+- Kept legacy `vault.mcp` helper imports and monkeypatch-compatible wrappers for existing tests, CLI imports, and downstream callers.
+- Lowered the `vault/mcp.py` module-size baseline after the split.
+
+### Safety
+
+- Remote search, remote doctor, remote map, and remote read-range behavior remains unchanged while the review surface is smaller.
+
 ## [0.6.110] - 2026-06-25
 
 ### Added

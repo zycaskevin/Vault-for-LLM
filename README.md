@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.4.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.5.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -84,7 +84,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.7.4"
+pip install "vault-for-llm[mcp]==0.7.5"
 
 vault setup-agent
 ```
@@ -152,7 +152,7 @@ to verify the candidate-first propose path.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.7.4"
+pip install "vault-for-llm[mcp]==0.7.5"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -460,10 +460,15 @@ individual cycle/inbox handoff when the file exists.
 
 Agent installers can generate cron, LaunchAgent, or n8n templates with
 `vault setup-agent --automation-schedule cron|launchagent|n8n|all`. Scheduled
-templates default to `vault automation cycle`, so long-running agents can learn
-from reviewed outcomes before the next maintenance pass. The schedule is still
-report-first unless the user explicitly opts into `--automation-apply`; pass
-`--automation-command run` for a simpler maintenance-only schedule.
+templates now run the daily closed loop: `vault memory pipeline
+--write-candidates`, `vault memory reflection --write-candidates`, `vault
+automation cycle`, `vault automation inbox --write-handoff`, and `vault
+automation learning-health --write-health`. Long-running agents can ingest
+session lessons, propose reflection cards, learn from reviewed outcomes, and
+leave a short handoff without promoting active memory by default. The schedule
+is still report-first unless the user explicitly opts into
+`--automation-apply`; pass `--automation-command run` for a simpler
+maintenance-only cycle step.
 Generated schedules also write `reports/automation/learning-health-latest.json`
 and `.md` after each run, giving humans and all connected agents the same short
 view of whether the learning loop is healthy, watching repeated rejects, or
@@ -481,6 +486,9 @@ Add `--automation-auto-promote-low-risk` only when the user wants setup-agent to
 write the low-risk auto-promote policy. Pair it with `--automation-apply` when
 the scheduled cycle should actually promote eligible candidates; without
 `--apply`, scheduled jobs preview only.
+MCP review and maintenance profiles expose `vault_memory_pipeline`,
+`vault_memory_temporal_status`, and `vault_memory_reflection`; the `core`
+profile stays unchanged to keep startup tool schemas small.
 
 Automation details: [docs/automation.md](docs/automation.md).
 
@@ -519,7 +527,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.7.4"
+pip install "vault-for-llm[supabase]==0.7.5"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

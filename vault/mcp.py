@@ -17,11 +17,7 @@ VAULT_DIR = str(Path(__file__).parent.parent)
 if VAULT_DIR not in sys.path:
     sys.path.insert(0, VAULT_DIR)
 
-from vault.mcp_memory import (
-    _format_memory_candidate,
-    _resolve_mcp_transcript_path,
-    handle_memory_tool_call,
-)
+from vault.mcp_memory import MCP_MEMORY_CANDIDATE_MAX_LIMIT, MCP_MEMORY_LOOP_TOOL_NAMES, MCP_MEMORY_LOOP_TOOLS, handle_memory_tool_call
 from vault.mcp_automation import handle_automation_tool_call
 from vault.mcp_security import (
     check_mcp_rate_limit as _check_mcp_rate_limit,
@@ -89,7 +85,6 @@ MCP_ALLOWED_SEARCH_FIELDS = {
     "_snippet",
     "content_preview",
 }
-MCP_MEMORY_CANDIDATE_MAX_LIMIT = 100
 
 
 def _set_project_dir(project_dir: str | os.PathLike[str]) -> None:
@@ -656,6 +651,7 @@ TOOLS = [
             },
         }
     },
+    *MCP_MEMORY_LOOP_TOOLS,
     {
         "name": "vault_cold_store_expired",
         "description": "Preview or apply summarize-then-cold-store for expired-but-used memories. Defaults to dry-run; skips private, high/restricted, and L0/L1 memories.",
@@ -1028,6 +1024,7 @@ TOOL_PROFILES = {
         "vault_capture_discover",
         "vault_capture_session",
         "vault_automation_inbox",
+        *MCP_MEMORY_LOOP_TOOL_NAMES,
         "vault_dream_run",
     ],
     "remote": [
@@ -1058,6 +1055,7 @@ TOOL_PROFILES = {
         "vault_capture_discover",
         "vault_capture_session",
         "vault_automation_inbox",
+        *MCP_MEMORY_LOOP_TOOL_NAMES,
         "vault_cold_store_expired",
         "vault_obsidian_import",
         "vault_dream_run",

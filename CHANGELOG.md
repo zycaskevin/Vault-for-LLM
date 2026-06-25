@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.7.5] - 2026-06-25
+
+### Added
+
+- Generated memory automation schedules now run the automatic memory pipeline and report-first reflection pass before the existing automation cycle, inbox handoff, and learning-health dashboard.
+- Added MCP tools for `vault_memory_pipeline`, `vault_memory_temporal_status`, and `vault_memory_reflection` in review, maintenance, and full profiles while keeping the core profile unchanged.
+- Added a decision record documenting the scheduled candidate-first memory closed loop.
+
+### Safety
+
+- Scheduled pipeline and reflection writes remain candidate-only.
+- The generated closed loop does not add hard deletion, hidden active-memory promotion, or extra core MCP tool-schema tokens.
+
 ## [0.7.4] - 2026-06-25
 
 ### Fixed

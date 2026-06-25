@@ -503,6 +503,41 @@ def automation_learning_health_command(
     ]
 
 
+def memory_pipeline_command(
+    *,
+    project_dir: str | Path,
+    vault_executable: str = "vault",
+    transcript_limit: int = 3,
+) -> list[str]:
+    return [
+        vault_executable,
+        "memory",
+        "pipeline",
+        "--project-dir",
+        str(Path(project_dir).expanduser()),
+        "--write-candidates",
+        "--transcript-limit",
+        str(max(1, min(int(transcript_limit or 3), 20))),
+        "--pretty",
+    ]
+
+
+def memory_reflection_command(
+    *,
+    project_dir: str | Path,
+    vault_executable: str = "vault",
+) -> list[str]:
+    return [
+        vault_executable,
+        "memory",
+        "reflection",
+        "--project-dir",
+        str(Path(project_dir).expanduser()),
+        "--write-candidates",
+        "--pretty",
+    ]
+
+
 def automation_schedule_with_inbox_command(
     *,
     project_dir: str | Path,
@@ -527,7 +562,7 @@ def automation_schedule_with_inbox_command(
         inbox_limit=inbox_limit,
         include_transcripts=include_transcripts,
         transcript_limit=transcript_limit,
-        capture_transcripts=capture_transcripts,
+        capture_transcripts=False,
         capture_transcript_limit=capture_transcript_limit,
     )
     inbox = automation_inbox_handoff_command(
@@ -540,7 +575,20 @@ def automation_schedule_with_inbox_command(
         project_dir=project_dir,
         vault_executable=vault_executable,
     )
-    return ["sh", "-lc", f"{shell_join(primary)} && {shell_join(inbox)} && {shell_join(health)}"]
+    pipeline = memory_pipeline_command(
+        project_dir=project_dir,
+        vault_executable=vault_executable,
+        transcript_limit=capture_transcript_limit,
+    )
+    reflection = memory_reflection_command(
+        project_dir=project_dir,
+        vault_executable=vault_executable,
+    )
+    return [
+        "sh",
+        "-lc",
+        f"{shell_join(pipeline)} && {shell_join(reflection)} && {shell_join(primary)} && {shell_join(inbox)} && {shell_join(health)}",
+    ]
 
 
 def write_automation_schedule_templates(
@@ -602,6 +650,15 @@ def write_automation_schedule_templates(
         project_dir=project_dir,
         vault_executable=vault_executable,
     )
+    pipeline_args = memory_pipeline_command(
+        project_dir=project_dir,
+        vault_executable=vault_executable,
+        transcript_limit=capture_transcript_limit,
+    )
+    reflection_args = memory_reflection_command(
+        project_dir=project_dir,
+        vault_executable=vault_executable,
+    )
     handoff_args = [
         vault_executable,
         "automation",
@@ -660,6 +717,10 @@ def write_automation_schedule_templates(
                 "",
                 f"```bash\n{shell_join(inbox_args)}\n```",
                 "",
+                "Scheduled templates also run the automatic memory pipeline and reflection pass before the handoff:",
+                "",
+                f"```bash\n{shell_join(pipeline_args)}\n{shell_join(reflection_args)}\n```",
+                "",
                 "Scheduled templates also write the compact learning-health dashboard:",
                 "",
                 f"```bash\n{shell_join(health_args)}\n```",
@@ -687,6 +748,8 @@ def write_automation_schedule_templates(
                 "- expired memories with usage are protected and sent to human review",
                 "- scheduled runs write `reports/automation/inbox-latest.json` as the next-agent handoff",
                 "- scheduled runs write `reports/automation/learning-health-latest.json` and `.md` as the short learning dashboard",
+                "- scheduled runs write session lessons as candidate memories through `vault memory pipeline`",
+                "- scheduled runs write reflection review cards through `vault memory reflection`",
                 f"- scheduled cycle workspace: `{str(bool(write_workspace and normalized_command == 'cycle')).lower()}`",
                 "- cycle workspace path: `reports/automation/cycle-latest.json` when enabled",
                 "- cycle workspace Markdown: `reports/automation/cycle-latest.md` when enabled",

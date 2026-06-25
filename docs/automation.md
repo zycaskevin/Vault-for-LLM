@@ -527,14 +527,22 @@ This writes `agent-install/memory-automation.cron`,
 `agent-install/n8n-memory-automation.workflow.json`, and
 `agent-install/README-memory-automation.md`.
 
-Generated schedules default to `vault automation cycle`, which evaluates
-reviewed candidate outcomes, writes `reports/automation/learning_policy.json`,
-and then runs normal policy-based automation. After a successful scheduled run,
-the generated cron, LaunchAgent, and n8n templates also run
-`vault automation inbox --write-handoff`, producing
-`reports/automation/inbox-latest.json` as the next-agent handoff. Use
-`--automation-command run` when you want a maintenance-only schedule without the
-feedback-learning phase.
+Generated schedules now run the candidate-first memory closed loop:
+
+1. `vault memory pipeline --write-candidates`
+2. `vault memory reflection --write-candidates`
+3. `vault automation cycle`
+4. `vault automation inbox --write-handoff`
+5. `vault automation learning-health --write-health`
+
+The first two steps turn transcripts and reflection findings into review
+candidates. `vault automation cycle` then evaluates reviewed candidate outcomes,
+writes `reports/automation/learning_policy.json`, and runs normal policy-based
+automation. After a successful scheduled run, the generated cron, LaunchAgent,
+and n8n templates write `reports/automation/inbox-latest.json` as the
+next-agent handoff and `reports/automation/learning-health-latest.json` as the
+shared learning-health panel. Use `--automation-command run` when you want a
+maintenance-only cycle step without the feedback-learning phase.
 
 Add `--automation-write-workspace` when generated schedules should also pass
 `--write-workspace` to the scheduled cycle. This writes

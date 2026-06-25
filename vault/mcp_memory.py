@@ -9,6 +9,60 @@ from typing import Any
 from vault.mcp_security import check_write_allowed as _check_write_allowed
 
 MCP_MEMORY_CANDIDATE_MAX_LIMIT = 100
+MCP_MEMORY_LOOP_TOOL_NAMES = [
+    "vault_memory_pipeline",
+    "vault_memory_temporal_status",
+    "vault_memory_reflection",
+]
+
+MCP_MEMORY_LOOP_TOOLS = [
+    {
+        "name": "vault_memory_pipeline",
+        "description": "Run the automatic session-memory pipeline. Preview by default; writes candidate memories only when write_candidates=true.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "search_dirs": {"type": "array", "items": {"type": "string"}, "description": "Project-relative transcript directories to scan.", "default": []},
+                "source_system": {"type": "string", "default": "auto"},
+                "agent_id": {"type": "string", "default": ""},
+                "write_candidates": {"type": "boolean", "description": "Write review candidates. Defaults false.", "default": False},
+                "cycle": {"type": "boolean", "description": "Run automation cycle after capture. Defaults false.", "default": False},
+                "apply": {"type": "boolean", "description": "Allow policy-approved reversible cycle actions when cycle=true.", "default": False},
+                "transcript_limit": {"type": "integer", "default": 3, "minimum": 1, "maximum": 20},
+                "max_candidates_per_transcript": {"type": "integer", "default": 8, "minimum": 1, "maximum": 50},
+                "min_score": {"type": "number", "default": 0.55},
+                "scope": {"type": "string", "enum": ["private", "project", "shared", "public"], "default": "project"},
+                "sensitivity": {"type": "string", "enum": ["low", "medium", "high", "restricted"], "default": "low"},
+            },
+        },
+    },
+    {
+        "name": "vault_memory_temporal_status",
+        "description": "Read temporal fact-window status. Optionally list memories for a temporal state. Read-only.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "as_of": {"type": "string", "description": "Optional ISO-8601 timestamp.", "default": ""},
+                "state": {"type": "string", "enum": ["", "current", "past", "future", "timeless", "all"], "description": "If set, return a bounded list for this temporal state instead of summary counts.", "default": ""},
+                "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 100},
+            },
+        },
+    },
+    {
+        "name": "vault_memory_reflection",
+        "description": "Run report-first memory reflection. Writes review candidates only when write_candidates=true; lifecycle apply defaults false.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "checks": {"type": "string", "description": "Comma-separated Dream checks.", "default": "freshness,dedup,convergence,metadata,orphans"},
+                "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 100},
+                "write_candidates": {"type": "boolean", "default": False},
+                "apply": {"type": "boolean", "default": False},
+                "write_report": {"type": "boolean", "default": True},
+            },
+        },
+    },
+]
 
 
 def _db_path() -> str:
@@ -56,6 +110,9 @@ def _format_memory_candidate(row: dict, *, include_content: bool = False, includ
         "allowed_agents": row.get("allowed_agents"),
         "memory_type": row.get("memory_type"),
         "expires_at": row.get("expires_at"),
+        "valid_from": row.get("valid_from"),
+        "valid_until": row.get("valid_until"),
+        "supersedes_id": row.get("supersedes_id"),
         "source": row.get("source"),
         "source_ref": row.get("source_ref"),
         "reason": row.get("reason"),
@@ -335,6 +392,65 @@ def handle_memory_tool_call(name: str, arguments: dict) -> dict | None:
             max_depth=_clamp_int(arguments.get("max_depth", 3), default=3, minimum=0, maximum=8),
             max_file_mb=float(arguments.get("max_file_mb", 5.0) or 5.0),
             allow_absolute_paths=bool(arguments.get("allow_absolute_paths", False)),
+        )
+        return _json_result(payload)
+
+    if name == "vault_memory_pipeline":
+        from vault.memory_pipeline import run_memory_pipeline
+
+        search_dirs = arguments.get("search_dirs") or []
+        if not isinstance(search_dirs, list):
+            search_dirs = []
+        payload = run_memory_pipeline(
+            _project_dir(),
+            search_dirs=[str(item) for item in search_dirs if str(item).strip()] or None,
+            source_system=str(arguments.get("source_system") or "auto"),
+            agent_id=str(arguments.get("agent_id") or ""),
+            write_candidates=bool(arguments.get("write_candidates", False)),
+            run_cycle=bool(arguments.get("cycle", False)),
+            apply=bool(arguments.get("apply", False)),
+            transcript_limit=_clamp_int(arguments.get("transcript_limit", 3), default=3, minimum=1, maximum=20),
+            max_candidates_per_transcript=_clamp_int(
+                arguments.get("max_candidates_per_transcript", 8),
+                default=8,
+                minimum=1,
+                maximum=50,
+            ),
+            min_score=float(arguments.get("min_score", 0.55) or 0.55),
+            scope=str(arguments.get("scope") or "project"),
+            sensitivity=str(arguments.get("sensitivity") or "low"),
+            include_content=bool(arguments.get("include_content", False)),
+        )
+        return _json_result(payload)
+
+    if name == "vault_memory_temporal_status":
+        from vault.db import VaultDB
+        from vault.temporal import list_temporal_memories, temporal_summary
+
+        state = str(arguments.get("state") or "").strip().lower()
+        with VaultDB(_db_path()) as db:
+            payload = (
+                list_temporal_memories(
+                    db,
+                    state=state,
+                    as_of=str(arguments.get("as_of") or ""),
+                    limit=_clamp_int(arguments.get("limit", 50), default=50, minimum=1, maximum=100),
+                )
+                if state
+                else temporal_summary(db, as_of=str(arguments.get("as_of") or ""))
+            )
+        return _json_result(payload)
+
+    if name == "vault_memory_reflection":
+        from vault.reflection import run_reflection
+
+        payload = run_reflection(
+            _project_dir(),
+            checks=str(arguments.get("checks") or "freshness,dedup,convergence,metadata,orphans"),
+            limit=_clamp_int(arguments.get("limit", 50), default=50, minimum=1, maximum=100),
+            write_candidates=bool(arguments.get("write_candidates", False)),
+            apply=bool(arguments.get("apply", False)),
+            write_report=bool(arguments.get("write_report", True)),
         )
         return _json_result(payload)
 

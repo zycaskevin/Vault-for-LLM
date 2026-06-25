@@ -25,6 +25,9 @@ def test_mcp_memory_tools_are_advertised():
         "vault_automation_brief",
         "vault_automation_handoff",
         "vault_cold_store_expired",
+        "vault_memory_pipeline",
+        "vault_memory_temporal_status",
+        "vault_memory_reflection",
         "vault_update_status",
         "vault_dream_run",
     }.issubset(names)
@@ -63,14 +66,23 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
     assert "vault_capture_discover" in review_names
     assert "vault_capture_session" in review_names
     assert "vault_automation_inbox" in review_names
+    assert "vault_memory_pipeline" in review_names
+    assert "vault_memory_temporal_status" in review_names
+    assert "vault_memory_reflection" in review_names
     assert "vault_capture_discover" not in core_names
     assert "vault_capture_session" not in core_names
     assert "vault_automation_inbox" not in core_names
     assert "vault_cold_store_expired" not in core_names
+    assert "vault_memory_pipeline" not in core_names
+    assert "vault_memory_temporal_status" not in core_names
+    assert "vault_memory_reflection" not in core_names
     assert "vault_memory_review" not in core_names
 
     maintenance_names = {tool["name"] for tool in select_tools("maintenance")}
     assert "vault_cold_store_expired" in maintenance_names
+    assert "vault_memory_pipeline" in maintenance_names
+    assert "vault_memory_temporal_status" in maintenance_names
+    assert "vault_memory_reflection" in maintenance_names
 
     full_names = {tool["name"] for tool in select_tools("full")}
     assert "vault_add" in full_names
@@ -79,6 +91,9 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
     assert "vault_automation_brief" in full_names
     assert "vault_automation_handoff" in full_names
     assert "vault_cold_store_expired" in full_names
+    assert "vault_memory_pipeline" in full_names
+    assert "vault_memory_temporal_status" in full_names
+    assert "vault_memory_reflection" in full_names
     assert "vault_remote_read_range" in full_names
     assert len(full_names) > len(core_names)
 
@@ -473,7 +488,7 @@ def test_mcp_capture_discover_lists_project_transcripts_without_content(tmp_path
     _set_project_dir(tmp_path)
     sessions = tmp_path / "sessions"
     sessions.mkdir()
-    token = "sk-proj-1234567890abcdefghij1234567890"
+    token = "FAKE_OPENAI_KEY_FOR_DISCOVERY_TEST"
     transcript = sessions / "codex-session.jsonl"
     transcript.write_text(
         json.dumps(
@@ -657,7 +672,7 @@ def test_mcp_automation_inbox_can_include_transcript_hints(tmp_path):
         pass
     sessions = tmp_path / "sessions"
     sessions.mkdir()
-    token = "sk-proj-1234567890abcdefghij1234567890"
+    token = "FAKE_OPENAI_KEY_FOR_INBOX_TEST"
     (sessions / "codex-session.md").write_text(
         f"Decision: MCP automation inbox discovery must not expose {token} from transcript content.",
         encoding="utf-8",
@@ -676,6 +691,49 @@ def test_mcp_automation_inbox_can_include_transcript_hints(tmp_path):
     assert inbox["transcript_discovery"]["read_contents"] is False
     assert inbox["transcript_discovery"]["transcripts"][0]["capture_path"] == "sessions/codex-session.md"
     assert token not in rendered
+
+
+def test_mcp_memory_pipeline_temporal_and_reflection(tmp_path):
+    _set_project_dir(tmp_path)
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    (sessions / "codex-session.md").write_text(
+        "Decision: MCP memory pipeline should write review candidates before active memory.\n"
+        "Bug fix: Reflection should stay report-first and candidate-first.\n",
+        encoding="utf-8",
+    )
+    with VaultDB(tmp_path / "vault.db") as db:
+        db.add_knowledge(
+            title="Current location",
+            content_raw="The office is now in City B.",
+            valid_from="2026-06-25T00:00:00Z",
+        )
+        db.add_knowledge(
+            title="Past location",
+            content_raw="The office used to be in City A.",
+            valid_until="2026-06-24T00:00:00Z",
+        )
+
+    pipeline = _payload(handle_tool_call(
+        "vault_memory_pipeline",
+        {
+            "search_dirs": ["sessions"],
+            "write_candidates": True,
+            "transcript_limit": 2,
+            "source_system": "codex",
+        },
+    ))
+    temporal = _payload(handle_tool_call("vault_memory_temporal_status", {}))
+    past = _payload(handle_tool_call("vault_memory_temporal_status", {"state": "past"}))
+    reflection = _payload(handle_tool_call("vault_memory_reflection", {"write_candidates": True, "limit": 5}))
+
+    assert pipeline["action"] == "memory_pipeline_run"
+    assert pipeline["candidate_count"] == 2
+    assert temporal["counts"]["current"] == 1
+    assert temporal["counts"]["past"] == 1
+    assert past["items"][0]["title"] == "Past location"
+    assert reflection["action"] == "memory_reflection_run"
+    assert reflection["safety"]["candidate_first"] is True
 
 
 def test_mcp_automation_activity_reads_closed_loop_events_without_content(tmp_path):

@@ -1455,15 +1455,29 @@ def test_automation_handoff_attaches_fleet_health_without_replacing_cycle(tmp_pa
         "# Vault Automation Cycle Workspace\n\n## Agent Start Prompt\n\nStart from cycle.\n",
         encoding="utf-8",
     )
+    (report_dir / "review-summary-latest.md").write_text(
+        "# Vault Automation Review Summary\n\n- Review card: check TTL.\n",
+        encoding="utf-8",
+    )
+    (report_dir / "learning-health-latest.md").write_text(
+        "# Vault Automation Learning Health\n\n- Learning status: healthy.\n",
+        encoding="utf-8",
+    )
 
     payload = automation_handoff(project)
 
     assert payload["status"] == "completed"
     assert payload["handoff_path"] == "reports/automation/cycle-latest.md"
     assert payload["fleet_health_path"] == "reports/automation/fleet-health-latest.md"
+    assert payload["review_summary_path"] == "reports/automation/review-summary-latest.md"
+    assert payload["learning_health_path"] == "reports/automation/learning-health-latest.md"
     assert "Fleet status: ok." in payload["fleet_health_content"]
+    assert "Review card: check TTL." in payload["review_summary_content"]
+    assert "Learning status: healthy." in payload["learning_health_content"]
     assert "Start from cycle." in payload["content"]
     assert "Fleet status: ok." not in payload["content"]
+    assert "Review card: check TTL." not in payload["content"]
+    assert "Learning status: healthy." not in payload["content"]
     assert payload["safety"]["uses_existing_handoff_only"] is True
 
 

@@ -23,9 +23,11 @@ from .automation_reports import (
     _automation_report_files,
     _read_report,
     _relative_to_project,
+    _resolve_learning_health_read_path,
     _report_summary,
     _resolve_fleet_health_read_path,
     _resolve_handoff_read_path,
+    _resolve_review_summary_read_path,
     _resolve_report_path,
     _write_brief,
     _write_brief_markdown,
@@ -967,6 +969,16 @@ def automation_handoff(
     report_dir = project / "reports" / "automation"
     selected = _resolve_handoff_read_path(project, report_dir, source=source, handoff_path=handoff_path)
     fleet_health = _resolve_fleet_health_read_path(report_dir)
+    review_summary = _resolve_review_summary_read_path(report_dir)
+    learning_health = _resolve_learning_health_read_path(report_dir)
+    review_summary_content = review_summary.read_text(encoding="utf-8") if review_summary else ""
+    learning_health_content = learning_health.read_text(encoding="utf-8") if learning_health else ""
+    review_summary_type = (
+        "markdown" if review_summary and review_summary.suffix.lower() == ".md" else "json" if review_summary else ""
+    )
+    learning_health_type = (
+        "markdown" if learning_health and learning_health.suffix.lower() == ".md" else "json" if learning_health else ""
+    )
     if selected is None:
         return {
             "action": "handoff",
@@ -982,6 +994,12 @@ def automation_handoff(
                 "markdown" if fleet_health and fleet_health.suffix.lower() == ".md" else "json" if fleet_health else ""
             ),
             "fleet_health_content": fleet_health.read_text(encoding="utf-8") if fleet_health else "",
+            "review_summary_path": _relative_to_project(project, review_summary) if review_summary else "",
+            "review_summary_content_type": review_summary_type,
+            "review_summary_content": review_summary_content,
+            "learning_health_path": _relative_to_project(project, learning_health) if learning_health else "",
+            "learning_health_content_type": learning_health_type,
+            "learning_health_content": learning_health_content,
             "summary": {},
             "safety": {
                 "read_only": True,
@@ -1006,6 +1024,8 @@ def automation_handoff(
         fleet_health_content = fleet_health.read_text(encoding="utf-8")
         fleet_health_content_type = "markdown" if fleet_health.suffix.lower() == ".md" else "json"
         fleet_health_path = _relative_to_project(project, fleet_health)
+    review_summary_path = _relative_to_project(project, review_summary) if review_summary else ""
+    learning_health_path = _relative_to_project(project, learning_health) if learning_health else ""
     return {
         "action": "handoff",
         "generated_at": _now(),
@@ -1018,6 +1038,12 @@ def automation_handoff(
         "fleet_health_path": fleet_health_path,
         "fleet_health_content_type": fleet_health_content_type,
         "fleet_health_content": fleet_health_content,
+        "review_summary_path": review_summary_path,
+        "review_summary_content_type": review_summary_type,
+        "review_summary_content": review_summary_content,
+        "learning_health_path": learning_health_path,
+        "learning_health_content_type": learning_health_type,
+        "learning_health_content": learning_health_content,
         "summary": parsed.get("summary", {}) if parsed else {},
         "agent_start_prompt": parsed.get("agent_start_prompt", "") if parsed else "",
         "safety": {

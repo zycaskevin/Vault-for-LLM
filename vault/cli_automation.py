@@ -327,17 +327,24 @@ def cmd_automation(
         return
 
     if action == "handoff":
+        fleet_content = (payload.get("fleet_health_content") or "").rstrip()
+        review_content = (payload.get("review_summary_content") or "").rstrip()
+        learning_content = (payload.get("learning_health_content") or "").rstrip()
         if payload.get("status") != "completed":
             print("📄 Automation handoff\n")
             print(f"  status: {payload.get('status')}")
             print(f"  source: {payload.get('source')}")
+            for content in (fleet_content, review_content, learning_content):
+                if content:
+                    print("\n---\n")
+                    print(content)
             print(f"  next action: {payload.get('next_action')}")
             return
         if payload.get("content_type") == "markdown":
-            fleet_content = (payload.get("fleet_health_content") or "").rstrip()
-            if fleet_content:
-                print(fleet_content)
-                print("\n---\n")
+            for content in (fleet_content, review_content, learning_content):
+                if content:
+                    print(content)
+                    print("\n---\n")
             print(payload.get("content", "").rstrip())
             return
         print("📄 Automation handoff\n")
@@ -345,6 +352,10 @@ def cmd_automation(
         print(f"  type: {payload.get('content_type')}")
         if payload.get("fleet_health_path"):
             print(f"  fleet health: {payload.get('fleet_health_path')}")
+        if payload.get("review_summary_path"):
+            print(f"  review summary: {payload.get('review_summary_path')}")
+        if payload.get("learning_health_path"):
+            print(f"  learning health: {payload.get('learning_health_path')}")
         print(payload.get("content", "").rstrip())
         return
 

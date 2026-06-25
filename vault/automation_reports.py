@@ -834,6 +834,22 @@ def _resolve_fleet_health_read_path(report_dir: Path) -> Path | None:
     return None
 
 
+def _resolve_review_summary_read_path(report_dir: Path) -> Path | None:
+    for name in ("review-summary-latest.md", "review-summary-latest.json"):
+        candidate = report_dir / name
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _resolve_learning_health_read_path(report_dir: Path) -> Path | None:
+    for name in ("learning-health-latest.md", "learning-health-latest.json"):
+        candidate = report_dir / name
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def _automation_report_files(report_dir: Path) -> list[Path]:
     """Return timestamped automation run reports, excluding handoff artifacts."""
     return sorted(

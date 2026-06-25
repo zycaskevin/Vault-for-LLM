@@ -51,14 +51,15 @@ Use runtime-specific adapters only for convenience. The durable contract is:
 `adapter-startup-contract.json`. These templates all use the same sequence:
 update-status -> automation handoff -> search/read only when needed -> propose
 candidate memory.
-The handoff step is fleet-aware: when `fleet_health_content` is present, agents
-read that shared health preface first, then the selected cycle/inbox `content`.
+The handoff step is startup-aware: when present, agents read
+`fleet_health_content`, `review_summary_content`, and
+`learning_health_content` before the selected cycle/inbox `content`.
 The same install pack writes `README-runtime-update-playbook.md` and
 `runtime-update-playbook.json` so every runtime can follow the same startup,
 post-upgrade, and stale-notice behavior.
 Run `vault agent startup-doctor --template-dir <project>/agent-install --json`
 when you need to verify whether an older install pack is missing the current
-fleet-aware handoff contract.
+startup-preface handoff contract.
 Use `vault agent install-runtime-template --runtime <name> --target <file>` to
 preview a safe marked-block install into `AGENTS.md`, `CLAUDE.md`, or another
 runtime instruction file; add `--apply` only after the preview looks right.

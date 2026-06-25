@@ -161,16 +161,25 @@ contents or mutate memory.
 }
 ```
 
-When a fleet-health panel exists, the payload keeps the selected cycle/inbox
-handoff in `content` and adds:
+When startup prefaces exist, the payload keeps the selected cycle/inbox handoff
+in `content` and adds separate read-only fields:
 
 - `fleet_health_path`
 - `fleet_health_content_type`
 - `fleet_health_content`
+- `review_summary_path`
+- `review_summary_content_type`
+- `review_summary_content`
+- `learning_health_path`
+- `learning_health_content_type`
+- `learning_health_content`
 
-Agent rule: call this at startup before reading full reports. If it returns
-`status=missing`, continue with normal search/read flow or run the CLI
-automation cycle only after user approval.
+Agent rule: call this at startup before reading full reports. Read
+`fleet_health_content`, then `review_summary_content`, then
+`learning_health_content`, then the selected `content` when each field is
+present. If it returns `status=missing`, still inspect any preface fields before
+falling back to normal search/read flow or running the CLI automation cycle with
+user approval.
 
 ### `vault_automation_brief`
 

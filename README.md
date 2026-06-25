@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.7.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.8.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -84,7 +84,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.7.7"
+pip install "vault-for-llm[mcp]==0.7.8"
 
 vault setup-agent
 ```
@@ -152,7 +152,7 @@ to verify the candidate-first propose path.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.7.7"
+pip install "vault-for-llm[mcp]==0.7.8"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -421,10 +421,11 @@ vault automation handoff
 MCP-capable agents can read the same compact handoff with
 `vault_automation_handoff` in the `core` profile.
 
-When `reports/automation/fleet-health-latest.md` or `.json` exists, the handoff
-also includes that shared multi-Agent health panel. The CLI prints fleet health
-first, then the selected cycle/inbox handoff; MCP keeps the main handoff in
-`content` and exposes the shared panel through `fleet_health_content`.
+When startup prefaces exist, the handoff also includes them before the selected
+cycle/inbox handoff. The CLI prints fleet health, review-summary cards, and
+learning-health first; MCP keeps the main handoff in `content` and exposes the
+prefaces through `fleet_health_content`, `review_summary_content`, and
+`learning_health_content`.
 
 `vault automation inbox` is the short review surface for that loop. It does not
 mutate memory. It ranks privacy-blocked, sensitive, duplicate, weak-quality, and
@@ -456,8 +457,9 @@ For multi-Agent installs, `vault automation fleet-health` combines local Agent
 registry metadata, learning-health status, and update-distribution health into
 `reports/automation/fleet-health-latest.json` plus `.md`. It is read-only and
 does not read private memory, raw candidate content, or raw feedback reasons.
-`vault automation handoff` automatically surfaces this panel before the
-individual cycle/inbox handoff when the file exists.
+`vault automation handoff` automatically surfaces this panel, the latest
+review-summary cards, and the latest learning-health dashboard before the
+individual cycle/inbox handoff when those files exist.
 
 Agent installers can generate cron, LaunchAgent, or n8n templates with
 `vault setup-agent --automation-schedule cron|launchagent|n8n|all`. Scheduled
@@ -532,7 +534,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.7.7"
+pip install "vault-for-llm[supabase]==0.7.8"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

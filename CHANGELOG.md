@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## [0.7.8] - 2026-06-25
+
+### Added
+
+- `vault automation handoff` and MCP `vault_automation_handoff` now attach `review_summary_content` and `learning_health_content` as read-only startup prefaces when the latest files exist.
+- Generated MCP startup guides and runtime adapter templates now require this read order: `fleet_health_content`, `review_summary_content`, `learning_health_content`, then the selected handoff `content`.
+- `vault agent startup-doctor` now detects older startup packs that only mention fleet health and do not include review-summary / learning-health prefaces.
+- Added a decision record and short release note for startup prefaces in the multi-Agent handoff contract.
+
+### Safety
+
+- The selected handoff `content` remains unchanged for existing readers; startup prefaces are attached separately.
+- Review-summary and learning-health prefaces are read-only and do not expose raw candidate content, promote memory, archive rows, or apply lifecycle actions.
+
 ## [0.7.7] - 2026-06-25
 
 ### Added

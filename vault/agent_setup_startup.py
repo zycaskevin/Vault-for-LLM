@@ -68,8 +68,15 @@ def write_mcp_startup_guide(
                 },
                 "purpose": "Read the latest compact handoff when one exists.",
                 "result_contract": {
-                    "read_first": ["fleet_health_content", "content"],
+                    "read_first": [
+                        "fleet_health_content",
+                        "review_summary_content",
+                        "learning_health_content",
+                        "content",
+                    ],
                     "fleet_health_content": "Shared multi-Agent automation health preface when present.",
+                    "review_summary_content": "The 5% human-review card deck when present.",
+                    "learning_health_content": "Dashboard-safe feedback learning health when present.",
                     "content": "Selected cycle/inbox handoff content.",
                     "missing_ok": True,
                 },
@@ -133,6 +140,8 @@ def write_mcp_startup_guide(
                 f"1. `vault_update_status` with `read_status=true` and `agent_id={safe_agent}`",
                 "2. `vault_automation_handoff`",
                 "   - If `fleet_health_content` is present, read it before the main `content` handoff.",
+                "   - If `review_summary_content` is present, read it before deeper reports.",
+                "   - If `learning_health_content` is present, use it as the learning loop status.",
                 "3. `vault_search` only when more context is needed",
                 "4. `vault_read_range` before citing memory",
                 "5. `vault_memory_propose` for new durable lessons",
@@ -143,6 +152,8 @@ def write_mcp_startup_guide(
                 "- keep `check_pypi=false` unless the user asks for a live update check",
                 "- handoff reads are read-only and stay under `reports/automation`",
                 "- handoff may include `fleet_health_content`; treat it as the shared multi-Agent startup health preface",
+                "- handoff may include `review_summary_content`; treat it as the smallest human-review card deck",
+                "- handoff may include `learning_health_content`; treat it as dashboard-safe learning status",
                 "- do not read raw transcript contents by default",
                 "- do not auto-promote memory",
                 "- tool profiles reduce schema size but are not an authorization boundary",
@@ -416,8 +427,15 @@ def write_agent_adapter_startup_templates(
                 "arguments": {"source": "auto", "handoff_path": ""},
             },
             "result_contract": {
-                "read_first": ["fleet_health_content", "content"],
+                "read_first": [
+                    "fleet_health_content",
+                    "review_summary_content",
+                    "learning_health_content",
+                    "content",
+                ],
                 "fleet_health_content": "Shared multi-Agent automation health preface when present.",
+                "review_summary_content": "The 5% human-review card deck when present.",
+                "learning_health_content": "Dashboard-safe feedback learning health when present.",
                 "content": "Selected cycle/inbox handoff content.",
                 "do_not_replace_content": True,
             },
@@ -502,8 +520,15 @@ def write_agent_adapter_startup_templates(
         "handoff_contract": {
             "source": "auto",
             "fleet_health_preface": True,
-            "read_order": ["fleet_health_content", "content"],
-            "content_contract": "content remains the selected cycle/inbox handoff; fleet_health_content is attached separately when present.",
+            "review_summary_preface": True,
+            "learning_health_preface": True,
+            "read_order": [
+                "fleet_health_content",
+                "review_summary_content",
+                "learning_health_content",
+                "content",
+            ],
+            "content_contract": "content remains the selected cycle/inbox handoff; startup prefaces are attached separately when present.",
         },
         "adapters": adapters,
         "safety": {
@@ -531,6 +556,8 @@ def write_agent_adapter_startup_templates(
             "Run doctor mode when freshness or rollout state is unclear.",
             "Read automation handoff before searching deeper memory.",
             "If handoff includes fleet_health_content, read that shared health preface before the main handoff content.",
+            "If handoff includes review_summary_content, read the 5% human-review cards before deeper reports.",
+            "If handoff includes learning_health_content, use it as the learning loop status.",
             "Search/read only when the task needs more context.",
         ],
         "after_upgrade_rule": [
@@ -551,7 +578,12 @@ def write_agent_adapter_startup_templates(
             "handoff": {
                 "tool": "vault_automation_handoff",
                 "arguments": {"source": "auto", "handoff_path": ""},
-                "read_order": ["fleet_health_content", "content"],
+                "read_order": [
+                    "fleet_health_content",
+                    "review_summary_content",
+                    "learning_health_content",
+                    "content",
+                ],
             },
         },
         "cli": {
@@ -574,6 +606,8 @@ def write_agent_adapter_startup_templates(
             "one_shared_project_vault": True,
             "private_agent_memory_stays_private": True,
             "fleet_health_preface_read_only": True,
+            "review_summary_preface_read_only": True,
+            "learning_health_preface_read_only": True,
         },
     }
     runtime_playbook_path = out / "runtime-update-playbook.json"
@@ -598,6 +632,8 @@ def write_agent_adapter_startup_templates(
                 "3. If the notice is stale, missing Agents, or upgrade state is unclear, run MCP doctor: `vault_update_status` with `doctor=true` and this runtime's `agent_id`.",
                 f"4. Read the compact handoff: `{shell_join(handoff_command)}`.",
                 "   If it includes `fleet_health_content`, read that shared health preface before the individual `content` handoff.",
+                "   If it includes `review_summary_content`, read those 5% review cards before deeper reports.",
+                "   If it includes `learning_health_content`, use it as the learning loop status.",
                 "5. Search/read only when the task needs deeper context.",
                 "",
                 "After one runtime upgrades Vault:",
@@ -646,10 +682,12 @@ def write_agent_adapter_startup_templates(
             f"2. If status is missing, run bounded fallback: `{shell_join(fallback_status_command)}`.",
             f"3. Read the compact automation handoff: `{shell_join(handoff_command)}`.",
             "4. If handoff includes `fleet_health_content`, read that shared health preface before the main handoff.",
-            "5. Run MCP doctor when status freshness or runtime updates are unclear.",
-            "6. Search only when the task needs more context.",
-            "7. Use bounded reads before citing memory.",
-            "8. Propose durable lessons as candidates; do not auto-promote them.",
+            "5. If handoff includes `review_summary_content`, read those 5% review cards before deeper reports.",
+            "6. If handoff includes `learning_health_content`, use it as the learning loop status.",
+            "7. Run MCP doctor when status freshness or runtime updates are unclear.",
+            "8. Search only when the task needs more context.",
+            "9. Use bounded reads before citing memory.",
+            "10. Propose durable lessons as candidates; do not auto-promote them.",
             "",
             "MCP server:",
             "",
@@ -662,7 +700,7 @@ def write_agent_adapter_startup_templates(
             f"- `vault_update_status` with `read_status=true`, `agent_id={safe_agent}`.",
             "- `vault_update_status` with `doctor=true` when checking multi-Agent update distribution.",
             "- `vault_automation_handoff` with `source=auto`.",
-            "  Read `fleet_health_content` first when present, then the selected `content` handoff.",
+            "  Read `fleet_health_content`, `review_summary_content`, and `learning_health_content` before the selected `content` handoff when present.",
             "- `vault_search` and `vault_read_range` only when needed.",
             "- `vault_memory_propose` for new durable lessons.",
             "",
@@ -725,7 +763,7 @@ def write_agent_adapter_startup_templates(
                 "Use these templates when one machine has multiple Agent runtimes connected to the same Vault project.",
                 "",
                 "The shared rule is simple: update-status -> automation handoff -> search/read/propose.",
-                "The handoff is fleet-aware: read `fleet_health_content` first when present, then the selected cycle/inbox `content`.",
+                "The handoff is startup-aware: read `fleet_health_content`, `review_summary_content`, and `learning_health_content` first when present, then the selected cycle/inbox `content`.",
                 "",
                 "Generated files:",
                 "",
@@ -743,10 +781,12 @@ def write_agent_adapter_startup_templates(
                 f"2. If no notice exists, run `{shell_join(fallback_status_command)}` without a live PyPI check.",
                 f"3. Read `{shell_join(handoff_command)}` for the latest compact memory automation handoff.",
                 "4. If the handoff includes fleet health, read that shared health preface before the individual handoff.",
-                "5. Use MCP doctor when checking whether every local runtime has the fresh shared notice.",
-                "6. Search only when the task or handoff needs more detail.",
-                "7. Read bounded evidence before citing memory.",
-                "8. Propose new durable memory as candidates.",
+                "5. If the handoff includes review-summary cards, read them before deeper reports.",
+                "6. If the handoff includes learning-health, use it as the learning loop status.",
+                "7. Use MCP doctor when checking whether every local runtime has the fresh shared notice.",
+                "8. Search only when the task or handoff needs more detail.",
+                "9. Read bounded evidence before citing memory.",
+                "10. Propose new durable memory as candidates.",
                 "",
                 "Safety boundary:",
                 "",
@@ -854,7 +894,12 @@ def install_runtime_template(
     }
 
 
-EXPECTED_HANDOFF_READ_ORDER = ["fleet_health_content", "content"]
+EXPECTED_HANDOFF_READ_ORDER = [
+    "fleet_health_content",
+    "review_summary_content",
+    "learning_health_content",
+    "content",
+]
 STARTUP_DOCTOR_JSON_FILES = {
     "mcp_startup": "mcp-startup.json",
     "adapter_contract": "adapter-startup-contract.json",
@@ -939,7 +984,7 @@ def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
         detail=(
             "handoff result_contract reads fleet_health_content before content"
             if _has_handoff_read_order(mcp_read_order)
-            else "missing fleet-aware handoff result_contract read order"
+            else "missing startup preface handoff result_contract read order"
         ),
     )
 
@@ -952,7 +997,7 @@ def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
         detail=(
             "adapter contract is fleet-aware"
             if _has_handoff_read_order(adapter_order)
-            else "missing handoff_contract.read_order fleet_health_content -> content"
+            else "missing handoff_contract.read_order startup prefaces -> content"
         ),
     )
     adapter_sequence = adapter.get("startup_sequence") if isinstance(adapter.get("startup_sequence"), list) else []
@@ -970,24 +1015,32 @@ def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
         status="pass" if adapter_result_ok else "fail",
         path=adapter_path,
         detail=(
-            "adapter handoff step preserves selected content and reads fleet health first"
+            "adapter handoff step preserves selected content and reads startup prefaces first"
             if adapter_result_ok
-            else "read_automation_handoff step is missing fleet-aware result_contract"
+            else "read_automation_handoff step is missing startup-preface result_contract"
         ),
     )
 
     playbook_order = ((playbook.get("mcp") or {}).get("handoff") or {}).get("read_order")
-    playbook_safety = bool((playbook.get("safety") or {}).get("fleet_health_preface_read_only"))
-    playbook_ok = _has_handoff_read_order(playbook_order) and playbook_safety
+    playbook_safety = playbook.get("safety") or {}
+    playbook_prefaces_read_only = all(
+        bool(playbook_safety.get(name))
+        for name in (
+            "fleet_health_preface_read_only",
+            "review_summary_preface_read_only",
+            "learning_health_preface_read_only",
+        )
+    )
+    playbook_ok = _has_handoff_read_order(playbook_order) and playbook_prefaces_read_only
     _startup_doctor_check(
         checks,
         name="runtime_playbook_handoff_contract",
         status="pass" if playbook_ok else "fail",
         path=playbook_path,
         detail=(
-            "runtime playbook reads fleet health first and marks it read-only"
+            "runtime playbook reads startup prefaces first and marks them read-only"
             if playbook_ok
-            else "runtime playbook is missing fleet-aware handoff read order or read-only safety flag"
+            else "runtime playbook is missing startup-preface read order or read-only safety flag"
         ),
     )
 
@@ -997,16 +1050,21 @@ def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
             _startup_doctor_check(checks, name=f"{name}_startup_template", status="fail", path=path, detail="missing runtime template")
             continue
         text = path.read_text(encoding="utf-8")
-        ok = "fleet_health_content" in text and "vault_automation_handoff" in text
+        ok = (
+            "fleet_health_content" in text
+            and "review_summary_content" in text
+            and "learning_health_content" in text
+            and "vault_automation_handoff" in text
+        )
         _startup_doctor_check(
             checks,
             name=f"{name}_startup_template",
             status="pass" if ok else "fail",
             path=path,
             detail=(
-                "runtime template names the fleet-aware handoff contract"
+                "runtime template names the startup-preface handoff contract"
                 if ok
-                else "runtime template is missing fleet_health_content startup guidance"
+                else "runtime template is missing startup-preface handoff guidance"
             ),
         )
 
@@ -1016,16 +1074,20 @@ def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
             _startup_doctor_check(checks, name=name, status="warn", path=path, detail="missing generated README")
             continue
         text = path.read_text(encoding="utf-8")
-        ok = "fleet_health_content" in text
+        ok = (
+            "fleet_health_content" in text
+            and "review_summary_content" in text
+            and "learning_health_content" in text
+        )
         _startup_doctor_check(
             checks,
             name=name,
             status="pass" if ok else "warn",
             path=path,
             detail=(
-                "README documents fleet-aware startup handoff"
+                "README documents startup-preface handoff"
                 if ok
-                else "README does not mention fleet_health_content; regenerate setup files for clearer guidance"
+                else "README is missing startup-preface guidance; regenerate setup files for clearer guidance"
             ),
         )
 

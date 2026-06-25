@@ -58,7 +58,7 @@ Vault-for-LLM 可能不是第一個該拿起來的工具。
 最推薦的方式，是直接把這段交給能執行本機指令的 Agent：
 
 ```text
-幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.7.7。
+幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.7.8。
 先問我要 shared、private、domain-specific 還是 temporary vault。
 詢問穩定的 project directory，並為長期任務產生 stable venv script。
 逐項詢問 MCP、semantic search、Supabase、Obsidian import、Headroom 壓縮、
@@ -72,7 +72,7 @@ Agent 會使用安裝精靈：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.7.7"
+pip install "vault-for-llm[mcp]==0.7.8"
 
 vault setup-agent
 ```
@@ -138,7 +138,7 @@ propose smoke test 再用 `vault remember` 驗證 candidate-first 流程。
 ### 手動快速開始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.7.7"
+pip install "vault-for-llm[mcp]==0.7.8"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -316,10 +316,11 @@ vault automation handoff
 MCP-capable Agent 可以在 `core` profile 直接用 `vault_automation_handoff`
 讀取同一份短版 handoff。
 
-如果 `reports/automation/fleet-health-latest.md` 或 `.json` 已存在，
-handoff 也會帶上這份多 Agent 共同健康面板。CLI 會先顯示 fleet health，
-再顯示 cycle/inbox handoff；MCP 則保留原本主要 handoff 在 `content`，
-並用 `fleet_health_content` 額外提供共同健康面板。
+如果 startup prefaces 已存在，handoff 也會在選定的 cycle/inbox handoff
+之前帶上它們。CLI 會先顯示 fleet health、review-summary cards 和
+learning-health；MCP 則保留原本主要 handoff 在 `content`，並用
+`fleet_health_content`、`review_summary_content`、`learning_health_content`
+額外提供這些啟動摘要。
 
 `vault automation inbox` 是這個閉環的短版審核入口。它不會修改記憶，只會把
 privacy blocked、敏感、重複、品質不足、automation 產生的候選排出優先順序；
@@ -348,8 +349,9 @@ MCP-capable Agent 可以在 `core` profile 直接呼叫 `vault_automation_brief`
 learning-health 狀態和 update-distribution health 合成
 `reports/automation/fleet-health-latest.json` 與 `.md`。它只讀 registry
 metadata 和短報告，不讀私人記憶、raw candidate content 或 raw feedback reason。
-`vault automation handoff` 會在檔案存在時，把這份共同健康面板放在個別
-cycle/inbox handoff 前面。
+`vault automation handoff` 會在檔案存在時，把共同健康面板、最新
+review-summary cards、最新 learning-health dashboard 放在個別 cycle/inbox
+handoff 前面。
 如果安裝時加上 `--automation-include-transcripts`，排程 handoff 也會列出尚未
 capture 的 transcript 候選路徑。這只包含 metadata，不讀 transcript 內容，也不會
 自動把對話變成正式記憶。
@@ -460,7 +462,7 @@ SQLite 仍然是 source of truth。Supabase 是可選的共享層。
 Remote reader 應該直接把搜尋結果的 `id` 傳給 map/read；它可能是整數，也可能是 Supabase UUID。
 
 ```bash
-pip install "vault-for-llm[supabase]==0.7.7"
+pip install "vault-for-llm[supabase]==0.7.8"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

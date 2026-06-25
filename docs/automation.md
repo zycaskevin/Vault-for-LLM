@@ -321,10 +321,12 @@ vault automation handoff
 
 The command is read-only. It prefers `cycle-latest.md`, then falls back to
 `cycle-latest.json` or `inbox-latest.json`. When
-`fleet-health-latest.md` or `.json` exists, the CLI prints that shared
-multi-Agent health panel before the selected handoff. JSON/MCP consumers keep
-the selected handoff in `content` and receive the health panel separately as
-`fleet_health_content`, so existing cycle/inbox handoff readers remain stable.
+startup prefaces exist, the CLI prints fleet health, review-summary cards, and
+learning-health before the selected handoff. JSON/MCP consumers keep the
+selected handoff in `content` and receive these prefaces separately as
+`fleet_health_content`, `review_summary_content`, and
+`learning_health_content`, so existing cycle/inbox handoff readers remain
+stable.
 
 `--include-transcripts` is discovery-only: it lists likely session transcript
 paths without reading their contents. To close the ingestion loop, add
@@ -493,8 +495,9 @@ important review fields are:
   promote or mutate memory by itself.
 - `handoff`: `vault automation handoff` prints the latest compact handoff for
   the next agent. It is read-only and never generates, promotes, archives, or
-  reads transcript contents by itself. If a fleet-health panel exists, handoff
-  surfaces it as a startup preface before the individual cycle/inbox handoff.
+  reads transcript contents by itself. If fleet-health, review-summary, or
+  learning-health files exist, handoff surfaces them as startup prefaces before
+  the individual cycle/inbox handoff.
 - `consolidation_suggestion`: Dream can write this candidate type for duplicate
   groups. It asks for a reviewed merge/archive decision and never changes
   active knowledge by itself.
@@ -542,8 +545,9 @@ writes `reports/automation/learning_policy.json`, and runs normal policy-based
 automation. After a successful scheduled run, the generated cron, LaunchAgent,
 and n8n templates write `reports/automation/inbox-latest.json` as the
 next-agent handoff, `reports/automation/review-summary-latest.json` as the
-5% human-review card deck, and `reports/automation/learning-health-latest.json` as the
-shared learning-health panel. Use `--automation-command run` when you want a
+5% human-review card deck, and `reports/automation/learning-health-latest.json`
+as the shared learning-health panel. `vault automation handoff` exposes those
+latest files as startup prefaces when they exist. Use `--automation-command run` when you want a
 maintenance-only cycle step without the feedback-learning phase.
 
 Add `--automation-write-workspace` when generated schedules should also pass

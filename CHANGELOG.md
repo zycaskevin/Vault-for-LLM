@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.7.6] - 2026-06-25
+
+### Added
+
+- Generated memory automation schedules now write `vault automation review-summary --write-summary` between the inbox handoff and learning-health dashboard, so scheduled runs produce the shortest 5% human-review card deck by default.
+- Review-summary Markdown now renders decision-card sections with suggested decisions and safe next steps instead of only a wide table.
+- Added a decision record and short release note for scheduled human-review cards.
+
+### Safety
+
+- Review-summary remains read-only and does not expose raw candidate content.
+- The generated schedule still does not promote active memory, widen policy, archive, or delete unless existing explicit `--automation-apply` controls allow those separate reversible actions.
+
 ## [0.7.5] - 2026-06-25
 
 ### Added

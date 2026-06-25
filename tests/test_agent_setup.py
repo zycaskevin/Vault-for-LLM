@@ -187,6 +187,7 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert "vault memory reflection" in cron
     assert "vault automation cycle" in cron
     assert "vault automation inbox" in cron
+    assert "vault automation review-summary" in cron
     assert "vault automation learning-health" in cron
     assert "--write-handoff" in cron
     assert "--write-health" in cron
@@ -203,6 +204,7 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert "vault memory pipeline" in workflow["nodes"][1]["parameters"]["command"]
     assert "vault memory reflection" in workflow["nodes"][1]["parameters"]["command"]
     assert "vault automation inbox" in workflow["nodes"][1]["parameters"]["command"]
+    assert "vault automation review-summary" in workflow["nodes"][1]["parameters"]["command"]
     assert "vault automation learning-health" in workflow["nodes"][1]["parameters"]["command"]
     assert "--write-handoff" in workflow["nodes"][1]["parameters"]["command"]
     assert "--write-health" in workflow["nodes"][1]["parameters"]["command"]
@@ -212,9 +214,11 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert "vault memory pipeline" in readme
     assert "vault memory reflection" in readme
     assert "learning-health-latest.json" in readme
+    assert "review-summary-latest.json" in readme
     assert "scheduled command: `vault automation cycle`" in readme
     assert "next agent startup command: `vault automation handoff`" in readme
     assert "reports/automation/inbox-latest.json" in readme
+    assert "reports/automation/review-summary-latest.json" in readme
     assert "reports/automation/learning-health-latest.json" in readme
     assert "session lessons as candidate memories" in readme
     assert "reflection review cards" in readme
@@ -914,7 +918,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.7.5" in captured.out
+    assert "vault-for-llm 0.7.6" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -1082,7 +1086,7 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.7.5" in body
+    assert "vault-for-llm[mcp,supabase]==0.7.6" in body
     assert "headroom-ai" in body
     assert "--agent-project-dir" in body
     assert str(project) in body

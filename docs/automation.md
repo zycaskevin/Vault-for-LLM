@@ -533,14 +533,16 @@ Generated schedules now run the candidate-first memory closed loop:
 2. `vault memory reflection --write-candidates`
 3. `vault automation cycle`
 4. `vault automation inbox --write-handoff`
-5. `vault automation learning-health --write-health`
+5. `vault automation review-summary --write-summary`
+6. `vault automation learning-health --write-health`
 
 The first two steps turn transcripts and reflection findings into review
 candidates. `vault automation cycle` then evaluates reviewed candidate outcomes,
 writes `reports/automation/learning_policy.json`, and runs normal policy-based
 automation. After a successful scheduled run, the generated cron, LaunchAgent,
 and n8n templates write `reports/automation/inbox-latest.json` as the
-next-agent handoff and `reports/automation/learning-health-latest.json` as the
+next-agent handoff, `reports/automation/review-summary-latest.json` as the
+5% human-review card deck, and `reports/automation/learning-health-latest.json` as the
 shared learning-health panel. Use `--automation-command run` when you want a
 maintenance-only cycle step without the feedback-learning phase.
 

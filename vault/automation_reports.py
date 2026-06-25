@@ -172,25 +172,24 @@ def _write_review_summary_markdown(project: Path, payload: dict[str, Any], *, su
         f"- requires human decision: `{bool(summary.get('requires_human_decision', False))}`",
         f"- top importance score: `{float(summary.get('top_importance_score') or 0.0)}`",
         "",
+        "## What To Review First",
+        "",
+        "Read only these cards first. Each card is a decision prompt, not an action already taken.",
+        "",
     ]
     if cards:
-        lines += [
-            _md_row(["priority", "kind", "id", "title", "action", "why"]),
-            _md_row(["---", "---", "---", "---", "---", "---"]),
-        ]
-        for card in cards:
-            lines.append(
-                _md_row(
-                    [
-                        card.get("priority", 0),
-                        card.get("kind", ""),
-                        card.get("id", ""),
-                        card.get("title", ""),
-                        card.get("recommended_action", ""),
-                        card.get("reason", ""),
-                    ]
-                )
-            )
+        for index, card in enumerate(cards, start=1):
+            lines += [
+                f"### {index}. {_md_text(card.get('title') or card.get('id') or card.get('kind') or 'Review item')}",
+                "",
+                f"- priority: `{int(card.get('priority') or 0)}`",
+                f"- kind: `{_md_text(card.get('kind', ''))}`",
+                f"- id: `{_md_text(card.get('id', ''))}`",
+                f"- suggested decision: `{_review_card_decision(card)}`",
+                f"- why: {_md_text(card.get('reason', ''))}",
+                f"- safe next step: {_md_text(card.get('safe_action') or card.get('recommended_action') or 'Review compact evidence first.')}",
+                "",
+            ]
     else:
         lines.append("No review cards.")
     lines += [
@@ -442,6 +441,15 @@ def _md_text(value: Any) -> str:
 
 def _md_row(values: list[Any]) -> str:
     return "| " + " | ".join(_md_text(value) for value in values) + " |"
+
+
+def _review_card_decision(card: dict[str, Any]) -> str:
+    action = str(card.get("recommended_action") or "").strip()
+    if bool(card.get("requires_human_decision", False)):
+        return action or "human_review_required"
+    if action in {"keep_observing", "observe", "review"}:
+        return "defer_or_observe"
+    return action or "agent_can_handle"
 
 
 def _render_cycle_workspace_markdown(workspace: dict[str, Any]) -> str:

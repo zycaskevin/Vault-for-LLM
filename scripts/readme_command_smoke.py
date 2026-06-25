@@ -89,6 +89,13 @@ def main() -> int:
             "README keyword-only search did not find the added note:\n"
             f"{keyword_search_output}"
         )
+    run([python, "-m", "vault.cli", "map", "build"], cwd=temp_dir, env=env)
+    map_read_output = run([python, "-m", "vault.cli", "map", "read", "1", "--lines", "1-20"], cwd=temp_dir, env=env)
+    if "cache key" not in map_read_output:
+        raise SystemExit(
+            "README bounded read did not return the added note:\n"
+            f"{map_read_output}"
+        )
 
     qa_file = temp_dir / "qa.json"
     qa_file.write_text(
@@ -162,7 +169,7 @@ def main() -> int:
 
     print("✅ README documented command smoke passed")
     print(f"  temp_project: {temp_dir}")
-    print("  commands: help, init, add, compile --no-embed, default search, search --keyword-only, search-qa run, semantic smoke, semantic cache-stats")
+    print("  commands: help, init, add, compile --no-embed, default search, search --keyword-only, map build/read, search-qa run, semantic smoke, semantic cache-stats")
     return 0
 
 

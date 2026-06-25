@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## [0.7.1] - 2026-06-25
+
+### Changed
+
+- Clarified the README manual quickstart with the packaged CLI shapes verified during v0.7.0 PyPI smoke testing: `vault add ... --content ...` for active notes and `vault map read <id> --lines START-END` for bounded source reads.
+- Extended `scripts/readme_command_smoke.py` to verify `map build/read`, so README quickstart coverage now protects the bounded-read path.
+- Strengthened generated `agent-install/local-smoke.sh` to test active add/search, Document Map build/read, candidate-first `remember`, candidate listing, and core MCP startup tools.
+- Updated packaged install examples and release claim references to `0.7.1`.
+
+### Safety
+
+- This patch release does not add a new memory mutation path, hosted dependency, MCP permission, auto-promote path, remote sync behavior, or background automation trigger.
+- The smoke-script change only verifies the existing active-note and bounded-read path before the existing candidate-first memory check.
+
 ## [0.7.0] - 2026-06-25
 
 ### Changed

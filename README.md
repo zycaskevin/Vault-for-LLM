@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.0.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.1.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -84,7 +84,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.7.0"
+pip install "vault-for-llm[mcp]==0.7.1"
 
 vault setup-agent
 ```
@@ -152,7 +152,7 @@ to verify the candidate-first propose path.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.7.0"
+pip install "vault-for-llm[mcp]==0.7.1"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -160,7 +160,13 @@ vault add "First lesson" \
   --project-dir ~/Vaults/demo
 vault compile --project-dir ~/Vaults/demo --no-embed
 vault search "cache key" --project-dir ~/Vaults/demo
+vault --project-dir ~/Vaults/demo map build
+vault --project-dir ~/Vaults/demo map read 1 --lines 1-20
 ```
+
+`vault add` takes the note body through `--content` or `--file`. For bounded
+source reads, use `vault map read <knowledge_id> --lines START-END`; there is no
+separate top-level `read-range` CLI command.
 
 ## Daily Agent Flow
 
@@ -491,7 +497,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.7.0"
+pip install "vault-for-llm[supabase]==0.7.1"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

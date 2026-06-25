@@ -741,6 +741,15 @@ def test_automation_review_feedback_teaches_review_card_ranking(tmp_path):
     assert payload["safety"]["feedback_only"] is True
     assert payload["safety"]["applies_recommended_action"] is False
     assert payload["learning"]["learning_policy_path"] == "reports/automation/learning_policy.json"
+    assert payload["closed_loop"]["review_summary_path"] == "reports/automation/review-summary-latest.json"
+    assert payload["closed_loop"]["review_summary_markdown_path"] == "reports/automation/review-summary-latest.md"
+    assert payload["closed_loop"]["learning_health_path"] == "reports/automation/learning-health-latest.json"
+    assert payload["closed_loop"]["learning_health_markdown_path"] == "reports/automation/learning-health-latest.md"
+    assert payload["closed_loop"]["top_learning_action"] == "prefer_candidates"
+    assert (project / payload["closed_loop"]["review_summary_path"]).exists()
+    assert (project / payload["closed_loop"]["review_summary_markdown_path"]).exists()
+    assert (project / payload["closed_loop"]["learning_health_path"]).exists()
+    assert (project / payload["closed_loop"]["learning_health_markdown_path"]).exists()
     with VaultDB(project / "vault.db") as db:
         events = db.list_memory_feedback(source="review-summary", limit=10)
     assert len(events) == 1
@@ -752,7 +761,7 @@ def test_automation_review_feedback_teaches_review_card_ranking(tmp_path):
     assert rule["selector"]["source"] == "review-summary"
     assert rule["selector"]["memory_type"] == "memory_importance"
     assert rule["action"] == "prefer_candidates"
-    learned = automation_review_summary(project, limit=5, min_events=1)
+    learned = json.loads((project / payload["closed_loop"]["review_summary_path"]).read_text(encoding="utf-8"))
     learned_card = next(item for item in learned["cards"] if item["kind"] == "memory_importance")
     assert learned_card["learning_action"] == "prefer_candidates"
     assert learned_card["learning_multiplier"] == 1.15
@@ -1658,6 +1667,9 @@ def test_automation_cli_review_feedback_records_card_decision(tmp_path, monkeypa
     assert "decision=accept" in out
     assert "outcome=accepted" in out
     assert "learning policy written: reports/automation/learning_policy.json" in out
+    assert "next review summary: reports/automation/review-summary-latest.json" in out
+    assert "learning health: reports/automation/learning-health-latest.json" in out
+    assert "learned action: prefer_candidates" in out
 
 
 def test_automation_cli_learning_health_prints_cards(tmp_path, monkeypatch, capsys):

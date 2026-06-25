@@ -68,7 +68,7 @@ changed notes without duplicating unchanged ones.
 | `vault update-status --doctor --json` | Check whether the shared update notice exists, is fresh, includes every registered Agent, and shows runtime attention |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.7.6` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.7.7` | Show the same registry/update status without contacting the network |
 | `vault agent doctor --json` | Run the same shared update-distribution health check through the Agent registry namespace |
 | `vault agent startup-doctor --template-dir ./agent-install --json` | Check whether generated startup contracts include the current fleet-aware handoff order |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md` | Preview applying the generated Codex startup template into a runtime instruction file |
@@ -180,7 +180,7 @@ For per-tool MCP examples, see `docs/mcp_tool_reference.md`.
 | `vault automation brief --pretty` | Show one compact intelligence brief: learning hints, explainable memory importance, forgetting pressure, shared agent health, and the 5% human-review queue |
 | `vault automation brief --write-brief` | Write `reports/automation/brief-latest.json` and `.md` for dashboards or the next agent |
 | `vault automation review-summary --write-summary` | Write the shortest human approval cards to `reports/automation/review-summary-latest.json` and `.md` |
-| `vault automation review-feedback --kind memory_importance --card-id 12 --decision accept --reason "Correct card" --write-learning-policy` | Record feedback for one review-summary card and refresh bounded learning hints |
+| `vault automation review-feedback --kind memory_importance --card-id 12 --decision accept --reason "Correct card" --write-learning-policy` | Record feedback for one review-summary card, refresh bounded learning hints, and rewrite the next review-summary plus learning-health reports |
 | `vault automation learning-health --write-health` | Write a compact dashboard-safe health panel for feedback learning to `reports/automation/learning-health-latest.json` and `.md` |
 | `vault automation fleet-health --write-health` | Write a shared multi-Agent automation health panel to `reports/automation/fleet-health-latest.json` and `.md` |
 | `vault automation handoff` | Print the latest compact automation handoff for the next agent; surfaces `fleet-health-latest` first when present, then prefers `cycle-latest.md` |

@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## [0.7.7] - 2026-06-25
+
+### Added
+
+- `vault automation review-feedback --write-learning-policy` now closes the visible learning loop by immediately refreshing `reports/automation/review-summary-latest.json`, `review-summary-latest.md`, `learning-health-latest.json`, and `learning-health-latest.md` after recording the card decision.
+- Review-feedback CLI output now prints the next review-summary path, learning-health path, and top learned action when the closed-loop refresh is available.
+- Added `vault/automation_review.py` to keep review-card feedback helpers out of the main automation workflow module.
+- Added a decision record and short release note for visible review-feedback closed loops.
+
+### Safety
+
+- Review-feedback remains feedback-only: it records the card outcome and refreshes reports, but it does not promote memory, archive rows, widen policy, delete rows, or apply the card's recommended lifecycle action.
+- Learned review-card actions remain bounded ranking hints only, with the same capped multiplier and no authorization effect.
+
 ## [0.7.6] - 2026-06-25
 
 ### Added

@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.6.119] - 2026-06-25
+
+### Changed
+
+- Split automation cycle workspace, priority brief, next-task, agent-start prompt, and transcript-capture helpers into `vault.automation_cycle`.
+- Kept `vault automation cycle` payloads, workspace paths, transcript-capture safety metadata, and public import behavior unchanged.
+- Lowered the `vault/automation.py` module-size baseline after the split.
+
+### Safety
+
+- Transcript capture remains opt-in, candidate-only, content-hidden in cycle handoffs, and constrained to review before active memory changes.
+- Cycle workspace writes remain constrained under `reports/automation`.
+
 ## [0.6.118] - 2026-06-25
 
 ### Changed

@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.6.124] - 2026-06-25
+
+### Changed
+
+- Split MCP automation inbox, activity, brief, handoff, dream, and cold-store handlers into `vault.mcp_automation`.
+- Kept MCP tool names and JSON result shapes unchanged while continuing to reduce `vault/mcp.py` as the central router.
+- Lowered the `vault/mcp.py` module-size baseline after the split.
+
+### Safety
+
+- Automation, dream, and cold-store behavior is unchanged, including dry-run defaults, bounded limits, and existing lifecycle protections.
+- This split does not add any new MCP tool, write permission, auto-promote path, remote sync behavior, or background automation trigger.
+
 ## [0.6.123] - 2026-06-25
 
 ### Changed

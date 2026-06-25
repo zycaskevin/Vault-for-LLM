@@ -22,6 +22,7 @@ from vault.mcp_memory import (
     _resolve_mcp_transcript_path,
     handle_memory_tool_call,
 )
+from vault.mcp_automation import handle_automation_tool_call
 from vault.mcp_security import (
     check_mcp_rate_limit as _check_mcp_rate_limit,
     reset_rate_limiter as _reset_rate_limiter,
@@ -1206,80 +1207,11 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
         if memory_payload is not None:
             return memory_payload
 
-        if name == "vault_automation_inbox":
-            from vault.automation import automation_inbox
+        automation_payload = handle_automation_tool_call(name, arguments, db_path=DB_PATH)
+        if automation_payload is not None:
+            return automation_payload
 
-            limit = _clamp_int(arguments.get("limit", 5), default=5, minimum=1, maximum=50)
-            payload = automation_inbox(
-                Path(DB_PATH).resolve().parent,
-                limit=limit,
-                include_content=bool(arguments.get("include_content", False)),
-                include_transcripts=bool(arguments.get("include_transcripts", False)),
-                transcript_limit=_clamp_int(
-                    arguments.get("transcript_limit", 5),
-                    default=5,
-                    minimum=1,
-                    maximum=20,
-                ),
-                write_handoff=bool(arguments.get("write_handoff", False)),
-            )
-            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
-
-        elif name == "vault_automation_activity":
-            from vault.automation import automation_activity
-
-            payload = automation_activity(
-                Path(DB_PATH).resolve().parent,
-                limit=_clamp_int(arguments.get("limit", 5), default=5, minimum=1, maximum=20),
-                event_limit=_clamp_int(
-                    arguments.get("event_limit", 20),
-                    default=20,
-                    minimum=1,
-                    maximum=100,
-                ),
-            )
-            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
-
-        elif name == "vault_automation_brief":
-            from vault.automation import automation_brief
-
-            payload = automation_brief(
-                Path(DB_PATH).resolve().parent,
-                limit=_clamp_int(arguments.get("limit", 5), default=5, minimum=1, maximum=20),
-                review_limit=_clamp_int(arguments.get("review_limit", 5), default=5, minimum=1, maximum=20),
-                min_events=_clamp_int(arguments.get("min_events", 5), default=5, minimum=1, maximum=100),
-                write_brief=False,
-            )
-            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
-
-        elif name == "vault_automation_handoff":
-            from vault.automation import automation_handoff
-
-            payload = automation_handoff(
-                Path(DB_PATH).resolve().parent,
-                source=str(arguments.get("source") or "auto"),
-                handoff_path=str(arguments.get("handoff_path") or ""),
-            )
-            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
-
-        elif name == "vault_cold_store_expired":
-            from vault.db import VaultDB
-
-            with VaultDB(DB_PATH) as db:
-                payload = db.cold_store_expired_knowledge(
-                    limit=_clamp_int(arguments.get("limit", 100), default=100, minimum=1, maximum=1000),
-                    dry_run=not bool(arguments.get("apply", False)),
-                    min_usage=_clamp_int(arguments.get("min_usage", 1), default=1, minimum=1, maximum=1000),
-                    summary_max_chars=_clamp_int(
-                        arguments.get("summary_max_chars", 360),
-                        default=360,
-                        minimum=80,
-                        maximum=2000,
-                    ),
-                )
-            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
-
-        elif name == "vault_obsidian_import":
+        if name == "vault_obsidian_import":
             from vault.agent_setup import compile_project
             from vault.import_obsidian import sync_obsidian_vault
 
@@ -1315,20 +1247,6 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     },
                     "instruction": "Run only after the user confirms the dry-run result.",
                 }
-            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
-
-        elif name == "vault_dream_run":
-            from vault.dream import run_dream
-
-            payload = run_dream(
-                Path(DB_PATH).resolve().parent,
-                mode=arguments.get("mode", "report"),
-                checks=arguments.get("checks"),
-                limit=arguments.get("limit", 50),
-                write_report=bool(arguments.get("write_report", True)),
-                write_candidates=bool(arguments.get("write_candidates", False)),
-                backup=bool(arguments.get("backup", True)),
-            )
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 
         elif name == "vault_stats":

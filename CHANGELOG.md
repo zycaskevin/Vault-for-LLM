@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.6.114] - 2026-06-25
+
+### Changed
+
+- Split Agent setup schedule, sync, and remote-reader template helpers into `vault.agent_setup_templates`.
+- Kept `vault.agent_setup` compatibility imports for existing tests and downstream callers.
+- Lowered the `vault/agent_setup.py` module-size baseline after the split.
+
+### Safety
+
+- `vault setup-agent` output, generated cron/LaunchAgent/n8n templates, Supabase sync templates, remote-reader templates, and automation schedule templates remain unchanged.
+
 ## [0.6.113] - 2026-06-25
 
 ### Changed

@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.7.0] - 2026-06-25
+
+### Changed
+
+- Promoted the Agent Knowledge Platform foundation from the v0.7 release-candidate line to stable v0.7.0.
+- Clarified the README smoke path: active `add/search/read` checks are separate from candidate-first `remember/propose` checks.
+- Updated packaged install examples and release claim references to `0.7.0`.
+
+### Safety
+
+- This stable release does not add a new memory mutation path, hosted dependency, MCP permission, or background automation trigger beyond the validated v0.7 RC line.
+- v0.7.0 follows clean PyPI install, `setup-agent`, startup-doctor, README minimal-path, MCP, and release-gate smoke testing from the RC line.
+
 ## [0.7.0rc2] - 2026-06-25
 
 ### Changed

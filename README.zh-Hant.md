@@ -58,7 +58,7 @@ Vault-for-LLM 可能不是第一個該拿起來的工具。
 最推薦的方式，是直接把這段交給能執行本機指令的 Agent：
 
 ```text
-幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.7.2。
+幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.7.3。
 先問我要 shared、private、domain-specific 還是 temporary vault。
 詢問穩定的 project directory，並為長期任務產生 stable venv script。
 逐項詢問 MCP、semantic search、Supabase、Obsidian import、Headroom 壓縮、
@@ -72,7 +72,7 @@ Agent 會使用安裝精靈：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.7.2"
+pip install "vault-for-llm[mcp]==0.7.3"
 
 vault setup-agent
 ```
@@ -138,7 +138,7 @@ propose smoke test 再用 `vault remember` 驗證 candidate-first 流程。
 ### 手動快速開始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.7.2"
+pip install "vault-for-llm[mcp]==0.7.3"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -170,10 +170,13 @@ Agent 也可以把一次工作 session 轉成候選記憶：
 vault capture discover --project-dir ~/Vaults/my-project --pretty
 vault capture session codex-session.jsonl --project-dir ~/Vaults/my-project --pretty
 vault capture session codex-session.jsonl --project-dir ~/Vaults/my-project --write-candidates
+vault memory pipeline --search-dir sessions --write-candidates
 ```
 
 Discovery 只列出可能的 transcript 檔案，不讀取內容。Session capture
 預設只預覽；`--write-candidates` 只寫入候選記憶，不會自動提升成正式知識。
+`vault memory pipeline` 則把同一套流程包成一條自動路徑：discover transcript、
+擷取可重用教訓、通過既有 gate，並在你明確加上 `--write-candidates` 時寫入候選佇列。
 
 MCP-capable runtime 可以啟動：
 
@@ -218,6 +221,9 @@ Vault 使用 L0-L3 表示記憶深度：
 - `allowed_agents`
 - `memory_type`
 - `expires_at`
+- `valid_from`
+- `valid_until`
+- `supersedes_id`
 
 MCP 寫入也會走同一套治理邊界。低敏感度的 `project` 寫入維持相容；
 但 `shared` / `public`、`private`、`high`、`restricted` 寫入需要呼叫端提供
@@ -231,6 +237,14 @@ shared vault 時，不會變成誰都可以直接改正式記憶。
 pressure 與 protection hints。這個分數只用來排序和輔助審查，不會繞過治理規則，
 也不會自己把候選記憶升格。短期記憶若設定 `expires_at`，可以到期後移到
 `status: archived`，不需要直接刪除：
+
+時序事實窗口跟 TTL/lifecycle metadata 分開。`expires_at` 表示「到期後移出日常召回」；
+`valid_until` 表示「這個事實不再是現在事實，但仍保留成歷史與稽核紀錄」：
+
+```bash
+vault memory temporal status
+vault memory temporal list --state past
+```
 
 ```bash
 vault usage stats
@@ -272,7 +286,11 @@ vault automation cycle --apply
 vault automation cycle --apply --include-transcripts --capture-transcripts --write-workspace
 vault automation inbox --limit 5
 vault automation inbox --include-transcripts --write-handoff
+vault memory reflection --write-candidates
 ```
+
+`vault memory reflection` 會用一條命令跑 report-first Dream 加 lifecycle
+automation。它可以提出合併、歸檔、冷存的審核項目，但不會硬刪記憶，也不會默默把候選升格。
 
 `vault capture session` 是這個閉環的入口。它會從 Agent transcript 裡找出可重用的
 決策、踩坑、流程、source-of-truth 訊號，先送進候選與安全 gate；後續 Dream 和
@@ -431,7 +449,7 @@ SQLite 仍然是 source of truth。Supabase 是可選的共享層。
 Remote reader 應該直接把搜尋結果的 `id` 傳給 map/read；它可能是整數，也可能是 Supabase UUID。
 
 ```bash
-pip install "vault-for-llm[supabase]==0.7.2"
+pip install "vault-for-llm[supabase]==0.7.3"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

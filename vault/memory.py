@@ -77,6 +77,9 @@ def normalize_metadata(
     allowed_agents: str | list[str] = "",
     memory_type: str = "knowledge",
     expires_at: str = "",
+    valid_from: str = "",
+    valid_until: str = "",
+    supersedes_id: int | str | None = None,
 ) -> dict:
     if isinstance(tags, list):
         tags_s = ",".join(str(t).strip() for t in tags if str(t).strip())
@@ -96,6 +99,9 @@ def normalize_metadata(
         allowed_agents=allowed_agents,
         memory_type=memory_type,
         expires_at=expires_at,
+        valid_from=valid_from,
+        valid_until=valid_until,
+        supersedes_id=supersedes_id,
     )
     return {
         "title": normalize_title(title),
@@ -414,6 +420,9 @@ def promote_candidate(db: VaultDB, candidate_id: str, *, confirm: bool = False, 
         "allowed_agents": candidate.get("allowed_agents", "[]"),
         "memory_type": candidate.get("memory_type", "knowledge"),
         "expires_at": candidate.get("expires_at", ""),
+        "valid_from": candidate.get("valid_from", ""),
+        "valid_until": candidate.get("valid_until", ""),
+        "supersedes_id": candidate.get("supersedes_id"),
     }
     raw_path.write_text(f"---\n{json.dumps(frontmatter, ensure_ascii=False, indent=2)}\n---\n\n{candidate['content']}\n", encoding="utf-8")
 
@@ -440,6 +449,9 @@ def promote_candidate(db: VaultDB, candidate_id: str, *, confirm: bool = False, 
             allowed_agents=candidate.get("allowed_agents", "[]"),
             memory_type=candidate.get("memory_type", "knowledge"),
             expires_at=candidate.get("expires_at", ""),
+            valid_from=candidate.get("valid_from", ""),
+            valid_until=candidate.get("valid_until", ""),
+            supersedes_id=candidate.get("supersedes_id"),
         )
         if build_map:
             VaultCompiler(root, db=db, embed_provider=None)._refresh_document_map(knowledge_id)

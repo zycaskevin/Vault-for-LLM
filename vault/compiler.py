@@ -556,6 +556,8 @@ class VaultCompiler:
                         str(metadata.get("owner_agent", "")),
                         str(metadata.get("allowed_agents", "")),
                         str(metadata.get("memory_type", "")),
+                        str(metadata.get("valid_from", "")),
+                        str(metadata.get("valid_until", "")),
                         body,
                     ]
                 )
@@ -599,6 +601,9 @@ class VaultCompiler:
             allowed_agents=metadata.get("allowed_agents", ""),
             memory_type=metadata.get("memory_type", "knowledge"),
             expires_at=metadata.get("expires_at", ""),
+            valid_from=metadata.get("valid_from", ""),
+            valid_until=metadata.get("valid_until", ""),
+            supersedes_id=metadata.get("supersedes_id"),
         )
 
         # AAAK 壓縮

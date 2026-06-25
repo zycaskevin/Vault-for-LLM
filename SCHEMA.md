@@ -93,7 +93,16 @@ Optional fields:
 updated: "YYYY-MM-DD"
 status: "active|archived|deprecated"
 expires_at: "YYYY-MM-DD"
+valid_from: "YYYY-MM-DD"
+valid_until: "YYYY-MM-DD"
+supersedes_id: 123
 ```
+
+`expires_at` is lifecycle metadata: it tells automation when a short-lived
+memory can leave normal active recall. `valid_from`, `valid_until`, and
+`supersedes_id` are temporal fact metadata: they describe when a fact was true
+and which older fact it replaced. A fact with `valid_until` should remain
+auditable as history instead of being deleted.
 
 Compiled SQLite rows also track maintenance-only usage fields:
 

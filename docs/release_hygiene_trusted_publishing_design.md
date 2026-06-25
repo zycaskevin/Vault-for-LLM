@@ -125,9 +125,9 @@ Purpose: catch version drift before a release.
 
 Checks:
 
-- Tag `vX.Y.Z` matches `pyproject.toml` version `X.Y.Z`.
+- Tag `vX.Y.Z` matches `pyproject.toml` version `X.Y.Z`; release-candidate tags use PyPI-compatible `vX.Y.ZrcN`.
 - `vault.__version__` matches `pyproject.toml` version.
-- `CHANGELOG.md` top entry is `## [X.Y.Z]`.
+- `CHANGELOG.md` top entry is `## [X.Y.Z]` or `## [X.Y.ZrcN]`.
 - Release tags must point at the same commit that CI tested.
 
 ### `secret-scan-light`
@@ -252,7 +252,8 @@ Important: PyPI docs and GitHub docs both warn that this trust relationship is e
    git tag vX.Y.Z
    git push origin main --tags
    ```
-6. Create a GitHub Release for `vX.Y.Z`.
+   For release candidates, use the PEP 440 shape, for example `v0.7.0rc1`.
+6. Create a GitHub Release for `vX.Y.Z` or the matching RC tag.
 7. GitHub Actions builds from clean checkout and publishes via Trusted Publishing.
 8. Verify PyPI from a fresh environment:
    ```bash
@@ -290,6 +291,7 @@ Important: PyPI docs and GitHub docs both warn that this trust relationship is e
 **Acceptance criteria:**
 
 - Accepts tag `v0.4.3` when `pyproject.toml`, `vault.__version__`, and `CHANGELOG.md` top entry are all `0.4.3`.
+- Accepts release-candidate tag `v0.7.0rc1` when `pyproject.toml`, `vault.__version__`, and `CHANGELOG.md` top entry are all `0.7.0rc1`.
 - Fails with clear messages for version mismatch.
 - Can run locally without network.
 

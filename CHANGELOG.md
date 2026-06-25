@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.7.0rc1] - 2026-06-25
+
+### Changed
+
+- Started the v0.7 release-candidate line for the Agent Knowledge Platform foundation.
+- Added release-parity support for PEP 440 release-candidate tags such as `v0.7.0rc1`.
+- Updated packaged install examples and release claim references to `0.7.0rc1`.
+
+### Safety
+
+- This release candidate does not add a new memory mutation path, hosted dependency, MCP permission, or background automation trigger.
+- The RC exists to validate packaging, installer guidance, MCP startup behavior, and platform-boundary documentation before the stable v0.7.0 release.
+
 ## [0.6.124] - 2026-06-25
 
 ### Changed

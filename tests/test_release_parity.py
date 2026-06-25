@@ -80,6 +80,18 @@ def test_accepts_matching_release_tag(tmp_path: Path) -> None:
     assert "CHANGELOG.md top entry: 0.4.3" in result.stdout
 
 
+def test_accepts_matching_release_candidate_tag(tmp_path: Path) -> None:
+    write_release_files(tmp_path, pyproject="0.7.0rc1", vault="0.7.0rc1", changelog="0.7.0rc1")
+
+    result = run_checker(tmp_path, "--tag", "v0.7.0rc1")
+
+    assert result.returncode == 0, result.stderr
+    assert "release tag: 0.7.0rc1" in result.stdout
+    assert "pyproject.toml [project].version: 0.7.0rc1" in result.stdout
+    assert "vault.__version__: 0.7.0rc1" in result.stdout
+    assert "CHANGELOG.md top entry: 0.7.0rc1" in result.stdout
+
+
 def test_explicit_tag_wins_over_branch_environment(tmp_path: Path) -> None:
     write_release_files(tmp_path, pyproject="0.4.3", vault="0.4.3", changelog="0.4.3")
 
@@ -184,7 +196,7 @@ def test_rejects_unreleased_section_before_release_entry(tmp_path: Path) -> None
     result = run_checker(tmp_path, "--tag", "v0.4.3")
 
     assert result.returncode == 1
-    assert "Top CHANGELOG.md section must be a semver release heading" in result.stderr
+    assert "Top CHANGELOG.md section must be a release heading" in result.stderr
     assert "## [Unreleased]" in result.stderr
 
 
@@ -210,6 +222,6 @@ def test_rejects_invalid_tag_format_before_file_reads(tmp_path: Path) -> None:
     result = run_checker(tmp_path, "--tag", "0.4.3")
 
     assert result.returncode == 1
-    assert "Release tag must match vX.Y.Z" in result.stderr
+    assert "Release tag must match vX.Y.Z or vX.Y.ZrcN" in result.stderr
     assert "'0.4.3'" in result.stderr
     assert "Unable to read" not in result.stderr

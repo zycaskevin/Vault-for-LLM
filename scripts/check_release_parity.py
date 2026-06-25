@@ -22,10 +22,11 @@ except ModuleNotFoundError:  # pragma: no cover - exercised only on Python 3.10
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-TAG_RE = re.compile(r"^v(?P<version>\d+\.\d+\.\d+)$")
+PEP440_RELEASE_RE = r"\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?"
+TAG_RE = re.compile(rf"^v(?P<version>{PEP440_RELEASE_RE})$")
 PROJECT_HEADER_RE = re.compile(r"^\s*\[([^]]+)]\s*$")
 PROJECT_VERSION_RE = re.compile(r'^\s*version\s*=\s*["\'](?P<version>[^"\']+)["\']\s*(?:#.*)?$')
-CHANGELOG_VERSION_RE = re.compile(r"^##\s+\[?(?P<version>\d+\.\d+\.\d+)\]?(?:\s|$)")
+CHANGELOG_VERSION_RE = re.compile(rf"^##\s+\[?(?P<version>{PEP440_RELEASE_RE})\]?(?:\s|$)")
 CHANGELOG_SECTION_RE = re.compile(r"^##(?!#)(?:\s+.*)?$")
 
 
@@ -83,7 +84,7 @@ def version_from_tag(tag: str) -> str:
     match = TAG_RE.fullmatch(tag)
     if not match:
         raise ReleaseParityError(
-            f"Release tag must match vX.Y.Z (for example v0.4.3); found {tag!r}."
+            f"Release tag must match vX.Y.Z or vX.Y.ZrcN (for example v0.4.3 or v0.7.0rc1); found {tag!r}."
         )
     return match.group("version")
 
@@ -153,8 +154,8 @@ def read_changelog_top_version(root: Path) -> str:
         if match:
             return match.group("version")
         raise ReleaseParityError(
-            "Top CHANGELOG.md section must be a semver release heading like "
-            f"'## [0.4.3]' or '## 0.4.3'; found {line!r}."
+            "Top CHANGELOG.md section must be a release heading like "
+            f"'## [0.4.3]', '## [0.7.0rc1]', or '## 0.4.3'; found {line!r}."
         )
     raise ReleaseParityError(f"Missing top version entry in {changelog_path}.")
 

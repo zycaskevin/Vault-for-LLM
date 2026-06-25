@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.6.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.7.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -84,7 +84,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.7.6"
+pip install "vault-for-llm[mcp]==0.7.7"
 
 vault setup-agent
 ```
@@ -152,7 +152,7 @@ to verify the candidate-first propose path.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.7.6"
+pip install "vault-for-llm[mcp]==0.7.7"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -295,8 +295,10 @@ and promotion previews before opening raw candidate content.
 and latest report into a few approval cards for the 5% of memory decisions a
 person should actually inspect.
 `vault automation review-feedback` closes that tiny loop: record whether a card
-was accepted, rejected, or deferred, then let `automation eval` turn those
-outcomes into bounded ranking hints for future review cards.
+was accepted, rejected, or deferred, then immediately refresh the next
+`review-summary-latest` and `learning-health-latest` reports when
+`--write-learning-policy` is used. The updated cards show bounded ranking hints
+from repeated outcomes, without applying the card's recommended action.
 `vault automation learning-health` gives that loop a dashboard-safe status:
 whether learning is still cold, healthy, worth watching, or needs review.
 When `vault automation eval --write-learning-policy` has enough reviewed
@@ -446,7 +448,6 @@ vault automation review-summary --write-summary
 vault automation review-feedback --kind memory_importance --card-id 12 \
   --decision accept --reason "Correctly protected an expired but cited memory" \
   --write-learning-policy
-vault automation learning-health --write-health
 vault automation fleet-health --write-health
 ```
 
@@ -531,7 +532,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.7.6"
+pip install "vault-for-llm[supabase]==0.7.7"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

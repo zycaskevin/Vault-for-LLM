@@ -113,7 +113,6 @@ vault automation review-summary --write-summary
 vault automation review-feedback --kind memory_importance --card-id 12 \
   --decision accept --reason "Correctly protected an expired but cited memory" \
   --write-learning-policy
-vault automation learning-health --write-health
 vault automation fleet-health --write-health
 ```
 
@@ -150,8 +149,9 @@ content.
 `automation review-feedback` records the decision for one review-summary card:
 `accept`, `reject`, or `defer`. It writes a feedback event only; it does not
 apply the recommended lifecycle action. With `--write-learning-policy`, the
-event immediately refreshes `reports/automation/learning_policy.json`, so
-future review-summary cards can be ranked by repeated outcomes.
+event immediately refreshes `reports/automation/learning_policy.json`,
+`review-summary-latest.json` / `.md`, and `learning-health-latest.json` / `.md`,
+so the next cards and dashboard show the effect of the decision right away.
 
 `automation learning-health` is the dashboard-safe view of that feedback loop.
 It summarizes accepted/rejected/deferred outcomes, active learning rules, and

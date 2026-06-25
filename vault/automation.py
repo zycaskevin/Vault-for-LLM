@@ -57,6 +57,15 @@ from .automation_cycle import (
     _write_cycle_workspace,
 )
 from .automation_inbox import automation_inbox
+from .automation_review import (
+    apply_review_card_learning,
+    find_review_summary_card,
+    int_or_none,
+    load_review_summary,
+    review_card_title,
+    review_feedback_score,
+    review_feedback_source_ref,
+)
 
 AUTOMATION_MODES = {"conservative", "balanced", "autonomous"}
 DEFAULT_MODE = "balanced"
@@ -829,16 +838,16 @@ def automation_review_feedback(
     if not kind:
         raise ValueError("review feedback card_kind is required")
     card_id_s = str(card_id or "").strip()
-    summary = _load_review_summary(project, summary_path=summary_path)
-    card = _find_review_summary_card(summary, card_kind=kind, card_id=card_id_s)
+    summary = load_review_summary(project, summary_path=summary_path)
+    card = find_review_summary_card(summary, card_kind=kind, card_id=card_id_s)
     card_action = str(recommended_action or card.get("recommended_action") or decision_norm).strip()
     outcome = {"accept": "accepted", "reject": "rejected", "defer": "deferred"}[decision_norm]
-    score_f = _review_feedback_score(decision_norm, score)
-    source_ref = _review_feedback_source_ref(summary, card, kind, card_id_s)
+    score_f = review_feedback_score(decision_norm, score)
+    source_ref = review_feedback_source_ref(summary, card, kind, card_id_s)
     event = {
         "event_type": "review_card_outcome",
         "candidate_id": f"review:{kind}:{card_id_s or card_action}",
-        "knowledge_id": _int_or_none(card_id_s) if kind == "memory_importance" else None,
+        "knowledge_id": int_or_none(card_id_s) if kind == "memory_importance" else None,
         "source": "review-summary",
         "source_ref": source_ref,
         "memory_type": kind,
@@ -866,6 +875,41 @@ def automation_review_feedback(
         min_events=max(1, int(min_events or 1)),
         write_learning_policy=write_learning_policy,
     )
+    closed_loop: dict[str, Any] = {
+        "learning_policy_written": bool(evaluation.get("learning_policy_path")),
+        "review_summary_path": "",
+        "review_summary_markdown_path": "",
+        "learning_health_path": "",
+        "learning_health_markdown_path": "",
+        "review_cards": 0,
+        "health_status": "",
+        "top_learning_action": "",
+    }
+    if write_learning_policy:
+        refreshed_summary = automation_review_summary(
+            project,
+            limit=5,
+            min_events=max(1, int(min_events or 1)),
+            write_summary=True,
+        )
+        refreshed_health = automation_learning_health(
+            project,
+            limit=5,
+            min_events=max(1, int(min_events or 1)),
+            write_health=True,
+        )
+        top_rules = (evaluation.get("learning_policy") or {}).get("rules", [])
+        closed_loop.update(
+            {
+                "review_summary_path": refreshed_summary.get("review_summary_path", ""),
+                "review_summary_markdown_path": refreshed_summary.get("review_summary_markdown_path", ""),
+                "learning_health_path": refreshed_health.get("health_path", ""),
+                "learning_health_markdown_path": refreshed_health.get("health_markdown_path", ""),
+                "review_cards": int((refreshed_summary.get("summary") or {}).get("review_cards") or 0),
+                "health_status": refreshed_health.get("status", ""),
+                "top_learning_action": str((top_rules[0] or {}).get("action", "")) if top_rules else "",
+            }
+        )
     return {
         "action": "review-feedback",
         "generated_at": generated_at,
@@ -891,6 +935,7 @@ def automation_review_feedback(
             "learning_policy_path": evaluation.get("learning_policy_path", ""),
             "rules": (evaluation.get("learning_policy") or {}).get("rules", []),
         },
+        "closed_loop": closed_loop,
         "safety": {
             "feedback_only": True,
             "writes_active_memory": False,
@@ -900,8 +945,8 @@ def automation_review_feedback(
             "learning_is_ranking_hint_only": True,
         },
         "next_action": (
-            "Run `vault automation eval --write-learning-policy` after more review feedback, "
-            "or run `vault automation review-summary` to see updated learned ranking hints."
+            "Open review-summary-latest.md first; learning-health shows whether "
+            "the feedback loop is healthy."
         ),
     }
 
@@ -1722,7 +1767,7 @@ def _review_summary_cards(brief: dict[str, Any], *, limit: int = 5) -> list[dict
             {
                 "kind": "forgetting_strategy",
                 "id": item.get("action", "forgetting_strategy"),
-                "title": _review_card_title(item.get("action", "forgetting strategy")),
+                "title": review_card_title(item.get("action", "forgetting strategy")),
                 "priority": 78 if item.get("action") == "human_review_required" else 62,
                 "count": int(item.get("count") or 1),
                 "reason": item.get("reason", ""),
@@ -1763,7 +1808,7 @@ def _review_summary_cards(brief: dict[str, Any], *, limit: int = 5) -> list[dict
 
     unique: dict[tuple[str, str], dict[str, Any]] = {}
     for card in cards:
-        _apply_review_card_learning(card, learning_rules)
+        apply_review_card_learning(card, learning_rules)
         key = (str(card.get("kind") or ""), str(card.get("id") or card.get("title") or ""))
         existing = unique.get(key)
         if existing is None or int(card.get("priority") or 0) > int(existing.get("priority") or 0):
@@ -1777,100 +1822,6 @@ def _review_summary_cards(brief: dict[str, Any], *, limit: int = 5) -> list[dict
         ),
     )
     return ordered[:budget]
-
-
-def _apply_review_card_learning(card: dict[str, Any], rules: list[dict[str, Any]]) -> None:
-    """Apply bounded learning-policy ranking hints to a review card in place."""
-    base_priority = int(card.get("priority") or 0)
-    kind = str(card.get("kind") or "")
-    action = str(card.get("recommended_action") or "")
-    best: dict[str, Any] = {}
-    best_score = -1.0
-    for rule in rules:
-        selector = rule.get("selector") or {}
-        if str(selector.get("source") or "") != "review-summary":
-            continue
-        if selector.get("memory_type") and str(selector.get("memory_type")) != kind:
-            continue
-        if selector.get("category") and str(selector.get("category")) != action:
-            continue
-        confidence = float(rule.get("confidence") or 0.0)
-        if confidence > best_score:
-            best = rule
-            best_score = confidence
-    if not best:
-        card["learning_multiplier"] = 1.0
-        card["learning_action"] = ""
-        return
-    multiplier = max(0.85, min(float(best.get("priority_multiplier") or 1.0), 1.15))
-    learned_priority = max(1, min(99, round(base_priority * multiplier)))
-    card["base_priority"] = base_priority
-    card["priority"] = learned_priority
-    card["learning_multiplier"] = multiplier
-    card["learning_action"] = best.get("action", "")
-    card["learning_confidence"] = float(best.get("confidence") or 0.0)
-    card["learning_reason"] = best.get("reason", "")
-
-
-def _review_card_title(value: Any) -> str:
-    text = str(value or "").replace("_", " ").strip()
-    return text[:1].upper() + text[1:] if text else "Review item"
-
-
-def _load_review_summary(project: Path, *, summary_path: str | Path = "") -> dict[str, Any]:
-    if summary_path:
-        raw = Path(summary_path)
-        path = raw if raw.is_absolute() else project / raw
-    else:
-        path = project / "reports" / "automation" / "review-summary-latest.json"
-    if not path.exists():
-        return {}
-    try:
-        resolved = path.expanduser().resolve()
-        allowed = (project / "reports" / "automation").expanduser().resolve()
-    except Exception:
-        return {}
-    if allowed != resolved and allowed not in resolved.parents:
-        return {}
-    try:
-        data = json.loads(resolved.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def _find_review_summary_card(summary: dict[str, Any], *, card_kind: str, card_id: str = "") -> dict[str, Any]:
-    kind = str(card_kind or "")
-    wanted_id = str(card_id or "")
-    for card in summary.get("cards") or []:
-        if not isinstance(card, dict):
-            continue
-        if str(card.get("kind") or "") != kind:
-            continue
-        if wanted_id and str(card.get("id") or "") != wanted_id:
-            continue
-        return dict(card)
-    return {}
-
-
-def _review_feedback_score(decision: str, score: float | None) -> float:
-    if score is not None:
-        return max(0.0, min(float(score), 1.0))
-    return {"accept": 1.0, "reject": 0.0, "defer": 0.5}.get(decision, 0.5)
-
-
-def _review_feedback_source_ref(summary: dict[str, Any], card: dict[str, Any], kind: str, card_id: str) -> str:
-    path = str(summary.get("review_summary_path") or "reports/automation/review-summary-latest.json")
-    if card:
-        return f"{path}#{kind}:{card.get('id', card_id)}"
-    return f"{path}#{kind}:{card_id}"
-
-
-def _int_or_none(value: Any) -> int | None:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def _importance_reason(item: dict[str, Any]) -> str:

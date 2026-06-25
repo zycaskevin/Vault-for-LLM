@@ -562,6 +562,13 @@ def cmd_automation(
         )
         if learning.get("learning_policy_path"):
             print(f"  learning policy written: {learning.get('learning_policy_path')}")
+        closed_loop = payload.get("closed_loop") or {}
+        if closed_loop.get("review_summary_path"):
+            print(f"  next review summary: {closed_loop.get('review_summary_path')}")
+        if closed_loop.get("learning_health_path"):
+            print(f"  learning health: {closed_loop.get('learning_health_path')}")
+        if closed_loop.get("top_learning_action"):
+            print(f"  learned action: {closed_loop.get('top_learning_action')}")
         print("  safety: feedback-only; no memory promotion, archive, or delete")
         return
 

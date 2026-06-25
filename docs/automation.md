@@ -331,7 +331,7 @@ The command is read-only. It prefers `cycle-latest.md`, then falls back to
 startup prefaces exist, the CLI prints fleet health, review-summary cards, and
 learning-health before the selected handoff. JSON/MCP consumers keep the
 selected handoff in `content` and receive these prefaces separately as
-`fleet_health_content`, `review_summary_content`, and
+`fleet_health_content`, `pipeline_receipt_content`, `review_summary_content`, and
 `learning_health_content`, so existing cycle/inbox handoff readers remain
 stable.
 

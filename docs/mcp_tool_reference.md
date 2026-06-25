@@ -167,6 +167,9 @@ in `content` and adds separate read-only fields:
 - `fleet_health_path`
 - `fleet_health_content_type`
 - `fleet_health_content`
+- `pipeline_receipt_path`
+- `pipeline_receipt_content_type`
+- `pipeline_receipt_content`
 - `review_summary_path`
 - `review_summary_content_type`
 - `review_summary_content`
@@ -175,9 +178,10 @@ in `content` and adds separate read-only fields:
 - `learning_health_content`
 
 Agent rule: call this at startup before reading full reports. Read
-`fleet_health_content`, then `review_summary_content`, then
-`learning_health_content`, then the selected `content` when each field is
-present. If it returns `status=missing`, still inspect any preface fields before
+`fleet_health_content`, then `pipeline_receipt_content`, then
+`review_summary_content`, then `learning_health_content`, then the selected
+`content` when each field is present. If it returns `status=missing`, still
+inspect any preface fields before
 falling back to normal search/read flow or running the CLI automation cycle with
 user approval.
 

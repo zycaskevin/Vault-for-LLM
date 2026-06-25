@@ -52,7 +52,7 @@ Use runtime-specific adapters only for convenience. The durable contract is:
 update-status -> automation handoff -> search/read only when needed -> propose
 candidate memory.
 The handoff step is startup-aware: when present, agents read
-`fleet_health_content`, `review_summary_content`, and
+`fleet_health_content`, `pipeline_receipt_content`, `review_summary_content`, and
 `learning_health_content` before the selected cycle/inbox `content`.
 The same install pack writes `README-runtime-update-playbook.md` and
 `runtime-update-playbook.json` so every runtime can follow the same startup,

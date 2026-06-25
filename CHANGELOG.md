@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.6.116] - 2026-06-25
+
+### Changed
+
+- Split Agent setup Supabase guide, read-policy SQL, and setup-language normalization helpers into `vault.agent_setup_supabase`.
+- Kept `vault.agent_setup` compatibility imports for CLI, tests, and downstream callers.
+- Lowered the `vault/agent_setup.py` module-size baseline after the split.
+
+### Safety
+
+- `vault setup-agent` Supabase guide output, advanced `supabase-read-policy.sql`, setup language aliases, and public imports remain unchanged.
+
 ## [0.6.115] - 2026-06-25
 
 ### Changed

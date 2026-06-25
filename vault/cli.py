@@ -594,6 +594,9 @@ def cmd_doctor(args):
     db_exists = (project_dir / "vault.db").exists()
     raw_exists = (project_dir / "raw").is_dir()
     checks.append(("專案", f"{'✅' if db_exists else '❌'} DB | {'✅' if raw_exists else '❌'} raw/", db_exists and raw_exists))
+    if db_exists:
+        from vault.diagnostics import sqlite_vec_runtime_status
+        checks.append(("sqlite-vec runtime", sqlite_vec_runtime_status(project_dir), True))
 
     # 嵌入模型快取
     cache_dir = Path.home() / ".cache" / "vault-mcp" / "models"
@@ -682,18 +685,9 @@ def cmd_stats(args):
     stats = db.stats()
 
     print("📊 Vault-for-LLM 統計\n")
-    print(f"  知識筆數:   {stats['knowledge_count']}")
-    print(f"  嵌入筆數:   {stats['embedding_count']}")
-    print(f"  圖譜邊數:   {stats.get('edge_count', 0)}")
-    print(f"  圖譜實體:   {stats.get('entity_count', 0)}")
-    print(f"  活躍記憶:   {stats.get('active_count', 0)}")
-    print(f"  歸檔記憶:   {stats.get('archived_count', 0)}")
-    print(f"  已到期未歸檔: {stats.get('expired_active_count', 0)}")
-    print(f"  檢索命中次數: {stats.get('total_accesses', 0)}")
-    print(f"  引用次數:   {stats.get('total_citations', 0)}")
-    print(f"  向量搜尋:   {'✅' if stats['vec_available'] else '❌'}")
-    print(f"  DB 大小:    {stats['db_size_mb']} MB")
-    print(f"  DB 路徑:    {stats['db_path']}")
+    from vault.diagnostics import stats_summary_lines
+    for line in stats_summary_lines(stats):
+        print(line)
 
     # 分層統計
     rows = db.conn.execute(

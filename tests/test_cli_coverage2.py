@@ -131,6 +131,32 @@ class TestCmdStats:
         assert "知識筆數" in captured.out
         assert "5" in captured.out
         assert "DB 大小" in captured.out
+
+    def test_stats_reports_semantic_vectors_when_sqlite_vec_unavailable(
+        self, initialized_project, monkeypatch, capsys
+    ):
+        """Stats should not hide JSON semantic vectors when sqlite-vec is unavailable."""
+        from vault.cli import cmd_stats
+        from vault.db import VaultDB
+
+        db = VaultDB(str(initialized_project / "vault.db")).connect()
+        db.conn.execute(
+            """INSERT INTO semantic_vectors
+               (knowledge_id, vector_kind, item_uid, provider_id, dimension, vector,
+                source_text, content_hash, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (1, "claim", "claim-1", "hash-deterministic-v1", 8, "[0,0,0,0,0,0,0,1]", "text", "hash", "now"),
+        )
+        db.conn.commit()
+        db.close()
+
+        monkeypatch.chdir(initialized_project)
+        args = MagicMock()
+        cmd_stats(args)
+        captured = capsys.readouterr()
+
+        assert "semantic_vectors: 1" in captured.out
+        assert "嵌入筆數:   1 (semantic_vectors)" in captured.out
     
     def test_stats_no_db(self, tmp_path, monkeypatch, capsys):
         """Test stats when no db doesn't exist."""
@@ -143,6 +169,31 @@ class TestCmdStats:
         captured = capsys.readouterr()
         
         assert "尚未初始化" in captured.out
+
+
+class TestCmdDoctor:
+    def test_doctor_reports_sqlite_vec_runtime_blocked(
+        self, initialized_project, monkeypatch, capsys
+    ):
+        """Doctor should distinguish installed sqlite-vec from blocked extension loading."""
+        import sqlite3
+        import vault.db as db_module
+        from vault.cli import cmd_doctor
+
+        def blocked_load(_conn):
+            raise sqlite3.OperationalError("not authorized")
+
+        monkeypatch.setattr(db_module, "_VEC_AVAILABLE", True)
+        monkeypatch.setattr(db_module.sqlite_vec, "load", blocked_load)
+        monkeypatch.chdir(initialized_project)
+
+        args = MagicMock()
+        cmd_doctor(args)
+        captured = capsys.readouterr()
+
+        assert "sqlite-vec runtime" in captured.out
+        assert "not authorized" in captured.out
+        assert "keyword search" in captured.out
 
 
 class TestCmdGraphExtended:

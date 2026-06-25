@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## [0.7.2] - 2026-06-25
+
+### Changed
+
+- Added `docs/reviews/v0.7.1-review.md`, a corrected public review note that distinguishes the v0.7 platform line from the v0.7.1 patch and clarifies that `vault add` does not replace candidate-first `vault remember`.
+- Made `vault stats` report legacy sqlite-vec embeddings and JSON-backed `semantic_vectors` separately, while preserving `embedding_count` as a compatibility summary.
+- Made `vault doctor` distinguish an installed `sqlite-vec` Python package from a runtime-blocked loadable extension, including restricted SQLite errors such as `not authorized`.
+- Updated packaged install examples and release claim references to `0.7.2`.
+
+### Safety
+
+- This patch release does not add a new memory mutation path, hosted dependency, MCP permission, auto-promote path, remote sync behavior, or background automation trigger.
+- sqlite-vec runtime failures now remain explicit degradations: keyword search and JSON-backed semantic vectors can still work, while legacy sqlite-vec shadow search is marked unavailable.
+
 ## [0.7.1] - 2026-06-25
 
 ### Changed

@@ -17,6 +17,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional, Any
 
+from .diagnostics import embedding_stats
 from .importance import compute_memory_importance
 
 # sqlite-vec 是可選依賴
@@ -180,6 +181,7 @@ class VaultDB:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.conn: Optional[sqlite3.Connection] = None
         self._vec_available = _VEC_AVAILABLE
+        self._vec_load_error = "" if _VEC_AVAILABLE else "sqlite_vec package is not installed"
         self._fts_available = False
 
     # ── 連線 ──────────────────────────────────────────────
@@ -198,12 +200,15 @@ class VaultDB:
         if self._vec_available:
             if not hasattr(self.conn, "enable_load_extension"):
                 self._vec_available = False
+                self._vec_load_error = "Python sqlite3 build does not expose enable_load_extension"
             else:
                 try:
                     self.conn.enable_load_extension(True)
                     sqlite_vec.load(self.conn)
+                    self._vec_load_error = ""
                 except Exception:
                     self._vec_available = False
+                    self._vec_load_error = f"sqlite-vec extension could not be loaded: {sys.exc_info()[1]}"
                 finally:
                     try:
                         self.conn.enable_load_extension(False)
@@ -2223,12 +2228,7 @@ class VaultDB:
 
     def stats(self) -> dict:
         k_count = self.conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
-        vec_count = 0
-        if self._vec_available:
-            try:
-                vec_count = self.conn.execute("SELECT COUNT(*) FROM knowledge_vec").fetchone()[0]
-            except Exception:
-                pass
+        vector_stats = embedding_stats(self.conn, vec_available=self._vec_available)
         # 圖譜統計
         edge_count = self.conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
         entity_count = self.conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
@@ -2266,14 +2266,14 @@ class VaultDB:
             "expired_active_count": int(usage.get("expired_active_count", 0)),
             "total_accesses": int(usage.get("total_accesses", 0)),
             "total_citations": int(usage.get("total_citations", 0)),
-            "embedding_count": vec_count,
+            **vector_stats,
             "edge_count": edge_count,
             "entity_count": entity_count,
             "skill_count": skill_count,
             "vec_available": self._vec_available,
+            "vec_load_error": self._vec_load_error,
             "db_path": str(self.db_path),
-            "db_size_mb": round(self.db_path.stat().st_size / 1024 / 1024, 2)
-                if self.db_path.exists() else 0,
+            "db_size_mb": round(self.db_path.stat().st_size / 1024 / 1024, 2) if self.db_path.exists() else 0,
             "convergence": conv_stats,
             "avg_freshness": avg_freshness,
         }

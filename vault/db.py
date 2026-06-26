@@ -25,6 +25,9 @@ from .db_schema import (
     SCHEMA_VERSION as DB_SCHEMA_VERSION,
     SKILL_UPDATE_COLUMNS as DB_SKILL_UPDATE_COLUMNS,
 )
+from .db_vector import add_embedding as db_vector_add_embedding
+from .db_vector import init_vec_table as db_vector_init_vec_table
+from .db_vector import search_vector as db_vector_search_vector
 from .governance import normalize_allowed_agents, normalize_governance_metadata
 from .importance import compute_memory_importance
 
@@ -773,39 +776,7 @@ class VaultDB:
 
     def _init_vec_table(self):
         """建立 sqlite-vec 向量虛擬表。"""
-        # 取得嵌入維度（預設 384）
-        dim_str = self._get_config("embedding_dim", "384")
-        # 安全驗證：確保維度是正整數且在合理範圍內，防止 SQL 注入
-        try:
-            dim = int(dim_str)
-            if dim < 64 or dim > 4096:
-                raise ValueError(f"embedding_dim out of range: {dim}")
-        except (ValueError, TypeError):
-            dim = 384  # 安全預設值
-        # 不 DROP！如果表已存在就不重建，保留向量資料
-        # 只有表不存在時才建
-        try:
-            self.conn.execute(
-                f"CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_vec USING vec0("
-                f"  knowledge_id INTEGER PRIMARY KEY, "
-                f"  embedding float[{dim}]"
-                f")"
-            )
-            self.conn.commit()
-        except Exception as e:
-            # 維度變了需要重建
-            if "already exists" in str(e).lower() or "different" in str(e).lower():
-                print("[vault-mcp] ⚠️ 向量表初始化異常，正在重建", file=sys.stderr)
-                self.conn.execute("DROP TABLE IF EXISTS knowledge_vec")
-                self.conn.execute(
-                    f"CREATE VIRTUAL TABLE knowledge_vec USING vec0("
-                    f"  knowledge_id INTEGER PRIMARY KEY, "
-                    f"  embedding float[{dim}]"
-                    f")"
-                )
-                self.conn.commit()
-            else:
-                raise
+        db_vector_init_vec_table(self.conn, embedding_dim=self._get_config("embedding_dim", "384"))
 
     # ── Config ─────────────────────────────────────────────
 
@@ -1572,15 +1543,12 @@ class VaultDB:
 
     def add_embedding(self, knowledge_id: int, embedding: list[float]):
         """插入向量到 vec0 表。"""
-        if not self._vec_available:
-            raise RuntimeError("向量功能未啟用")
-        import struct
-        emb_bytes = struct.pack(f"{len(embedding)}f", *embedding)
-        self.conn.execute(
-            "INSERT OR REPLACE INTO knowledge_vec(knowledge_id, embedding) VALUES(?, ?)",
-            (knowledge_id, emb_bytes),
+        db_vector_add_embedding(
+            self.conn,
+            vec_available=self._vec_available,
+            knowledge_id=knowledge_id,
+            embedding=embedding,
         )
-        self.conn.commit()
 
     def search_vector(
         self,
@@ -1591,86 +1559,16 @@ class VaultDB:
         category: Optional[str] = None,
     ) -> list[dict]:
         """向量語意搜尋，回傳知識列表。"""
-        if not self._vec_available:
-            raise RuntimeError("向量搜尋功能未啟用")
-
-        # None 或空向量直接返回空結果
-        if query_embedding is None or not isinstance(query_embedding, (list, tuple)) or len(query_embedding) == 0:
-            return []
-
-        # 驗證向量維度
-        try:
-            expected_dim = int(self._get_config("embedding_dim", "384"))
-        except (ValueError, TypeError):
-            expected_dim = 384
-        if len(query_embedding) != expected_dim:
-            raise ValueError(
-                f"向量維度不匹配：預期 {expected_dim} 維，實際 {len(query_embedding)} 維"
-            )
-
-        # 安全上限
-        MAX_LIMIT = 500
-        if limit > MAX_LIMIT:
-            limit = MAX_LIMIT
-
-        import struct
-        emb_bytes = struct.pack(f"{len(query_embedding)}f", *query_embedding)
-
-        # Step 1: 從 vec 表取得相似的 knowledge_id + distance
-        # 放大查詢量（limit * 5），緩解權限過濾帶來的側信道洩露
-        # 同時設置合理上限，避免查詢過多向量影響性能
-        VEC_SEARCH_MULTIPLIER = 5
-        vec_limit = min(limit * VEC_SEARCH_MULTIPLIER, MAX_LIMIT)
-        vec_rows = self.conn.execute(
-            "SELECT knowledge_id, distance FROM knowledge_vec "
-            "WHERE embedding MATCH ? ORDER BY distance ASC LIMIT ?",
-            (emb_bytes, vec_limit),
-        ).fetchall()
-
-        if not vec_rows:
-            return []
-
-        # Step 2: 單次 IN 查詢取得所有符合權限的知識資料
-        knowledge_ids = [row["knowledge_id"] for row in vec_rows]
-        id_to_dist: dict[int, float] = {}
-        for row in vec_rows:
-            kid = int(row["knowledge_id"])
-            dist = row["distance"]
-            if isinstance(dist, bytes):
-                dist = struct.unpack("f", dist)[0]
-            id_to_dist[kid] = float(dist)
-
-        where_conditions = [
-            "id IN ({})".format(",".join("?" * len(knowledge_ids))),
-            "trust >= ?",
-            "COALESCE(status, 'active') != 'archived'",
-        ]
-        params: list = list(knowledge_ids)
-        params.append(min_trust)
-
-        if layer is not None:
-            where_conditions.append("layer = ?")
-            params.append(layer)
-        if category is not None:
-            where_conditions.append("category = ?")
-            params.append(category)
-
-        where_clause = " AND ".join(where_conditions)
-        sql = f"SELECT * FROM knowledge WHERE {where_clause}"
-        k_rows = self.conn.execute(sql, params).fetchall()
-
-        # 組合結果，保持向量排序順序
-        results = []
-        for k_row in k_rows:
-            kid = int(k_row["id"])
-            if kid in id_to_dist:
-                d = dict(k_row)
-                d["_distance"] = id_to_dist[kid]
-                results.append(d)
-
-        # 按距離排序（保證順序正確）
-        results.sort(key=lambda x: x["_distance"])
-        return results
+        return db_vector_search_vector(
+            self.conn,
+            vec_available=self._vec_available,
+            embedding_dim=self._get_config("embedding_dim", "384"),
+            query_embedding=query_embedding,
+            limit=limit,
+            min_trust=min_trust,
+            layer=layer,
+            category=category,
+        )
 
     # ── 關鍵字搜尋 ──────────────────────────────────────────
 

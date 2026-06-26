@@ -24,6 +24,13 @@ from vault.mcp_security import (
     check_mcp_rate_limit as _check_mcp_rate_limit,
     reset_rate_limiter as _reset_rate_limiter,
 )
+from vault.mcp_search import (
+    MCP_SEARCH_MAX_LIMIT,
+    MCP_SEARCH_MAX_OFFSET,
+    clamp_int as _clamp_int,
+    search_field_set as _search_field_set,
+    shape_search_results as _shape_search_results,
+)
 from vault.mcp_read import (
     _compact_node,
     _error,
@@ -59,37 +66,6 @@ DB_PATH = os.path.join(
     os.environ.get("VAULT_PATH") or VAULT_DIR,
     "vault.db",
 )
-MCP_SEARCH_MAX_LIMIT = 50
-MCP_SEARCH_MAX_OFFSET = 1000
-MCP_ALLOWED_SEARCH_FIELDS = {
-    "id",
-    "title",
-    "category",
-    "layer",
-    "trust",
-    "tags",
-    "best_claim",
-    "best_span",
-    "best_node",
-    "node_uid",
-    "path",
-    "heading",
-    "line_start",
-    "line_end",
-    "citation",
-    "recommended_next_tool",
-    "next_action",
-    "next_actions",
-    "rerank_score",
-    "_score",
-    "_original_score",
-    "_snippet",
-    "content_preview",
-    "temporal_state",
-    "valid_from",
-    "valid_until",
-    "supersedes_id",
-}
 
 
 def _set_project_dir(project_dir: str | os.PathLike[str]) -> None:
@@ -131,20 +107,6 @@ def _get_search():
         pass
 
     return db, VaultSearch(db, embed_provider=embed)
-
-
-def _clamp_int(value, *, default: int, minimum: int, maximum: int) -> int:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return default
-    return max(minimum, min(parsed, maximum))
-
-
-def _search_field_set(fields) -> set[str] | None:
-    if not isinstance(fields, list):
-        return None
-    return {str(field) for field in fields if str(field) in MCP_ALLOWED_SEARCH_FIELDS}
 
 
 # ── Remote MCP wrappers ───────────────────────────────
@@ -1163,75 +1125,7 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 include_future_temporal=bool(arguments.get("include_future_temporal", True)),
                 temporal_as_of=arguments.get("temporal_as_of", ""),
             )
-            # 簡化輸出
-            output = []
-            for r in results:
-                if compact:
-                    item = {
-                        "id": r.get("id"),
-                        "title": r.get("title"),
-                        "best_claim": r.get("best_claim", ""),
-                        "best_span": r.get("best_span"),
-                        "node_uid": r.get("node_uid"),
-                        "path": r.get("path"),
-                        "heading": r.get("heading"),
-                        "line_start": r.get("line_start"),
-                        "line_end": r.get("line_end"),
-                        "citation": r.get("citation"),
-                        "recommended_next_tool": r.get("recommended_next_tool"),
-                        "next_action": r.get("next_action"),
-                        "next_actions": r.get("next_actions"),
-                        "rerank_score": r.get("rerank_score", r.get("_rerank_score")),
-                        "_score": r.get("_score"),
-                        "_original_score": r.get("_original_score"),
-                        "_snippet": r.get("_snippet"),
-                        "temporal_state": r.get("temporal_state"),
-                        "valid_from": r.get("valid_from"),
-                        "valid_until": r.get("valid_until"),
-                        "supersedes_id": r.get("supersedes_id"),
-                    }
-                    item = {k: v for k, v in item.items() if v is not None}
-                    if field_set is not None:
-                        item = {k: v for k, v in item.items() if k in field_set}
-                    output.append(item)
-                    continue
-                item = {
-                    "id": r.get("id"),
-                    "title": r.get("title"),
-                    "category": r.get("category"),
-                    "layer": r.get("layer"),
-                    "trust": r.get("trust"),
-                    "tags": r.get("tags"),
-                    "best_claim": r.get("best_claim", ""),
-                    "best_span": r.get("best_span"),
-                    "best_node": r.get("best_node"),
-                    "node_uid": r.get("node_uid"),
-                    "path": r.get("path"),
-                    "heading": r.get("heading"),
-                    "line_start": r.get("line_start"),
-                    "line_end": r.get("line_end"),
-                    "citation": r.get("citation"),
-                    "recommended_next_tool": r.get("recommended_next_tool"),
-                    "next_action": r.get("next_action"),
-                    "next_actions": r.get("next_actions"),
-                    "rerank_score": r.get("_rerank_score"),
-                    "_score": r.get("_score"),
-                    "_original_score": r.get("_original_score"),
-                    "_snippet": r.get("_snippet"),
-                    "temporal_state": r.get("temporal_state"),
-                    "valid_from": r.get("valid_from"),
-                    "valid_until": r.get("valid_until"),
-                    "supersedes_id": r.get("supersedes_id"),
-                }
-                # 截斷 content_raw
-                raw = r.get("content_raw", "")
-                if raw and len(raw) > 200:
-                    item["content_preview"] = raw[:200] + "..."
-                else:
-                    item["content_preview"] = raw
-                if field_set is not None:
-                    item = {k: v for k, v in item.items() if k in field_set}
-                output.append(item)
+            output = _shape_search_results(results, compact=compact, field_set=field_set)
             db.close()
             return {"result": json.dumps(output, ensure_ascii=False, indent=2)}
 

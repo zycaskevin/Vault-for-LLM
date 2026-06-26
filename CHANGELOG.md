@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.7.13] - 2026-06-26
+
+### Changed
+
+- Split MCP search result shaping into `vault/mcp_search.py`, keeping the MCP router focused on tool dispatch and signed identity checks.
+- Split CLI temporal search option wiring into `vault/cli_search.py`.
+- Split graph expansion recall logic into `vault/search_graph.py` while preserving the v0.7.11 read-policy guard.
+
+### Maintenance
+
+- Tightened the module-size baseline for `vault/cli.py`, `vault/mcp.py`, and `vault/search.py` after the refactor.
+- Added a decision record for the first module-size paydown following the v0.7.12 security hardening release.
+
 ## [0.7.12] - 2026-06-26
 
 ### Added

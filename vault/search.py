@@ -12,8 +12,9 @@ import sqlite3
 from typing import Optional
 
 from .db import VaultDB
-from .access_policy import ReadPolicy, can_read_memory, filter_readable_memories, normalize_read_policy
+from .access_policy import ReadPolicy, filter_readable_memories, normalize_read_policy
 from .temporal import filter_temporal_rows
+from .search_graph import apply_graph_expand
 from .embed import (
     create_embedding_provider,
     EmbeddingProvider,
@@ -1373,8 +1374,15 @@ class VaultSearch:
 
         # 圖譜擴展
         if graph_expand > 0 and self._graph is not None:
-            results = self._apply_graph_expand(
-                results, graph_expand, limit, min_trust, layer, category, read_policy=read_policy
+            results = apply_graph_expand(
+                self.db,
+                results,
+                expand_depth=graph_expand,
+                limit=limit,
+                min_trust=min_trust,
+                layer=layer,
+                category=category,
+                read_policy=read_policy,
             )
 
         results = [r for r in results if _is_active_memory(r)]
@@ -2459,7 +2467,7 @@ class VaultSearch:
 
         return results
 
-    # ── 圖譜擴展 ──────────────────────────────────────────────
+    # ── Compatibility wrappers ──────────────────────────────────────────
 
     def _apply_graph_expand(
         self,
@@ -2471,61 +2479,19 @@ class VaultSearch:
         category: Optional[str] = None,
         read_policy: ReadPolicy | None = None,
     ) -> list[dict]:
-        """
-        對搜尋結果應用圖譜擴展。
-        沿著圖譜邊找相鄰知識，合併到搜尋結果中。
-
-        注意：圖譜擴展會嚴格遵守 min_trust、layer、category 與
-        ReadPolicy 限制，不會返回超出權限範圍的內容。
-        """
-        if not results or self._graph is None:
+        """Backward-compatible wrapper around ``vault.search_graph``."""
+        if not results or self._graph is None or expand_depth <= 0:
             return results
-
-        # 已有的結果 ID 集合
-        seen_ids = {r["id"] for r in results}
-        expanded = list(results)
-
-        # 對每個搜尋結果，找圖譜鄰居
-        # 提前終止：已達到 limit 時不再處理後續結果
-        for r in results:
-            if len(expanded) >= limit:
-                break
-            neighbors = self.db.get_neighbors(
-                r["id"], max_depth=expand_depth,
-                min_trust=min_trust, layer=layer, category=category
-            )
-            for n in neighbors:
-                if len(expanded) >= limit:
-                    break
-                if n["id"] not in seen_ids:
-                    k = self.db.get_knowledge(n["id"])
-                    if k:
-                        # 權限檢查：確保擴展出的內容符合分層、信任級別和分類
-                        if k.get("trust", 0) < min_trust:
-                            continue
-                        if layer and k.get("layer") != layer:
-                            continue
-                        if category and k.get("category") != category:
-                            continue
-                        if read_policy is not None and not can_read_memory(k, read_policy):
-                            continue
-                        seen_ids.add(n["id"])
-                        d = dict(k)
-                        # 圖譜擴展的分數衰減：距離越遠分數越低
-                        base_score = r.get("_score", 0.5)
-                        d["_score"] = base_score * (0.7 ** n["distance"])
-                        d["_mode"] = "graph_expand"
-                        d["_graph_distance"] = n["distance"]
-                        d["_relation"] = n["relation"]
-                        expanded.append(d)
-
-        # 重新排序：原搜尋結果優先，圖譜擴展次之
-        expanded.sort(key=lambda x: (
-            -x.get("_score", 0),
-            x.get("_graph_distance", 0),
-        ))
-
-        return expanded[:limit]
+        return apply_graph_expand(
+            self.db,
+            results,
+            expand_depth=expand_depth,
+            limit=limit,
+            min_trust=min_trust,
+            layer=layer,
+            category=category,
+            read_policy=read_policy,
+        )
 
     # ── 工具 ──────────────────────────────────────────────
 

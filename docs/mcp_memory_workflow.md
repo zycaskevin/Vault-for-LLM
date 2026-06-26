@@ -7,6 +7,10 @@ For per-tool inputs, outputs, and agent integration examples, use
 
 ## Tool profiles
 
+Start daily agents with `core`, then add a larger profile only for the session
+that needs it. Tool schemas cost context, and giving every agent every tool
+also increases the chance of a wrong maintenance or write action.
+
 Use the smallest MCP tool profile that fits the session:
 
 | Profile | Tools | Use when |
@@ -35,14 +39,14 @@ selected project directory.
 2. vault_update_status       # optional doctor=true when update freshness is unclear
 3. vault_automation_brief    # read the 5% review and automation health view
 4. vault_automation_handoff  # read the compact project handoff when present
-4. vault_search              # find active memory
-5. vault_read_range          # read bounded source range and cite it
-6. vault_memory_propose      # candidate-first write with gates
-7. vault_capture_discover    # optional review profile: find transcripts without reading content
-8. vault_capture_session     # optional review profile: turn a transcript into candidates
-9. vault_memory_candidates   # optional review profile: inspect pending candidates
-10. vault_memory_review      # optional review profile: reject/block weak candidates
-11. vault_memory_promote     # optional review profile: explicit confirm=true promotion
+5. vault_search              # find active memory
+6. vault_read_range          # read bounded source range and cite it
+7. vault_memory_propose      # candidate-first write with gates
+8. vault_capture_discover    # optional review profile: find transcripts without reading content
+9. vault_capture_session     # optional review profile: turn a transcript into candidates
+10. vault_memory_candidates  # optional review profile: inspect pending candidates
+11. vault_memory_review      # optional review profile: reject/block weak candidates
+12. vault_memory_promote     # optional review profile: explicit confirm=true promotion
 ```
 
 When several local runtimes share one machine-level Vault install, use

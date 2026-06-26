@@ -40,7 +40,10 @@ Run the install smoke matrix after building the wheel:
 
 ```bash
 python -m build
-python scripts/install_smoke_matrix.py --mode both --wheel dist/vault_for_llm-*.whl
+PYTHONPATH=. uv run --with mcp --with anthropic python scripts/install_smoke_matrix.py \
+  --mode both \
+  --wheel dist/vault_for_llm-*.whl \
+  --venv-python python3.11
 ```
 
 The matrix checks both source-checkout and clean wheel-install behavior. It
@@ -69,13 +72,21 @@ The MCP step includes actual client calls to:
 - `vault_read_range`
 
 Use `--mode source` for fast PR validation and `--mode wheel` when checking only
-the built package.
+the built package. The source-mode MCP client also needs MCP runtime
+dependencies, so run it through the same dependency wrapper:
+
+```bash
+PYTHONPATH=. uv run --with mcp --with anthropic python scripts/install_smoke_matrix.py \
+  --mode source \
+  --json
+```
 
 If the current Python cannot create a venv on the release machine, pass an
 explicit interpreter:
 
 ```bash
-python scripts/install_smoke_matrix.py --mode wheel \
+PYTHONPATH=. uv run --with mcp --with anthropic python scripts/install_smoke_matrix.py \
+  --mode wheel \
   --wheel dist/vault_for_llm-*.whl \
   --venv-python python3.11
 ```

@@ -479,6 +479,22 @@ def test_mcp_server_info_uses_public_vault_name(capsys, monkeypatch):
     assert response["result"]["serverInfo"]["name"] == "vault-mcp"
 
 
+def test_mcp_tools_list_uses_active_tool_profile(capsys, monkeypatch):
+    messages = iter([
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
+    ])
+    try:
+        vault_mcp._set_active_tools("core")
+        monkeypatch.setattr("sys.stdin", messages)
+        vault_mcp.run_stdio()
+        response = json.loads(capsys.readouterr().out.strip())
+        names = {tool["name"] for tool in response["result"]["tools"]}
+        assert names == {tool["name"] for tool in vault_mcp.select_tools("core")}
+        assert "vault_obsidian_import" not in names
+    finally:
+        vault_mcp._set_active_tools("full")
+
+
 
 def test_vault_remote_map_show_uses_synced_supabase_nodes():
     fake = _remote_fake_client()

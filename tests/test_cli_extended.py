@@ -137,6 +137,7 @@ class _RemoteTableQuery:
         return self
 
     def execute(self):
+        self.client.table_calls.append((self.table_name, list(self.filters)))
         rows = self.client.tables.get(self.table_name, [])
         data = [
             dict(row)
@@ -149,6 +150,7 @@ class _RemoteTableQuery:
 class _RemoteClient:
     def __init__(self):
         self.rpc_calls = []
+        self.table_calls = []
         self.rpcs = {
             "vault_search_readable": [
                 {
@@ -274,7 +276,8 @@ class TestRemoteCli:
         from vault.cli import main
         from vault import mcp
 
-        monkeypatch.setattr(mcp, "_get_supabase_client", lambda: _RemoteClient())
+        client = _RemoteClient()
+        monkeypatch.setattr(mcp, "_get_supabase_client", lambda: client)
         remote_id = "a4c5294e-239c-4b1f-a0d8-afa82ef43031"
 
         main([
@@ -292,6 +295,27 @@ class TestRemoteCli:
         assert map_payload["next_action"]["tool"] == "vault_remote_read_range"
         assert map_payload["nodes"][0]["node_uid"] == "remote-node"
         assert map_payload["next_action"]["arguments"]["knowledge_id"] == remote_id
+        assert client.table_calls == []
+        assert client.rpc_calls == [
+            (
+                "vault_get_readable",
+                {
+                    "p_agent_id": "remote-agent",
+                    "p_knowledge_id": remote_id,
+                    "p_include_private": False,
+                    "p_max_sensitivity": "medium",
+                },
+            ),
+            (
+                "vault_nodes_readable",
+                {
+                    "p_agent_id": "remote-agent",
+                    "p_include_private": False,
+                    "p_max_sensitivity": "medium",
+                    "p_knowledge_id": remote_id,
+                },
+            ),
+        ]
 
         main([
             "remote",
@@ -308,6 +332,45 @@ class TestRemoteCli:
         read_payload = json.loads(capsys.readouterr().out)
         assert read_payload["citation"] == f"#{remote_id} Remote Entry L2-L2"
         assert read_payload["source"] == "remote_claims"
+        assert client.table_calls == []
+        assert client.rpc_calls[-4:] == [
+            (
+                "vault_get_readable",
+                {
+                    "p_agent_id": "remote-agent",
+                    "p_knowledge_id": remote_id,
+                    "p_include_private": False,
+                    "p_max_sensitivity": "medium",
+                },
+            ),
+            (
+                "vault_nodes_readable",
+                {
+                    "p_agent_id": "remote-agent",
+                    "p_include_private": False,
+                    "p_max_sensitivity": "medium",
+                    "p_knowledge_id": remote_id,
+                },
+            ),
+            (
+                "vault_claims_readable",
+                {
+                    "p_agent_id": "remote-agent",
+                    "p_include_private": False,
+                    "p_max_sensitivity": "medium",
+                    "p_knowledge_id": remote_id,
+                },
+            ),
+            (
+                "vault_content_readable",
+                {
+                    "p_agent_id": "remote-agent",
+                    "p_include_private": False,
+                    "p_max_sensitivity": "medium",
+                    "p_knowledge_id": remote_id,
+                },
+            ),
+        ]
 
     def test_remote_smoke_json(self, monkeypatch, capsys):
         from vault.cli import main

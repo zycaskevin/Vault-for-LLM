@@ -13,7 +13,7 @@ ready to become a new release.
 | MCP profile guidance | Agent docs recommend `core` by default, explain when to use `review`, `maintenance`, `remote`, and `full`, and warn about token/tool-surface cost. |
 | Automation review UX | `automation brief`, `inbox`, and `handoff` show compact, deduped review cards and hide raw candidate content by default. |
 | Temporal memory | Search and docs explain how current, old, superseded, and valid-window facts are handled. |
-| Supabase safety | Remote-reader, RLS, and multi-Agent access examples are tested with least-privilege keys and documented as optional advanced paths. |
+| Supabase safety | Remote-reader, RLS/RPC, and multi-Agent access examples are tested with least-privilege keys; remote map/read stays on guarded RPCs instead of direct table reads. |
 | Install smoke matrix | Source checkout and clean wheel install both validate CLI, MCP stdio, setup-agent, automation, migration, and key integrations. |
 
 ## Required Local Gates
@@ -100,6 +100,17 @@ Run these when the release touches the relevant area:
 - Supabase remote reader and RLS/RPC validation.
 - Semantic index smoke with hash provider and, when available, one real embedding provider.
 - Migration smoke against an older `vault.db` fixture.
+
+For Supabase-related changes, include the local no-network guard:
+
+```bash
+PYTHONPATH=. uv run pytest -q tests/test_cli_extended.py::TestRemoteCli
+```
+
+That test verifies `vault_remote_search`, `vault_remote_map_show`, and
+`vault_remote_read_range` use guarded RPCs such as `vault_search_readable`,
+`vault_get_readable`, `vault_nodes_readable`, and `vault_claims_readable`. It
+should fail if remote readers regress to direct `vault_knowledge*` table reads.
 
 ## Release Cadence Rule
 

@@ -2,7 +2,7 @@
   "default_max_lines": 1200,
   "files": {
     "vault/agent_setup.py": 1688,
-    "vault/automation.py": 2656,
+    "vault/automation.py": 2376,
     "vault/cli.py": 3277,
     "vault/db.py": 2279,
     "vault/mcp.py": 1475,

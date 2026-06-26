@@ -20,6 +20,7 @@ if VAULT_DIR not in sys.path:
 from vault.mcp_memory import MCP_MEMORY_CANDIDATE_MAX_LIMIT, MCP_MEMORY_LOOP_TOOL_NAMES, MCP_MEMORY_LOOP_TOOLS, handle_memory_tool_call
 from vault.mcp_automation import handle_automation_tool_call
 from vault.mcp_security import (
+    check_agent_signature as _check_agent_signature,
     check_mcp_rate_limit as _check_mcp_rate_limit,
     reset_rate_limiter as _reset_rate_limiter,
 )
@@ -84,6 +85,10 @@ MCP_ALLOWED_SEARCH_FIELDS = {
     "_original_score",
     "_snippet",
     "content_preview",
+    "temporal_state",
+    "valid_from",
+    "valid_until",
+    "supersedes_id",
 }
 
 
@@ -273,6 +278,21 @@ TOOLS = [
                     "type": "string",
                     "enum": ["", "low", "medium", "high", "restricted"],
                     "description": "可選最高敏感度；例如 medium 會排除 high/restricted",
+                    "default": ""
+                },
+                "include_expired_temporal": {
+                    "type": "boolean",
+                    "description": "是否保留 temporal_state=past 的過期事實；預設 true 並在結果中標記",
+                    "default": True
+                },
+                "include_future_temporal": {
+                    "type": "boolean",
+                    "description": "是否保留 temporal_state=future 的尚未生效事實；預設 true 並在結果中標記",
+                    "default": True
+                },
+                "temporal_as_of": {
+                    "type": "string",
+                    "description": "可選 ISO 時間，用於判斷 temporal_state",
                     "default": ""
                 },
             },
@@ -1106,6 +1126,9 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
     rate_limited = _check_mcp_rate_limit(name, arguments)
     if rate_limited is not None:
         return {"result": json.dumps(rate_limited, ensure_ascii=False, indent=2)}
+    signature_denied = _check_agent_signature(name, arguments)
+    if signature_denied is not None:
+        return {"result": json.dumps(signature_denied, ensure_ascii=False, indent=2)}
     try:
         if name == "vault_search":
             compact = bool(arguments.get("compact", True))
@@ -1136,6 +1159,9 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 agent_id=arguments.get("agent_id", ""),
                 include_private=bool(arguments.get("include_private", False)),
                 max_sensitivity=arguments.get("max_sensitivity", ""),
+                include_expired_temporal=bool(arguments.get("include_expired_temporal", True)),
+                include_future_temporal=bool(arguments.get("include_future_temporal", True)),
+                temporal_as_of=arguments.get("temporal_as_of", ""),
             )
             # 簡化輸出
             output = []
@@ -1159,6 +1185,10 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                         "_score": r.get("_score"),
                         "_original_score": r.get("_original_score"),
                         "_snippet": r.get("_snippet"),
+                        "temporal_state": r.get("temporal_state"),
+                        "valid_from": r.get("valid_from"),
+                        "valid_until": r.get("valid_until"),
+                        "supersedes_id": r.get("supersedes_id"),
                     }
                     item = {k: v for k, v in item.items() if v is not None}
                     if field_set is not None:
@@ -1188,6 +1218,10 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     "_score": r.get("_score"),
                     "_original_score": r.get("_original_score"),
                     "_snippet": r.get("_snippet"),
+                    "temporal_state": r.get("temporal_state"),
+                    "valid_from": r.get("valid_from"),
+                    "valid_until": r.get("valid_until"),
+                    "supersedes_id": r.get("supersedes_id"),
                 }
                 # 截斷 content_raw
                 raw = r.get("content_raw", "")

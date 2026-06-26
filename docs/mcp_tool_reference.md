@@ -25,6 +25,13 @@ Tool profiles reduce the exposed tool list. They are not a security boundary by
 themselves. Use Vault read-policy fields and Supabase RLS/RPC for actual access
 control.
 
+For stricter local identity checks, set `VAULT_MCP_REQUIRE_AGENT_SIGNATURE=1`
+and configure `VAULT_MCP_AGENT_SECRET` or a scoped
+`VAULT_MCP_AGENT_SECRET_<AGENT>`. Signed calls include `agent_id` and
+`agent_signature` generated with HMAC-SHA256 over the tool name and arguments.
+This is optional for backwards compatibility, but invalid signatures are rejected
+whenever a caller sends one.
+
 ## Default Agent Loop
 
 Use this loop for normal project memory:
@@ -50,7 +57,8 @@ Find likely memory entries.
   "compact": true,
   "agent_id": "work-agent",
   "include_private": false,
-  "max_sensitivity": "medium"
+  "max_sensitivity": "medium",
+  "include_expired_temporal": true
 }
 ```
 
@@ -61,6 +69,7 @@ Typical result fields:
   "id": 12,
   "title": "Release checklist",
   "summary": "Run tests, build, publish, and smoke check.",
+  "temporal_state": "current",
   "recommended_next_tool": "vault_read_range",
   "next_action": {
     "tool": "vault_read_range",

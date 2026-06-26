@@ -12,7 +12,8 @@ import sqlite3
 from typing import Optional
 
 from .db import VaultDB
-from .access_policy import filter_readable_memories, normalize_read_policy
+from .access_policy import ReadPolicy, can_read_memory, filter_readable_memories, normalize_read_policy
+from .temporal import filter_temporal_rows
 from .embed import (
     create_embedding_provider,
     EmbeddingProvider,
@@ -1043,6 +1044,9 @@ class VaultSearch:
         agent_id: str = "",
         include_private: bool = False,
         max_sensitivity: str = "",
+        include_expired_temporal: bool = True,
+        include_future_temporal: bool = True,
+        temporal_as_of: str = "",
     ) -> list[dict]:
         """
         搜尋知識庫。
@@ -1092,6 +1096,7 @@ class VaultSearch:
                     allow_hash, min_score, use_query_expansion, use_llm_rewrite,
                     normalize_scores, include_snippet, highlight_snippet, fields,
                     agent_id, include_private, max_sensitivity,
+                    include_expired_temporal, include_future_temporal, temporal_as_of,
                 )
             except (ValueError, TypeError):
                 raise  # 參數驗證錯誤仍然拋出
@@ -1104,6 +1109,7 @@ class VaultSearch:
             allow_hash, min_score, use_query_expansion, use_llm_rewrite,
             normalize_scores, include_snippet, highlight_snippet, fields,
             agent_id, include_private, max_sensitivity,
+            include_expired_temporal, include_future_temporal, temporal_as_of,
         )
 
     def _do_search(
@@ -1130,6 +1136,9 @@ class VaultSearch:
         agent_id: str = "",
         include_private: bool = False,
         max_sensitivity: str = "",
+        include_expired_temporal: bool = True,
+        include_future_temporal: bool = True,
+        temporal_as_of: str = "",
     ) -> list[dict]:
         """內部搜尋實現。"""
         read_policy = normalize_read_policy(
@@ -1177,6 +1186,9 @@ class VaultSearch:
                 agent_id=read_policy.agent_id,
                 include_private=read_policy.include_private,
                 max_sensitivity=read_policy.max_sensitivity,
+                include_expired_temporal=include_expired_temporal,
+                include_future_temporal=include_future_temporal,
+                temporal_as_of=temporal_as_of,
                 embed_provider=self._embed_cache_identity(),
                 rerank_strategy=self._rerank_strategy,
             )
@@ -1362,11 +1374,17 @@ class VaultSearch:
         # 圖譜擴展
         if graph_expand > 0 and self._graph is not None:
             results = self._apply_graph_expand(
-                results, graph_expand, limit, min_trust, layer, category
+                results, graph_expand, limit, min_trust, layer, category, read_policy=read_policy
             )
 
         results = [r for r in results if _is_active_memory(r)]
         results = filter_readable_memories(results, read_policy)
+        results = filter_temporal_rows(
+            results,
+            include_expired=include_expired_temporal,
+            include_future=include_future_temporal,
+            as_of=temporal_as_of,
+        )
 
         # Reranker
         if use_rerank and results:
@@ -1533,6 +1551,10 @@ class VaultSearch:
             "recommended_next_tool",
             "next_action",
             "next_actions",
+            "temporal_state",
+            "valid_from",
+            "valid_until",
+            "supersedes_id",
         )
         compact = {key: result[key] for key in fields if key in result}
         if "_rerank_score" in result:
@@ -2447,13 +2469,14 @@ class VaultSearch:
         min_trust: float = 0.0,
         layer: Optional[str] = None,
         category: Optional[str] = None,
+        read_policy: ReadPolicy | None = None,
     ) -> list[dict]:
         """
         對搜尋結果應用圖譜擴展。
         沿著圖譜邊找相鄰知識，合併到搜尋結果中。
 
-        注意：圖譜擴展會嚴格遵守 min_trust、layer 和 category 限制，
-        不會返回超出權限範圍的內容。
+        注意：圖譜擴展會嚴格遵守 min_trust、layer、category 與
+        ReadPolicy 限制，不會返回超出權限範圍的內容。
         """
         if not results or self._graph is None:
             return results
@@ -2483,6 +2506,8 @@ class VaultSearch:
                         if layer and k.get("layer") != layer:
                             continue
                         if category and k.get("category") != category:
+                            continue
+                        if read_policy is not None and not can_read_memory(k, read_policy):
                             continue
                         seen_ids.add(n["id"])
                         d = dict(k)

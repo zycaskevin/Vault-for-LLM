@@ -163,6 +163,11 @@ leave daily recall after this date." Agents should use `vault memory temporal
 status` and `vault memory temporal list --state past` when they need to explain
 what changed, not only what is true now.
 
+Search results mark temporal rows with `temporal_state`. Default search keeps
+past and future facts visible for audit, but agents that need only currently
+valid facts should pass `--exclude-expired` or MCP
+`include_expired_temporal=false`.
+
 ## Multi-Agent Sharing
 
 For Hermes Agent, OpenClaw, Codex, Claude Code, n8n, Coze, or other runtimes:

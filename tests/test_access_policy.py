@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 
 from vault.access_policy import can_read_memory, can_write_memory, normalize_read_policy, normalize_write_policy
 from vault.db import VaultDB
@@ -154,6 +155,84 @@ def test_search_applies_governance_read_filter(tmp_path):
     }
     assert {row["title"] for row in product_agent} == {"Shared deployment note"}
     assert {row["title"] for row in capped} == {"Shared deployment note"}
+
+
+def test_graph_expand_applies_governance_read_filter(tmp_path):
+    with VaultDB(tmp_path / "vault.db") as db:
+        seed_id = db.add_knowledge(
+            title="Shared graph seed",
+            content_raw="Graph ACL smoke seed.",
+            scope="shared",
+            sensitivity="low",
+        )
+        private_id = db.add_knowledge(
+            title="Private graph neighbor",
+            content_raw="Graph ACL smoke private neighbor.",
+            scope="private",
+            sensitivity="high",
+            owner_agent="profile-agent",
+            allowed_agents=["work-agent"],
+        )
+        db.add_edge(seed_id, private_id, relation="related", weight=1.0)
+        search = VaultSearch(db, graph=object())
+
+        product_agent = search.search(
+            "graph acl seed",
+            mode="keyword",
+            limit=10,
+            graph_expand=1,
+            agent_id="product-agent",
+        )
+        work_agent = search.search(
+            "graph acl seed",
+            mode="keyword",
+            limit=10,
+            graph_expand=1,
+            agent_id="work-agent",
+            include_private=True,
+        )
+
+    assert {row["title"] for row in product_agent} == {"Shared graph seed"}
+    assert {row["title"] for row in work_agent} == {
+        "Shared graph seed",
+        "Private graph neighbor",
+    }
+
+
+def test_search_marks_and_can_filter_temporal_state(tmp_path):
+    now = datetime.now(timezone.utc)
+    past = (now - timedelta(days=1)).isoformat()
+    with VaultDB(tmp_path / "vault.db") as db:
+        db.add_knowledge(
+            title="Old office fact",
+            content_raw="Temporal search office location was City A.",
+            valid_until=past,
+        )
+        db.add_knowledge(
+            title="Current office fact",
+            content_raw="Temporal search office location is City B.",
+            valid_from=past,
+        )
+        search = VaultSearch(db)
+
+        default_results = search.search(
+            "temporal search office location",
+            mode="keyword",
+            limit=10,
+            temporal_as_of=now.isoformat(),
+        )
+        current_only = search.search(
+            "temporal search office location",
+            mode="keyword",
+            limit=10,
+            temporal_as_of=now.isoformat(),
+            include_expired_temporal=False,
+        )
+
+    states = {row["title"]: row["temporal_state"] for row in default_results}
+    assert states["Old office fact"] == "past"
+    assert states["Current office fact"] == "current"
+    assert {row["title"] for row in current_only} == {"Current office fact"}
 
 
 def test_mcp_search_and_read_range_apply_governance_policy(tmp_path, monkeypatch):

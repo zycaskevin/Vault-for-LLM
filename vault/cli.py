@@ -319,6 +319,9 @@ def cmd_search(args):
             agent_id=getattr(args, "agent_id", ""),
             include_private=bool(getattr(args, "include_private", False)),
             max_sensitivity=getattr(args, "max_sensitivity", ""),
+            include_expired_temporal=not bool(_arg_value(args, "exclude_expired", False)),
+            include_future_temporal=not bool(_arg_value(args, "exclude_future", False)),
+            temporal_as_of=_arg_value(args, "temporal_as_of", ""),
         )
     except SemanticProviderError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -2657,6 +2660,9 @@ def main(argv: list[str] | None = None):
     p.add_argument("--agent-id", default="", help="可選 Agent 身份；提供後套用治理 metadata 讀取過濾")
     p.add_argument("--include-private", action="store_true", help="搭配 --agent-id 允許讀取 owner/allow-list 授權的 private 記憶")
     p.add_argument("--max-sensitivity", choices=["", "low", "medium", "high", "restricted"], default="", help="最高可讀敏感度")
+    p.add_argument("--exclude-expired", action="store_true", help="排除 temporal_state=past 的過期事實；預設保留但標記")
+    p.add_argument("--exclude-future", action="store_true", help="排除 temporal_state=future 的尚未生效事實；預設保留但標記")
+    p.add_argument("--temporal-as-of", default="", help="用指定 ISO 時間判斷 temporal_state；預設現在")
     p.add_argument("--json", action="store_true", help="輸出 JSON")
     p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 

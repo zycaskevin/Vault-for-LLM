@@ -94,8 +94,24 @@ class TestScanPrivacy:
 
         encoded = base64.b64encode(b"password = hidden-secret-123").decode()
         result = scan_privacy(f"encoded payload: {encoded}")
+        assert result["status"] == "fail"
+        assert any(
+            item["type"] == "encoded_sensitive_content" and item["severity"] == "fail"
+            for item in result["findings"]
+        )
+
+    def test_scan_privacy_warns_on_encoded_pii_without_secret(self):
+        from vault.privacy import scan_privacy
+
+        import base64
+
+        encoded = base64.b64encode(b"contact test@example.com").decode()
+        result = scan_privacy(f"encoded payload: {encoded}")
         assert result["status"] == "warn"
-        assert any(item["type"] == "encoded_sensitive_content" for item in result["findings"])
+        assert any(
+            item["type"] == "encoded_sensitive_content" and item["severity"] == "warn"
+            for item in result["findings"]
+        )
 
     def test_scan_privacy_with_github_token(self):
         from vault.privacy import scan_privacy

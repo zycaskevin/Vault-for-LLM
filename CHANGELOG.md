@@ -1,5 +1,35 @@
 # CHANGELOG
 
+## [0.7.12] - 2026-06-26
+
+### Added
+
+- Added optional signed MCP agent identity. When `VAULT_MCP_REQUIRE_AGENT_SIGNATURE=1` is set, MCP calls must include `agent_id` and a valid HMAC-SHA256 `agent_signature`.
+- Added per-agent secret lookup through `VAULT_MCP_AGENT_SECRET_<AGENT>` with `VAULT_MCP_AGENT_SECRET` as the fallback.
+- Added `sign_agent_request()` for local adapters and tests that need to generate the exact signature Vault verifies.
+
+### Safety
+
+- Signed identity is opt-in for backwards compatibility, but invalid signatures are rejected whenever a caller provides one.
+- Agent secrets stay in environment variables and are not written to setup artifacts, reports, or logs.
+
+## [0.7.11] - 2026-06-26
+
+### Added
+
+- Search results now include `temporal_state` (`current`, `past`, `future`, or `timeless`) when temporal fact-window metadata is present.
+- `vault search` and MCP `vault_search` now support temporal filtering controls for excluding expired or future facts while keeping historical facts auditable by default.
+
+### Fixed
+
+- Graph-expanded search results now apply the same read policy as primary search results, preventing graph neighbors from exposing private or restricted memory.
+- Base64-encoded payloads that decode to fail-level secrets now fail the privacy gate instead of only warning.
+
+### Safety
+
+- Temporal search remains backwards-compatible: past/future facts are marked by default and can be excluded explicitly.
+- Graph expansion now checks `scope`, `sensitivity`, `owner_agent`, and `allowed_agents` before adding neighbor memories.
+
 ## [0.7.10] - 2026-06-25
 
 ### Added

@@ -90,10 +90,12 @@ def _derived_findings(text: str) -> list[dict]:
         decoded_privacy = _findings(decoded, _SECRET_PATTERNS, "fail")
         decoded_privacy.extend(_findings(decoded, _WARN_PATTERNS, "warn"))
         if decoded_privacy:
+            decoded_has_fail = any(item.get("severity") == "fail" for item in decoded_privacy)
             out.append({
                 "type": "encoded_sensitive_content",
-                "severity": "warn",
+                "severity": "fail" if decoded_has_fail else "warn",
                 "span": _redacted_span(text, match.start(), match.end()),
+                "decoded_severity": "fail" if decoded_has_fail else "warn",
             })
     return out
 
@@ -103,7 +105,9 @@ def scan_privacy(text: str) -> dict:
     fail = _findings(text or "", _SECRET_PATTERNS, "fail")
     warn = _findings(text or "", _WARN_PATTERNS, "warn")
     warn += _findings(text or "", _INJECTION_PATTERNS, "warn")
-    warn += _derived_findings(text or "")
+    derived = _derived_findings(text or "")
+    fail += [item for item in derived if item.get("severity") == "fail"]
+    warn += [item for item in derived if item.get("severity") != "fail"]
     findings = fail + warn
     status = "fail" if fail else "warn" if warn else "pass"
     return {"status": status, "findings": findings}

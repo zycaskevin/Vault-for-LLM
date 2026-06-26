@@ -58,7 +58,7 @@ Vault-for-LLM 可能不是第一個該拿起來的工具。
 最推薦的方式，是直接把這段交給能執行本機指令的 Agent：
 
 ```text
-幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.7.10。
+幫這個專案安裝 Vault-for-LLM。使用 vault-for-llm[mcp]==0.7.12。
 先問我要 shared、private、domain-specific 還是 temporary vault。
 詢問穩定的 project directory，並為長期任務產生 stable venv script。
 逐項詢問 MCP、semantic search、Supabase、Obsidian import、Headroom 壓縮、
@@ -72,7 +72,7 @@ Agent 會使用安裝精靈：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.7.10"
+pip install "vault-for-llm[mcp]==0.7.12"
 
 vault setup-agent
 ```
@@ -138,7 +138,7 @@ propose smoke test 再用 `vault remember` 驗證 candidate-first 流程。
 ### 手動快速開始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.7.10"
+pip install "vault-for-llm[mcp]==0.7.12"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -246,7 +246,10 @@ pressure 與 protection hints。這個分數只用來排序和輔助審查，不
 ```bash
 vault memory temporal status
 vault memory temporal list --state past
+vault search "office location" --exclude-expired
 ```
+
+如果記憶有時效欄位，搜尋結果會帶 `temporal_state`，讓 agent 在回答前知道這是目前事實、過去事實、未來才生效，或沒有時效限制。預設保留過去事實供稽核與追溯；需要只看目前有效事實時，再使用 `--exclude-expired`。
 
 ```bash
 vault usage stats
@@ -433,6 +436,11 @@ MCP 的 review / maintenance profile 會提供 `vault_memory_pipeline`、
 `vault_memory_temporal_status`、`vault_memory_reflection`；`core` profile
 保持不變，避免日常啟動時工具 schema 變胖。
 
+如果要讓本機 MCP 身份更嚴格，可以設定 `VAULT_MCP_REQUIRE_AGENT_SIGNATURE=1`，
+並提供 `VAULT_MCP_AGENT_SECRET` 或 `VAULT_MCP_AGENT_SECRET_<AGENT>`。已簽名的
+agent 需要送出 `agent_id` 與 HMAC-SHA256 `agent_signature`；未開啟強制模式時，
+舊版 client 仍可相容使用。
+
 自動化細節：[docs/automation.md](docs/automation.md)。
 
 ## 記憶整理 Agent
@@ -467,7 +475,7 @@ SQLite 仍然是 source of truth。Supabase 是可選的共享層。
 Remote reader 應該直接把搜尋結果的 `id` 傳給 map/read；它可能是整數，也可能是 Supabase UUID。
 
 ```bash
-pip install "vault-for-llm[supabase]==0.7.10"
+pip install "vault-for-llm[supabase]==0.7.12"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

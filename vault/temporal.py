@@ -107,6 +107,46 @@ def list_temporal_memories(
     }
 
 
+def annotate_temporal_rows(
+    rows: list[dict[str, Any]],
+    *,
+    as_of: str = "",
+) -> list[dict[str, Any]]:
+    """Attach ``temporal_state`` to search/result rows without mutating input rows."""
+    if not rows:
+        return []
+    copied = [dict(row) for row in rows]
+    superseded_ids = _superseded_ids(copied)
+    for row in copied:
+        row["temporal_state"] = temporal_state(row, as_of=as_of, superseded_ids=superseded_ids)
+    return copied
+
+
+def filter_temporal_rows(
+    rows: list[dict[str, Any]],
+    *,
+    include_expired: bool = True,
+    include_future: bool = True,
+    as_of: str = "",
+) -> list[dict[str, Any]]:
+    """Filter annotated rows by temporal fact-window state.
+
+    ``include_expired=True`` preserves legacy recall. Callers that want current
+    facts only can set it to false while keeping past facts auditable through
+    ``vault memory temporal list``.
+    """
+    annotated = annotate_temporal_rows(rows, as_of=as_of)
+    out: list[dict[str, Any]] = []
+    for row in annotated:
+        state = row.get("temporal_state")
+        if state == "past" and not include_expired:
+            continue
+        if state == "future" and not include_future:
+            continue
+        out.append(row)
+    return out
+
+
 def _iso_text(value: Any) -> str:
     if hasattr(value, "isoformat"):
         return value.isoformat()

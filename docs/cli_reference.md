@@ -19,6 +19,7 @@ with the daily loop in the README and only use these commands when needed.
 | `vault promote <candidate_id> --confirm` | Promote reviewed candidate memory |
 | `vault compile` | Compile `raw/` into SQLite and generated artifacts |
 | `vault search "query"` | Search the vault |
+| `vault search "query" --exclude-expired` | Search currently valid temporal facts while keeping past facts available through temporal list |
 | `vault map read <id> --lines 10-30` | Read a bounded source range for citation |
 | `vault remote smoke --agent-id remote-agent --query "deployment SOP" --json` | Verify Supabase remote reader credentials and the `vault_search_readable` RPC |
 | `vault remote doctor --agent-id remote-agent --query "deployment SOP" --json` | Diagnose the full Supabase remote reader path: search, readable-entry RPCs, Document Map, claims, content, map, and bounded read |
@@ -68,7 +69,7 @@ changed notes without duplicating unchanged ones.
 | `vault update-status --doctor --json` | Check whether the shared update notice exists, is fresh, includes every registered Agent, and shows runtime attention |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.7.10` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.7.12` | Show the same registry/update status without contacting the network |
 | `vault agent doctor --json` | Run the same shared update-distribution health check through the Agent registry namespace |
 | `vault agent startup-doctor --template-dir ./agent-install --json` | Check whether generated startup contracts include the current fleet-aware handoff order |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md` | Preview applying the generated Codex startup template into a runtime instruction file |

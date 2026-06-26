@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.10.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.12.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -84,7 +84,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.7.10"
+pip install "vault-for-llm[mcp]==0.7.12"
 
 vault setup-agent
 ```
@@ -152,7 +152,7 @@ to verify the candidate-first propose path.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.7.10"
+pip install "vault-for-llm[mcp]==0.7.12"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -268,7 +268,13 @@ means "this fact stopped being true, but keep it for history and audit." Use:
 ```bash
 vault memory temporal status
 vault memory temporal list --state past
+vault search "office location" --exclude-expired
 ```
+
+Search results include `temporal_state` when fact-window metadata exists, so an
+agent can tell current facts from historical facts before it answers. By default
+Vault keeps past facts searchable for audit; use `--exclude-expired` when a task
+needs only currently valid facts.
 
 Short-lived memories with `expires_at` can be moved to `status: archived`
 instead of deleted:
@@ -503,6 +509,11 @@ MCP review and maintenance profiles expose `vault_memory_pipeline`,
 `vault_memory_temporal_status`, and `vault_memory_reflection`; the `core`
 profile stays unchanged to keep startup tool schemas small.
 
+For stricter local MCP identity checks, set `VAULT_MCP_REQUIRE_AGENT_SIGNATURE=1`
+and provide `VAULT_MCP_AGENT_SECRET` or `VAULT_MCP_AGENT_SECRET_<AGENT>`. Signed
+agents send `agent_id` plus an HMAC-SHA256 `agent_signature`; unsigned legacy
+clients continue to work unless the require flag is enabled.
+
 Automation details: [docs/automation.md](docs/automation.md).
 
 ## Memory Maintenance Agents
@@ -540,7 +551,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.7.10"
+pip install "vault-for-llm[supabase]==0.7.12"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

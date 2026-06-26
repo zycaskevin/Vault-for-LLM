@@ -7,6 +7,9 @@ MCP tool router so new tools can reuse the same boundary consistently.
 from __future__ import annotations
 
 import os
+import hmac
+import hashlib
+import json
 import time
 from typing import Any
 
@@ -16,6 +19,7 @@ MCP_RATE_LIMIT_PER_MINUTE = 300
 MCP_RATE_LIMIT_BURST = 60
 
 _RATE_BUCKETS: dict[tuple[str, str], tuple[float, float]] = {}
+_SIGNATURE_FIELDS = {"agent_signature", "signature", "agent_secret"}
 
 
 def reset_rate_limiter() -> None:
@@ -63,6 +67,81 @@ def check_mcp_rate_limit(tool_name: str, arguments: dict[str, Any]) -> dict | No
         }
     _RATE_BUCKETS[key] = (tokens - 1.0, now)
     return None
+
+
+def _truthy_env(name: str) -> bool:
+    return str(os.environ.get(name, "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _agent_secret(agent_id: str) -> str:
+    normalized = "".join(ch if ch.isalnum() else "_" for ch in str(agent_id or "").upper()).strip("_")
+    if normalized:
+        scoped = os.environ.get(f"VAULT_MCP_AGENT_SECRET_{normalized}")
+        if scoped:
+            return scoped
+    return os.environ.get("VAULT_MCP_AGENT_SECRET", "")
+
+
+def _canonical_signed_arguments(arguments: dict[str, Any]) -> str:
+    safe_args = {
+        str(key): value
+        for key, value in (arguments or {}).items()
+        if str(key) not in _SIGNATURE_FIELDS
+    }
+    return json.dumps(safe_args, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def sign_agent_request(tool_name: str, arguments: dict[str, Any], secret: str) -> str:
+    """Return an HMAC signature for MCP agent identity checks.
+
+    This helper is deterministic so tests, adapters, and local setup scripts can
+    generate the exact value Vault expects without exposing the secret in logs.
+    """
+    payload = f"{tool_name}\n{_canonical_signed_arguments(arguments)}"
+    return hmac.new(str(secret or "").encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def check_agent_signature(tool_name: str, arguments: dict[str, Any]) -> dict | None:
+    """Optionally verify signed MCP agent identity.
+
+    Disabled by default for backwards compatibility. When
+    ``VAULT_MCP_REQUIRE_AGENT_SIGNATURE=1`` is set, every MCP call needs an
+    ``agent_id`` plus ``agent_signature``. If a caller provides a signature while
+    the gate is optional, Vault still verifies it and rejects invalid signatures.
+    """
+    arguments = arguments or {}
+    signature = str(arguments.get("agent_signature") or arguments.get("signature") or "").strip()
+    require = _truthy_env("VAULT_MCP_REQUIRE_AGENT_SIGNATURE")
+    if not require and not signature:
+        return None
+
+    agent_id = str(arguments.get("agent_id") or arguments.get("owner_agent") or "").strip().lower()
+    if not agent_id:
+        return _signature_denied(tool_name, "signed MCP calls require agent_id", agent_id)
+    secret = _agent_secret(agent_id)
+    if not secret:
+        return _signature_denied(tool_name, "no MCP agent secret configured for agent_id", agent_id)
+    expected = sign_agent_request(tool_name, arguments, secret)
+    if not signature or not hmac.compare_digest(signature, expected):
+        return _signature_denied(tool_name, "invalid MCP agent signature", agent_id)
+    return None
+
+
+def _signature_denied(tool_name: str, message: str, agent_id: str) -> dict:
+    return {
+        "error": "agent_signature_required",
+        "failure_mode": "agent_signature_required",
+        "message": message,
+        "tool": tool_name,
+        "agent_id": agent_id,
+        "next_action": {
+            "tool": tool_name,
+            "instruction": (
+                "Configure VAULT_MCP_AGENT_SECRET or VAULT_MCP_AGENT_SECRET_<AGENT>, "
+                "then sign the MCP arguments with HMAC-SHA256."
+            ),
+        },
+    }
 
 
 def _write_policy_from_arguments(arguments: dict[str, Any]) -> object:

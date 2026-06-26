@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.7.14] - 2026-06-26
+
+### Changed
+
+- Split automation policy defaults, YAML loading, mode normalization, and policy value parsing into `vault/automation_policy.py`.
+- Kept the existing `vault.automation` imports for `default_policy`, `load_policy`, `write_policy`, `DEFAULT_MODE`, and `POLICY_FILE` so external callers do not need to change.
+
+### Maintenance
+
+- Tightened the module-size baseline for `vault/automation.py` after the policy split.
+- Added a decision record and short release note for the automation policy module paydown.
+
 ## [0.7.13] - 2026-06-26
 
 ### Changed

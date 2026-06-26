@@ -16,6 +16,12 @@ from datetime import datetime, timezone
 from typing import Optional, Any
 
 from .diagnostics import embedding_stats
+from .db_fts import delete_fts_row as db_fts_delete_fts_row
+from .db_fts import init_fts_table as db_fts_init_fts_table
+from .db_fts import quote_fts_token as db_fts_quote_fts_token
+from .db_fts import rebuild_fts_index_if_empty as db_fts_rebuild_fts_index_if_empty
+from .db_fts import search_fts_keyword as db_fts_search_fts_keyword
+from .db_fts import sync_fts_row as db_fts_sync_fts_row
 from .db_graph import add_edge as db_graph_add_edge
 from .db_graph import add_entity as db_graph_add_entity
 from .db_graph import delete_edge as db_graph_delete_edge
@@ -693,71 +699,23 @@ class VaultDB:
 
     def _init_fts_table(self) -> None:
         """Create and backfill the optional FTS5 keyword index."""
-        self._fts_available = False
-        try:
-            self.conn.execute(
-                """CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
-                    title,
-                    content_raw,
-                    content_aaak,
-                    tags,
-                    category,
-                    tokenize='unicode61'
-                )"""
-            )
-            self._fts_available = True
-            self._rebuild_fts_index_if_empty()
-        except sqlite3.OperationalError:
-            self._fts_available = False
+        self._fts_available = db_fts_init_fts_table(self.conn)
 
     def _rebuild_fts_index_if_empty(self) -> None:
         """Backfill FTS rows for existing databases without rebuilding every connect."""
-        if not self._fts_available:
-            return
-        row = self.conn.execute("SELECT count(*) AS count FROM knowledge_fts").fetchone()
-        if row and int(row["count"]) > 0:
-            return
-        self.conn.execute(
-            """INSERT INTO knowledge_fts(rowid, title, content_raw, content_aaak, tags, category)
-               SELECT id, title, content_raw, content_aaak, tags, category FROM knowledge"""
-        )
+        db_fts_rebuild_fts_index_if_empty(self.conn, fts_available=self._fts_available)
 
     def _sync_fts_row(self, knowledge_id: int) -> None:
         """Synchronize one knowledge row into the optional FTS5 index."""
-        if not self._fts_available:
-            return
-        row = self.conn.execute(
-            "SELECT id, title, content_raw, content_aaak, tags, category FROM knowledge WHERE id=?",
-            (knowledge_id,),
-        ).fetchone()
-        if not row:
-            return
-        self.conn.execute("DELETE FROM knowledge_fts WHERE rowid=?", (knowledge_id,))
-        self.conn.execute(
-            """INSERT INTO knowledge_fts(rowid, title, content_raw, content_aaak, tags, category)
-               VALUES(?,?,?,?,?,?)""",
-            (
-                row["id"],
-                row["title"],
-                row["content_raw"],
-                row["content_aaak"],
-                row["tags"],
-                row["category"],
-            ),
-        )
+        db_fts_sync_fts_row(self.conn, knowledge_id, fts_available=self._fts_available)
 
     def _delete_fts_row(self, knowledge_id: int) -> None:
         """Remove one knowledge row from the optional FTS5 index."""
-        if self._fts_available:
-            self.conn.execute("DELETE FROM knowledge_fts WHERE rowid=?", (knowledge_id,))
+        db_fts_delete_fts_row(self.conn, knowledge_id, fts_available=self._fts_available)
 
     @staticmethod
     def _quote_fts_token(token: str) -> str:
-        # 防範超長 token 導致 FTS5 解析問題
-        if len(token) > 100:
-            token = token[:100]
-        # 雙引號包裹 + 轉義雙引號，確保作為字面量處理
-        return '"' + token.replace('"', '""') + '"'
+        return db_fts_quote_fts_token(token)
 
     def search_fts_keyword(
         self,
@@ -768,39 +726,15 @@ class VaultDB:
         category: Optional[str] = None,
     ) -> list[dict]:
         """Keyword search using optional FTS5 + BM25. Raises if unavailable/bad query."""
-        if not self._fts_available:
-            raise RuntimeError("全文搜尋功能未啟用")
-        # 安全上限：FTS5 查詢術語數量限制，避免過多 OR 術語導致性能問題
-        MAX_FTS_TERMS = 50
-        filtered_terms = [term for term in terms if term]
-        if len(filtered_terms) > MAX_FTS_TERMS:
-            filtered_terms = filtered_terms[:MAX_FTS_TERMS]
-        match_query = " OR ".join(self._quote_fts_token(term) for term in filtered_terms)
-        if not match_query:
-            return []
-
-        filters = ["k.trust >= ?"]
-        params: list = [match_query, min_trust]
-        if layer:
-            filters.append("k.layer=?")
-            params.append(layer)
-        if category:
-            filters.append("k.category=?")
-            params.append(category)
-        where = " AND ".join(filters)
-        params.append(limit)
-
-        rows = self.conn.execute(
-            f"""SELECT k.*, bm25(knowledge_fts) AS _bm25
-                FROM knowledge_fts
-                JOIN knowledge k ON k.id = knowledge_fts.rowid
-               WHERE knowledge_fts MATCH ? AND {where}
-                 AND COALESCE(k.status, 'active') != 'archived'
-               ORDER BY _bm25 ASC, k.trust DESC
-               LIMIT ?""",
-            params,
-        ).fetchall()
-        return [dict(row) for row in rows]
+        return db_fts_search_fts_keyword(
+            self.conn,
+            fts_available=self._fts_available,
+            terms=terms,
+            limit=limit,
+            min_trust=min_trust,
+            layer=layer,
+            category=category,
+        )
 
     def _init_vec_table(self):
         """建立 sqlite-vec 向量虛擬表。"""

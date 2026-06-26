@@ -4,7 +4,7 @@
     "vault/agent_setup.py": 1688,
     "vault/automation.py": 2376,
     "vault/cli.py": 3277,
-    "vault/db.py": 2080,
+    "vault/db.py": 1792,
     "vault/mcp.py": 1475,
     "vault/search.py": 2569
   }

@@ -16,6 +16,14 @@ from datetime import datetime, timezone
 from typing import Optional, Any
 
 from .diagnostics import embedding_stats
+from .db_graph import add_edge as db_graph_add_edge
+from .db_graph import add_entity as db_graph_add_entity
+from .db_graph import delete_edge as db_graph_delete_edge
+from .db_graph import get_edges as db_graph_get_edges
+from .db_graph import get_entities_for_knowledge as db_graph_get_entities_for_knowledge
+from .db_graph import get_knowledge_for_entity as db_graph_get_knowledge_for_entity
+from .db_graph import get_neighbors as db_graph_get_neighbors
+from .db_graph import link_entity_knowledge as db_graph_link_entity_knowledge
 from .db_lifecycle import archive_expired_knowledge as db_lifecycle_archive_expired_knowledge
 from .db_lifecycle import cold_store_expired_knowledge as db_lifecycle_cold_store_expired_knowledge
 from .db_lifecycle import cold_store_preview_row as db_lifecycle_cold_store_preview_row
@@ -1194,26 +1202,17 @@ class VaultDB:
         auto_inferred: bool = False,
     ) -> int:
         """新增一條邊，回傳 edge id。"""
-        now = datetime.now(timezone.utc).isoformat()
-        # 避免重複（同方向同關係）
-        existing = self.conn.execute(
-            "SELECT id FROM edges WHERE source_id=? AND target_id=? AND relation=?",
-            (source_id, target_id, relation),
-        ).fetchone()
-        if existing:
-            return existing[0]
-        cursor = self.conn.execute(
-            "INSERT INTO edges(source_id, target_id, relation, weight, auto_inferred, created_at) "
-            "VALUES(?,?,?,?,?,?)",
-            (source_id, target_id, relation, weight, int(auto_inferred), now),
+        return db_graph_add_edge(
+            self.conn,
+            source_id,
+            target_id,
+            relation=relation,
+            weight=weight,
+            auto_inferred=auto_inferred,
         )
-        self.conn.commit()
-        return cursor.lastrowid
 
     def delete_edge(self, edge_id: int) -> bool:
-        self.conn.execute("DELETE FROM edges WHERE id=?", (edge_id,))
-        self.conn.commit()
-        return self.conn.total_changes > 0
+        return db_graph_delete_edge(self.conn, edge_id)
 
     def get_edges(
         self,
@@ -1227,31 +1226,7 @@ class VaultDB:
         - relation: 指定關係類型（可選）
         - direction: 'outgoing', 'incoming', 'both'
         """
-        conditions = []
-        params: list = []
-
-        if node_id is not None:
-            if direction in ("outgoing", "both"):
-                conditions.append("source_id=?")
-                params.append(node_id)
-            if direction in ("incoming", "both"):
-                conditions.append("target_id=?")
-                params.append(node_id)
-            if direction == "both":
-                where = f"({' OR '.join(conditions)})"
-            else:
-                where = conditions[0] if conditions else "1=1"
-        else:
-            where = "1=1"
-
-        if relation:
-            where += " AND relation=?"
-            params.append(relation)
-
-        rows = self.conn.execute(
-            f"SELECT * FROM edges WHERE {where} ORDER BY weight DESC", params
-        ).fetchall()
-        return [dict(r) for r in rows]
+        return db_graph_get_edges(self.conn, node_id=node_id, relation=relation, direction=direction)
 
     def get_neighbors(
         self,
@@ -1270,154 +1245,33 @@ class VaultDB:
         layer: 分層過濾
         category: 分類過濾
         """
-        # 參數驗證
-        if node_id is None or not isinstance(node_id, (int, float)):
-            return []
-        node_id = int(node_id)
-
-        MAX_DEPTH = 10
-        MAX_NEIGHBORS = 200  # 最大返回鄰居數量
-        MAX_VISITED = 500    # 最大遍歷節點數，防止密集圖 DoS
-        if max_depth > MAX_DEPTH:
-            max_depth = MAX_DEPTH
-        if max_depth < 0:
-            max_depth = 0
-
-        # min_weight 與 min_trust 範圍保護
-        if min_weight < 0:
-            min_weight = 0.0
-        if min_trust < 0:
-            min_trust = 0.0
-        if min_trust > 1:
-            min_trust = 1.0
-
-        # 是否需要權限過濾
-        need_perm_check = min_trust > 0.0 or layer is not None or category is not None
-
-        visited = {node_id}
-        frontier = {node_id}
-        # 存儲所有發現的鄰居及其屬性（id -> {distance, relation, weight}）
-        all_neighbors: dict[int, dict] = {}
-
-        for depth in range(1, max_depth + 1):
-            next_frontier = set()
-            # 收集本層所有原始鄰居（未經權限檢查
-            layer_neighbors: dict[int, dict] = {}
-
-            for nid in frontier:
-                if len(visited) >= MAX_VISITED:
-                    break
-                rows = self.conn.execute(
-                    "SELECT source_id, target_id, relation, weight FROM edges "
-                    "WHERE (source_id=? OR target_id=?) AND weight >= ?",
-                    (nid, nid, min_weight),
-                ).fetchall()
-                for row in rows:
-                    if len(visited) >= MAX_VISITED:
-                        break
-                    neighbor = row["target_id"] if row["source_id"] == nid else row["source_id"]
-                    if neighbor not in visited and neighbor not in layer_neighbors:
-                        layer_neighbors[neighbor] = {
-                            "id": neighbor,
-                            "distance": depth,
-                            "relation": row["relation"],
-                            "weight": row["weight"],
-                        }
-
-            # 批量權限檢查（SQL 層級過濾，緩解側信道風險）
-            if need_perm_check and layer_neighbors:
-                neighbor_ids = list(layer_neighbors.keys())
-                placeholders = ",".join("?" * len(neighbor_ids))
-
-                where_conditions = [f"id IN ({placeholders})", "trust >= ?"]
-                params: list = neighbor_ids + [min_trust]
-
-                if layer is not None:
-                    where_conditions.append("layer = ?")
-                    params.append(layer)
-                if category is not None:
-                    where_conditions.append("category = ?")
-                    params.append(category)
-
-                where_clause = " AND ".join(where_conditions)
-                sql = f"SELECT id, trust, layer, category FROM knowledge WHERE {where_clause}"
-
-                valid_rows = self.conn.execute(sql, params).fetchall()
-                valid_ids = {row["id"] for row in valid_rows}
-
-                # 只保留有權限的節點
-                for nid in valid_ids:
-                    if nid not in visited:
-                        visited.add(nid)
-                        next_frontier.add(nid)
-                        all_neighbors[nid] = layer_neighbors[nid]
-            else:
-                # 不需要權限檢查，直接加入
-                for nid, info in layer_neighbors.items():
-                    if nid not in visited:
-                        visited.add(nid)
-                        next_frontier.add(nid)
-                        all_neighbors[nid] = info
-
-            if len(visited) >= MAX_VISITED:
-                break
-            frontier = next_frontier
-            if not frontier:
-                break
-
-        # 返回結果
-        results = list(all_neighbors.values())[:MAX_NEIGHBORS]
-        return results
+        return db_graph_get_neighbors(
+            self.conn,
+            node_id,
+            max_depth=max_depth,
+            min_weight=min_weight,
+            min_trust=min_trust,
+            layer=layer,
+            category=category,
+        )
 
     # ── 實體操作 ────────────────────────────────────────────
 
     def add_entity(self, name: str, entity_type: str = "concept") -> int:
         """新增實體，回傳 entity id（已存在則回傳現有 id）。"""
-        existing = self.conn.execute(
-            "SELECT id FROM entities WHERE name=?", (name,)
-        ).fetchone()
-        if existing:
-            return existing[0]
-        now = datetime.now(timezone.utc).isoformat()
-        cursor = self.conn.execute(
-            "INSERT INTO entities(name, entity_type, created_at) VALUES(?,?,?)",
-            (name, entity_type, now),
-        )
-        self.conn.commit()
-        return cursor.lastrowid
+        return db_graph_add_entity(self.conn, name, entity_type=entity_type)
 
     def link_entity_knowledge(self, entity_id: int, knowledge_id: int):
         """連結實體和知識條目。"""
-        existing = self.conn.execute(
-            "SELECT id FROM entity_knowledge WHERE entity_id=? AND knowledge_id=?",
-            (entity_id, knowledge_id),
-        ).fetchone()
-        if not existing:
-            self.conn.execute(
-                "INSERT INTO entity_knowledge(entity_id, knowledge_id) VALUES(?,?)",
-                (entity_id, knowledge_id),
-            )
-            self.conn.commit()
+        db_graph_link_entity_knowledge(self.conn, entity_id, knowledge_id)
 
     def get_entities_for_knowledge(self, knowledge_id: int) -> list[dict]:
         """取得知識條目關聯的所有實體。"""
-        rows = self.conn.execute(
-            "SELECT e.* FROM entities e "
-            "JOIN entity_knowledge ek ON e.id = ek.entity_id "
-            "WHERE ek.knowledge_id=?",
-            (knowledge_id,),
-        ).fetchall()
-        return [dict(r) for r in rows]
+        return db_graph_get_entities_for_knowledge(self.conn, knowledge_id)
 
     def get_knowledge_for_entity(self, entity_name: str) -> list[int]:
         """取得實體關聯的所有知識條目 ID（用於圖譜擴展搜尋）。"""
-        rows = self.conn.execute(
-            "SELECT ek.knowledge_id FROM entities e "
-            "JOIN entity_knowledge ek ON e.id = ek.entity_id "
-            "WHERE e.name=?",
-            (entity_name,),
-        ).fetchall()
-        return [r[0] for r in rows]
+        return db_graph_get_knowledge_for_entity(self.conn, entity_name)
 
     # ── 收斂驗證 ──────────────────────────────────────────
 

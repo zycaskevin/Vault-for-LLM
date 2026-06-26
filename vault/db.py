@@ -30,6 +30,13 @@ from .db_graph import get_entities_for_knowledge as db_graph_get_entities_for_kn
 from .db_graph import get_knowledge_for_entity as db_graph_get_knowledge_for_entity
 from .db_graph import get_neighbors as db_graph_get_neighbors
 from .db_graph import link_entity_knowledge as db_graph_link_entity_knowledge
+from .db_knowledge import add_knowledge as db_knowledge_add_knowledge
+from .db_knowledge import delete_knowledge as db_knowledge_delete_knowledge
+from .db_knowledge import escape_like_pattern as db_knowledge_escape_like_pattern
+from .db_knowledge import get_knowledge as db_knowledge_get_knowledge
+from .db_knowledge import list_knowledge as db_knowledge_list_knowledge
+from .db_knowledge import search_keyword as db_knowledge_search_keyword
+from .db_knowledge import update_knowledge as db_knowledge_update_knowledge
 from .db_lifecycle import archive_expired_knowledge as db_lifecycle_archive_expired_knowledge
 from .db_lifecycle import cold_store_expired_knowledge as db_lifecycle_cold_store_expired_knowledge
 from .db_lifecycle import cold_store_preview_row as db_lifecycle_cold_store_preview_row
@@ -86,7 +93,7 @@ class VaultDB:
     @staticmethod
     def _escape_like_pattern(term: str) -> str:
         """轉義 LIKE 模式中的特殊字符，防止通配符注入。"""
-        return term.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+        return db_knowledge_escape_like_pattern(term)
 
     def __init__(self, db_path: str | Path = "vault.db"):
         self.db_path = Path(db_path)
@@ -782,9 +789,18 @@ class VaultDB:
         supersedes_id: int | str | None = None,
     ) -> int:
         """新增一筆知識，回傳 id。"""
-        now = datetime.now(timezone.utc).isoformat()
-        content_hash = hashlib.sha256(content_raw.encode()).hexdigest()[:16]
-        governance = normalize_governance_metadata(
+        return db_knowledge_add_knowledge(
+            self.conn,
+            sync_fts_row=self._sync_fts_row,
+            title=title,
+            content_raw=content_raw,
+            layer=layer,
+            category=category,
+            tags=tags,
+            trust=trust,
+            source=source,
+            content_aaak=content_aaak,
+            summary=summary,
             scope=scope,
             sensitivity=sensitivity,
             owner_agent=owner_agent,
@@ -796,73 +812,26 @@ class VaultDB:
             supersedes_id=supersedes_id,
         )
 
-        cursor = self.conn.execute(
-            """INSERT INTO knowledge
-               (title, layer, category, tags, trust,
-                content_raw, content_aaak, content_hash, source,
-                summary, summary_generated_at,
-                scope, sensitivity, owner_agent, allowed_agents, memory_type, expires_at,
-                valid_from, valid_until, supersedes_id,
-                created_at, updated_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (title, layer, category, tags, trust,
-             content_raw, content_aaak, content_hash, source,
-             summary, now if summary else '',
-             governance["scope"], governance["sensitivity"], governance["owner_agent"],
-             governance["allowed_agents"], governance["memory_type"], governance["expires_at"],
-             governance["valid_from"], governance["valid_until"], governance["supersedes_id"],
-             now, now),
-        )
-        knowledge_id = int(cursor.lastrowid)
-        self._sync_fts_row(knowledge_id)
-        self.conn.commit()
-        return knowledge_id
-
     def update_knowledge(self, id: int, **fields) -> bool:
         """更新知識欄位。"""
-        if not fields:
-            return False
-        invalid = set(fields) - self.KNOWLEDGE_UPDATE_COLUMNS
-        if invalid:
-            raise ValueError(f"invalid knowledge update field(s): {sorted(invalid)}")
-        fields["updated_at"] = datetime.now(timezone.utc).isoformat()
-        # 如果更新了 content_raw，自動重算 hash
-        if "content_raw" in fields:
-            fields["content_hash"] = hashlib.sha256(
-                fields["content_raw"].encode()
-            ).hexdigest()[:16]
-
-        sets = ", ".join(f"{k}=?" for k in fields)
-        vals = list(fields.values()) + [id]
-        self.conn.execute(f"UPDATE knowledge SET {sets} WHERE id=?", vals)
-        self._sync_fts_row(id)
-        self.conn.commit()
-        return True
+        return db_knowledge_update_knowledge(
+            self.conn,
+            id,
+            self.KNOWLEDGE_UPDATE_COLUMNS,
+            sync_fts_row=self._sync_fts_row,
+            **fields,
+        )
 
     def get_knowledge(self, id: int) -> Optional[dict]:
-        row = self.conn.execute(
-            "SELECT * FROM knowledge WHERE id=?", (id,)
-        ).fetchone()
-        return dict(row) if row else None
+        return db_knowledge_get_knowledge(self.conn, id)
 
     def delete_knowledge(self, id: int) -> bool:
-        exists = self.get_knowledge(id) is not None
-        if not exists:
-            return False
-        self.conn.execute("DELETE FROM semantic_vectors WHERE knowledge_id=?", (id,))
-        self.conn.execute("DELETE FROM knowledge_claims WHERE knowledge_id=?", (id,))
-        self.conn.execute("DELETE FROM knowledge_nodes WHERE knowledge_id=?", (id,))
-        self.conn.execute("DELETE FROM lint_cache WHERE knowledge_id=?", (id,))
-        self.conn.execute("DELETE FROM entity_knowledge WHERE knowledge_id=?", (id,))
-        self.conn.execute("DELETE FROM edges WHERE source_id=? OR target_id=?", (id, id))
-        self._delete_fts_row(id)
-        if self._vec_available:
-            self.conn.execute(
-                "DELETE FROM knowledge_vec WHERE knowledge_id=?", (id,)
-            )
-        self.conn.execute("DELETE FROM knowledge WHERE id=?", (id,))
-        self.conn.commit()
-        return True
+        return db_knowledge_delete_knowledge(
+            self.conn,
+            id,
+            delete_fts_row=self._delete_fts_row,
+            vec_available=self._vec_available,
+        )
 
     def list_knowledge(
         self,
@@ -873,23 +842,14 @@ class VaultDB:
         include_archived: bool = False,
     ) -> list[dict]:
         """列出知識，支援分層/分類/信任篩選。"""
-        query = "SELECT * FROM knowledge WHERE trust >= ?"
-        params: list = [min_trust]
-        if not include_archived:
-            query += " AND COALESCE(status, 'active') != 'archived'"
-
-        if layer:
-            query += " AND layer=?"
-            params.append(layer)
-        if category:
-            query += " AND category=?"
-            params.append(category)
-
-        query += " ORDER BY trust DESC, updated_at DESC LIMIT ?"
-        params.append(limit)
-
-        rows = self.conn.execute(query, params).fetchall()
-        return [dict(r) for r in rows]
+        return db_knowledge_list_knowledge(
+            self.conn,
+            layer=layer,
+            category=category,
+            min_trust=min_trust,
+            limit=limit,
+            include_archived=include_archived,
+        )
 
     @staticmethod
     def _parse_timestamp(value: str) -> datetime | None:
@@ -1086,28 +1046,7 @@ class VaultDB:
         min_trust: float = 0.0,
     ) -> list[dict]:
         """純關鍵字搜尋（LIKE匹配），降級方案。"""
-        # None 查詢直接返回空結果
-        if query is None:
-            return []
-
-        escaped = self._escape_like_pattern(query)
-        pattern = f"%{escaped}%"
-
-        sql = """
-            SELECT *, 0.0 AS _score
-            FROM knowledge
-            WHERE trust >= ?
-              AND COALESCE(status, 'active') != 'archived'
-              AND (title LIKE ? ESCAPE '\\' OR content_raw LIKE ? ESCAPE '\\'
-                   OR content_aaak LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\'
-                   OR category LIKE ? ESCAPE '\\')
-            ORDER BY trust DESC
-            LIMIT ?
-        """
-        rows = self.conn.execute(
-            sql, (min_trust, pattern, pattern, pattern, pattern, pattern, limit)
-        ).fetchall()
-        return [dict(r) for r in rows]
+        return db_knowledge_search_keyword(self.conn, query=query, limit=limit, min_trust=min_trust)
 
     # ── Lint 快取 ───────────────────────────────────────────
 

@@ -49,6 +49,11 @@ from vault.agent_setup_templates import (
     write_sync_templates,
 )
 from vault.agent_setup_startup import (
+    write_agent_adapter_startup_templates,
+    write_mcp_startup_guide,
+    write_update_status_templates,
+)
+from vault.agent_setup_runtime import (
     EXPECTED_HANDOFF_READ_ORDER,
     STARTUP_DOCTOR_JSON_FILES,
     STARTUP_DOCTOR_README_FILES,
@@ -61,9 +66,6 @@ from vault.agent_setup_startup import (
     _startup_doctor_json,
     install_runtime_template,
     startup_contract_doctor,
-    write_agent_adapter_startup_templates,
-    write_mcp_startup_guide,
-    write_update_status_templates,
 )
 from vault.agent_setup_supabase import (
     SUPABASE_READ_POLICY_SQL,

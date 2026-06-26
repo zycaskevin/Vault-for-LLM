@@ -203,14 +203,24 @@ For MCP-capable runtimes:
 vault-mcp --project-dir ~/Vaults/my-project --tool-profile core
 ```
 
-Recommended core tools:
+Start daily agents with `core`. It exposes only the tools needed for normal
+work: `vault_search`, `vault_read_range`, `vault_memory_propose`,
+`vault_stats`, `vault_update_status`, `vault_automation_activity`,
+`vault_automation_brief`, and `vault_automation_handoff`.
 
-- `vault_search`
-- `vault_read_range`
-- `vault_memory_propose`
-- `vault_stats`
-- `vault_update_status`
-- `vault_automation_handoff`
+Use larger profiles only when the session needs them:
+
+| Profile | Use when |
+|---|---|
+| `core` | Daily agent work: search, bounded reads, candidate memory, status, brief, handoff |
+| `review` | Session capture, candidate review, explicit promotion, and dream review |
+| `remote` | Reading a Supabase-synced cross-host memory view |
+| `maintenance` | Scheduled or operator-led import, freshness, convergence, and curation |
+| `full` | Backward compatibility or a trusted local power-user setup |
+
+`full` is kept for compatibility, but most agents should not receive every MCP
+tool. Large tool lists spend context on schemas and increase the chance that an
+agent chooses a maintenance or write tool when a read-only path was enough.
 
 Reviewer or maintenance agents can use `vault_capture_discover` and
 `vault_capture_session` from the MCP `review` profile to run the same

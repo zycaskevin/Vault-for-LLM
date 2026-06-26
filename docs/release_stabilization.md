@@ -36,25 +36,49 @@ twine check dist/*
 The release should be checked from a clean environment, not only from the source
 checkout.
 
-Minimum smoke:
+Run the install smoke matrix after building the wheel:
 
 ```bash
-vault --version
-vault init
-vault add "Smoke lesson" --content "Search should find this lesson."
-vault search "Smoke lesson"
-vault map build
-vault map read 1 --lines 1-20
-vault remember "Smoke candidate" --content "Candidate-first write path works." --reason "Verify review queue."
-vault automation brief
-vault automation cycle --write-workspace
-vault-mcp --project-dir . --tool-profile core
+python -m build
+python scripts/install_smoke_matrix.py --mode both --wheel dist/vault_for_llm-*.whl
 ```
 
-The MCP step should include an actual client call to:
+The matrix checks both source-checkout and clean wheel-install behavior. It
+creates temporary projects and runs:
+
+- `vault --version`
+- `vault init`
+- `vault add`
+- `vault search`
+- `vault list`
+- `vault map build`
+- `vault map read`
+- `vault remember`
+- `vault candidates`
+- `vault capture session`
+- `vault automation brief`
+- `vault automation cycle --write-workspace`
+- `vault automation handoff`
+- `vault db status`
+- `vault usage stats --json`
+- `vault-mcp --tool-profile core`
+
+The MCP step includes actual client calls to:
 
 - `vault_search`
 - `vault_read_range`
+
+Use `--mode source` for fast PR validation and `--mode wheel` when checking only
+the built package.
+
+If the current Python cannot create a venv on the release machine, pass an
+explicit interpreter:
+
+```bash
+python scripts/install_smoke_matrix.py --mode wheel \
+  --wheel dist/vault_for_llm-*.whl \
+  --venv-python python3.11
+```
 
 ## Optional Advanced Smokes
 
@@ -72,4 +96,3 @@ Do not release just because a maintenance PR merged.
 
 Release when the batch is meaningful to external users, fixes a security or
 privacy issue, or changes install/runtime behavior in a way users should receive.
-

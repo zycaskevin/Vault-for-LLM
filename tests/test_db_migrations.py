@@ -5,9 +5,18 @@ import sys
 from pathlib import Path
 
 from vault.db import VaultDB
+from vault import db_schema
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_vaultdb_schema_constants_match_schema_module():
+    assert VaultDB.SCHEMA_VERSION == db_schema.SCHEMA_VERSION
+    assert VaultDB.MIGRATIONS == db_schema.MIGRATIONS
+    assert VaultDB.KNOWLEDGE_UPDATE_COLUMNS == db_schema.KNOWLEDGE_UPDATE_COLUMNS
+    assert VaultDB.MEMORY_CANDIDATE_UPDATE_COLUMNS == db_schema.MEMORY_CANDIDATE_UPDATE_COLUMNS
+    assert VaultDB.SKILL_UPDATE_COLUMNS == db_schema.SKILL_UPDATE_COLUMNS
 
 
 def test_fresh_db_status_is_current(tmp_path):

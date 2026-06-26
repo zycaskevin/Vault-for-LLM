@@ -18,6 +18,13 @@ from datetime import datetime, timezone
 from typing import Optional, Any
 
 from .diagnostics import embedding_stats
+from .db_schema import (
+    KNOWLEDGE_UPDATE_COLUMNS as DB_KNOWLEDGE_UPDATE_COLUMNS,
+    MEMORY_CANDIDATE_UPDATE_COLUMNS as DB_MEMORY_CANDIDATE_UPDATE_COLUMNS,
+    MIGRATIONS as DB_MIGRATIONS,
+    SCHEMA_VERSION as DB_SCHEMA_VERSION,
+    SKILL_UPDATE_COLUMNS as DB_SKILL_UPDATE_COLUMNS,
+)
 from .governance import normalize_allowed_agents, normalize_governance_metadata
 from .importance import compute_memory_importance
 
@@ -33,94 +40,11 @@ except ImportError:
 class VaultDB:
     """Vault-for-LLM 資料庫層。"""
 
-    SCHEMA_VERSION = 11
-    KNOWLEDGE_UPDATE_COLUMNS = {
-        "title",
-        "layer",
-        "category",
-        "tags",
-        "trust",
-        "content_raw",
-        "content_aaak",
-        "content_hash",
-        "source",
-        "convergence_status",
-        "convergence_score",
-        "convergence_checked_at",
-        "last_verified",
-        "freshness",
-        "summary",
-        "summary_generated_at",
-        "scope",
-        "sensitivity",
-        "owner_agent",
-        "allowed_agents",
-        "memory_type",
-        "expires_at",
-        "valid_from",
-        "valid_until",
-        "supersedes_id",
-        "status",
-        "archived_at",
-        "last_accessed_at",
-        "access_count",
-        "citation_count",
-        "updated_at",
-    }
-    MEMORY_CANDIDATE_UPDATE_COLUMNS = {
-        "updated_at",
-        "title",
-        "content",
-        "layer",
-        "category",
-        "tags",
-        "trust",
-        "source",
-        "source_ref",
-        "reason",
-        "status",
-        "privacy_status",
-        "duplicate_status",
-        "quality_status",
-        "gate_payload_json",
-        "promoted_knowledge_id",
-        "scope",
-        "sensitivity",
-        "owner_agent",
-        "allowed_agents",
-        "memory_type",
-        "expires_at",
-        "valid_from",
-        "valid_until",
-        "supersedes_id",
-    }
-    SKILL_UPDATE_COLUMNS = {
-        "name",
-        "version",
-        "agent_source",
-        "category",
-        "capabilities",
-        "dependencies",
-        "trust",
-        "content_raw",
-        "content_hash",
-        "description",
-        "updated_at",
-        "last_synced",
-    }
-    MIGRATIONS = {
-        1: "initial_core_tables",
-        2: "graph_and_skill_tables",
-        3: "convergence_freshness_columns",
-        4: "knowledge_summary_columns",
-        5: "document_map_semantic_tables",
-        6: "memory_candidate_table",
-        7: "memory_candidate_quality_status",
-        8: "governance_metadata_columns",
-        9: "memory_usage_and_archive_columns",
-        10: "memory_feedback_events",
-        11: "temporal_validity_columns",
-    }
+    SCHEMA_VERSION = DB_SCHEMA_VERSION
+    KNOWLEDGE_UPDATE_COLUMNS = DB_KNOWLEDGE_UPDATE_COLUMNS
+    MEMORY_CANDIDATE_UPDATE_COLUMNS = DB_MEMORY_CANDIDATE_UPDATE_COLUMNS
+    SKILL_UPDATE_COLUMNS = DB_SKILL_UPDATE_COLUMNS
+    MIGRATIONS = DB_MIGRATIONS
 
     @staticmethod
     def _escape_like_pattern(term: str) -> str:

@@ -623,6 +623,12 @@ def test_automation_brief_combines_learning_weights_forgetting_and_review(tmp_pa
     assert payload["forgetting_strategy"]["used_expired_count"] == 1
     assert payload["forgetting_strategy"]["archiveable_count"] == 1
     assert payload["human_review_5_percent"]["items"]
+    review_ids = [
+        (item["kind"], item["id"])
+        for item in payload["human_review_5_percent"]["items"]
+        if item.get("id")
+    ]
+    assert len(review_ids) == len(set(review_ids))
     assert payload["brief_path"] == "reports/automation/brief-latest.json"
     assert payload["brief_markdown_path"] == "reports/automation/brief-latest.md"
     assert (project / payload["brief_path"]).exists()

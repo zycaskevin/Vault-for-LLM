@@ -389,9 +389,20 @@ def _fleet_health_next_action(status: str) -> str:
 def _brief_human_review(inbox: dict[str, Any], activity: dict[str, Any], *, limit: int = 5) -> dict[str, Any]:
     max_items = max(1, min(int(limit or 5), 20))
     items = []
+    seen: set[tuple[str, str]] = set()
+
+    def add_item(item: dict[str, Any]) -> None:
+        kind = str(item.get("kind") or "")
+        item_id = str(item.get("id") or "")
+        dedupe_key = (kind, item_id) if item_id else (kind, str(item))
+        if dedupe_key in seen:
+            return
+        seen.add(dedupe_key)
+        items.append(item)
+
     digest = inbox.get("review_digest") or {}
     for row in digest.get("items") or []:
-        items.append(
+        add_item(
             {
                 "kind": row.get("kind", ""),
                 "id": row.get("id", ""),
@@ -410,7 +421,7 @@ def _brief_human_review(inbox: dict[str, Any], activity: dict[str, Any], *, limi
             "principle": "Show the smallest set of decisions a human should inspect; keep everything else agent-handled.",
         }
     for row in inbox.get("review_queue") or []:
-        items.append(
+        add_item(
             {
                 "kind": "candidate_review",
                 "id": row.get("id", ""),
@@ -426,7 +437,7 @@ def _brief_human_review(inbox: dict[str, Any], activity: dict[str, Any], *, limi
         for event in activity.get("events") or []:
             if event.get("kind") not in {"auto_promote_skipped", "archive_skipped"}:
                 continue
-            items.append(
+            add_item(
                 {
                     "kind": event.get("kind", ""),
                     "id": event.get("candidate_id") or event.get("knowledge_id") or "",

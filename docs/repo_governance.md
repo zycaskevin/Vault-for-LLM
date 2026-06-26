@@ -154,7 +154,17 @@ Run locally:
 python scripts/module_size_gate.py
 ```
 
-## 6. Design principle
+## 6. Stabilization-before-release rule
+
+Maintenance work should land through focused PRs before the next external
+release. Do not publish a new package version for every module split, README
+cleanup, or internal validation improvement.
+
+Use [Release Stabilization Checklist](release_stabilization.md) before preparing
+the next release. The current v0.7 stabilization rule is recorded in
+[`docs/decision_records/2026-06-26-v0.7-stabilization-before-release.md`](decision_records/2026-06-26-v0.7-stabilization-before-release.md).
+
+## 7. Design principle
 
 The tools are intentionally conservative:
 

@@ -162,6 +162,7 @@ vault compile --project-dir ~/Vaults/demo --no-embed
 vault search "cache key" --project-dir ~/Vaults/demo
 vault --project-dir ~/Vaults/demo map build
 vault --project-dir ~/Vaults/demo map read 1 --lines 1-20
+vault --project-dir ~/Vaults/demo gui
 ```
 
 `vault add` takes the note body through `--content` or `--file`. For bounded
@@ -631,6 +632,7 @@ advanced integrations are powerful, but should be enabled deliberately.
 - Agent install runbook: [docs/agent_install.md](docs/agent_install.md)
 - CLI reference: [docs/cli_reference.md](docs/cli_reference.md)
 - Agent integrations: [docs/agent_integrations.md](docs/agent_integrations.md)
+- Local GUI console: [docs/gui_console.md](docs/gui_console.md)
 - Memory automation: [docs/automation.md](docs/automation.md)
 - Automation strategy: [docs/automation_strategy.md](docs/automation_strategy.md)
 - LLM integration: [docs/llm_integration.md](docs/llm_integration.md)

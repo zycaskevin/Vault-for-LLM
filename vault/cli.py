@@ -87,6 +87,7 @@ from .cli_quality import (
     cmd_freshness,
     cmd_search_qa,
 )
+from .gui import DEFAULT_HOST, DEFAULT_PORT, cmd_gui
 
 
 # ── 專案偵測 ─────────────────────────────────────────────
@@ -174,6 +175,11 @@ def main(argv: list[str] | None = None):
     p.add_argument("--reason", required=True, help="為什麼拒絕或阻擋這個候選")
     p.add_argument("--score", type=float, default=None, help="0..1 feedback score；省略時依 outcome 使用安全預設")
     p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    p = sub.add_parser("gui", help="啟動本機唯讀 Vault Console")
+    p.add_argument("--host", default=DEFAULT_HOST, help="bind host；預設 127.0.0.1")
+    p.add_argument("--port", type=int, default=DEFAULT_PORT, help="bind port；預設 8765")
+    p.add_argument("--no-open", action="store_true", help="不要自動開啟瀏覽器")
 
     p = sub.add_parser("candidates", help="列出候選記憶（預設只列待審候選）")
     p.add_argument("--status", default="candidate", help="候選狀態，例如 candidate/promoted/rejected")
@@ -842,6 +848,7 @@ def main(argv: list[str] | None = None):
         "dedup": cmd_dedup,
         "search-qa": cmd_search_qa,
         "semantic": cmd_semantic,
+        "gui": cmd_gui,
     }
 
     try:

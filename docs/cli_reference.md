@@ -22,6 +22,7 @@ with the daily loop in the README and only use these commands when needed.
 | `vault search "query"` | Search the vault |
 | `vault search "query" --exclude-expired` | Search currently valid temporal facts while keeping past facts available through temporal list |
 | `vault map read <id> --lines 10-30` | Read a bounded source range for citation |
+| `vault gui` | Start the local read-only Vault Console |
 | `vault remote smoke --agent-id remote-agent --query "deployment SOP" --json` | Verify Supabase remote reader credentials and the `vault_search_readable` RPC |
 | `vault remote doctor --agent-id remote-agent --query "deployment SOP" --json` | Diagnose the full Supabase remote reader path: search, readable-entry RPCs, Document Map, claims, content, map, and bounded read |
 | `vault remote search "query" --agent-id remote-agent --json` | Search the Supabase read-only memory view through `vault_search_readable` |

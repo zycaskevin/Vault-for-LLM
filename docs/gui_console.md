@@ -2,9 +2,8 @@
 
 `vault gui` starts a local, read-only browser console for one project vault.
 
-It is the first GUI slice for Vault-for-LLM. It does not replace CLI/MCP, and it
-does not mutate memory yet. Use it to inspect the memory loop before deciding
-which review action should be taken through CLI or MCP.
+It is the first GUI slice for Vault-for-LLM. It does not replace CLI/MCP. Use it
+to inspect the memory loop and handle explicit candidate review decisions.
 
 ## Start
 
@@ -24,8 +23,8 @@ vault gui --project-dir ~/Vaults/my-project --no-open --port 8765
 
 | Area | Purpose |
 |---|---|
-| Left | Project status, review queue, recent memory |
-| Center | Search results and bounded evidence reader |
+| Left | Project status, candidate review queue, recent memory |
+| Center | Search results, candidate review, and bounded evidence reader |
 | Right | Graph, timeline, governance, and usage metadata for the selected memory |
 
 ## API
@@ -35,6 +34,9 @@ The local server exposes read-only JSON endpoints:
 | Endpoint | Purpose |
 |---|---|
 | `/api/overview` | Stats, automation brief, review inbox, recent memory |
+| `/api/candidates` | Candidate queue without full content |
+| `/api/candidate/<id>` | Candidate metadata, gate details, and content for review |
+| `POST /api/candidate/<id>/review` | Promote, reject, or block with explicit confirmation |
 | `/api/search?q=...` | Local keyword search for memory entries |
 | `/api/entry/<id>` | Metadata, Document Map rows, claims, graph summary |
 | `/api/read?knowledge_id=1&line_start=1&line_end=40` | Bounded evidence range |
@@ -42,8 +44,13 @@ The local server exposes read-only JSON endpoints:
 ## Safety
 
 - The default host is localhost only.
-- The first GUI slice is read-only.
-- Promotion, rejection, archive, and policy edits remain CLI/MCP operations.
+- Active memory edits, archive, and policy edits remain CLI/MCP operations.
+- Candidate review actions are `POST`-only and require a confirmation token:
+  `<candidate_id>:<action>`.
+- Candidate promotion uses the existing `promote_candidate(confirm=True)` flow
+  and reruns gates before writing active knowledge.
+- Candidate rejection/blocking uses the existing review workflow and records
+  feedback for automation learning.
 - Private or restricted data should not be exposed by binding the GUI to a
   public network interface.
 
@@ -54,5 +61,4 @@ The GUI should make the automation loop easier to trust:
 - show the smallest human review surface first
 - keep bounded evidence more prominent than raw full-document dumps
 - make temporal and governance metadata visible beside each memory
-- prepare a future write-capable review flow with explicit confirmation,
-  audit, and rollback
+- keep future write-capable flows explicit, audited, and rollback-friendly

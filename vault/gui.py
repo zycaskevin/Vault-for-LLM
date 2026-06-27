@@ -13,6 +13,7 @@ import webbrowser
 from .automation import automation_brief
 from .automation_inbox import automation_inbox
 from .db import VaultDB
+from .memory import promote_candidate, review_candidate
 from .search import VaultSearch
 from .search_utils import normalize_search_limit
 
@@ -42,6 +43,10 @@ def gui_overview(project_dir: str | Path, *, limit: int = 5) -> dict[str, Any]:
             _compact_knowledge(row)
             for row in db.list_knowledge(limit=max(1, min(int(limit or 5), 20)))
         ]
+        candidates = [
+            _compact_candidate(row)
+            for row in db.list_memory_candidates(status="candidate", limit=max(1, min(int(limit or 5), 20)))
+        ]
     brief = automation_brief(project, limit=limit, review_limit=limit)
     inbox = automation_inbox(project, limit=limit, include_content=False)
     return {
@@ -50,6 +55,7 @@ def gui_overview(project_dir: str | Path, *, limit: int = 5) -> dict[str, Any]:
         "stats": stats,
         "brief": _compact_brief(brief),
         "inbox": _compact_inbox(inbox),
+        "candidates": candidates,
         "recent": recent,
     }
 
@@ -210,6 +216,86 @@ def gui_read_range(
     }
 
 
+def gui_candidates(project_dir: str | Path, *, status: str = "candidate", limit: int = 20) -> dict[str, Any]:
+    """Return reviewable memory candidates without full content."""
+    project = Path(project_dir)
+    db_path = project / "vault.db"
+    limit_i = max(1, min(int(limit or 20), 50))
+    if not db_path.exists():
+        return {"status": "blocked", "reason": "vault.db missing", "candidates": []}
+    status_filter = None if status == "all" else (status or "candidate")
+    with VaultDB(db_path) as db:
+        rows = db.list_memory_candidates(status=status_filter, limit=limit_i)
+    return {
+        "status": "ok",
+        "candidate_status": status_filter or "all",
+        "candidates": [_compact_candidate(row) for row in rows],
+    }
+
+
+def gui_candidate(project_dir: str | Path, candidate_id: str) -> dict[str, Any]:
+    """Return one memory candidate with content and gate details for review."""
+    project = Path(project_dir)
+    db_path = project / "vault.db"
+    cid = str(candidate_id or "").strip()
+    if not db_path.exists():
+        return {"status": "blocked", "reason": "vault.db missing"}
+    if not cid:
+        return {"status": "error", "error": "invalid_candidate_id"}
+    with VaultDB(db_path) as db:
+        row = db.get_memory_candidate(cid)
+    if not row:
+        return {"status": "error", "error": "not_found", "candidate_id": cid}
+    return {
+        "status": "ok",
+        "candidate": _compact_candidate(row, include_content=True, include_gates=True),
+        "confirmation": {
+            "promote": _confirmation_token(cid, "promote"),
+            "reject": _confirmation_token(cid, "reject"),
+            "block": _confirmation_token(cid, "block"),
+        },
+    }
+
+
+def gui_review_candidate(
+    project_dir: str | Path,
+    candidate_id: str,
+    *,
+    action: str,
+    reason: str = "",
+    confirm: str = "",
+) -> dict[str, Any]:
+    """Apply an explicit review action to a candidate."""
+    project = Path(project_dir)
+    db_path = project / "vault.db"
+    cid = str(candidate_id or "").strip()
+    action_i = str(action or "").strip().lower()
+    if not db_path.exists():
+        return {"status": "blocked", "reason": "vault.db missing"}
+    if action_i not in {"promote", "reject", "block"}:
+        return {"status": "error", "error": "invalid_action"}
+    expected = _confirmation_token(cid, action_i)
+    if not cid or str(confirm or "") != expected:
+        return {
+            "status": "error",
+            "error": "confirmation_required",
+            "expected_confirmation": expected,
+        }
+
+    with VaultDB(db_path) as db:
+        if action_i == "promote":
+            payload = promote_candidate(db, cid, confirm=True, project_dir=project)
+        else:
+            outcome = "rejected" if action_i == "reject" else "blocked"
+            payload = review_candidate(
+                db,
+                cid,
+                outcome=outcome,
+                reason=reason or f"GUI review marked candidate {outcome}",
+            )
+    return {"status": "ok", "action": action_i, "result": _compact_review_result(payload)}
+
+
 def run_gui(
     project_dir: str | Path,
     *,
@@ -252,6 +338,15 @@ def make_gui_handler(project_dir: Path):
             if path == "/api/overview":
                 self._send_json(gui_overview(project, limit=_int_arg(query, "limit", 5)))
                 return
+            if path == "/api/candidates":
+                self._send_json(
+                    gui_candidates(
+                        project,
+                        status=_str_arg(query, "status", "candidate"),
+                        limit=_int_arg(query, "limit", 20),
+                    )
+                )
+                return
             if path == "/api/search":
                 self._send_json(
                     gui_search(
@@ -265,6 +360,9 @@ def make_gui_handler(project_dir: Path):
             if path.startswith("/api/entry/"):
                 self._send_json(gui_entry(project, _path_int(path, "/api/entry/")))
                 return
+            if path.startswith("/api/candidate/"):
+                self._send_json(gui_candidate(project, _path_str(path, "/api/candidate/")))
+                return
             if path == "/api/read":
                 self._send_json(
                     gui_read_range(
@@ -272,6 +370,24 @@ def make_gui_handler(project_dir: Path):
                         _int_arg(query, "knowledge_id", 0),
                         line_start=_int_arg(query, "line_start", 1),
                         line_end=_int_arg(query, "line_end", 40),
+                    )
+                )
+                return
+            self._send_json({"status": "error", "error": "not_found"}, status=HTTPStatus.NOT_FOUND)
+
+        def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+            parsed = urlparse(self.path)
+            path = parsed.path
+            if path.startswith("/api/candidate/") and path.endswith("/review"):
+                candidate_id = path[len("/api/candidate/") : -len("/review")].strip("/")
+                body = self._read_json_body()
+                self._send_json(
+                    gui_review_candidate(
+                        project,
+                        candidate_id,
+                        action=str(body.get("action", "")),
+                        reason=str(body.get("reason", "")),
+                        confirm=str(body.get("confirm", "")),
                     )
                 )
                 return
@@ -297,6 +413,18 @@ def make_gui_handler(project_dir: Path):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
+
+        def _read_json_body(self) -> dict[str, Any]:
+            try:
+                length = max(0, min(int(self.headers.get("Content-Length", "0")), 16_384))
+            except (TypeError, ValueError):
+                length = 0
+            if length <= 0:
+                return {}
+            try:
+                return json.loads(self.rfile.read(length).decode("utf-8")) or {}
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                return {}
 
     return VaultGuiHandler
 
@@ -336,6 +464,63 @@ def _compact_knowledge(row: dict[str, Any]) -> dict[str, Any]:
         "_snippet": row.get("_snippet", ""),
         "usage_count": row.get("usage_count", 0),
         "last_accessed_at": row.get("last_accessed_at", ""),
+    }
+
+
+def _compact_candidate(
+    row: dict[str, Any],
+    *,
+    include_content: bool = False,
+    include_gates: bool = False,
+) -> dict[str, Any]:
+    content = row.get("content") or ""
+    item = {
+        "id": row.get("id"),
+        "title": row.get("title", ""),
+        "status": row.get("status", ""),
+        "layer": row.get("layer", ""),
+        "category": row.get("category", ""),
+        "tags": row.get("tags", ""),
+        "trust": row.get("trust", 0),
+        "scope": row.get("scope", "project"),
+        "sensitivity": row.get("sensitivity", "low"),
+        "owner_agent": row.get("owner_agent", ""),
+        "allowed_agents": row.get("allowed_agents", ""),
+        "memory_type": row.get("memory_type", ""),
+        "expires_at": row.get("expires_at", ""),
+        "valid_from": row.get("valid_from", ""),
+        "valid_until": row.get("valid_until", ""),
+        "supersedes_id": row.get("supersedes_id"),
+        "source": row.get("source", ""),
+        "source_ref": row.get("source_ref", ""),
+        "reason": row.get("reason", ""),
+        "privacy_status": row.get("privacy_status", ""),
+        "duplicate_status": row.get("duplicate_status", ""),
+        "quality_status": row.get("quality_status", ""),
+        "promoted_knowledge_id": row.get("promoted_knowledge_id"),
+        "created_at": row.get("created_at", ""),
+        "updated_at": row.get("updated_at", ""),
+        "content_length": len(content),
+        "content_preview": " ".join(content.split())[:220],
+    }
+    if include_content:
+        item["content"] = content
+    if include_gates:
+        item["gates"] = _parse_json(row.get("gate_payload_json") or "{}")
+    return item
+
+
+def _compact_review_result(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": payload.get("status"),
+        "candidate_id": payload.get("candidate_id"),
+        "knowledge_id": payload.get("knowledge_id"),
+        "outcome": payload.get("outcome"),
+        "score": payload.get("score"),
+        "reason": payload.get("reason"),
+        "raw_path": payload.get("raw_path"),
+        "gates": payload.get("gates", {}),
+        "next_action": payload.get("next_action", ""),
     }
 
 
@@ -410,6 +595,17 @@ def _usage_for(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _parse_json(raw: str) -> Any:
+    try:
+        return json.loads(raw or "{}")
+    except json.JSONDecodeError:
+        return {"raw": raw}
+
+
+def _confirmation_token(candidate_id: str, action: str) -> str:
+    return f"{candidate_id}:{action}"
+
+
 def _str_arg(query: dict[str, list[str]], name: str, default: str) -> str:
     values = query.get(name)
     return values[0] if values else default
@@ -427,6 +623,10 @@ def _path_int(path: str, prefix: str) -> int:
         return int(path[len(prefix) :].strip("/"))
     except (TypeError, ValueError):
         return 0
+
+
+def _path_str(path: str, prefix: str) -> str:
+    return path[len(prefix) :].strip("/")
 
 
 APP_HTML = r"""<!doctype html>
@@ -494,6 +694,18 @@ APP_HTML = r"""<!doctype html>
       cursor: pointer;
     }
     button.secondary { background: #fff; color: var(--accent); }
+    button.danger { background: var(--danger); border-color: var(--danger); }
+    button.warn { background: var(--warn); border-color: var(--warn); }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    textarea {
+      width: 100%;
+      min-height: 70px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 11px;
+      resize: vertical;
+      font: inherit;
+    }
     .content { overflow: auto; }
     .results { display: grid; gap: 10px; padding: 16px 18px; }
     .result { cursor: pointer; }
@@ -580,6 +792,12 @@ APP_HTML = r"""<!doctype html>
     const $ = (id) => document.getElementById(id);
     const esc = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const api = async (path) => (await fetch(path, {cache: "no-store"})).json();
+    const postApi = async (path, payload) => (await fetch(path, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload || {}),
+      cache: "no-store"
+    })).json();
 
     function pill(text, kind="") {
       return `<span class="pill ${kind}">${esc(text)}</span>`;
@@ -601,16 +819,27 @@ APP_HTML = r"""<!doctype html>
         node.innerHTML = `<div class="empty">${esc(emptyText)}</div>`;
         return;
       }
-      node.innerHTML = items.map(item => `
-        <div class="item" data-id="${esc(item.id || item.candidate_id || "")}">
+      node.innerHTML = items.map(item => {
+        const itemId = item.id || item.candidate_id || "";
+        const isCandidate = String(itemId).startsWith("mem_") || item.kind === "candidate";
+        return `
+        <div class="item" data-id="${esc(itemId)}" data-kind="${isCandidate ? "candidate" : "memory"}">
           <h3>${esc(item.title || item.kind || "Untitled")}</h3>
           <div class="subtle">${esc(item.reason || item.summary || item.safe_action || "")}</div>
-          <div class="meta">${pill(item.layer || item.status || "review")}${pill(item.sensitivity || item.category || "")}</div>
+          <div class="meta">
+            ${pill(item.layer || item.status || "review")}
+            ${pill(item.sensitivity || item.category || "")}
+            ${isCandidate ? pill("candidate", "warn") : ""}
+          </div>
         </div>
-      `).join("");
+      `}).join("");
       node.querySelectorAll("[data-id]").forEach(el => {
-        const idValue = Number(el.dataset.id || 0);
-        if (idValue) el.addEventListener("click", () => loadEntry(idValue));
+        if (el.dataset.kind === "candidate") {
+          el.addEventListener("click", () => loadCandidate(el.dataset.id));
+        } else {
+          const idValue = Number(el.dataset.id || 0);
+          if (idValue) el.addEventListener("click", () => loadEntry(idValue));
+        }
       });
     }
 
@@ -650,6 +879,78 @@ APP_HTML = r"""<!doctype html>
       $("evidenceBody").textContent = (range.lines || []).map(line => `${line.line}| ${line.text}`).join("\n");
     }
 
+    async function loadCandidate(id) {
+      const payload = await api(`/api/candidate/${encodeURIComponent(id)}`);
+      if (payload.status !== "ok") {
+        $("results").innerHTML = `<div class="empty">${esc(payload.error || payload.reason || "Unable to load candidate")}</div>`;
+        return;
+      }
+      const row = payload.candidate || {};
+      currentEntry = null;
+      $("evidence").hidden = true;
+      $("results").innerHTML = `
+        <article class="result">
+          <h3>${esc(row.title)}</h3>
+          <div class="subtle">${esc(row.reason || row.source_ref || "")}</div>
+          <div class="meta">
+            ${pill(row.id)}
+            ${pill(row.layer)}
+            ${pill(row.scope)}
+            ${pill(row.sensitivity, row.sensitivity === "low" ? "good" : "warn")}
+            ${pill("privacy:" + (row.privacy_status || "unknown"))}
+            ${pill("duplicate:" + (row.duplicate_status || "unknown"))}
+            ${pill("quality:" + (row.quality_status || "unknown"))}
+          </div>
+        </article>
+        <div class="panel">
+          <h3>Candidate Content</h3>
+          <pre>${esc(row.content || "")}</pre>
+        </div>
+        <div class="panel">
+          <h3>Review Reason</h3>
+          <textarea id="reviewReason" placeholder="Optional reason for reject/block. Promotion records the existing gate result."></textarea>
+          <div class="actions">
+            <button id="promoteCandidate" type="button">Promote</button>
+            <button id="rejectCandidate" class="warn" type="button">Reject</button>
+            <button id="blockCandidate" class="danger" type="button">Block</button>
+          </div>
+          <div class="subtle">Every action requires explicit confirmation and records feedback for automation learning.</div>
+        </div>
+      `;
+      $("sidePanel").innerHTML = renderCandidateSide(row);
+      $("promoteCandidate").addEventListener("click", () => reviewCandidate(row.id, "promote"));
+      $("rejectCandidate").addEventListener("click", () => reviewCandidate(row.id, "reject"));
+      $("blockCandidate").addEventListener("click", () => reviewCandidate(row.id, "block"));
+    }
+
+    function renderCandidateSide(row) {
+      const keys = ["status", "source", "source_ref", "memory_type", "trust", "created_at", "updated_at", "valid_from", "valid_until", "expires_at"];
+      const fields = keys.map(key => `<div class="kv"><span>${esc(key)}</span><strong>${esc(row[key] || "—")}</strong></div>`).join("");
+      const gates = row.gates ? `<pre>${esc(JSON.stringify(row.gates, null, 2))}</pre>` : "";
+      return `<div class="panel"><h3>${esc(row.title)}</h3><div class="subtle">Candidate review</div></div>${fields}${gates}`;
+    }
+
+    async function reviewCandidate(id, action) {
+      const token = `${id}:${action}`;
+      const label = action === "promote" ? "promote into active knowledge" : `${action} this candidate`;
+      if (!window.confirm(`Confirm ${label}?\\n\\nRequired token: ${token}`)) return;
+      const reason = $("reviewReason")?.value || "";
+      const payload = await postApi(`/api/candidate/${encodeURIComponent(id)}/review`, {
+        action,
+        reason,
+        confirm: token
+      });
+      if (payload.status !== "ok") {
+        window.alert(payload.error || payload.reason || "Review action failed");
+        return;
+      }
+      window.alert(`Review action completed: ${payload.result?.status || action}`);
+      await boot();
+      if (payload.result?.knowledge_id) {
+        await loadEntry(payload.result.knowledge_id);
+      }
+    }
+
     function renderSidePanel() {
       if (!currentEntry || currentEntry.status !== "ok") {
         $("sidePanel").innerHTML = `<div class="empty">Select a memory</div>`;
@@ -670,7 +971,7 @@ APP_HTML = r"""<!doctype html>
       const overview = await api("/api/overview");
       $("projectPath").textContent = overview.project_dir || "";
       renderMetrics(overview.stats || {}, overview.inbox || {});
-      renderList("reviewQueue", overview.inbox?.review_queue || overview.inbox?.review_digest?.items || [], "No review items");
+      renderList("reviewQueue", overview.candidates || overview.inbox?.review_queue || overview.inbox?.review_digest?.items || [], "No review items");
       renderList("recentList", overview.recent || [], "No memory yet");
       $("results").innerHTML = `<div class="empty">Search or choose a memory</div>`;
       renderSidePanel();

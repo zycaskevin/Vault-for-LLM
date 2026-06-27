@@ -8,6 +8,8 @@ import hashlib
 import sqlite3
 from typing import Any
 
+from .search_utils import normalize_search_limit
+
 from .governance import normalize_governance_metadata
 
 
@@ -163,6 +165,9 @@ def list_knowledge(
     include_archived: bool = False,
 ) -> list[dict]:
     """List knowledge rows with layer/category/trust filters."""
+    limit = normalize_search_limit(limit, default=100)
+    if limit <= 0:
+        return []
     query = "SELECT * FROM knowledge WHERE trust >= ?"
     params: list[Any] = [min_trust]
     if not include_archived:
@@ -187,6 +192,9 @@ def search_keyword(
 ) -> list[dict]:
     """Pure LIKE keyword search fallback."""
     if query is None:
+        return []
+    limit = normalize_search_limit(limit)
+    if limit <= 0:
         return []
 
     escaped = escape_like_pattern(query)

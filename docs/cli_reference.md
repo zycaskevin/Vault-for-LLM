@@ -18,6 +18,7 @@ with the daily loop in the README and only use these commands when needed.
 | `vault candidates` | List pending candidate memories without dumping full raw content |
 | `vault promote <candidate_id> --confirm` | Promote reviewed candidate memory |
 | `vault compile` | Compile `raw/` into SQLite and generated artifacts |
+| `vault compile --no-embed` | Compile without optional embedding generation; recommended for the most portable first run |
 | `vault search "query"` | Search the vault |
 | `vault search "query" --exclude-expired` | Search currently valid temporal facts while keeping past facts available through temporal list |
 | `vault map read <id> --lines 10-30` | Read a bounded source range for citation |

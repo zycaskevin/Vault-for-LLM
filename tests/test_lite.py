@@ -251,6 +251,45 @@ First-user flow in a non-Git temp directory should compile cleanly.
         db.close()
 
 
+def test_compile_keeps_rows_when_embedding_encode_fails(tmp_path, capfd):
+    """A broken optional embedding stack should not fail the whole compile."""
+
+    class BrokenEmbeddingProvider:
+        def encode(self, texts):
+            raise RuntimeError("missing transformers")
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    raw_dir = project_dir / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "sample.md").write_text("""---
+title: Optional Embedding
+category: test
+layer: L3
+tags: embed
+trust: 0.8
+---
+# Optional Embedding
+
+Compile should keep this knowledge even if embedding generation fails.
+""", encoding="utf-8")
+
+    db = VaultDB(str(project_dir / "vault.db"))
+    db.connect()
+    try:
+        compiler = VaultCompiler(project_dir, db=db, embed_provider=BrokenEmbeddingProvider())
+        stats = compiler.compile()
+        captured = capfd.readouterr()
+
+        assert stats["new"] == 1
+        assert stats["errors"] == 0
+        assert stats["embedding_errors"] == 1
+        assert db.search_keyword("Optional Embedding", limit=1)
+        assert "嵌入生成失敗" in captured.out
+    finally:
+        db.close()
+
+
 def test_lint():
     """測試 Lint"""
     db_path = tempfile.mktemp(suffix=".db")

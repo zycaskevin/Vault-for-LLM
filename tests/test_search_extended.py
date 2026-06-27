@@ -171,6 +171,21 @@ class TestKeywordSearch:
         finally:
             db.close()
 
+    def test_search_non_positive_limit_returns_no_results(self, tmp_path):
+        db = VaultDB(str(tmp_path / "test.db"))
+        db.connect()
+        try:
+            db.add_knowledge(title="Limit Guard", content_raw="python limit guard")
+            search = VaultSearch(db, embed_provider=None)
+
+            assert search.search("python", mode="keyword", limit=0, use_rerank=False) == []
+            assert search.search("python", mode="keyword", limit=-5, use_rerank=False) == []
+            assert search.search_keyword("python", limit=-5) == []
+            assert db.search_keyword("python", limit=-5) == []
+            assert db.list_knowledge(limit=-5) == []
+        finally:
+            db.close()
+
     def test_search_keyword_with_min_score(self, tmp_path):
         db = VaultDB(str(tmp_path / "test.db"))
         db.connect()

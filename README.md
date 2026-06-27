@@ -632,10 +632,13 @@ advanced integrations are powerful, but should be enabled deliberately.
 - CLI reference: [docs/cli_reference.md](docs/cli_reference.md)
 - Agent integrations: [docs/agent_integrations.md](docs/agent_integrations.md)
 - Memory automation: [docs/automation.md](docs/automation.md)
+- Automation strategy: [docs/automation_strategy.md](docs/automation_strategy.md)
+- LLM integration: [docs/llm_integration.md](docs/llm_integration.md)
 - Memory governance: [docs/memory_governance.md](docs/memory_governance.md)
 - Supabase setup: [docs/supabase_setup.md](docs/supabase_setup.md)
 - MCP tool reference: [docs/mcp_tool_reference.md](docs/mcp_tool_reference.md)
 - MCP workflow: [docs/mcp_memory_workflow.md](docs/mcp_memory_workflow.md)
+- API interface conventions: [docs/api_interfaces.md](docs/api_interfaces.md)
 - PageIndex / Headroom comparison: [docs/comparisons/pageindex_headroom.md](docs/comparisons/pageindex_headroom.md)
 - Vision notes: [docs/vision.md](docs/vision.md)
 

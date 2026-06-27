@@ -7,6 +7,9 @@ from datetime import datetime, timezone
 import hashlib
 import re
 import sqlite3
+from typing import Any
+
+from .db_interfaces import connection_from
 
 
 _HEADING_RE = re.compile(r"^(#{1,3})[ \t]+(.+?)\s*$")
@@ -183,12 +186,15 @@ def assign_claim_node_uid(nodes: list[SectionNode], claim_line_start: int) -> st
     return best.node_uid
 
 
-def build_document_map_for_entry(conn: sqlite3.Connection, knowledge_id: int) -> dict[str, int]:
+def build_document_map_for_entry(db_or_conn: Any, knowledge_id: int) -> dict[str, int]:
     """Backfill knowledge_nodes and knowledge_claims for one knowledge row.
 
     This library entry point is intentionally small so future CLI/MCP commands can
-    call it without changing existing search behavior.
+    call it without changing existing search behavior. It accepts either an
+    already-open VaultDB instance or a raw sqlite3.Connection for compatibility
+    with older integration code.
     """
+    conn = connection_from(db_or_conn, label="build_document_map_for_entry")
     row = conn.execute(
         "SELECT content_raw, content_aaak FROM knowledge WHERE id=?", (knowledge_id,)
     ).fetchone()

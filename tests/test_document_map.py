@@ -636,3 +636,25 @@ def test_build_document_map_for_entry_raises_for_missing_knowledge_id(tmp_path):
             raise AssertionError("expected ValueError")
     finally:
         db.close()
+
+
+def test_build_document_map_for_entry_accepts_vaultdb_instance(tmp_path):
+    from vault.docmap import build_document_map_for_entry
+
+    db = VaultDB(tmp_path / "vault.db").connect()
+    try:
+        knowledge_id = db.add_knowledge(
+            "DB Adapter Doc",
+            "# DB Adapter Doc\n\nThe public helper accepts VaultDB or raw sqlite.",
+            content_aaak="TITLE:DB Adapter Doc\nCLAIMS:\n- [C1] It accepts VaultDB. (L3)",
+        )
+
+        result = build_document_map_for_entry(db, knowledge_id)
+
+        assert result == {"nodes": 1, "claims": 1}
+        assert db.conn.execute(
+            "SELECT COUNT(*) AS c FROM knowledge_nodes WHERE knowledge_id=?",
+            (knowledge_id,),
+        ).fetchone()["c"] == 1
+    finally:
+        db.close()

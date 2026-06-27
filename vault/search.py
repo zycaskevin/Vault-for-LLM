@@ -36,6 +36,7 @@ from .search_utils import (
     MAX_GRAPH_EXPAND_DEPTH,
     MAX_LIMIT,
     _normalize_text,
+    normalize_search_limit,
 )
 from .semantic import SemanticProviderError, provider_dimension, provider_id
 
@@ -615,11 +616,10 @@ class VaultSearch(SearchQueryMixin, SearchCacheMixin, SearchResultMixin, SearchS
         if len(query) > MAX_QUERY_LENGTH:
             query = query[:MAX_QUERY_LENGTH]
 
-        # ── 安全防線：limit 最大值保護 ──
-        if limit > MAX_LIMIT:
-            limit = MAX_LIMIT
+        # ── 安全防線：limit 邊界保護 ──
+        limit = normalize_search_limit(limit)
         if limit <= 0:
-            limit = 1
+            return []
 
         # ── 安全防線：offset 邊界驗證 ──
         # 降低 MAX_OFFSET 從 9999 → 2000，配合 MAX_SEARCH_WINDOW 防止深分頁 DoS
@@ -899,8 +899,9 @@ class VaultSearch(SearchQueryMixin, SearchCacheMixin, SearchResultMixin, SearchS
             use_bm25_score: 若為 True，使用 BM25 分數作為基礎分數（經過正規化），
                            這會比簡單的匹配率更準確。預設 False 以保持向後兼容。
         """
-        if limit > MAX_LIMIT:
-            limit = MAX_LIMIT
+        limit = normalize_search_limit(limit)
+        if limit <= 0:
+            return []
         terms = self._tokenize(query)
         if not terms:
             return []

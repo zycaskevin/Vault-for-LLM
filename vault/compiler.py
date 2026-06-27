@@ -438,7 +438,14 @@ class VaultCompiler:
             self.db.connect()
             close_db = True
 
-        stats = {"total_files": 0, "new": 0, "updated": 0, "skipped": 0, "errors": 0}
+        stats = {
+            "total_files": 0,
+            "new": 0,
+            "updated": 0,
+            "skipped": 0,
+            "errors": 0,
+            "embedding_errors": 0,
+        }
 
         try:
             # 收集 raw/ 檔案
@@ -468,7 +475,16 @@ class VaultCompiler:
 
             # 重建向量索引（如果有嵌入）
             if self.embed is not None and stats["new"] + stats["updated"] > 0:
-                self._rebuild_embeddings(dry_run)
+                try:
+                    self._rebuild_embeddings(dry_run)
+                except Exception as e:
+                    stats["embedding_errors"] += 1
+                    self.embed = None
+                    print(
+                        "[compiler] ⚠️ 嵌入生成失敗，已保留本次編譯結果；"
+                        "可用 --no-embed 跳過，或安裝 semantic/embedding optional dependencies。"
+                    )
+                    print(f"[compiler]    原因: {e}")
 
             # ── Deduplicate：去除 title 重複（永遠執行）──
             if not dry_run:

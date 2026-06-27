@@ -7,6 +7,8 @@ import struct
 import sys
 from typing import Any
 
+from .search_utils import normalize_search_limit
+
 
 def parse_embedding_dim(value: str, *, default: int = 384) -> int:
     """Return a safe embedding dimension for sqlite-vec table creation/search."""
@@ -80,8 +82,9 @@ def search_vector(
         raise ValueError(f"向量維度不匹配：預期 {expected_dim} 維，實際 {len(query_embedding)} 維")
 
     max_limit = 500
-    if limit > max_limit:
-        limit = max_limit
+    limit = normalize_search_limit(limit, maximum=max_limit)
+    if limit <= 0:
+        return []
 
     emb_bytes = struct.pack(f"{len(query_embedding)}f", *query_embedding)
 

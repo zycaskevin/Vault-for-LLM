@@ -8,7 +8,7 @@ from typing import Optional
 from .access_policy import ReadPolicy
 from .search_graph import apply_graph_expand
 from .search_rerank import _is_active_memory
-from .search_utils import MAX_LIMIT
+from .search_utils import normalize_search_limit
 from .semantic import (
     SemanticProviderError,
     provider_dimension,
@@ -43,8 +43,9 @@ class SearchSemanticMixin:
             # 空查詢防護
             if not query or not isinstance(query, str) or not query.strip():
                 return []
-            if limit > MAX_LIMIT:
-                limit = MAX_LIMIT
+            limit = normalize_search_limit(limit)
+            if limit <= 0:
+                return []
             embed = self._get_embed()
             if embed is None or not self.db._vec_available:
                 return []
@@ -166,8 +167,9 @@ class SearchSemanticMixin:
             # 空查詢防護
             if not query or not isinstance(query, str) or not query.strip():
                 return []
-            if limit > MAX_LIMIT:
-                limit = MAX_LIMIT
+            limit = normalize_search_limit(limit)
+            if limit <= 0:
+                return []
             provider = self._semantic_provider(
                 require_semantic=require_semantic,
                 allow_hash=allow_hash,
@@ -283,8 +285,9 @@ class SearchSemanticMixin:
             # 空查詢防護
             if not query or not isinstance(query, str) or not query.strip():
                 return []
-            if limit > MAX_LIMIT:
-                limit = MAX_LIMIT
+            limit = normalize_search_limit(limit)
+            if limit <= 0:
+                return []
             k = 60  # RRF constant
             kw_w = keyword_weight if keyword_weight is not None else self._keyword_weight
             vec_w = vector_weight if vector_weight is not None else self._vector_weight

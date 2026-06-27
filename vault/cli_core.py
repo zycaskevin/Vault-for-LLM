@@ -157,6 +157,8 @@ def cmd_compile(args):
     print(f"  更新: {stats['updated']}")
     print(f"  跳過: {stats['skipped']}")
     print(f"  錯誤: {stats['errors']}")
+    if stats.get("embedding_errors"):
+        print(f"  嵌入錯誤: {stats['embedding_errors']} (知識已編譯；可用 --no-embed 跳過)")
 
 
 def cmd_search(args):

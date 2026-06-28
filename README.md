@@ -642,6 +642,7 @@ advanced integrations are powerful, but should be enabled deliberately.
 - MCP workflow: [docs/mcp_memory_workflow.md](docs/mcp_memory_workflow.md)
 - API interface conventions: [docs/api_interfaces.md](docs/api_interfaces.md)
 - PageIndex / Headroom comparison: [docs/comparisons/pageindex_headroom.md](docs/comparisons/pageindex_headroom.md)
+- OKF integration: [docs/okf_integration.md](docs/okf_integration.md)
 - Vision notes: [docs/vision.md](docs/vision.md)
 
 ## Development

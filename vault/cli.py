@@ -492,6 +492,19 @@ def main(argv: list[str] | None = None):
     ep.add_argument("--source", choices=["db", "raw", "compiled"], default="db", help="來源（MVP 支援 db）")
     ep.add_argument("--dry-run", action="store_true", help="只列出將寫入的檔案，不建立檔案")
 
+    ep = export_sub.add_parser("okf", help="匯出 OKF-style Markdown knowledge bundle")
+    ep.add_argument("--bundle", required=True, help="OKF bundle 輸出目錄")
+    ep.add_argument("--category", help="只匯出指定 category")
+    ep.add_argument("--tag", help="只匯出含指定 tag 的條目")
+    ep.add_argument("--layer", choices=["L0", "L1", "L2", "L3"], help="只匯出指定 layer")
+    ep.add_argument("--limit", type=int, help="最多匯出幾條")
+    ep.add_argument("--min-trust", type=float, default=0.0, help="最低 trust 門檻")
+    ep.add_argument("--include-private", action="store_true", help="包含 scope=private；預設排除")
+    ep.add_argument("--include-restricted", action="store_true", help="包含 sensitivity=restricted；預設排除")
+    ep.add_argument("--dry-run", action="store_true", help="只列出將寫入的檔案，不建立檔案")
+    ep.add_argument("--json", action="store_true", help="輸出 JSON")
+    ep.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
     # config
     p = sub.add_parser("config", help="配置管理")
     p.add_argument("config_action", choices=["set", "get", "list"])

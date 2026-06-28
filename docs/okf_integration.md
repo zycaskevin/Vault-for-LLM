@@ -103,6 +103,19 @@ does not make it trusted.
 `vault export okf` should make Vault knowledge portable for other agents and
 tools.
 
+Current command:
+
+```bash
+vault export okf --bundle ./okf-bundle --dry-run --json --pretty
+vault export okf --bundle ./okf-bundle --category workflow --min-trust 0.7
+```
+
+The exporter is read-only against `vault.db`. It writes `index.md`, `log.md`,
+and `concepts/<type>/*.md`. By default it excludes `scope: private` and
+`sensitivity: restricted` memories. Use `--include-private` or
+`--include-restricted` only when intentionally creating a private/internal
+bundle.
+
 Recommended output:
 
 ```text
@@ -178,6 +191,6 @@ This keeps the boundary clear:
 2. Add `vault okf validate` for local bundle checks. Done.
 3. Add `vault import okf` in candidate-first mode. Done.
 4. Add `vault export okf` with safe defaults that exclude private/restricted
-   memory.
+   memory. Done.
 5. Add Search QA fixtures that verify imported concepts are searchable and
    bounded reads cite the exported source.

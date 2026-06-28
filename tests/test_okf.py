@@ -3,7 +3,7 @@ import json
 import pytest
 
 from vault.db import VaultDB
-from vault.okf import import_okf_bundle, parse_markdown_frontmatter, validate_okf_bundle
+from vault.okf import export_okf_bundle, import_okf_bundle, parse_markdown_frontmatter, validate_okf_bundle
 
 
 def _write(path, text):
@@ -273,3 +273,136 @@ Use bounded reads before answering because raw document dumps waste context and 
         active = db.list_knowledge()
     assert len(candidates) == 1
     assert active == []
+
+
+def test_export_okf_bundle_excludes_private_and_restricted_by_default(tmp_path):
+    project = tmp_path / "project"
+    bundle = tmp_path / "okf-out"
+    project.mkdir()
+    with VaultDB(project / "vault.db") as db:
+        public_id = db.add_knowledge(
+            "Public SOP",
+            "Agents should cite bounded source ranges because citations need a stable source.",
+            category="workflow",
+            tags="agent,citation",
+            source="raw/public-sop.md",
+            scope="shared",
+            sensitivity="low",
+            trust=0.8,
+        )
+        db.add_knowledge(
+            "Private profile",
+            "This private profile should not leave the local vault.",
+            category="profile",
+            scope="private",
+            sensitivity="low",
+            trust=0.9,
+        )
+        db.add_knowledge(
+            "Restricted key handling",
+            "Restricted knowledge should not be exported unless explicitly requested.",
+            category="security",
+            scope="shared",
+            sensitivity="restricted",
+            trust=0.9,
+        )
+
+    payload = export_okf_bundle(project_dir=project, bundle_dir=bundle)
+
+    assert payload["status"] == "ok"
+    assert payload["concept_count"] == 1
+    assert payload["written"] == 3
+    assert (bundle / "index.md").exists()
+    assert (bundle / "log.md").exists()
+    concept_path = bundle / payload["concepts"][0]["path"]
+    assert concept_path.exists()
+    assert f"vault_id: {public_id}" in concept_path.read_text(encoding="utf-8")
+    assert "Private profile" not in (bundle / "index.md").read_text(encoding="utf-8")
+    validation = validate_okf_bundle(bundle)
+    assert validation["valid"] is True
+
+
+def test_export_okf_bundle_dry_run_does_not_write_files(tmp_path):
+    project = tmp_path / "project"
+    bundle = tmp_path / "okf-out"
+    project.mkdir()
+    with VaultDB(project / "vault.db") as db:
+        db.add_knowledge(
+            "Dry Run Export",
+            "Dry-run export should plan files without writing them.",
+            category="workflow",
+            tags="dry-run",
+            trust=0.7,
+        )
+
+    payload = export_okf_bundle(project_dir=project, bundle_dir=bundle, dry_run=True)
+
+    assert payload["status"] == "preview"
+    assert payload["concept_count"] == 1
+    assert payload["written"] == 0
+    assert not bundle.exists()
+    assert payload["paths"]
+
+
+def test_export_okf_bundle_can_include_private_and_restricted(tmp_path):
+    project = tmp_path / "project"
+    bundle = tmp_path / "okf-out"
+    project.mkdir()
+    with VaultDB(project / "vault.db") as db:
+        db.add_knowledge(
+            "Restricted private item",
+            "This only exports when both safety override flags are explicit.",
+            category="security",
+            scope="private",
+            sensitivity="restricted",
+            trust=0.8,
+        )
+
+    default_payload = export_okf_bundle(project_dir=project, bundle_dir=bundle / "default", dry_run=True)
+    override_payload = export_okf_bundle(
+        project_dir=project,
+        bundle_dir=bundle / "override",
+        include_private=True,
+        include_restricted=True,
+        dry_run=True,
+    )
+
+    assert default_payload["concept_count"] == 0
+    assert override_payload["concept_count"] == 1
+
+
+def test_okf_export_cli_json(tmp_path, capsys):
+    from vault.cli import main
+
+    project = tmp_path / "project"
+    bundle = tmp_path / "okf-out"
+    main(["init", "--project-dir", str(project)])
+    capsys.readouterr()
+    main([
+        "add",
+        "CLI OKF Export",
+        "--content",
+        "CLI export writes OKF concepts because portable exchange matters.",
+        "--category",
+        "workflow",
+        "--tags",
+        "okf,cli",
+        "--project-dir",
+        str(project),
+    ])
+    capsys.readouterr()
+
+    main([
+        "export",
+        "okf",
+        "--bundle",
+        str(bundle),
+        "--project-dir",
+        str(project),
+        "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "ok"
+    assert payload["concept_count"] == 1
+    assert (bundle / "index.md").exists()

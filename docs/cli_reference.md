@@ -43,6 +43,8 @@ with the daily loop in the README and only use these commands when needed.
 | `vault import obsidian --vault /path/to/ObsidianVault --compile` | Import changed Obsidian notes and compile them into `vault.db` |
 | `vault export obsidian --vault /path/to/ObsidianVault --dry-run` | Export read-only Markdown notes for Obsidian browsing |
 | `vault okf validate ./okf-bundle --json --pretty` | Validate an OKF-style Markdown knowledge bundle before import, export, or publication |
+| `vault export okf --bundle ./okf-bundle --dry-run --json --pretty` | Preview a read-only OKF-style export; private and restricted memories are excluded by default |
+| `vault export okf --bundle ./okf-bundle --include-private --include-restricted` | Explicitly include protected memories when creating a private/internal bundle |
 
 Prefer `vault remember` over `vault add` for autonomous agents or unreviewed
 memory.

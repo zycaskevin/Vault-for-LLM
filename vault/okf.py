@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+import json
 import posixpath
 import re
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +18,7 @@ RESERVED_FILES = {"index.md", "log.md"}
 SKIP_DIRS = {".git", ".obsidian", ".trash", "__pycache__"}
 DEFAULT_MAX_FILE_BYTES = 2_000_000
 LOCAL_MARKDOWN_LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)#?:]+(?:\.md)?(?:#[^)]+)?)\)")
+UNSAFE_FILENAME = re.compile(r"[\\/:*?\"<>|]+")
 
 
 @dataclass(frozen=True)
@@ -242,6 +246,98 @@ def import_okf_bundle(
     }
 
 
+def export_okf_bundle(
+    *,
+    project_dir: str | Path,
+    bundle_dir: str | Path,
+    category: str | None = None,
+    tag: str | None = None,
+    layer: str | None = None,
+    limit: int | None = None,
+    min_trust: float = 0.0,
+    include_private: bool = False,
+    include_restricted: bool = False,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Export active knowledge to an OKF-style bundle with safe defaults."""
+    project_path = Path(project_dir)
+    destination = Path(bundle_dir)
+    db_path = project_path / "vault.db"
+    with _connect_readonly(db_path) as conn:
+        rows = _load_export_rows(
+            conn,
+            category=category,
+            layer=layer,
+            min_trust=min_trust,
+            include_private=include_private,
+            include_restricted=include_restricted,
+        )
+
+    skipped_by_tag = 0
+    if tag:
+        before = len(rows)
+        rows = [row for row in rows if tag in _split_tags(row.get("tags"))]
+        skipped_by_tag = before - len(rows)
+    if limit is not None:
+        rows = rows[: max(0, int(limit))]
+
+    concepts: list[dict[str, Any]] = []
+    paths: list[str] = []
+    for row in rows:
+        rel = _okf_concept_path(row)
+        path = destination / rel
+        paths.append(str(path))
+        rendered = _render_okf_concept(row)
+        concepts.append(
+            {
+                "id": row["id"],
+                "title": row.get("title", ""),
+                "type": _okf_type(row),
+                "path": rel,
+                "scope": row.get("scope", "project"),
+                "sensitivity": row.get("sensitivity", "low"),
+            }
+        )
+        if dry_run:
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(rendered, encoding="utf-8")
+
+    index_path = destination / "index.md"
+    log_path = destination / "log.md"
+    reserved_paths = [str(index_path), str(log_path)]
+    if not dry_run:
+        destination.mkdir(parents=True, exist_ok=True)
+        index_path.write_text(_render_okf_index(concepts), encoding="utf-8")
+        log_path.write_text(
+            _render_okf_log(
+                matched=len(rows),
+                dry_run=dry_run,
+                include_private=include_private,
+                include_restricted=include_restricted,
+                skipped_by_tag=skipped_by_tag,
+            ),
+            encoding="utf-8",
+        )
+
+    return {
+        "status": "preview" if dry_run else "ok",
+        "dry_run": dry_run,
+        "bundle_dir": str(destination),
+        "matched": len(rows),
+        "written": 0 if dry_run else len(rows) + 2,
+        "concept_count": len(concepts),
+        "paths": paths,
+        "reserved_paths": reserved_paths,
+        "skipped": {
+            "tag_filter": skipped_by_tag,
+            "private_scope_excluded": not include_private,
+            "restricted_sensitivity_excluded": not include_restricted,
+        },
+        "concepts": concepts,
+    }
+
+
 def _read_and_parse(path: Path, rel: str, max_file_bytes: int, errors: list[dict[str, Any]]) -> FrontmatterResult | None:
     try:
         if path.stat().st_size > max(1, max_file_bytes):
@@ -253,6 +349,39 @@ def _read_and_parse(path: Path, rel: str, max_file_bytes: int, errors: list[dict
     except OSError as exc:
         errors.append(_issue(rel, "read_error", str(exc)))
     return None
+
+
+def _connect_readonly(db_path: Path) -> sqlite3.Connection:
+    if not db_path.exists():
+        raise FileNotFoundError(f"vault.db not found at {db_path}")
+    conn = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _load_export_rows(
+    conn: sqlite3.Connection,
+    *,
+    category: str | None,
+    layer: str | None,
+    min_trust: float,
+    include_private: bool,
+    include_restricted: bool,
+) -> list[dict[str, Any]]:
+    query = "SELECT * FROM knowledge WHERE trust >= ? AND COALESCE(status, 'active') != 'archived'"
+    params: list[Any] = [min_trust]
+    if category:
+        query += " AND category = ?"
+        params.append(category)
+    if layer:
+        query += " AND layer = ?"
+        params.append(layer)
+    if not include_private:
+        query += " AND COALESCE(scope, 'project') != 'private'"
+    if not include_restricted:
+        query += " AND COALESCE(sensitivity, 'low') != 'restricted'"
+    query += " ORDER BY id ASC"
+    return [dict(row) for row in conn.execute(query, params).fetchall()]
 
 
 def _iter_markdown_files(root: Path) -> list[Path]:
@@ -300,6 +429,24 @@ def _join_tags(values: list[Any]) -> str:
     return ",".join(tags)
 
 
+def _split_tags(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    text = str(value).strip()
+    if not text:
+        return []
+    if text.startswith("["):
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                return [str(item).strip() for item in parsed if str(item).strip()]
+        except json.JSONDecodeError:
+            pass
+    return [part.strip() for part in text.split(",") if part.strip()]
+
+
 def _metadata_string(value: Any) -> str:
     if value is None:
         return ""
@@ -309,6 +456,98 @@ def _metadata_string(value: Any) -> str:
             text = f"{text[:-6]}Z"
         return text
     return str(value).strip()
+
+
+def _safe_filename(value: str, *, default: str = "untitled") -> str:
+    slug = UNSAFE_FILENAME.sub("-", str(value or "").strip())
+    slug = re.sub(r"\s+", "-", slug)
+    slug = re.sub(r"-+", "-", slug).strip("-._ ")
+    return slug or default
+
+
+def _okf_type(row: dict[str, Any]) -> str:
+    category = str(row.get("category") or "").strip()
+    memory_type = str(row.get("memory_type") or "").strip()
+    if category:
+        return category
+    return memory_type or "knowledge"
+
+
+def _okf_concept_path(row: dict[str, Any]) -> str:
+    okf_type = _safe_filename(_okf_type(row), default="knowledge")
+    title = _safe_filename(str(row.get("title") or "untitled"), default="untitled")
+    return f"concepts/{okf_type}/{int(row['id']):04d}-{title}.md"
+
+
+def _render_okf_concept(row: dict[str, Any]) -> str:
+    tags = _split_tags(row.get("tags"))
+    frontmatter = {
+        "type": _okf_type(row),
+        "title": row.get("title", ""),
+        "description": row.get("summary", "") or _first_line(row.get("content_raw", "")),
+        "tags": tags,
+        "timestamp": row.get("updated_at", ""),
+        "resource": row.get("source", ""),
+        "vault_id": row.get("id"),
+        "layer": row.get("layer", "L3"),
+        "trust": float(row.get("trust") or 0),
+        "scope": row.get("scope", "project"),
+        "sensitivity": row.get("sensitivity", "low"),
+        "memory_type": row.get("memory_type", "knowledge"),
+        "valid_from": row.get("valid_from", ""),
+        "valid_until": row.get("valid_until", ""),
+        "expires_at": row.get("expires_at", ""),
+        "supersedes_id": row.get("supersedes_id"),
+    }
+    frontmatter = {key: value for key, value in frontmatter.items() if value not in ("", None, [])}
+    body = str(row.get("content_raw") or "").strip()
+    return f"---\n{yaml.safe_dump(frontmatter, allow_unicode=True, sort_keys=False).strip()}\n---\n\n{body}\n"
+
+
+def _first_line(value: Any) -> str:
+    text = str(value or "").strip()
+    for line in text.splitlines():
+        cleaned = line.strip(" #\t")
+        if cleaned:
+            return cleaned[:180]
+    return ""
+
+
+def _render_okf_index(concepts: list[dict[str, Any]]) -> str:
+    lines = ["# OKF Bundle Index", ""]
+    if not concepts:
+        lines.append("_No concepts exported._")
+        return "\n".join(lines) + "\n"
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for concept in concepts:
+        grouped.setdefault(str(concept.get("type") or "knowledge"), []).append(concept)
+    for okf_type in sorted(grouped):
+        lines.extend([f"## {okf_type}", ""])
+        for concept in grouped[okf_type]:
+            title = concept.get("title") or f"Vault #{concept.get('id')}"
+            lines.append(f"- [{title}]({concept['path']})")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_okf_log(
+    *,
+    matched: int,
+    dry_run: bool,
+    include_private: bool,
+    include_restricted: bool,
+    skipped_by_tag: int,
+) -> str:
+    now = datetime.now(timezone.utc).isoformat()
+    return (
+        "# OKF Bundle Log\n\n"
+        f"- exported_at: {now}\n"
+        f"- matched_concepts: {matched}\n"
+        f"- dry_run: {str(dry_run).lower()}\n"
+        f"- include_private: {str(include_private).lower()}\n"
+        f"- include_restricted: {str(include_restricted).lower()}\n"
+        f"- skipped_by_tag_filter: {skipped_by_tag}\n"
+    )
 
 
 def _source_ref(path: str, *, resource: str = "", timestamp: str = "") -> str:

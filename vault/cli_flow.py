@@ -369,9 +369,43 @@ def cmd_db(args):
 
 def cmd_export(args):
     """One-way export commands for human-readable knowledge browsing."""
-    if args.export_target != "obsidian":
-        print("error: export requires target: obsidian", file=sys.stderr)
+    if args.export_target not in {"obsidian", "okf"}:
+        print("error: export requires target: obsidian or okf", file=sys.stderr)
         raise SystemExit(2)
+
+    if args.export_target == "okf":
+        from vault.okf import export_okf_bundle
+
+        try:
+            result = export_okf_bundle(
+                project_dir=find_project_dir(),
+                bundle_dir=args.bundle,
+                category=args.category,
+                tag=args.tag,
+                layer=args.layer,
+                limit=args.limit,
+                min_trust=args.min_trust,
+                include_private=args.include_private,
+                include_restricted=args.include_restricted,
+                dry_run=args.dry_run,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            raise SystemExit(2) from exc
+        if getattr(args, "json", False) or getattr(args, "pretty", False):
+            _json_print(result, pretty=getattr(args, "pretty", False))
+            return
+        print(
+            "OKF export: "
+            f"matched={result['matched']} written={result['written']} "
+            f"dry_run={result['dry_run']} bundle={result['bundle_dir']}"
+        )
+        for path in [*result["reserved_paths"], *result["paths"]][:12]:
+            print(f"  {path}")
+        total_paths = len(result["reserved_paths"]) + len(result["paths"])
+        if total_paths > 12:
+            print(f"  ... {total_paths - 12} more")
+        return
 
     from vault.export_obsidian import export_obsidian_vault
 

@@ -3,7 +3,9 @@ import json
 import pytest
 
 from vault.db import VaultDB
+from vault.memory import promote_candidate
 from vault.okf import export_okf_bundle, import_okf_bundle, parse_markdown_frontmatter, validate_okf_bundle
+from vault.search_qa import evaluate_search_qa
 
 
 def _write(path, text):
@@ -406,3 +408,102 @@ def test_okf_export_cli_json(tmp_path, capsys):
     assert payload["status"] == "ok"
     assert payload["concept_count"] == 1
     assert (bundle / "index.md").exists()
+
+
+def test_okf_exchange_roundtrip_promote_search_and_bounded_read(tmp_path):
+    from vault.mcp_read import _vault_read_range_payload
+
+    source_project = tmp_path / "source"
+    target_project = tmp_path / "target"
+    bundle = tmp_path / "okf-bundle"
+    source_project.mkdir()
+    target_project.mkdir()
+
+    with VaultDB(source_project / "vault.db") as db:
+        db.add_knowledge(
+            "Checkout Rollback SOP",
+            "\n".join(
+                [
+                    "# Checkout Rollback SOP",
+                    "",
+                    "## Rollback trigger",
+                    "Rollback checkout experiments when payment authorization errors rise above two percent.",
+                    "",
+                    "## Owner",
+                    "The release operator owns the rollback decision because customer payments are affected.",
+                ]
+            ),
+            category="workflow",
+            tags="checkout,rollback,release",
+            source="raw/checkout-rollback.md",
+            scope="shared",
+            sensitivity="low",
+            trust=0.9,
+        )
+        db.add_knowledge(
+            "Private Checkout Notes",
+            "Private checkout notes must not be exported by default.",
+            category="profile",
+            scope="private",
+            sensitivity="low",
+            trust=0.9,
+        )
+
+    exported = export_okf_bundle(project_dir=source_project, bundle_dir=bundle)
+    assert exported["concept_count"] == 1
+    assert validate_okf_bundle(bundle)["valid"] is True
+
+    with VaultDB(target_project / "vault.db") as db:
+        imported = import_okf_bundle(db, bundle, tags="roundtrip", scope="shared", trust=0.8)
+        assert imported["created_count"] == 1
+        candidates = db.list_memory_candidates(status="candidate")
+        assert len(candidates) == 1
+        promoted = promote_candidate(db, candidates[0]["id"], confirm=True, project_dir=target_project)
+        promoted_id = promoted["knowledge_id"]
+        assert db.get_knowledge(promoted_id)["title"] == "Checkout Rollback SOP"
+
+    qa_file = tmp_path / "okf-roundtrip-qa.json"
+    qa_file.write_text(
+        json.dumps(
+            {
+                "name": "okf-roundtrip",
+                "cases": [
+                    {
+                        "id": "checkout-rollback",
+                        "query": "payment authorization errors rise above two percent",
+                        "expected_ids": [promoted_id],
+                        "expected_titles": ["Checkout Rollback SOP"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    snapshot = evaluate_search_qa(
+        db_path=target_project / "vault.db",
+        qa_file=qa_file,
+        mode="keyword",
+        limit=3,
+    )
+
+    assert snapshot["aggregate"]["topk_hits"] == 1
+    assert snapshot["aggregate"]["read_range_guidance_rate"] == 1.0
+    result = snapshot["cases"][0]["results"][0]
+    assert result["id"] == promoted_id
+    assert result["next_actions"][-1]["tool"] == "vault_read_range"
+    with VaultDB(target_project / "vault.db") as db:
+        promoted_content = db.get_knowledge(promoted_id)["content_raw"]
+    evidence_line = next(
+        idx
+        for idx, line in enumerate(promoted_content.splitlines(), start=1)
+        if "payment authorization errors" in line
+    )
+    read_payload = _vault_read_range_payload(
+        promoted_id,
+        line_start=evidence_line,
+        line_end=evidence_line,
+        db_path=str(target_project / "vault.db"),
+    )
+    assert read_payload["citation"] == f"#{promoted_id} Checkout Rollback SOP L{evidence_line}-L{evidence_line}"
+    assert "payment authorization errors" in read_payload["content"]

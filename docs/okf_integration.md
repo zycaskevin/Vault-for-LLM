@@ -193,4 +193,5 @@ This keeps the boundary clear:
 4. Add `vault export okf` with safe defaults that exclude private/restricted
    memory. Done.
 5. Add Search QA fixtures that verify imported concepts are searchable and
-   bounded reads cite the exported source.
+   bounded reads cite the exported source. Done with an export -> validate ->
+   import candidates -> promote -> Search QA -> bounded read roundtrip test.

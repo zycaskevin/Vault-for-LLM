@@ -13,6 +13,7 @@ import webbrowser
 from .gui_api import (
     gui_candidate,
     gui_candidates,
+    gui_documents,
     gui_entry,
     gui_overview,
     gui_read_range,
@@ -73,6 +74,19 @@ def make_gui_handler(project_dir: Path):
                         project,
                         status=_str_arg(query, "status", "candidate"),
                         limit=_int_arg(query, "limit", 20),
+                    )
+                )
+                return
+            if path == "/api/documents":
+                self._send_json(
+                    gui_documents(
+                        project,
+                        query=_str_arg(query, "q", ""),
+                        layer=_str_arg(query, "layer", ""),
+                        category=_str_arg(query, "category", ""),
+                        scope=_str_arg(query, "scope", ""),
+                        sensitivity=_str_arg(query, "sensitivity", ""),
+                        limit=_int_arg(query, "limit", 50),
                     )
                 )
                 return
@@ -167,4 +181,3 @@ def cmd_gui(args: Any) -> None:
         port=int(getattr(args, "port", DEFAULT_PORT) or DEFAULT_PORT),
         open_browser=not bool(getattr(args, "no_open", False)),
     )
-

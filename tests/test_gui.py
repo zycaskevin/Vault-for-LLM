@@ -9,6 +9,7 @@ from vault.gui import (
     cmd_gui,
     gui_candidate,
     gui_candidates,
+    gui_documents,
     gui_entry,
     gui_overview,
     gui_read_range,
@@ -30,6 +31,18 @@ def _make_project(tmp_path):
             content_aaak="TITLE:GUI Console Runbook\nCLAIMS:\n- [C1] Search should find this memory. (L3)",
         )
         build_document_map_for_entry(db, kid)
+        private_id = db.add_knowledge(
+            "Private GUI Note",
+            "# Private GUI Note\n\nThis should be filterable by sensitivity.",
+            layer="L1",
+            category="private-note",
+            tags="gui,private",
+            trust=0.7,
+            scope="private",
+            sensitivity="high",
+            owner_agent="gui-agent",
+        )
+        build_document_map_for_entry(db, private_id)
     return project, kid
 
 
@@ -78,6 +91,25 @@ def test_gui_overview_search_entry_and_read(tmp_path):
     assert evidence["status"] == "ok"
     assert evidence["citation"].endswith("L1-L3")
     assert evidence["lines"][0]["line"] == 1
+
+
+def test_gui_documents_filters_and_facets(tmp_path):
+    project, kid = _make_project(tmp_path)
+
+    documents = gui_documents(project, limit=10)
+    assert documents["status"] == "ok"
+    assert [row["id"] for row in documents["documents"]][:2] == [kid + 1, kid]
+    assert any(item["value"] == "L3" for item in documents["facets"]["layers"])
+    assert any(item["value"] == "runbook" for item in documents["facets"]["categories"])
+
+    by_layer = gui_documents(project, layer="L3", limit=10)
+    assert [row["title"] for row in by_layer["documents"]] == ["GUI Console Runbook"]
+
+    by_category = gui_documents(project, category="private-note", sensitivity="high", limit=10)
+    assert [row["title"] for row in by_category["documents"]] == ["Private GUI Note"]
+
+    by_query = gui_documents(project, query="private", limit=10)
+    assert [row["title"] for row in by_query["documents"]] == ["Private GUI Note"]
 
 
 def test_gui_candidate_review_requires_confirmation(tmp_path):
@@ -148,6 +180,8 @@ def test_gui_search_rejects_non_positive_limit(tmp_path):
 
     assert gui_search(project, "console", limit=0)["results"] == []
     assert gui_search(project, "console", limit=-10)["results"] == []
+    assert gui_documents(project, limit=0)["documents"] == []
+    assert gui_documents(project, limit=-10)["documents"] == []
 
 
 def test_gui_missing_or_invalid_project(tmp_path):

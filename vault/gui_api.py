@@ -8,6 +8,7 @@ from typing import Any
 from .automation import automation_brief
 from .automation_inbox import automation_inbox
 from .db import VaultDB
+from .db_knowledge import escape_like_pattern
 from .memory import promote_candidate, review_candidate
 from .search import VaultSearch
 from .search_utils import normalize_search_limit
@@ -23,6 +24,20 @@ from .gui_format import (
     timeline_for,
     usage_for,
 )
+
+
+def _clean_filter(value: str | None) -> str:
+    cleaned = str(value or "").strip()
+    return "" if cleaned.lower() in {"", "all", "any", "*"} else cleaned
+
+
+_FACET_EXPRESSIONS = {
+    "layers": "layer",
+    "categories": "category",
+    "scopes": "COALESCE(scope, 'project')",
+    "sensitivities": "COALESCE(sensitivity, 'low')",
+}
+
 
 def gui_overview(project_dir: str | Path, *, limit: int = 5) -> dict[str, Any]:
     """Return the startup payload shown by the local GUI."""
@@ -60,6 +75,119 @@ def gui_overview(project_dir: str | Path, *, limit: int = 5) -> dict[str, Any]:
         "candidates": candidates,
         "recent": recent,
     }
+
+
+def gui_documents(
+    project_dir: str | Path,
+    *,
+    query: str = "",
+    layer: str = "",
+    category: str = "",
+    scope: str = "",
+    sensitivity: str = "",
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Return a compact, filterable active-memory document list for the GUI."""
+    project = Path(project_dir)
+    db_path = project / "vault.db"
+    limit_i = normalize_search_limit(limit, default=50, maximum=100)
+    if not db_path.exists():
+        return {
+            "status": "blocked",
+            "reason": "vault.db missing",
+            "documents": [],
+            "filters": {},
+            "facets": {},
+        }
+    if limit_i <= 0:
+        return {
+            "status": "ok",
+            "documents": [],
+            "filters": {},
+            "facets": {},
+        }
+
+    layer_i = _clean_filter(layer)
+    category_i = _clean_filter(category)
+    scope_i = _clean_filter(scope)
+    sensitivity_i = _clean_filter(sensitivity)
+    query_i = str(query or "").strip()
+
+    where = ["COALESCE(status, 'active') != 'archived'"]
+    params: list[Any] = []
+    if layer_i:
+        where.append("layer=?")
+        params.append(layer_i)
+    if category_i:
+        where.append("category=?")
+        params.append(category_i)
+    if scope_i:
+        where.append("COALESCE(scope, 'project')=?")
+        params.append(scope_i)
+    if sensitivity_i:
+        where.append("COALESCE(sensitivity, 'low')=?")
+        params.append(sensitivity_i)
+    if query_i:
+        pattern = f"%{escape_like_pattern(query_i)}%"
+        where.append(
+            """(
+                title LIKE ? ESCAPE '\\'
+                OR summary LIKE ? ESCAPE '\\'
+                OR tags LIKE ? ESCAPE '\\'
+                OR category LIKE ? ESCAPE '\\'
+                OR source LIKE ? ESCAPE '\\'
+            )"""
+        )
+        params.extend([pattern, pattern, pattern, pattern, pattern])
+
+    with VaultDB(db_path) as db:
+        rows = db.conn.execute(
+            f"""SELECT id, title, category, layer, trust, summary, tags, source,
+                       scope, sensitivity, owner_agent, memory_type,
+                       valid_from, valid_until, expires_at, updated_at
+                FROM knowledge
+                WHERE {' AND '.join(where)}
+                ORDER BY updated_at DESC, trust DESC, id DESC
+                LIMIT ?""",
+            [*params, limit_i],
+        ).fetchall()
+        facets = {
+            "layers": _facet_counts(db, "layers"),
+            "categories": _facet_counts(db, "categories"),
+            "scopes": _facet_counts(db, "scopes"),
+            "sensitivities": _facet_counts(db, "sensitivities"),
+        }
+
+    return {
+        "status": "ok",
+        "documents": [compact_knowledge(dict(row)) for row in rows],
+        "filters": {
+            "query": query_i,
+            "layer": layer_i,
+            "category": category_i,
+            "scope": scope_i,
+            "sensitivity": sensitivity_i,
+            "limit": limit_i,
+        },
+        "facets": facets,
+    }
+
+
+def _facet_counts(db: VaultDB, facet: str) -> list[dict[str, Any]]:
+    expression = _FACET_EXPRESSIONS[facet]
+    rows = db.conn.execute(
+        f"""SELECT {expression} AS value, COUNT(*) AS count
+            FROM knowledge
+            WHERE COALESCE(status, 'active') != 'archived'
+            GROUP BY value
+            ORDER BY count DESC, value ASC
+            LIMIT 50"""
+    ).fetchall()
+    return [
+        {"value": row["value"] or "", "count": row["count"]}
+        for row in rows
+        if row["value"] not in (None, "")
+    ]
 
 
 def gui_search(
@@ -296,5 +424,3 @@ def gui_review_candidate(
                 reason=reason or f"GUI review marked candidate {outcome}",
             )
     return {"status": "ok", "action": action_i, "result": compact_review_result(payload)}
-
-

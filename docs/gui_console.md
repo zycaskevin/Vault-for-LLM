@@ -25,11 +25,16 @@ vault gui --project-dir ~/Vaults/my-project --no-open --port 8765
 |---|---|
 | Left | Project status, candidate review queue, filterable document list |
 | Center | Search results, candidate review, and bounded evidence reader |
-| Right | Graph, timeline, governance, and usage metadata for the selected memory |
+| Right | Document Map, graph, timeline, governance, and usage metadata for the selected memory |
 
 The document list is the first Obsidian-like navigation slice: it lets a user
 filter active memory by text, layer, category, and sensitivity before opening a
 bounded read in the center pane.
+
+The Map tab is the first structured-reading slice. It shows Document Map
+sections and visible claims for the selected memory. Clicking a section opens
+that exact line range in the bounded evidence reader instead of loading the
+whole note.
 
 ## API
 
@@ -65,5 +70,6 @@ The GUI should make the automation loop easier to trust:
 
 - show the smallest human review surface first
 - keep bounded evidence more prominent than raw full-document dumps
+- let the right-side Map tab guide bounded reads before richer graph views
 - make temporal and governance metadata visible beside each memory
 - keep future write-capable flows explicit, audited, and rollback-friendly

@@ -4,6 +4,7 @@ from argparse import Namespace
 
 from vault.db import VaultDB
 from vault.docmap import build_document_map_for_entry
+from vault.gui_app import APP_HTML
 from vault.memory import create_candidate
 from vault.gui import (
     cmd_gui,
@@ -91,6 +92,13 @@ def test_gui_overview_search_entry_and_read(tmp_path):
     assert evidence["status"] == "ok"
     assert evidence["citation"].endswith("L1-L3")
     assert evidence["lines"][0]["line"] == 1
+
+
+def test_gui_app_exposes_document_map_panel():
+    assert 'data-tab="map"' in APP_HTML
+    assert "Sections" in APP_HTML
+    assert "Claims" in APP_HTML
+    assert "data-read-node" in APP_HTML
 
 
 def test_gui_documents_filters_and_facets(tmp_path):

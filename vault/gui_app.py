@@ -106,12 +106,27 @@ APP_HTML = r"""<!doctype html>
     }
     .evidence-head { padding: 10px 12px; border-bottom: 1px solid #2b333b; color: #b9c2cc; font-size: 13px; }
     pre { margin: 0; padding: 12px; overflow: auto; line-height: 1.5; white-space: pre-wrap; }
-    .tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 12px 12px 0; }
+    .tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 12px 12px 0; }
     .tabs button { padding: 8px 6px; background: #fff; color: var(--muted); border-color: var(--line); }
     .tabs button.active { color: #fff; background: var(--accent-2); border-color: var(--accent-2); }
     .right-content { padding: 14px; }
     .kv { display: grid; grid-template-columns: 110px 1fr; gap: 8px; font-size: 13px; padding: 7px 0; border-bottom: 1px solid var(--line); }
     .kv span:first-child { color: var(--muted); }
+    .map-list { display: grid; gap: 8px; margin-top: 10px; }
+    .map-node, .claim {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px;
+      background: #fff;
+      width: 100%;
+      color: var(--ink);
+      text-align: left;
+    }
+    .map-node { cursor: pointer; }
+    .map-node:hover { border-color: var(--accent); }
+    .map-node strong, .claim strong { display: block; font-size: 13px; }
+    .map-node.level-2 { margin-left: 10px; width: calc(100% - 10px); }
+    .map-node.level-3, .map-node.level-4, .map-node.level-5, .map-node.level-6 { margin-left: 20px; width: calc(100% - 20px); }
     .empty { padding: 30px 18px; color: var(--muted); text-align: center; }
     @media (max-width: 1040px) {
       .app { grid-template-columns: 280px 1fr; }
@@ -162,7 +177,8 @@ APP_HTML = r"""<!doctype html>
     </main>
     <aside class="right">
       <div class="tabs">
-        <button data-tab="graph" class="active">Graph</button>
+        <button data-tab="map" class="active">Map</button>
+        <button data-tab="graph">Graph</button>
         <button data-tab="timeline">Timeline</button>
         <button data-tab="governance">Governance</button>
         <button data-tab="usage">Usage</button>
@@ -172,7 +188,7 @@ APP_HTML = r"""<!doctype html>
   </div>
   <script>
     let currentEntry = null;
-    let activeTab = "graph";
+    let activeTab = "map";
     let documentFacets = {};
 
     const $ = (id) => document.getElementById(id);
@@ -284,6 +300,13 @@ APP_HTML = r"""<!doctype html>
       });
     }
 
+    async function readRange(id, start, end) {
+      const range = await api(`/api/read?knowledge_id=${id}&line_start=${start}&line_end=${end}`);
+      $("evidence").hidden = false;
+      $("evidenceHead").textContent = range.citation || currentEntry.entry?.title || "";
+      $("evidenceBody").textContent = (range.lines || []).map(line => `${line.line}| ${line.text}`).join("\n");
+    }
+
     async function loadEntry(id) {
       currentEntry = await api(`/api/entry/${id}`);
       renderSidePanel();
@@ -291,10 +314,7 @@ APP_HTML = r"""<!doctype html>
       const first = nodes[0] || {};
       const start = first.line_start || 1;
       const end = Math.min(first.line_end || start + 39, start + 39);
-      const range = await api(`/api/read?knowledge_id=${id}&line_start=${start}&line_end=${end}`);
-      $("evidence").hidden = false;
-      $("evidenceHead").textContent = range.citation || currentEntry.entry?.title || "";
-      $("evidenceBody").textContent = (range.lines || []).map(line => `${line.line}| ${line.text}`).join("\n");
+      await readRange(id, start, end);
     }
 
     async function loadCandidate(id) {
@@ -375,6 +395,17 @@ APP_HTML = r"""<!doctype html>
         return;
       }
       const data = currentEntry[activeTab] || {};
+      if (activeTab === "map") {
+        $("sidePanel").innerHTML = renderMapPanel(currentEntry);
+        $("sidePanel").querySelectorAll("[data-read-node]").forEach(button => {
+          button.addEventListener("click", () => {
+            const start = Number(button.dataset.lineStart || 1);
+            const end = Number(button.dataset.lineEnd || start);
+            readRange(currentEntry.entry.id, start, end);
+          });
+        });
+        return;
+      }
       if (activeTab === "graph") {
         $("sidePanel").innerHTML = `<div class="panel"><h3>${esc(currentEntry.entry.title)}</h3><div class="subtle">${esc(data.edge_count || 0)} linked edges</div></div>` +
           (data.edges || []).map(edge => `<div class="kv"><span>${esc(edge.relation)}</span><strong>#${esc(edge.other_id)} ${esc(edge.other_title)}</strong></div>`).join("");
@@ -383,6 +414,38 @@ APP_HTML = r"""<!doctype html>
       $("sidePanel").innerHTML = Object.entries(data).map(([key, value]) => `
         <div class="kv"><span>${esc(key)}</span><strong>${esc(value || "—")}</strong></div>
       `).join("");
+    }
+
+    function renderMapPanel(entry) {
+      const nodes = entry.nodes || [];
+      const claims = entry.claims || [];
+      const nodeHtml = nodes.length ? nodes.map(node => {
+        const start = node.line_start || 1;
+        const end = node.line_end || start;
+        const level = Math.max(1, Math.min(6, Number(node.level || 1)));
+        return `
+          <button class="map-node level-${level}" type="button" data-read-node="1" data-line-start="${esc(start)}" data-line-end="${esc(end)}">
+            <strong>${esc(node.heading || node.path || "Untitled section")}</strong>
+            <span class="subtle">${esc(node.path || "")} L${esc(start)}-L${esc(end)}</span>
+          </button>
+        `;
+      }).join("") : `<div class="empty">No Document Map nodes</div>`;
+      const claimHtml = claims.length ? claims.slice(0, 8).map(claim => `
+        <div class="claim">
+          <strong>${esc(claim.claim || "")}</strong>
+          <span class="subtle">${esc(claim.node_uid || "")} L${esc(claim.line_start || "—")}-L${esc(claim.line_end || "—")}</span>
+        </div>
+      `).join("") : `<div class="empty">No claims yet</div>`;
+      return `
+        <div class="panel">
+          <h3>${esc(entry.entry.title)}</h3>
+          <div class="subtle">${esc(nodes.length)} sections · ${esc(claims.length)} visible claims</div>
+        </div>
+        <h2>Sections</h2>
+        <div class="map-list">${nodeHtml}</div>
+        <h2>Claims</h2>
+        <div class="map-list">${claimHtml}</div>
+      `;
     }
 
     async function boot() {

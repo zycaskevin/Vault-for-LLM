@@ -2,6 +2,10 @@
 
 ## [0.7.14] - 2026-06-26
 
+### Added
+
+- Added a filterable local GUI document list with layer, category, and sensitivity filters, plus a compact `/api/documents` endpoint that does not return raw memory content.
+
 ### Changed
 
 - Split automation policy defaults, YAML loading, mode normalization, and policy value parsing into `vault/automation_policy.py`.

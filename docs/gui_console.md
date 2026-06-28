@@ -23,9 +23,13 @@ vault gui --project-dir ~/Vaults/my-project --no-open --port 8765
 
 | Area | Purpose |
 |---|---|
-| Left | Project status, candidate review queue, recent memory |
+| Left | Project status, candidate review queue, filterable document list |
 | Center | Search results, candidate review, and bounded evidence reader |
 | Right | Graph, timeline, governance, and usage metadata for the selected memory |
+
+The document list is the first Obsidian-like navigation slice: it lets a user
+filter active memory by text, layer, category, and sensitivity before opening a
+bounded read in the center pane.
 
 ## API
 
@@ -37,6 +41,7 @@ The local server exposes read-only JSON endpoints:
 | `/api/candidates` | Candidate queue without full content |
 | `/api/candidate/<id>` | Candidate metadata, gate details, and content for review |
 | `POST /api/candidate/<id>/review` | Promote, reject, or block with explicit confirmation |
+| `/api/documents?q=...&layer=L3&category=...&sensitivity=low` | Filterable active-memory document list without raw content |
 | `/api/search?q=...` | Local keyword search for memory entries |
 | `/api/entry/<id>` | Metadata, Document Map rows, claims, graph summary |
 | `/api/read?knowledge_id=1&line_start=1&line_end=40` | Bounded evidence range |

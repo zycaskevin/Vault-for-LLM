@@ -70,6 +70,8 @@ APP_HTML = r"""<!doctype html>
     button.danger { background: var(--danger); border-color: var(--danger); }
     button.warn { background: var(--warn); border-color: var(--warn); }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    .filter-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+    .filter-grid input, .filter-grid select { width: 100%; padding: 8px 9px; font-size: 13px; }
     textarea {
       width: 100%;
       min-height: 70px;
@@ -133,8 +135,18 @@ APP_HTML = r"""<!doctype html>
         <div class="metric-grid" id="metrics"></div>
         <h2>Review Inbox</h2>
         <div id="reviewQueue"></div>
-        <h2>Recent Memory</h2>
-        <div id="recentList"></div>
+        <h2>Documents</h2>
+        <div class="filter-grid">
+          <input id="docQuery" placeholder="Filter documents">
+          <select id="docLayer"><option value="">Any layer</option></select>
+          <select id="docCategory"><option value="">Any category</option></select>
+          <select id="docSensitivity"><option value="">Any sensitivity</option></select>
+        </div>
+        <div class="actions">
+          <button id="applyDocFilters" class="secondary" type="button">Apply</button>
+          <button id="clearDocFilters" class="secondary" type="button">Clear</button>
+        </div>
+        <div id="documentList"></div>
       </div>
     </aside>
     <main class="content">
@@ -161,6 +173,7 @@ APP_HTML = r"""<!doctype html>
   <script>
     let currentEntry = null;
     let activeTab = "graph";
+    let documentFacets = {};
 
     const $ = (id) => document.getElementById(id);
     const esc = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -214,6 +227,38 @@ APP_HTML = r"""<!doctype html>
           if (idValue) el.addEventListener("click", () => loadEntry(idValue));
         }
       });
+    }
+
+    function renderFacetSelect(id, label, items, selected) {
+      const options = [`<option value="">${esc(label)}</option>`].concat(
+        (items || []).map(item => {
+          const value = item.value || "";
+          const title = `${value} (${item.count})`;
+          return `<option value="${esc(value)}" ${value === selected ? "selected" : ""}>${esc(title)}</option>`;
+        })
+      );
+      $(id).innerHTML = options.join("");
+    }
+
+    function renderDocumentFilters(filters, facets) {
+      documentFacets = facets || documentFacets || {};
+      $("docQuery").value = filters?.query || $("docQuery").value || "";
+      renderFacetSelect("docLayer", "Any layer", documentFacets.layers || [], filters?.layer || "");
+      renderFacetSelect("docCategory", "Any category", documentFacets.categories || [], filters?.category || "");
+      renderFacetSelect("docSensitivity", "Any sensitivity", documentFacets.sensitivities || [], filters?.sensitivity || "");
+    }
+
+    async function loadDocuments() {
+      const params = new URLSearchParams({
+        q: $("docQuery")?.value || "",
+        layer: $("docLayer")?.value || "",
+        category: $("docCategory")?.value || "",
+        sensitivity: $("docSensitivity")?.value || "",
+        limit: "50"
+      });
+      const payload = await api(`/api/documents?${params.toString()}`);
+      renderDocumentFilters(payload.filters || {}, payload.facets || {});
+      renderList("documentList", payload.documents || [], "No documents");
     }
 
     function renderResults(items) {
@@ -345,7 +390,7 @@ APP_HTML = r"""<!doctype html>
       $("projectPath").textContent = overview.project_dir || "";
       renderMetrics(overview.stats || {}, overview.inbox || {});
       renderList("reviewQueue", overview.candidates || overview.inbox?.review_queue || overview.inbox?.review_digest?.items || [], "No review items");
-      renderList("recentList", overview.recent || [], "No memory yet");
+      await loadDocuments();
       $("results").innerHTML = `<div class="empty">Search or choose a memory</div>`;
       renderSidePanel();
     }
@@ -364,6 +409,21 @@ APP_HTML = r"""<!doctype html>
         activeTab = button.dataset.tab;
         renderSidePanel();
       });
+    });
+
+    $("applyDocFilters").addEventListener("click", () => loadDocuments());
+    $("clearDocFilters").addEventListener("click", () => {
+      $("docQuery").value = "";
+      $("docLayer").value = "";
+      $("docCategory").value = "";
+      $("docSensitivity").value = "";
+      loadDocuments();
+    });
+    $("docQuery").addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        loadDocuments();
+      }
     });
 
     boot().catch(err => {

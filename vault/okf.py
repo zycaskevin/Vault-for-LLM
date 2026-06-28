@@ -120,6 +120,128 @@ def validate_okf_bundle(bundle_dir: str | Path, *, max_file_bytes: int = DEFAULT
     return _payload(root, concepts, reserved, errors=errors, warnings=warnings)
 
 
+def import_okf_bundle(
+    db: Any,
+    bundle_dir: str | Path,
+    *,
+    dry_run: bool = False,
+    max_file_bytes: int = DEFAULT_MAX_FILE_BYTES,
+    layer: str = "L3",
+    category: str = "",
+    tags: str | list[str] = "",
+    trust: float = 0.5,
+    reason: str = "",
+    scope: str = "project",
+    sensitivity: str = "low",
+    owner_agent: str = "",
+    allowed_agents: str | list[str] = "",
+    memory_type: str = "okf_concept",
+    expires_at: str = "",
+    valid_from: str = "",
+    valid_until: str = "",
+    supersedes_id: int | str | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """Import OKF concepts into memory candidates, never active knowledge."""
+    validation = validate_okf_bundle(bundle_dir, max_file_bytes=max_file_bytes)
+    if not validation["valid"]:
+        return {
+            "status": "error",
+            "dry_run": dry_run,
+            "bundle_dir": validation["bundle_dir"],
+            "validation": validation,
+            "candidate_count": 0,
+            "created_count": 0,
+            "rejected_count": 0,
+            "candidates": [],
+        }
+
+    from .memory import create_candidate
+
+    root = Path(bundle_dir).expanduser().resolve()
+    candidates: list[dict[str, Any]] = []
+    created_count = 0
+    rejected_count = 0
+    concept_rows = validation["concepts"]
+    if limit is not None:
+        concept_rows = concept_rows[: max(0, int(limit))]
+
+    for concept in concept_rows:
+        rel = str(concept["path"])
+        parsed = parse_markdown_frontmatter((root / rel).read_text(encoding="utf-8"))
+        meta = parsed.metadata
+        okf_type = str(meta.get("type") or concept.get("type") or "").strip()
+        title = str(meta.get("title") or concept.get("concept_id") or Path(rel).stem).strip()
+        description = str(meta.get("description") or "").strip()
+        resource = _metadata_string(meta.get("resource"))
+        timestamp = _metadata_string(meta.get("timestamp"))
+        concept_tags = _join_tags([tags, meta.get("tags"), "okf", okf_type])
+        mapped_category = (category or okf_type or "okf").strip()
+        mapped_reason = reason or f"Imported from OKF bundle path {rel}; review before promotion."
+        source_ref = _source_ref(rel, resource=resource, timestamp=timestamp)
+        content = _candidate_content(
+            title=title,
+            okf_type=okf_type,
+            description=description,
+            resource=resource,
+            timestamp=timestamp,
+            body=parsed.body,
+        )
+        mapped_valid_from = _metadata_string(meta.get("valid_from")) or str(valid_from or "").strip()
+        mapped_valid_until = _metadata_string(meta.get("valid_until")) or str(valid_until or "").strip()
+        entry = {
+            "path": rel,
+            "title": title,
+            "type": okf_type,
+            "category": mapped_category,
+            "tags": concept_tags,
+            "source_ref": source_ref,
+            "content_preview": content[:240],
+        }
+        if dry_run:
+            candidates.append({"status": "preview", **entry})
+            continue
+
+        result = create_candidate(
+            db,
+            title=title,
+            content=content,
+            layer=layer,
+            category=mapped_category,
+            tags=concept_tags,
+            trust=trust,
+            source="okf",
+            source_ref=source_ref,
+            reason=mapped_reason,
+            scope=scope,
+            sensitivity=sensitivity,
+            owner_agent=owner_agent,
+            allowed_agents=allowed_agents,
+            memory_type=memory_type,
+            expires_at=expires_at,
+            valid_from=mapped_valid_from,
+            valid_until=mapped_valid_until,
+            supersedes_id=supersedes_id,
+        )
+        if result["status"] == "candidate_created":
+            created_count += 1
+        elif result["status"] == "rejected":
+            rejected_count += 1
+        candidates.append({**entry, **result})
+
+    status = "preview" if dry_run else "ok"
+    return {
+        "status": status,
+        "dry_run": dry_run,
+        "bundle_dir": validation["bundle_dir"],
+        "validation": validation,
+        "candidate_count": len(candidates),
+        "created_count": created_count,
+        "rejected_count": rejected_count,
+        "candidates": candidates,
+    }
+
+
 def _read_and_parse(path: Path, rel: str, max_file_bytes: int, errors: list[dict[str, Any]]) -> FrontmatterResult | None:
     try:
         if path.stat().st_size > max(1, max_file_bytes):
@@ -160,6 +282,65 @@ def _warn_broken_links(rel: str, body: str, markdown_lookup: dict[str, Path], wa
         normalized = posixpath.normpath(normalized.replace("\\", "/"))
         if normalized.startswith("../") or normalized not in markdown_lookup:
             warnings.append(_issue(rel, "broken_link", f"missing local markdown target: {raw_target}"))
+
+
+def _join_tags(values: list[Any]) -> str:
+    tags: list[str] = []
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, (list, tuple, set)):
+            items = value
+        else:
+            items = str(value).split(",")
+        for item in items:
+            tag = str(item).strip()
+            if tag and tag not in tags:
+                tags.append(tag)
+    return ",".join(tags)
+
+
+def _metadata_string(value: Any) -> str:
+    if value is None:
+        return ""
+    if hasattr(value, "isoformat"):
+        text = value.isoformat()
+        if text.endswith("+00:00"):
+            text = f"{text[:-6]}Z"
+        return text
+    return str(value).strip()
+
+
+def _source_ref(path: str, *, resource: str = "", timestamp: str = "") -> str:
+    parts = [f"okf:{path}"]
+    if resource:
+        parts.append(f"resource={resource}")
+    if timestamp:
+        parts.append(f"timestamp={timestamp}")
+    return " ".join(parts)
+
+
+def _candidate_content(
+    *,
+    title: str,
+    okf_type: str,
+    description: str,
+    resource: str,
+    timestamp: str,
+    body: str,
+) -> str:
+    parts = [f"# {title}"]
+    if okf_type:
+        parts.append(f"OKF type: {okf_type}")
+    if description:
+        parts.append(description)
+    if resource:
+        parts.append(f"Resource: {resource}")
+    if timestamp:
+        parts.append(f"Timestamp: {timestamp}")
+    if body:
+        parts.append(body.strip())
+    return "\n\n".join(parts).strip()
 
 
 def _is_reserved(rel: str) -> bool:

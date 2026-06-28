@@ -37,6 +37,8 @@ with the daily loop in the README and only use these commands when needed.
 | `vault add "Title" --content "..."` | Add one active knowledge entry directly |
 | `vault add "Title" --file note.md` | Add an entry from a Markdown file |
 | `vault import long-doc.md` | Import and chunk a long document |
+| `vault import okf --bundle ./okf-bundle --dry-run --json --pretty` | Preview candidate-first import from an OKF-style Markdown bundle |
+| `vault import okf --bundle ./okf-bundle --scope shared --owner-agent work-agent` | Write OKF concepts into `memory_candidates` for review, not active knowledge |
 | `vault import obsidian --vault /path/to/ObsidianVault --dry-run` | Preview importing existing Obsidian notes into `raw/obsidian/` |
 | `vault import obsidian --vault /path/to/ObsidianVault --compile` | Import changed Obsidian notes and compile them into `vault.db` |
 | `vault export obsidian --vault /path/to/ObsidianVault --dry-run` | Export read-only Markdown notes for Obsidian browsing |

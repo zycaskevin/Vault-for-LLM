@@ -71,6 +71,19 @@ to export extra governance metadata while still producing readable Markdown.
 
 `vault import okf` should turn an OKF bundle into reviewable Vault knowledge.
 
+Current command:
+
+```bash
+vault import okf --bundle ./okf-bundle --dry-run --json --pretty
+vault import okf --bundle ./okf-bundle --scope shared --owner-agent work-agent
+```
+
+This import is candidate-first. It writes OKF concepts into
+`memory_candidates`, not active knowledge. Each imported concept still goes
+through the normal privacy, duplicate, metadata, and quality gates before it can
+be promoted. Use `vault candidates` and
+`vault promote <candidate_id> --confirm` to review and activate entries.
+
 Recommended behavior:
 
 - parse each Markdown concept with YAML frontmatter
@@ -163,7 +176,7 @@ This keeps the boundary clear:
 
 1. Add documentation and decision record for the OKF boundary.
 2. Add `vault okf validate` for local bundle checks. Done.
-3. Add `vault import okf` in candidate-first mode.
+3. Add `vault import okf` in candidate-first mode. Done.
 4. Add `vault export okf` with safe defaults that exclude private/restricted
    memory.
 5. Add Search QA fixtures that verify imported concepts are searchable and

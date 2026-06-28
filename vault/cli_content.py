@@ -161,6 +161,60 @@ def cmd_import(args):
     project_dir = find_project_dir()
     db_path = project_dir / "vault.db"
 
+    if args.file == "okf":
+        from vault.db import VaultDB
+        from vault.okf import import_okf_bundle
+
+        if not getattr(args, "bundle", None):
+            print("❌ vault import okf 需要 --bundle /path/to/okf-bundle")
+            raise SystemExit(2)
+
+        try:
+            with VaultDB(db_path) as db:
+                payload = import_okf_bundle(
+                    db,
+                    args.bundle,
+                    dry_run=args.dry_run,
+                    max_file_bytes=args.max_file_bytes,
+                    layer=args.layer,
+                    category=args.category if args.category != "general" else "",
+                    tags=args.tags,
+                    trust=args.trust,
+                    reason=getattr(args, "reason", ""),
+                    scope=_arg_value(args, "scope", "project"),
+                    sensitivity=_arg_value(args, "sensitivity", "low"),
+                    owner_agent=_arg_value(args, "owner_agent", ""),
+                    allowed_agents=_arg_value(args, "allowed_agents", ""),
+                    memory_type=_arg_value(args, "memory_type", "okf_concept"),
+                    expires_at=_arg_value(args, "expires_at", ""),
+                    valid_from=_arg_value(args, "valid_from", ""),
+                    valid_until=_arg_value(args, "valid_until", ""),
+                    supersedes_id=_arg_value(args, "supersedes_id", None),
+                    limit=getattr(args, "limit", None),
+                )
+        except Exception as e:
+            print(f"❌ OKF 匯入失敗: {e}")
+            raise SystemExit(2) from e
+
+        if getattr(args, "json", False) or getattr(args, "pretty", False):
+            _json_print(payload, pretty=getattr(args, "pretty", False))
+        else:
+            print("📦 OKF 匯入結果:")
+            print(f"  Bundle: {payload['bundle_dir']}")
+            print(f"  模式: {'dry-run' if payload['dry_run'] else 'write candidates'}")
+            print(f"  Validation: {payload['validation']['status']} ({payload['validation']['error_count']} errors, {payload['validation']['warning_count']} warnings)")
+            print(f"  候選: {payload['candidate_count']}")
+            print(f"  已建立: {payload['created_count']}")
+            print(f"  已拒絕: {payload['rejected_count']}")
+            for item in payload.get("candidates", [])[:10]:
+                ident = item.get("candidate_id") or item.get("path")
+                print(f"    - {item.get('status')}: {item.get('title')} ({ident})")
+            if not payload["dry_run"] and payload["created_count"]:
+                print("下一步：執行 vault candidates，審查後再 vault promote <candidate_id> --confirm。")
+        if payload["status"] == "error":
+            raise SystemExit(1)
+        return
+
     if args.file == "obsidian":
         from vault.import_obsidian import sync_obsidian_vault
 

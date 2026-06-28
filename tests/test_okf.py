@@ -2,7 +2,8 @@ import json
 
 import pytest
 
-from vault.okf import parse_markdown_frontmatter, validate_okf_bundle
+from vault.db import VaultDB
+from vault.okf import import_okf_bundle, parse_markdown_frontmatter, validate_okf_bundle
 
 
 def _write(path, text):
@@ -150,3 +151,125 @@ def test_okf_validate_cli_exits_nonzero_when_invalid(tmp_path):
         main(["okf", "validate", str(tmp_path), "--json"])
 
     assert exc.value.code == 1
+
+
+def test_import_okf_bundle_dry_run_does_not_write_candidates(tmp_path):
+    _write(tmp_path / "index.md", "# Bundle index\n")
+    _write(tmp_path / "log.md", "# Bundle log\n")
+    _write(
+        tmp_path / "metric.md",
+        """---
+type: metric
+title: Conversion rate
+description: Paid orders divided by checkout sessions
+tags: [analytics, conversion]
+resource: metric.conversion_rate
+timestamp: 2026-06-28
+---
+
+Use this metric when reviewing checkout funnel experiments because it reflects real order completion.
+""",
+    )
+    db_path = tmp_path / "vault.db"
+    with VaultDB(db_path) as db:
+        payload = import_okf_bundle(db, tmp_path, dry_run=True)
+        rows = db.list_memory_candidates(status=None)
+
+    assert payload["status"] == "preview"
+    assert payload["candidate_count"] == 1
+    assert payload["created_count"] == 0
+    assert rows == []
+
+
+def test_import_okf_bundle_writes_candidates_only(tmp_path):
+    bundle = tmp_path / "bundle"
+    _write(bundle / "index.md", "# Bundle index\n")
+    _write(bundle / "log.md", "# Bundle log\n")
+    _write(
+        bundle / "tables" / "orders.md",
+        """---
+type: table
+title: Orders table
+description: Customer order records
+tags: [warehouse, orders]
+resource: db.public.orders
+timestamp: 2026-06-28
+valid_from: 2026-06-01T00:00:00Z
+valid_until: 2026-12-31T00:00:00Z
+---
+
+Orders are joined by customer_id because each order belongs to exactly one customer account.
+""",
+    )
+    with VaultDB(tmp_path / "vault.db") as db:
+        payload = import_okf_bundle(
+            db,
+            bundle,
+            scope="shared",
+            owner_agent="work-agent",
+            tags="imported",
+            trust=0.7,
+        )
+        candidates = db.list_memory_candidates(status=None)
+        active = db.list_knowledge()
+
+    assert payload["status"] == "ok"
+    assert payload["created_count"] == 1
+    assert payload["rejected_count"] == 0
+    assert active == []
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["title"] == "Orders table"
+    assert candidate["source"] == "okf"
+    assert candidate["source_ref"].startswith("okf:tables/orders.md")
+    assert "resource=db.public.orders" in candidate["source_ref"]
+    assert candidate["category"] == "table"
+    assert candidate["memory_type"] == "okf_concept"
+    assert candidate["scope"] == "shared"
+    assert candidate["owner_agent"] == "work-agent"
+    assert candidate["valid_from"] == "2026-06-01T00:00:00Z"
+    assert candidate["valid_until"] == "2026-12-31T00:00:00Z"
+    assert "imported" in candidate["tags"]
+    assert "warehouse" in candidate["tags"]
+
+
+def test_okf_import_cli_json_writes_candidate(tmp_path, capsys):
+    from vault.cli import main
+
+    project = tmp_path / "project"
+    bundle = tmp_path / "bundle"
+    main(["init", "--project-dir", str(project)])
+    capsys.readouterr()
+    _write(bundle / "index.md", "# Bundle index\n")
+    _write(bundle / "log.md", "# Bundle log\n")
+    _write(
+        bundle / "concept.md",
+        """---
+type: decision
+title: Use bounded reads
+description: Agents should cite bounded source ranges
+tags: [agent, citation]
+---
+
+Use bounded reads before answering because raw document dumps waste context and weaken citations.
+""",
+    )
+
+    main([
+        "import",
+        "okf",
+        "--bundle",
+        str(bundle),
+        "--project-dir",
+        str(project),
+        "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "ok"
+    assert payload["created_count"] == 1
+    with VaultDB(project / "vault.db") as db:
+        candidates = db.list_memory_candidates(status=None)
+        active = db.list_knowledge()
+    assert len(candidates) == 1
+    assert active == []

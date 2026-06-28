@@ -117,6 +117,17 @@ Export rules:
 
 `vault okf validate` should check bundle structure before import or publication.
 
+Current command:
+
+```bash
+vault okf validate ./okf-bundle
+vault okf validate ./okf-bundle --json --pretty
+```
+
+The validator is read-only. It exits with status code `0` when the bundle has no
+errors, and `1` when required structure is missing or invalid. Warnings, such as
+broken local Markdown links, are reported without blocking the bundle.
+
 Minimum checks:
 
 - every concept file has parseable YAML frontmatter
@@ -151,7 +162,7 @@ This keeps the boundary clear:
 ## Implementation Plan
 
 1. Add documentation and decision record for the OKF boundary.
-2. Add `vault okf validate` for local bundle checks.
+2. Add `vault okf validate` for local bundle checks. Done.
 3. Add `vault import okf` in candidate-first mode.
 4. Add `vault export okf` with safe defaults that exclude private/restricted
    memory.

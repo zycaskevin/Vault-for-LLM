@@ -9,6 +9,7 @@ Vault-for-LLM — CLI 入口。
   vault compile           # 編譯 raw/ → db + compiled/
   vault search "查詢"     # 搜尋知識
   vault export obsidian   # 匯出成 Obsidian vault Markdown notes
+  vault okf validate DIR  # 驗證 OKF-style Markdown bundle
   vault list              # 列出知識
   vault candidates        # 列出候選記憶
   vault remove <id>       # 刪除知識（需要 --confirm）
@@ -79,6 +80,7 @@ from .cli_flow import (
     cmd_usage,
 )
 from .cli_map_remote import cmd_map, cmd_remote, _parse_map_line_range, _positive_int
+from .cli_okf import add_okf_parser, cmd_okf
 from .cli_quality import (
     cmd_config,
     cmd_converge,
@@ -796,6 +798,7 @@ def main(argv: list[str] | None = None):
 
     add_automation_parser(sub)
     add_memory_parser(sub)
+    add_okf_parser(sub)
     args = parser.parse_args(normalized_argv)
 
     previous_project_dir_override = get_project_dir_override()
@@ -848,6 +851,7 @@ def main(argv: list[str] | None = None):
         "dedup": cmd_dedup,
         "search-qa": cmd_search_qa,
         "semantic": cmd_semantic,
+        "okf": cmd_okf,
         "gui": cmd_gui,
     }
 

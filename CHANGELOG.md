@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## [0.7.15] - 2026-06-29
+
+### Added
+
+- Added Task Ledger as a runtime working-set layer for resumable agent work, separate from permanent L0-L3 memory.
+- Added Task Ledger MCP tools for starting, reading, updating, handing off, and completing active work in `review`, `maintenance`, and `full` profiles.
+- Added a read-only GUI Active Tasks panel and compact task APIs so humans can inspect active/blocked work without exposing raw long-term memory.
+- Added Task Ledger snapshots to `vault automation cycle --write-workspace`, keeping next actions and continuation notes in the compact agent handoff.
+
+### Safety
+
+- Kept Task Ledger out of the `core` MCP profile so the smallest default schema stays compact.
+- Kept Task Ledger as task state, not active knowledge: it does not create L0-L3 memories, promote candidates, or mutate long-term memory during automation cycle reads.
+- GUI task APIs return compact task metadata and handoff markdown, not raw candidate bodies or private memory dumps.
+
+### Maintenance
+
+- Updated public README pins, the claim matrix, and the short release announcement for the Task Ledger continuity release.
+
 ## [0.7.14] - 2026-06-26
 
 ### Added

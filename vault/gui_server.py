@@ -5,7 +5,9 @@ from __future__ import annotations
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 from pathlib import Path
+import secrets
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 import webbrowser
@@ -34,17 +36,25 @@ def run_gui(
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
     open_browser: bool = True,
+    auth_token: str | None = None,
+    no_auth: bool = False,
 ) -> None:
     """Start the local GUI server and block until interrupted."""
     project = Path(project_dir).expanduser().resolve()
-    handler = make_gui_handler(project)
+    host_text = str(host or DEFAULT_HOST)
+    if no_auth and host_text not in {"127.0.0.1", "localhost", "::1"}:
+        raise ValueError("--no-auth is only allowed for localhost binds")
+    token = "" if no_auth else (auth_token or os.environ.get("VAULT_GUI_TOKEN", "").strip() or secrets.token_urlsafe(24))
+    handler = make_gui_handler(project, auth_token=token)
     server = ThreadingHTTPServer((host, int(port)), handler)
     url = f"http://{host}:{int(port)}/"
+    browser_url = f"{url}?token={token}" if token else url
     print(f"Vault GUI: {url}")
+    print(f"Auth: {'enabled' if token else 'disabled'}")
     print(f"Project: {project}")
     print("Press Ctrl+C to stop.")
     if open_browser:
-        webbrowser.open(url)
+        webbrowser.open(browser_url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -53,8 +63,9 @@ def run_gui(
         server.server_close()
 
 
-def make_gui_handler(project_dir: Path):
+def make_gui_handler(project_dir: Path, *, auth_token: str = ""):
     project = Path(project_dir)
+    token = str(auth_token or "")
 
     class VaultGuiHandler(BaseHTTPRequestHandler):
         server_version = "VaultGui/0.1"
@@ -64,8 +75,11 @@ def make_gui_handler(project_dir: Path):
             path = parsed.path
             query = parse_qs(parsed.query)
 
+            if not self._is_authorized(query):
+                self._send_unauthorized()
+                return
             if path == "/":
-                self._send_html(APP_HTML)
+                self._send_html(APP_HTML, set_cookie=bool(token and _query_token(query) == token))
                 return
             if path == "/api/overview":
                 self._send_json(gui_overview(project, limit=_int_arg(query, "limit", 5)))
@@ -135,6 +149,10 @@ def make_gui_handler(project_dir: Path):
         def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
             parsed = urlparse(self.path)
             path = parsed.path
+            query = parse_qs(parsed.query)
+            if not self._is_authorized(query):
+                self._send_unauthorized()
+                return
             if path.startswith("/api/candidate/") and path.endswith("/review"):
                 candidate_id = path[len("/api/candidate/") : -len("/review")].strip("/")
                 body = self._read_json_body()
@@ -162,14 +180,38 @@ def make_gui_handler(project_dir: Path):
             self.end_headers()
             self.wfile.write(data)
 
-        def _send_html(self, html: str) -> None:
+        def _send_html(self, html: str, *, set_cookie: bool = False) -> None:
             data = html.encode("utf-8")
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
+            if set_cookie and token:
+                self.send_header("Set-Cookie", f"vault_gui_token={token}; Path=/; SameSite=Strict")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
+
+        def _send_unauthorized(self) -> None:
+            if self.path.startswith("/api/"):
+                self._send_json({"status": "error", "error": "unauthorized"}, status=HTTPStatus.UNAUTHORIZED)
+                return
+            data = b"Vault GUI requires a valid token."
+            self.send_response(HTTPStatus.UNAUTHORIZED)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def _is_authorized(self, query: dict[str, list[str]]) -> bool:
+            if not token:
+                return True
+            if _query_token(query) == token:
+                return True
+            if str(self.headers.get("X-Vault-Gui-Token", "")) == token:
+                return True
+            cookie = str(self.headers.get("Cookie", ""))
+            return any(part.strip() == f"vault_gui_token={token}" for part in cookie.split(";"))
 
         def _read_json_body(self) -> dict[str, Any]:
             try:
@@ -194,4 +236,11 @@ def cmd_gui(args: Any) -> None:
         host=str(getattr(args, "host", DEFAULT_HOST) or DEFAULT_HOST),
         port=int(getattr(args, "port", DEFAULT_PORT) or DEFAULT_PORT),
         open_browser=not bool(getattr(args, "no_open", False)),
+        auth_token=getattr(args, "auth_token", None),
+        no_auth=bool(getattr(args, "no_auth", False)),
     )
+
+
+def _query_token(query: dict[str, list[str]]) -> str:
+    values = query.get("token") or []
+    return str(values[0]) if values else ""

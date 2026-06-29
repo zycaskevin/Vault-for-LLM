@@ -8,6 +8,7 @@ from vault.mcp_memory import (
     MCP_MEMORY_LOOP_TOOLS,
 )
 from vault.mcp_search import MCP_SEARCH_MAX_LIMIT, MCP_SEARCH_MAX_OFFSET
+from vault.mcp_skill import MCP_SKILL_TOOL_NAMES, MCP_SKILL_TOOLS
 from vault.mcp_task import MCP_TASK_TOOL_NAMES, MCP_TASK_TOOLS
 
 
@@ -74,9 +75,9 @@ TOOLS = [
                 },
                 "max_sensitivity": {
                     "type": "string",
-                    "enum": ["", "low", "medium", "high", "restricted"],
-                    "description": "可選最高敏感度；例如 medium 會排除 high/restricted",
-                    "default": ""
+                    "enum": ["low", "medium", "high", "restricted"],
+                    "description": "最高敏感度；MCP 預設 medium 以排除 high/restricted",
+                    "default": "medium"
                 },
                 "include_expired_temporal": {
                     "type": "boolean",
@@ -255,9 +256,9 @@ TOOLS = [
                 },
                 "max_sensitivity": {
                     "type": "string",
-                    "enum": ["", "low", "medium", "high", "restricted"],
+                    "enum": ["low", "medium", "high", "restricted"],
                     "description": "Maximum candidate sensitivity to return.",
-                    "default": "",
+                    "default": "medium",
                 },
             },
         }
@@ -487,6 +488,7 @@ TOOLS = [
     },
     *MCP_MEMORY_LOOP_TOOLS,
     *MCP_TASK_TOOLS,
+    *MCP_SKILL_TOOLS,
     {
         "name": "vault_cold_store_expired",
         "description": "Preview or apply summarize-then-cold-store for expired-but-used memories. Defaults to dry-run; skips private, high/restricted, and L0/L1 memories.",
@@ -668,8 +670,8 @@ TOOLS = [
                 "include_private": {"type": "boolean", "default": False},
                 "max_sensitivity": {
                     "type": "string",
-                    "enum": ["", "low", "medium", "high", "restricted"],
-                    "default": ""
+                    "enum": ["low", "medium", "high", "restricted"],
+                    "default": "medium"
                 },
             },
             "required": ["knowledge_id"]
@@ -704,8 +706,8 @@ TOOLS = [
                 "include_private": {"type": "boolean", "default": False},
                 "max_sensitivity": {
                     "type": "string",
-                    "enum": ["", "low", "medium", "high", "restricted"],
-                    "default": ""
+                    "enum": ["low", "medium", "high", "restricted"],
+                    "default": "medium"
                 },
             },
             "required": ["knowledge_id"]
@@ -857,6 +859,7 @@ TOOL_PROFILES = {
         "vault_memory_review",
         "vault_memory_candidates",
         *MCP_TASK_TOOL_NAMES,
+        *MCP_SKILL_TOOL_NAMES,
         "vault_capture_discover",
         "vault_capture_session",
         "vault_automation_inbox",
@@ -889,6 +892,7 @@ TOOL_PROFILES = {
         "vault_memory_review",
         "vault_memory_candidates",
         *MCP_TASK_TOOL_NAMES,
+        *MCP_SKILL_TOOL_NAMES,
         "vault_capture_discover",
         "vault_capture_session",
         "vault_automation_inbox",

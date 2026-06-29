@@ -15,7 +15,9 @@ with the daily loop in the README and only use these commands when needed.
 | `vault capture session codex-session.jsonl --write-candidates` | Write extracted session lessons into the candidate queue, not active knowledge |
 | `vault memory pipeline --search-dir sessions --write-candidates --write-report` | Run the automatic conversation-memory pipeline: discover transcripts, extract lessons, gate them, write candidates, and leave a compact ingestion receipt |
 | `vault task start "Ship feature"` | Create a Task Ledger working set for a long-running task without writing active knowledge |
+| `vault task start "Ship feature" --priority P1 --due-at 2026-07-01` | Create a task with explicit urgency and a due/reminder timestamp |
 | `vault task update <task_id> --decision "..." --next-action "..."` | Update task-runtime state for handoff/resume; reusable lessons still go through candidates |
+| `vault task update <task_id> --priority P0 --due-at 2026-06-30` | Reprioritize the current working set without promoting it to long-term memory |
 | `vault task handoff <task_id>` | Print a compact continuation note for the next agent/session |
 | `vault memory temporal status` / `vault memory temporal list --state past` | Inspect current, past, future, and timeless fact windows |
 | `vault candidates` | List pending candidate memories without dumping full raw content |
@@ -26,6 +28,7 @@ with the daily loop in the README and only use these commands when needed.
 | `vault search "query" --exclude-expired` | Search currently valid temporal facts while keeping past facts available through temporal list |
 | `vault map read <id> --lines 10-30` | Read a bounded source range for citation |
 | `vault gui` | Start the local read-only Vault Console |
+| `vault security doctor` | Check local GUI/MCP security posture, including GUI token and MCP HMAC settings |
 | `vault remote smoke --agent-id remote-agent --query "deployment SOP" --json` | Verify Supabase remote reader credentials and the `vault_search_readable` RPC |
 | `vault remote doctor --agent-id remote-agent --query "deployment SOP" --json` | Diagnose the full Supabase remote reader path: search, readable-entry RPCs, Document Map, claims, content, map, and bounded read |
 | `vault remote search "query" --agent-id remote-agent --json` | Search the Supabase read-only memory view through `vault_search_readable` |
@@ -78,8 +81,9 @@ changed notes without duplicating unchanged ones.
 | `vault update-status --read-status --agent codex --json` | Read the shared notice and add a focused startup checklist for one Agent/runtime |
 | `vault update-status --doctor --json` | Check whether the shared update notice exists, is fresh, includes every registered Agent, and shows runtime attention |
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
+| `vault agent register --agent codex --project ~/Vaults/my-project --skills review-helper@1.0.0,task-helper` | Register which local skills this Agent expects, so update status can make skill usage visible |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.7.15` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.7.16` | Show the same registry/update status without contacting the network |
 | `vault agent doctor --json` | Run the same shared update-distribution health check through the Agent registry namespace |
 | `vault agent startup-doctor --template-dir ./agent-install --json` | Check whether generated startup contracts include the current fleet-aware handoff order |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md` | Preview applying the generated Codex startup template into a runtime instruction file |
@@ -184,7 +188,9 @@ history into the context window.
 | Command | Purpose |
 |---|---|
 | `vault task start "Repair benchmark" --plan "inspect failing tests" --next-action "run focused pytest"` | Create a task working set |
+| `vault task start "Repair benchmark" --priority P1 --due-at 2026-07-01` | Create a task with urgency and a due/reminder timestamp |
 | `vault task update <task_id> --done "schema added" --decision "Task Ledger is not L2"` | Append completed work and hard decisions |
+| `vault task update <task_id> --priority P0 --due-at 2026-06-30` | Change task urgency without touching active memory |
 | `vault task update <task_id> --blocker "waiting for CI" --question "sync task fields to Supabase?"` | Track blockers and open questions |
 | `vault task status <task_id> --json` | Read the current working set for an agent |
 | `vault task status --status active` | List active task ledgers |
@@ -195,6 +201,29 @@ history into the context window.
 At task phase end, extract only reusable lessons with the normal candidate-first
 workflow. Failed attempts and temporary task events should remain task history,
 not `knowledge` rows.
+
+Task lists sort by priority first (`P0` to `P3`), then by due date, then by
+recent updates. Use `P0` for active incidents, `P1` for urgent release/blocking
+work, `P2` for normal planned work, and `P3` for backlog or optional follow-up.
+
+## Skill Registry
+
+The local Skill registry stores the latest skill row plus revision history. It
+is for agent capability handoff and upgrade planning, not for silently changing
+an agent's runtime.
+
+| Command | Purpose |
+|---|---|
+| `vault skill push --file SKILL.md --name review-helper --version 1.0.0` | Register one Skill and store its first revision |
+| `vault skill push --file SKILL.md --name review-helper --version 1.1.0` | Publish a newer local revision and make it the latest version |
+| `vault skill versions review-helper` | List known versions without raw Skill content |
+| `vault skill diff review-helper --from-version 1.0.0 --to-version 1.1.0` | Compare compact metadata/content hashes between two versions |
+| `vault skill upgrade-plan --installed '{"review-helper":"1.0.0"}' --json` | Compare caller-installed skill versions with the registry latest versions |
+| `vault skill pull review-helper` | Write the latest Skill content into the local skills cache |
+
+MCP exposes read-oriented Skill tools in `review`, `maintenance`, and `full`,
+but not in `core`; this keeps daily agent startup small while still letting
+reviewer agents inspect versions and upgrade plans.
 
 ## Quality And Curation
 

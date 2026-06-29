@@ -40,6 +40,7 @@ def test_mcp_memory_tools_are_advertised():
     assert "Prefer vault_memory_propose" in add_tool["description"]
     search_tool = next(tool for tool in TOOLS if tool["name"] == "vault_search")
     assert "semantic" in search_tool["inputSchema"]["properties"]["mode"]["enum"]
+    assert search_tool["inputSchema"]["properties"]["max_sensitivity"]["default"] == "medium"
     update_tool = next(tool for tool in TOOLS if tool["name"] == "vault_update_status")
     assert "doctor" in update_tool["inputSchema"]["properties"]
     assert "max_status_age_minutes" in update_tool["inputSchema"]["properties"]
@@ -346,6 +347,34 @@ def test_mcp_search_respects_fields_and_snippet(tmp_path):
     assert set(payload[0]).issubset({"id", "title", "_score", "_snippet"})
     assert payload[0]["title"] == "Python Cache Note"
     assert "provider" in payload[0]["_snippet"].lower()
+
+
+def test_mcp_search_defaults_to_medium_sensitivity(tmp_path):
+    _set_project_dir(tmp_path)
+    with VaultDB(tmp_path / "vault.db") as db:
+        db.add_knowledge(
+            "Medium Deployment Note",
+            "Deployment runbook visible to normal MCP readers.",
+            category="runbook",
+            sensitivity="medium",
+        )
+        db.add_knowledge(
+            "High Secret Note",
+            "Deployment secret should require explicit high sensitivity.",
+            category="runbook",
+            sensitivity="high",
+        )
+
+    default_payload = _payload(handle_tool_call("vault_search", {"query": "Deployment", "fields": ["title"]}))
+    assert [row["title"] for row in default_payload] == ["Medium Deployment Note"]
+
+    elevated_payload = _payload(
+        handle_tool_call(
+            "vault_search",
+            {"query": "Deployment", "fields": ["title"], "max_sensitivity": "high"},
+        )
+    )
+    assert {row["title"] for row in elevated_payload} == {"Medium Deployment Note", "High Secret Note"}
 
 
 def test_mcp_search_clamps_limit_offset_and_field_allowlist(tmp_path):

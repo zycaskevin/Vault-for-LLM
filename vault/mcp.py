@@ -20,6 +20,7 @@ if VAULT_DIR not in sys.path:
 from vault.mcp_memory import handle_memory_tool_call
 from vault.mcp_automation import handle_automation_tool_call
 from vault.mcp_task import handle_task_tool_call
+from vault.mcp_skill import handle_skill_tool_call
 from vault.mcp_security import (
     check_agent_signature as _check_agent_signature,
     check_mcp_rate_limit as _check_mcp_rate_limit,
@@ -220,7 +221,7 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 compact=False,
                 agent_id=arguments.get("agent_id", ""),
                 include_private=bool(arguments.get("include_private", False)),
-                max_sensitivity=arguments.get("max_sensitivity", ""),
+                max_sensitivity=arguments.get("max_sensitivity") or "medium",
                 include_expired_temporal=bool(arguments.get("include_expired_temporal", True)),
                 include_future_temporal=bool(arguments.get("include_future_temporal", True)),
                 temporal_as_of=arguments.get("temporal_as_of", ""),
@@ -240,6 +241,10 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
         task_payload = handle_task_tool_call(name, arguments, db_path=DB_PATH)
         if task_payload is not None:
             return task_payload
+
+        skill_payload = handle_skill_tool_call(name, arguments, db_path=DB_PATH)
+        if skill_payload is not None:
+            return skill_payload
 
         if name == "vault_obsidian_import":
             from vault.agent_setup import compile_project
@@ -371,7 +376,7 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 compact=bool(arguments.get("compact", False)),
                 agent_id=arguments.get("agent_id", ""),
                 include_private=bool(arguments.get("include_private", False)),
-                max_sensitivity=arguments.get("max_sensitivity", ""),
+                max_sensitivity=arguments.get("max_sensitivity") or "medium",
             )
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 
@@ -383,7 +388,7 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                 line_end=arguments.get("line_end", 0),
                 agent_id=arguments.get("agent_id", ""),
                 include_private=bool(arguments.get("include_private", False)),
-                max_sensitivity=arguments.get("max_sensitivity", ""),
+                max_sensitivity=arguments.get("max_sensitivity") or "medium",
             )
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 

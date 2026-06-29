@@ -1,7 +1,7 @@
 # README Claim Matrix
 
 Generated: 2026-06-25
-Scope: public README feature/capability claims for the v0.7.15 Agent Knowledge Platform patch release. Localized README files should mirror the same maturity and non-goal language.
+Scope: public README feature/capability claims for the v0.7.16 Agent Knowledge Platform patch release. Localized README files should mirror the same maturity and non-goal language.
 
 ## Maturity Tiers
 
@@ -18,7 +18,7 @@ Scope: public README feature/capability claims for the v0.7.15 Agent Knowledge P
 | C01 | Vault-for-LLM is local-first project memory for AI agents. | stable | Base storage is Markdown plus SQLite; `vault init/add/compile/search` works locally. | README command smoke passes. |
 | C02 | Vault does not replace models, wikis, Obsidian, or hosted memory systems. | positioning | README and docs frame Vault as the governed layer between human notes and agent access. | Product positioning only. |
 | C03 | Agent-driven install is the recommended path. | usable | `vault setup-agent` and `vault install-agent` generate project setup, optional feature guidance, stable venv scripts, sync templates, local agent registry entries, hybrid vault layout manifests, MCP startup guides, update-status install packs, update rollout health scripts, runtime update playbooks, common Agent adapter startup templates with fleet-aware handoff contracts, startup contract doctor checks, safe runtime-template apply commands, optional low-risk auto-promote policy files, and smoke-test next steps. | `tests/test_agent_setup.py` and `tests/test_agent_registry.py` pass; PyPI smoke is part of release closeout. |
-| C04 | Manual quickstart works from PyPI. | stable | `vault-for-llm[mcp]==0.7.15` installs and exposes `vault`. | Clean Python 3.11 PyPI install smoke is part of release closeout. |
+| C04 | Manual quickstart works from PyPI. | stable | `vault-for-llm[mcp]==0.7.16` installs and exposes `vault`. | Clean Python 3.11 PyPI install smoke is part of release closeout. |
 | C05 | MCP lets agents start from status/activity/brief/handoff, search, read bounded ranges, propose memory, inspect stats, and diagnose update rollout health. | usable | `vault-mcp` exposes the core tool profile: `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats`, `vault_update_status`, `vault_automation_activity`, `vault_automation_brief`, `vault_automation_handoff`. `vault_update_status` includes per-Agent update notices from the local registry, can read existing `update-status.json` with `read_status=true`, can return `current_agent_notice` plus `startup_checklist` when `agent_id` is provided, and can run the update-distribution health check with `doctor=true` without adding another MCP tool. `vault_automation_activity` reads recent closed-loop automation activity without raw candidate content. `vault_automation_brief` joins learning hints, explainable memory importance, forgetting pressure, agent health, and the 5% human-review queue without raw candidate content. `vault_automation_handoff` keeps cycle/inbox content stable and exposes `fleet_health_content`, `pipeline_receipt_content`, `review_summary_content`, and `learning_health_content` as read-only startup prefaces when present. MCP calls are rate-limited in-process with configurable environment variables, and deployments can opt into HMAC-signed agent identity. | MCP tests and README command smoke pass. |
 | C06 | L0-L3 are depth layers, not access-control boundaries by themselves. | stable docs / usable implementation | Schema supports `layer`; governance metadata handles `scope`, `sensitivity`, `owner_agent`, `allowed_agents`, `memory_type`, and expiry. Read filters apply to search/map/range. MCP write-side governance requires explicit `allow_*` capability flags for shared/public, private, high, and restricted writes. | Access-policy and MCP/read/write tests pass. |
 | C07 | Usage counters can influence ranking only as a small boost. | usable-alpha | Search uses `access_count`, `citation_count`, and `last_accessed_at` as a saturated rerank signal. | Usage/rerank tests pass. |
@@ -51,14 +51,14 @@ Recent release and README cleanup verification used:
 ```bash
 python scripts/readme_command_smoke.py
 python scripts/public_pr_gate.py
-python scripts/check_release_parity.py --tag v0.7.15
+python scripts/check_release_parity.py --tag v0.7.16
 python -m pytest tests/test_session_capture.py tests/test_agent_setup.py tests/test_automation.py tests/test_cli_project_dir.py tests/test_release_parity.py -q
 ```
 
-For release v0.7.15, clean Python 3.11 PyPI install closeout should verify:
+For release v0.7.16, clean Python 3.11 PyPI install closeout should verify:
 
-- `vault-for-llm[mcp]==0.7.15` installs from PyPI.
-- `vault --version` returns `vault-for-llm 0.7.15`.
+- `vault-for-llm[mcp]==0.7.16` installs from PyPI.
+- `vault --version` returns `vault-for-llm 0.7.16`.
 - `vault add "Title" --content "..."` is the documented active-memory add shape.
 - `vault map read <knowledge_id> --lines START-END` is the documented bounded-read CLI shape.
 - `vault capture discover` lists likely transcript exports without reading transcript content.

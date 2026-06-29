@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from vault.db import VaultDB
-from vault.task_ledger import complete_task, start_task, task_handoff, update_task
+from vault.task_ledger import complete_task, list_tasks, start_task, task_handoff, update_task
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +22,8 @@ def test_task_ledger_lifecycle_does_not_write_active_knowledge(tmp_path):
             next_actions=["write tests"],
             evidence_refs=["file:docs/memory_governance.md"],
             continuation_note="Resume from the schema boundary.",
+            priority="P1",
+            due_at="2026-06-30",
             scope="shared",
             owner_agent="codex",
             allowed_agents="codex,work-agent",
@@ -30,6 +32,8 @@ def test_task_ledger_lifecycle_does_not_write_active_knowledge(tmp_path):
         assert task["id"] == "task-test"
         assert task["current_plan"] == ["define schema"]
         assert task["next_actions"] == ["write tests"]
+        assert task["priority"] == "P1"
+        assert task["due_at"] == "2026-06-30"
         assert task["scope"] == "shared"
         assert json.loads(task["allowed_agents"]) == ["codex", "work-agent"]
 
@@ -43,14 +47,20 @@ def test_task_ledger_lifecycle_does_not_write_active_knowledge(tmp_path):
             next_actions=["add CLI"],
             evidence_refs=["pr:229"],
             continuation_note="Continue with CLI wiring.",
+            priority="P0",
+            due_at="2026-06-29",
         )
         task = updated["task"]
         assert task["completed"] == ["schema added"]
         assert task["hard_decisions"] == ["do not create L4"]
+        assert task["priority"] == "P0"
+        assert task["due_at"] == "2026-06-29"
         assert len(task["evidence_refs"]) == 2
 
         handoff = task_handoff(db, "task-test")
         assert "Task Handoff: Task Ledger Test" in handoff["markdown"]
+        assert "- priority: P0" in handoff["markdown"]
+        assert "- due_at: 2026-06-29" in handoff["markdown"]
         assert "do not create L4" in handoff["markdown"]
         assert "Continue with CLI wiring." in handoff["markdown"]
 
@@ -67,6 +77,18 @@ def test_task_ledger_title_defaults_to_task_id(tmp_path):
     with VaultDB(db_path) as db:
         started = start_task(db, "Resume release work", task_id="task-release")
         assert started["task"]["title"] == "task-release"
+
+
+def test_task_ledger_lists_by_priority_then_due_date(tmp_path):
+    db_path = tmp_path / "vault.db"
+    with VaultDB(db_path) as db:
+        start_task(db, "Normal task", task_id="task-normal", priority="P2", due_at="2026-07-01")
+        start_task(db, "Critical later", task_id="task-critical", priority="P0", due_at="2026-07-10")
+        start_task(db, "Important soon", task_id="task-important", priority="P1", due_at="2026-06-30")
+
+        rows = list_tasks(db, status="active", limit=10)
+
+    assert [row["id"] for row in rows] == ["task-critical", "task-important", "task-normal"]
 
 
 def test_task_cli_start_update_handoff_complete(tmp_path):
@@ -89,6 +111,10 @@ def test_task_cli_start_update_handoff_complete(tmp_path):
             "write code",
             "--next-action",
             "run tests",
+            "--priority",
+            "P1",
+            "--due-at",
+            "2026-06-30",
             "--json",
         ],
         cwd=str(REPO_ROOT),
@@ -99,6 +125,8 @@ def test_task_cli_start_update_handoff_complete(tmp_path):
     payload = json.loads(start.stdout)
     assert payload["task"]["id"] == "task-cli"
     assert payload["task"]["goal"] == "Ship task ledger"
+    assert payload["task"]["priority"] == "P1"
+    assert payload["task"]["due_at"] == "2026-06-30"
 
     subprocess.run(
         [
@@ -116,6 +144,10 @@ def test_task_cli_start_update_handoff_complete(tmp_path):
             "CLI wired",
             "--continuation-note",
             "Use handoff before switching agents.",
+            "--priority",
+            "P0",
+            "--due-at",
+            "2026-06-29",
             "--json",
         ],
         cwd=str(REPO_ROOT),
@@ -141,6 +173,7 @@ def test_task_cli_start_update_handoff_complete(tmp_path):
         check=True,
     )
     assert "Task Ledger is not L2" in handoff.stdout
+    assert "- priority: P0" in handoff.stdout
     assert "Use handoff before switching agents." in handoff.stdout
 
     complete = subprocess.run(

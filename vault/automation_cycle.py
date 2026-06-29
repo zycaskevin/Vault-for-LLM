@@ -177,6 +177,8 @@ def _compact_cycle_task(task: dict[str, Any]) -> dict[str, Any]:
         "title": task.get("title", "") or task.get("id", ""),
         "goal": task.get("goal", ""),
         "status": task.get("status", ""),
+        "priority": task.get("priority", "P2"),
+        "due_at": task.get("due_at", ""),
         "next_actions": (task.get("next_actions") or [])[:5],
         "blockers": (task.get("blockers") or [])[:5],
         "continuation_note": task.get("continuation_note", ""),

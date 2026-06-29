@@ -225,6 +225,9 @@ def _print_task_summary(task: dict) -> None:
     print(f"Task: {title}")
     print(f"  id: {task.get('id')}")
     print(f"  status: {task.get('status')}")
+    print(f"  priority: {task.get('priority') or 'P2'}")
+    if task.get("due_at"):
+        print(f"  due_at: {task.get('due_at')}")
     print(f"  goal: {task.get('goal')}")
     if task.get("next_actions"):
         print("  next_actions:")
@@ -263,6 +266,8 @@ def cmd_task(args):
                     next_actions=args.next_action,
                     evidence_refs=args.evidence_ref,
                     continuation_note=args.continuation_note,
+                    priority=args.priority,
+                    due_at=args.due_at,
                     scope=args.scope,
                     sensitivity=args.sensitivity,
                     owner_agent=args.owner_agent,
@@ -281,6 +286,8 @@ def cmd_task(args):
                     next_actions=args.next_action,
                     evidence_refs=args.evidence_ref,
                     continuation_note=args.continuation_note,
+                    priority=args.priority,
+                    due_at=args.due_at,
                     status=args.status,
                     agent_id=args.agent_id,
                     source_ref=args.source_ref,
@@ -324,7 +331,11 @@ def cmd_task(args):
         tasks = payload.get("tasks", [])
         print(f"Tasks ({payload.get('status') or 'all'}): {len(tasks)}")
         for task in tasks:
-            print(f"  {task.get('id')} [{task.get('status')}] {task.get('title') or task.get('goal')}")
+            due = f" due={task.get('due_at')}" if task.get("due_at") else ""
+            print(
+                f"  {task.get('id')} [{task.get('status')}/{task.get('priority') or 'P2'}]"
+                f"{due} {task.get('title') or task.get('goal')}"
+            )
 
 
 def cmd_dream(args):
@@ -753,6 +764,7 @@ def cmd_agent(args):
     if action == "register":
         project_dir = Path(args.agent_project_dir or find_project_dir()).expanduser()
         features = [item.strip() for item in str(args.features or "").split(",") if item.strip()]
+        skills = [item.strip() for item in str(getattr(args, "skills", "") or "").split(",") if item.strip()]
         payload = register_agent(
             agent=args.agent,
             project_dir=project_dir,
@@ -762,6 +774,7 @@ def cmd_agent(args):
             source=args.source,
             memory_layout=args.memory_layout,
             private_project_dir=Path(args.agent_private_dir).expanduser() if args.agent_private_dir else None,
+            skills=skills,
         )
         if args.json or args.pretty:
             _json_print(payload, pretty=args.pretty)
@@ -774,6 +787,8 @@ def cmd_agent(args):
             print(f"  private_project_dir: {agent['private_project_dir']}")
         print(f"  memory_layout: {agent['memory_layout']}")
         print(f"  scope: {agent['scope']}")
+        if agent.get("skills"):
+            print(f"  skills: {', '.join(agent['skills'])}")
         print(f"  registry: {payload['registry_path']}")
         return
 

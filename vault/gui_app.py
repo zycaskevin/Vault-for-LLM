@@ -190,6 +190,8 @@ APP_HTML = r"""<!doctype html>
       <div class="section">
         <h2>Status</h2>
         <div class="metric-grid" id="metrics"></div>
+        <h2>Active Tasks</h2>
+        <div id="taskList"></div>
         <h2>Review Inbox</h2>
         <div id="reviewQueue"></div>
         <h2>Documents</h2>
@@ -230,6 +232,7 @@ APP_HTML = r"""<!doctype html>
   </div>
   <script>
     let currentEntry = null;
+    let currentTask = null;
     let activeTab = "map";
     let documentFacets = {};
 
@@ -284,6 +287,28 @@ APP_HTML = r"""<!doctype html>
           const idValue = Number(el.dataset.id || 0);
           if (idValue) el.addEventListener("click", () => loadEntry(idValue));
         }
+      });
+    }
+
+    function renderTaskList(items) {
+      const node = $("taskList");
+      if (!items || !items.length) {
+        node.innerHTML = `<div class="empty">No active tasks</div>`;
+        return;
+      }
+      node.innerHTML = items.map(task => `
+        <div class="item" data-task-id="${esc(task.id || "")}">
+          <h3>${esc(task.title || task.id || "Untitled task")}</h3>
+          <div class="subtle">${esc(task.goal || task.continuation_note || "")}</div>
+          <div class="meta">
+            ${pill(task.status || "active", task.status === "blocked" ? "warn" : "good")}
+            ${pill((task.next_actions || []).length + " next")}
+            ${task.blockers && task.blockers.length ? pill(task.blockers.length + " blockers", "warn") : ""}
+          </div>
+        </div>
+      `).join("");
+      node.querySelectorAll("[data-task-id]").forEach(el => {
+        el.addEventListener("click", () => loadTask(el.dataset.taskId));
       });
     }
 
@@ -350,6 +375,7 @@ APP_HTML = r"""<!doctype html>
     }
 
     async function loadEntry(id) {
+      currentTask = null;
       currentEntry = await api(`/api/entry/${id}`);
       renderSidePanel();
       const nodes = currentEntry.nodes || [];
@@ -366,6 +392,7 @@ APP_HTML = r"""<!doctype html>
         return;
       }
       const row = payload.candidate || {};
+      currentTask = null;
       currentEntry = null;
       $("evidence").hidden = true;
       $("results").innerHTML = `
@@ -403,6 +430,48 @@ APP_HTML = r"""<!doctype html>
       $("blockCandidate").addEventListener("click", () => reviewCandidate(row.id, "block"));
     }
 
+    async function loadTask(id) {
+      const payload = await api(`/api/task/${encodeURIComponent(id)}`);
+      if (payload.status !== "ok") {
+        $("results").innerHTML = `<div class="empty">${esc(payload.error || payload.reason || "Unable to load task")}</div>`;
+        return;
+      }
+      currentEntry = null;
+      currentTask = payload;
+      $("evidence").hidden = true;
+      const task = payload.task || {};
+      $("results").innerHTML = renderTaskMain(task, payload.markdown || "");
+      renderSidePanel();
+    }
+
+    function renderTaskMain(task, markdown) {
+      const section = (title, items) => {
+        if (!items || !items.length) return "";
+        return `<div class="panel"><h3>${esc(title)}</h3>${items.map(item => `<div class="subtle">• ${esc(item)}</div>`).join("")}</div>`;
+      };
+      return `
+        <article class="result">
+          <h3>${esc(task.title || task.id)}</h3>
+          <div class="subtle">${esc(task.goal || "")}</div>
+          <div class="meta">
+            ${pill(task.id || "")}
+            ${pill(task.status || "")}
+            ${pill(task.scope || "project")}
+            ${pill(task.sensitivity || "low", task.sensitivity === "low" ? "good" : "warn")}
+          </div>
+        </article>
+        ${section("Current Plan", task.current_plan)}
+        ${section("Completed", task.completed)}
+        ${section("Hard Decisions", task.hard_decisions)}
+        ${section("Blockers", task.blockers)}
+        ${section("Next Actions", task.next_actions)}
+        <div class="panel">
+          <h3>Handoff Markdown</h3>
+          <pre>${esc(markdown || "")}</pre>
+        </div>
+      `;
+    }
+
     function renderCandidateSide(row) {
       const keys = ["status", "source", "source_ref", "memory_type", "trust", "created_at", "updated_at", "valid_from", "valid_until", "expires_at"];
       const fields = keys.map(key => `<div class="kv"><span>${esc(key)}</span><strong>${esc(row[key] || "—")}</strong></div>`).join("");
@@ -432,6 +501,10 @@ APP_HTML = r"""<!doctype html>
     }
 
     function renderSidePanel() {
+      if (currentTask && currentTask.status === "ok") {
+        $("sidePanel").innerHTML = renderTaskSide(currentTask.task || {});
+        return;
+      }
       if (!currentEntry || currentEntry.status !== "ok") {
         $("sidePanel").innerHTML = `<div class="empty">Select a memory</div>`;
         return;
@@ -495,6 +568,33 @@ APP_HTML = r"""<!doctype html>
       `;
     }
 
+    function renderTaskSide(task) {
+      const refs = task.evidence_refs || [];
+      const events = task.events || [];
+      const refsHtml = refs.length ? refs.map(ref => `
+        <div class="kv"><span>${esc(ref.ref_type || "ref")}</span><strong>${esc(ref.ref || "")}</strong></div>
+      `).join("") : `<div class="empty">No evidence refs</div>`;
+      const eventsHtml = events.length ? events.slice(-8).map(event => `
+        <div class="kv"><span>${esc(event.event_type || "event")}</span><strong>${esc(event.content || event.created_at || "")}</strong></div>
+      `).join("") : `<div class="empty">No task events</div>`;
+      return `
+        <div class="panel">
+          <h3>${esc(task.title || task.id)}</h3>
+          <div class="subtle">Task Ledger working set, separate from L0-L3 memory</div>
+        </div>
+        <div class="kv"><span>task_id</span><strong>${esc(task.id || "")}</strong></div>
+        <div class="kv"><span>status</span><strong>${esc(task.status || "")}</strong></div>
+        <div class="kv"><span>owner</span><strong>${esc(task.owner_agent || "—")}</strong></div>
+        <div class="kv"><span>updated</span><strong>${esc(task.updated_at || "—")}</strong></div>
+        <h2>Continuation</h2>
+        <div class="panel"><div class="subtle">${esc(task.continuation_note || "No continuation note")}</div></div>
+        <h2>Evidence Refs</h2>
+        ${refsHtml}
+        <h2>Recent Events</h2>
+        ${eventsHtml}
+      `;
+    }
+
     function renderGraphPanel(entry) {
       const graph = entry.graph || {};
       const edges = (graph.edges || []).slice(0, 8).filter(edge => Number(edge.other_id || 0));
@@ -550,6 +650,7 @@ APP_HTML = r"""<!doctype html>
       const overview = await api("/api/overview");
       $("projectPath").textContent = overview.project_dir || "";
       renderMetrics(overview.stats || {}, overview.inbox || {});
+      renderTaskList(overview.tasks || []);
       renderList("reviewQueue", overview.candidates || overview.inbox?.review_queue || overview.inbox?.review_digest?.items || [], "No review items");
       await loadDocuments();
       $("results").innerHTML = `<div class="empty">Search or choose a memory</div>`;

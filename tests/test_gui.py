@@ -16,7 +16,10 @@ from vault.gui import (
     gui_read_range,
     gui_review_candidate,
     gui_search,
+    gui_task,
+    gui_tasks,
 )
+from vault.task_ledger import start_task, update_task
 
 
 def _make_project(tmp_path):
@@ -52,6 +55,18 @@ def _make_project(tmp_path):
             trust=0.8,
         )
         db.add_edge(kid, linked_id, relation="supports", weight=0.8, auto_inferred=False)
+        start_task(
+            db,
+            "Finish GUI Task Ledger panel",
+            task_id="task-gui",
+            title="GUI Task Panel",
+            current_plan=["add active task list"],
+            next_actions=["wire task detail panel"],
+            evidence_refs=["file:docs/gui_console.md"],
+            continuation_note="Show task state separately from L0-L3 memory.",
+            owner_agent="gui-agent",
+        )
+        update_task(db, "task-gui", completed=["task API ready"], hard_decisions=["read-only GUI first"])
     return project, kid
 
 
@@ -83,6 +98,16 @@ def test_gui_overview_search_entry_and_read(tmp_path):
     assert overview["status"] == "ok"
     assert overview["recent"][0]["title"] == "GUI Console Runbook"
     assert overview["candidates"][0]["id"] == candidate_id
+    assert overview["tasks"][0]["id"] == "task-gui"
+
+    tasks = gui_tasks(project)
+    assert tasks["status"] == "ok"
+    assert tasks["tasks"][0]["title"] == "GUI Task Panel"
+
+    task = gui_task(project, "task-gui")
+    assert task["status"] == "ok"
+    assert "Task Handoff: GUI Task Panel" in task["markdown"]
+    assert task["task"]["hard_decisions"] == ["read-only GUI first"]
 
     search = gui_search(project, "console", limit=5)
     assert search["status"] == "ok"
@@ -109,6 +134,8 @@ def test_gui_app_exposes_document_map_panel():
     assert "Sections" in APP_HTML
     assert "Claims" in APP_HTML
     assert "data-read-node" in APP_HTML
+    assert "Active Tasks" in APP_HTML
+    assert "taskList" in APP_HTML
 
 
 def test_gui_app_exposes_graph_visual_panel():

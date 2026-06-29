@@ -9,6 +9,7 @@ from typing import Any
 from .automation_inbox import automation_inbox
 from .automation_reports import _relative_to_project
 from .db import VaultDB
+from .task_ledger import list_tasks
 
 
 def _write_cycle_workspace(project: Path, workspace: dict[str, Any], *, workspace_path: str | Path = "") -> str:
@@ -74,6 +75,8 @@ def _cycle_workspace(
     capture_summary = capture.get("summary") or {}
     auto_promote_enabled = bool(summary.get("auto_promote_enabled", False))
     auto_promote_promoted = int(summary.get("auto_promote_promoted_count") or 0)
+    task_snapshot = _active_task_snapshot(project)
+    task_summary = task_snapshot.get("summary") or {}
     workspace = {
         "action": "cycle_workspace",
         "generated_at": generated_at,
@@ -93,6 +96,8 @@ def _cycle_workspace(
             "auto_promote_enabled": auto_promote_enabled,
             "auto_promote_would_promote_count": int(summary.get("auto_promote_would_promote_count") or 0),
             "auto_promote_promoted_count": auto_promote_promoted,
+            "active_tasks": int(task_summary.get("active") or 0),
+            "blocked_tasks": int(task_summary.get("blocked") or 0),
         },
         "candidate_review": {
             "summary": inbox_summary,
@@ -120,6 +125,7 @@ def _cycle_workspace(
             "bounds": learning_policy.get("bounds") or {},
             "rules": compact_rules,
         },
+        "task_ledger": task_snapshot,
         "safety": {
             "read_only": True,
             "auto_promote": auto_promote_enabled,
@@ -128,6 +134,7 @@ def _cycle_workspace(
             "transcript_discovery_reads_contents": False,
             "transcript_capture_reads_contents": bool((capture.get("safety") or {}).get("reads_transcript_contents", False)),
             "writes_active_memory": auto_promote_promoted > 0,
+            "mutates_task_ledger": False,
         },
         "next_action": (
             "Review candidate_review.queue, auto-promote summary, and selected transcript paths; "
@@ -139,6 +146,44 @@ def _cycle_workspace(
     workspace["suggested_next_tasks"] = _cycle_suggested_next_tasks(workspace)
     workspace["agent_start_prompt"] = _cycle_agent_start_prompt(workspace)
     return workspace
+
+
+def _active_task_snapshot(project: Path, *, limit: int = 5) -> dict[str, Any]:
+    db_path = project / "vault.db"
+    if not db_path.exists():
+        return {
+            "summary": {"active": 0, "blocked": 0, "visible": 0},
+            "tasks": [],
+            "content_hidden": True,
+        }
+    with VaultDB(db_path) as db:
+        active = list_tasks(db, status="active", limit=limit)
+        blocked = list_tasks(db, status="blocked", limit=limit)
+    tasks = [_compact_cycle_task(row) for row in [*blocked, *active][:limit]]
+    return {
+        "summary": {
+            "active": len(active),
+            "blocked": len(blocked),
+            "visible": len(tasks),
+        },
+        "tasks": tasks,
+        "content_hidden": True,
+    }
+
+
+def _compact_cycle_task(task: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": task.get("id", ""),
+        "title": task.get("title", "") or task.get("id", ""),
+        "goal": task.get("goal", ""),
+        "status": task.get("status", ""),
+        "next_actions": (task.get("next_actions") or [])[:5],
+        "blockers": (task.get("blockers") or [])[:5],
+        "continuation_note": task.get("continuation_note", ""),
+        "updated_at": task.get("updated_at", ""),
+        "scope": task.get("scope", "project"),
+        "sensitivity": task.get("sensitivity", "low"),
+    }
 
 
 def _empty_transcript_capture(project: Path, *, enabled: bool, apply: bool) -> dict[str, Any]:
@@ -310,6 +355,17 @@ def _cycle_priority_brief(workspace: dict[str, Any]) -> list[dict[str, Any]]:
                 "safe_action": "Review candidate ids and gates; keep raw content hidden until needed.",
             }
         )
+    task_count = int(summary.get("active_tasks") or 0) + int(summary.get("blocked_tasks") or 0)
+    if task_count:
+        items.append(
+            {
+                "priority": "P1" if int(summary.get("blocked_tasks") or 0) else "P2",
+                "title": "Resume active Task Ledger items",
+                "count": task_count,
+                "reason": "Task Ledger holds the current working set so agents can continue without promoting temporary state into memory.",
+                "safe_action": "Read task handoff first, then update the task instead of writing active memory.",
+            }
+        )
     if transcript_count:
         items.append(
             {
@@ -385,8 +441,21 @@ def _cycle_priority_brief(workspace: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _cycle_suggested_next_tasks(workspace: dict[str, Any]) -> list[dict[str, Any]]:
     summary = workspace.get("summary") or {}
+    task_ledger = workspace.get("task_ledger") or {}
+    task_items = task_ledger.get("tasks") or []
     tasks: list[dict[str, Any]] = []
     step = 1
+    if int(summary.get("active_tasks") or 0) or int(summary.get("blocked_tasks") or 0):
+        task_id = str((task_items[0] or {}).get("id", "")) if task_items else ""
+        tasks.append(
+            {
+                "step": step,
+                "task": "Resume the current Task Ledger working set before opening broad memory.",
+                "command": f"vault task handoff {task_id}" if task_id else "vault task status --status active --json",
+                "requires_human_approval": False,
+            }
+        )
+        step += 1
     if int(summary.get("candidate_queue_items") or 0) or int(summary.get("needs_review") or 0):
         tasks.append(
             {
@@ -465,6 +534,8 @@ def _cycle_agent_start_prompt(workspace: dict[str, Any]) -> str:
     learning_rules = int(summary.get("learning_rules") or 0)
     captured_candidates = int(summary.get("transcript_capture_candidates_written") or 0)
     auto_promoted = int(summary.get("auto_promote_promoted_count") or 0)
+    active_tasks = int(summary.get("active_tasks") or 0)
+    blocked_tasks = int(summary.get("blocked_tasks") or 0)
     return "\n".join(
         [
             "You are continuing a Vault-for-LLM memory automation cycle.",
@@ -473,8 +544,9 @@ def _cycle_agent_start_prompt(workspace: dict[str, Any]) -> str:
             (
                 f"Candidate queue items: {queue_count}; uncaptured transcripts: {transcript_count}; "
                 f"auto-captured candidates: {captured_candidates}; auto-promoted: {auto_promoted}; "
-                f"learning rules: {learning_rules}."
+                f"learning rules: {learning_rules}; active tasks: {active_tasks}; blocked tasks: {blocked_tasks}."
             ),
+            "If task_ledger.tasks is non-empty, resume from the task handoff before searching broad memory.",
             "Do not widen auto-promote policy, hard-delete memory, or read transcript contents just because a path is listed.",
             "Review priority_brief first, then use suggested_next_tasks one step at a time.",
             "Ask for approval before promoting/rejecting sensitive candidates or capturing private transcripts.",

@@ -19,6 +19,8 @@ from .gui_api import (
     gui_read_range,
     gui_review_candidate,
     gui_search,
+    gui_task,
+    gui_tasks,
 )
 from .gui_app import APP_HTML
 from .gui_format import _int_arg, _path_int, _path_str, _str_arg
@@ -77,6 +79,15 @@ def make_gui_handler(project_dir: Path):
                     )
                 )
                 return
+            if path == "/api/tasks":
+                self._send_json(
+                    gui_tasks(
+                        project,
+                        status=_str_arg(query, "status", "active"),
+                        limit=_int_arg(query, "limit", 20),
+                    )
+                )
+                return
             if path == "/api/documents":
                 self._send_json(
                     gui_documents(
@@ -105,6 +116,9 @@ def make_gui_handler(project_dir: Path):
                 return
             if path.startswith("/api/candidate/"):
                 self._send_json(gui_candidate(project, _path_str(path, "/api/candidate/")))
+                return
+            if path.startswith("/api/task/"):
+                self._send_json(gui_task(project, _path_str(path, "/api/task/")))
                 return
             if path == "/api/read":
                 self._send_json(

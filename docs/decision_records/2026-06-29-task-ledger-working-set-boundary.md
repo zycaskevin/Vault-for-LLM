@@ -157,13 +157,21 @@ startup and should not increase the default MCP schema surface.
 
 ## Relationship To GUI
 
-The GUI should eventually show Task Ledger separately from memory documents:
+The GUI shows Task Ledger separately from memory documents:
 
 - active task card
 - plan / done / blockers / next actions
 - evidence refs
 - continuation note
-- extracted memory candidates, if any
+- recent task events
+- compact handoff Markdown
+
+The GUI Task Ledger panel is read-only in this slice. Agents and operators use
+CLI/MCP to update tasks, then use the GUI to inspect the current working set.
+
+`automation cycle --write-workspace` also includes a compact Task Ledger
+snapshot in `reports/automation/cycle-latest.json` and `.md`, so the next agent
+can resume current work before searching broad memory.
 
 Do not place task events inside the normal document list unless they have been
 converted into reviewed Vault candidates.

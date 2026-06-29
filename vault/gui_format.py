@@ -77,6 +77,33 @@ def compact_candidate(
     return item
 
 
+def compact_task(row: dict[str, Any]) -> dict[str, Any]:
+    """Return a GUI-safe Task Ledger item without raw event payload expansion."""
+    return {
+        "id": row.get("id", ""),
+        "title": row.get("title", "") or row.get("id", ""),
+        "goal": row.get("goal", ""),
+        "status": row.get("status", ""),
+        "current_plan": row.get("current_plan", []),
+        "completed": row.get("completed", []),
+        "hard_decisions": row.get("hard_decisions", []),
+        "blockers": row.get("blockers", []),
+        "open_questions": row.get("open_questions", []),
+        "next_actions": row.get("next_actions", []),
+        "continuation_note": row.get("continuation_note", ""),
+        "evidence_refs": row.get("evidence_refs", []),
+        "events": row.get("events", []),
+        "scope": row.get("scope", "project"),
+        "sensitivity": row.get("sensitivity", "low"),
+        "owner_agent": row.get("owner_agent", ""),
+        "allowed_agents": row.get("allowed_agents", ""),
+        "source": row.get("source", ""),
+        "created_at": row.get("created_at", ""),
+        "updated_at": row.get("updated_at", ""),
+        "completed_at": row.get("completed_at", ""),
+    }
+
+
 def compact_review_result(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "status": payload.get("status"),
@@ -194,5 +221,4 @@ def _path_int(path: str, prefix: str) -> int:
 
 def _path_str(path: str, prefix: str) -> str:
     return path[len(prefix) :].strip("/")
-
 

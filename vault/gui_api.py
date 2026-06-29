@@ -17,6 +17,7 @@ from .gui_format import (
     compact_candidate,
     compact_inbox,
     compact_knowledge,
+    compact_task,
     compact_review_result,
     confirmation_token,
     governance_for,
@@ -24,6 +25,7 @@ from .gui_format import (
     timeline_for,
     usage_for,
 )
+from .task_ledger import get_task, list_tasks, task_handoff
 
 
 def _clean_filter(value: str | None) -> str:
@@ -64,6 +66,7 @@ def gui_overview(project_dir: str | Path, *, limit: int = 5) -> dict[str, Any]:
             compact_candidate(row)
             for row in db.list_memory_candidates(status="candidate", limit=max(1, min(int(limit or 5), 20)))
         ]
+        task_rows = list_tasks(db, status="active", limit=max(1, min(int(limit or 5), 20)))
     brief = automation_brief(project, limit=limit, review_limit=limit)
     inbox = automation_inbox(project, limit=limit, include_content=False)
     return {
@@ -72,8 +75,48 @@ def gui_overview(project_dir: str | Path, *, limit: int = 5) -> dict[str, Any]:
         "stats": stats,
         "brief": compact_brief(brief),
         "inbox": compact_inbox(inbox),
+        "tasks": [compact_task(row) for row in task_rows],
         "candidates": candidates,
         "recent": recent,
+    }
+
+
+def gui_tasks(project_dir: str | Path, *, status: str = "active", limit: int = 20) -> dict[str, Any]:
+    """Return compact Task Ledger rows for the local GUI."""
+    project = Path(project_dir)
+    db_path = project / "vault.db"
+    limit_i = normalize_search_limit(limit, default=20, maximum=100)
+    if not db_path.exists():
+        return {"status": "blocked", "reason": "vault.db missing", "tasks": []}
+    if limit_i <= 0:
+        return {"status": "ok", "task_status": status or "active", "tasks": []}
+    with VaultDB(db_path) as db:
+        rows = list_tasks(db, status=status or "active", limit=limit_i)
+    return {
+        "status": "ok",
+        "task_status": status or "active",
+        "tasks": [compact_task(row) for row in rows],
+    }
+
+
+def gui_task(project_dir: str | Path, task_id: str) -> dict[str, Any]:
+    """Return one Task Ledger item plus compact handoff Markdown."""
+    project = Path(project_dir)
+    db_path = project / "vault.db"
+    tid = str(task_id or "").strip()
+    if not db_path.exists():
+        return {"status": "blocked", "reason": "vault.db missing"}
+    if not tid:
+        return {"status": "error", "error": "invalid_task_id"}
+    with VaultDB(db_path) as db:
+        task = get_task(db, tid, include_events=True)
+        if not task:
+            return {"status": "error", "error": "not_found", "task_id": tid}
+        handoff = task_handoff(db, tid)
+    return {
+        "status": "ok",
+        "task": compact_task(task),
+        "markdown": handoff.get("markdown", ""),
     }
 
 

@@ -23,13 +23,18 @@ vault gui --project-dir ~/Vaults/my-project --no-open --port 8765
 
 | Area | Purpose |
 |---|---|
-| Left | Project status, candidate review queue, filterable document list |
-| Center | Search results, candidate review, and bounded evidence reader |
-| Right | Document Map, graph, timeline, governance, and usage metadata for the selected memory |
+| Left | Project status, active Task Ledger items, candidate review queue, filterable document list |
+| Center | Search results, task handoff, candidate review, and bounded evidence reader |
+| Right | Task details, or Document Map, graph, timeline, governance, and usage metadata for the selected memory |
 
 The document list is the first Obsidian-like navigation slice: it lets a user
 filter active memory by text, layer, category, and sensitivity before opening a
 bounded read in the center pane.
+
+The Task Ledger panel shows the current working set separately from L0-L3
+memory. Selecting a task shows plan, completed work, decisions, blockers, next
+actions, evidence refs, recent task events, and compact handoff Markdown. It is
+read-only in the GUI; use CLI/MCP to update task state.
 
 The Map tab is the first structured-reading slice. It shows Document Map
 sections and visible claims for the selected memory. Clicking a section opens
@@ -47,6 +52,8 @@ The local server exposes read-only JSON endpoints:
 | Endpoint | Purpose |
 |---|---|
 | `/api/overview` | Stats, automation brief, review inbox, recent memory |
+| `/api/tasks?status=active` | Compact Task Ledger list |
+| `/api/task/<id>` | One Task Ledger item with handoff Markdown |
 | `/api/candidates` | Candidate queue without full content |
 | `/api/candidate/<id>` | Candidate metadata, gate details, and content for review |
 | `POST /api/candidate/<id>/review` | Promote, reject, or block with explicit confirmation |
@@ -59,6 +66,8 @@ The local server exposes read-only JSON endpoints:
 
 - The default host is localhost only.
 - Active memory edits, archive, and policy edits remain CLI/MCP operations.
+- Task Ledger updates remain CLI/MCP operations; the GUI displays task state
+  but does not mutate it.
 - Candidate review actions are `POST`-only and require a confirmation token:
   `<candidate_id>:<action>`.
 - Candidate promotion uses the existing `promote_candidate(confirm=True)` flow

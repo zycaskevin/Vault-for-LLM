@@ -464,6 +464,9 @@ def _render_cycle_workspace_markdown(workspace: dict[str, Any]) -> str:
     capture_items = transcript_capture.get("items") or []
     curation = workspace.get("curation_policy") or {}
     rules = curation.get("rules") or []
+    task_ledger = workspace.get("task_ledger") or {}
+    task_summary = task_ledger.get("summary") or {}
+    task_items = task_ledger.get("tasks") or []
     safety = workspace.get("safety") or {}
     priority_brief = workspace.get("priority_brief") or []
     suggested_tasks = workspace.get("suggested_next_tasks") or []
@@ -486,6 +489,8 @@ def _render_cycle_workspace_markdown(workspace: dict[str, Any]) -> str:
         f"- auto-promote enabled: `{str(bool(summary.get('auto_promote_enabled', False))).lower()}`",
         f"- auto-promote would promote: `{int(summary.get('auto_promote_would_promote_count') or 0)}`",
         f"- auto-promote promoted: `{int(summary.get('auto_promote_promoted_count') or 0)}`",
+        f"- active tasks: `{int(summary.get('active_tasks') or 0)}`",
+        f"- blocked tasks: `{int(summary.get('blocked_tasks') or 0)}`",
         f"- learning rules: `{int(summary.get('learning_rules') or 0)}`",
         f"- learning readiness: `{_md_text(summary.get('learning_readiness', ''))}`",
         f"- automation report: `{_md_text(summary.get('automation_report_path', ''))}`",
@@ -514,6 +519,37 @@ def _render_cycle_workspace_markdown(workspace: dict[str, Any]) -> str:
             )
     else:
         lines.append("No urgent automation handoff items.")
+
+    lines += [
+        "",
+        "## Task Ledger",
+        "",
+        f"- active: `{int(task_summary.get('active') or 0)}`",
+        f"- blocked: `{int(task_summary.get('blocked') or 0)}`",
+        f"- content hidden: `{str(bool(task_ledger.get('content_hidden', True))).lower()}`",
+    ]
+    if task_items:
+        lines += [
+            "",
+            _md_row(["id", "status", "title", "next action"]),
+            _md_row(["---", "---", "---", "---"]),
+        ]
+        for item in task_items[:8]:
+            if not isinstance(item, dict):
+                continue
+            next_actions = item.get("next_actions") or []
+            lines.append(
+                _md_row(
+                    [
+                        item.get("id", ""),
+                        item.get("status", ""),
+                        item.get("title", ""),
+                        next_actions[0] if next_actions else item.get("continuation_note", ""),
+                    ]
+                )
+            )
+    else:
+        lines += ["", "No active Task Ledger items."]
 
     lines += [
         "",
@@ -650,6 +686,7 @@ def _render_cycle_workspace_markdown(workspace: dict[str, Any]) -> str:
         f"- transcript discovery reads contents: `{str(bool(safety.get('transcript_discovery_reads_contents', False))).lower()}`",
         f"- transcript capture reads contents: `{str(bool(safety.get('transcript_capture_reads_contents', False))).lower()}`",
         f"- writes active memory: `{str(bool(safety.get('writes_active_memory', False))).lower()}`",
+        f"- mutates task ledger: `{str(bool(safety.get('mutates_task_ledger', False))).lower()}`",
         "",
         "## Suggested Next Tasks",
         "",

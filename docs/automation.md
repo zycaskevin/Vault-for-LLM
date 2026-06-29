@@ -308,6 +308,8 @@ handoff instead of reading full reports. This writes
 `reports/automation/cycle-latest.json` and the readable companion
 `reports/automation/cycle-latest.md` with three small sections:
 
+- `task_ledger`: compact active/blocked task snapshot with next actions and
+  continuation notes; this is runtime working state, not active L0-L3 memory.
 - `candidate_review`: compact review queue with raw candidate content hidden.
 - `transcripts_to_capture`: optional metadata-only uncaptured transcript paths
   when `--include-transcripts` is used.

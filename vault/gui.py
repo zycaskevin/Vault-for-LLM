@@ -11,6 +11,8 @@ from .gui_api import (
     gui_read_range,
     gui_review_candidate,
     gui_search,
+    gui_task,
+    gui_tasks,
 )
 from .gui_server import DEFAULT_HOST, DEFAULT_PORT, make_gui_handler, run_gui
 
@@ -39,4 +41,6 @@ __all__ = [
     "gui_read_range",
     "gui_review_candidate",
     "gui_search",
+    "gui_task",
+    "gui_tasks",
 ]

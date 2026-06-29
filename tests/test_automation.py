@@ -23,6 +23,7 @@ from vault.automation import (
 )
 from vault.db import VaultDB
 from vault.memory import create_candidate
+from vault.task_ledger import start_task
 
 
 def _init_project(tmp_path):
@@ -1262,6 +1263,14 @@ def test_automation_cycle_writes_compact_workspace_with_transcript_hints(tmp_pat
             tags="",
             trust=0.3,
         )
+        start_task(
+            db,
+            "Finish automation cycle task handoff",
+            task_id="task-cycle",
+            title="Cycle Task Snapshot",
+            next_actions=["review task handoff"],
+            continuation_note="Resume from Task Ledger before broad memory search.",
+        )
 
     payload = automation_cycle(
         project,
@@ -1286,6 +1295,8 @@ def test_automation_cycle_writes_compact_workspace_with_transcript_hints(tmp_pat
     assert workspace["summary"]["learning_rules"] >= 1
     assert workspace["summary"]["auto_promote_enabled"] is False
     assert workspace["summary"]["auto_promote_promoted_count"] == 0
+    assert workspace["summary"]["active_tasks"] == 1
+    assert workspace["task_ledger"]["tasks"][0]["id"] == "task-cycle"
     assert workspace["candidate_review"]["content_hidden"] is True
     assert workspace["transcripts_to_capture"]["summary"]["count"] == 1
     assert workspace["transcripts_to_capture"]["summary"]["read_contents"] is False
@@ -1295,8 +1306,10 @@ def test_automation_cycle_writes_compact_workspace_with_transcript_hints(tmp_pat
     assert workspace["priority_brief"][0]["priority"] == "P1"
     assert "Review candidate memory queue" in workspace["priority_brief"][0]["title"]
     assert workspace["suggested_next_tasks"]
-    assert workspace["suggested_next_tasks"][0]["requires_human_approval"] is True
+    assert workspace["suggested_next_tasks"][0]["command"] == "vault task handoff task-cycle"
+    assert workspace["suggested_next_tasks"][0]["requires_human_approval"] is False
     assert "Candidate queue items:" in workspace["agent_start_prompt"]
+    assert "active tasks: 1" in workspace["agent_start_prompt"]
     assert "auto-promoted: 0" in workspace["agent_start_prompt"]
     assert workspace["safety"]["auto_promote"] is False
     assert workspace["safety"]["transcript_discovery_reads_contents"] is False
@@ -1304,6 +1317,8 @@ def test_automation_cycle_writes_compact_workspace_with_transcript_hints(tmp_pat
     markdown = (project / payload["workspace_markdown_path"]).read_text(encoding="utf-8")
     assert "# Vault Automation Cycle Workspace" in markdown
     assert "## Priority Brief" in markdown
+    assert "## Task Ledger" in markdown
+    assert "task-cycle" in markdown
     assert "## Candidate Review" in markdown
     assert "## Transcripts To Capture" in markdown
     assert "## Curation Policy" in markdown

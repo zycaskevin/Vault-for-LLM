@@ -132,6 +132,24 @@ class TestCmdStats:
         assert "5" in captured.out
         assert "DB 大小" in captured.out
 
+    def test_stats_json(self, initialized_project, monkeypatch, capsys):
+        """Test stats JSON output for agent smoke scripts."""
+        from vault.cli import cmd_stats
+
+        monkeypatch.chdir(initialized_project)
+
+        args = MagicMock()
+        args.json = True
+        args.pretty = True
+        cmd_stats(args)
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+
+        assert payload["stats"]["knowledge_count"] == 5
+        assert isinstance(payload["layers"], list)
+        assert isinstance(payload["categories"], list)
+        assert "graph_connected_nodes" in payload
+
     def test_stats_reports_semantic_vectors_when_sqlite_vec_unavailable(
         self, initialized_project, monkeypatch, capsys
     ):

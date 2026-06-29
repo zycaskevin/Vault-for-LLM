@@ -139,6 +139,16 @@ def _format_memory_candidate(row: dict, *, include_content: bool = False, includ
     return item
 
 
+def _candidate_read_policy(arguments: dict[str, Any]):
+    from vault.access_policy import normalize_read_policy
+
+    return normalize_read_policy(
+        agent_id=arguments.get("agent_id", ""),
+        include_private=bool(arguments.get("include_private", False)),
+        max_sensitivity=arguments.get("max_sensitivity", ""),
+    )
+
+
 def _resolve_mcp_transcript_path(value: str, *, allow_absolute_path: bool = False) -> Path:
     project_dir = _project_dir()
     raw = Path(str(value or "")).expanduser()
@@ -332,6 +342,9 @@ def handle_memory_tool_call(name: str, arguments: dict) -> dict | None:
             rows = db.list_memory_candidates(status=status, limit=limit)
         finally:
             db.close()
+        from vault.access_policy import filter_readable_memories
+
+        rows = filter_readable_memories(rows, _candidate_read_policy(arguments))
         payload = {
             "count": len(rows),
             "status": status or "all",

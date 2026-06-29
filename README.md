@@ -241,8 +241,12 @@ Vault uses depth layers for how memory is used:
 |---|---|
 | `L0` | identity and project framing |
 | `L1` | stable facts, rules, and preferences |
-| `L2` | active context, summaries, current work |
+| `L2` | reviewed recent context, summaries, short-lived background |
 | `L3` | detailed knowledge, SOPs, bugs, decisions, source notes |
+
+Task Ledger is for live task state: blockers, next actions, evidence links, and
+handoff notes. Do not store active todos in L2 by default. Promote only durable
+lessons, decisions, and summaries from Task Ledger into L2/L3 after review.
 
 Access is not controlled by layer alone. Use governance metadata for policy:
 

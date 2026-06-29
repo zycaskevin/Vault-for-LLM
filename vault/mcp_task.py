@@ -32,6 +32,10 @@ MCP_TASK_TOOLS = [
                 "sensitivity": {"type": "string", "enum": ["low", "medium", "high", "restricted"], "default": "low"},
                 "owner_agent": {"type": "string", "default": ""},
                 "allowed_agents": {"type": "array", "items": {"type": "string"}, "default": []},
+                "allow_shared": {"type": "boolean", "default": False},
+                "allow_private": {"type": "boolean", "default": False},
+                "allow_high_sensitivity": {"type": "boolean", "default": False},
+                "allow_restricted": {"type": "boolean", "default": False},
             },
             "required": ["goal"],
         },
@@ -51,6 +55,9 @@ MCP_TASK_TOOLS = [
                 },
                 "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100},
                 "include_events": {"type": "boolean", "default": False},
+                "agent_id": {"type": "string", "default": ""},
+                "include_private": {"type": "boolean", "default": False},
+                "max_sensitivity": {"type": "string", "enum": ["", "low", "medium", "high", "restricted"], "default": ""},
             },
         },
     },
@@ -72,6 +79,10 @@ MCP_TASK_TOOLS = [
                 "status": {"type": "string", "enum": ["active", "blocked", "completed", "archived", ""], "default": ""},
                 "agent_id": {"type": "string", "default": ""},
                 "source_ref": {"type": "string", "default": ""},
+                "allow_shared": {"type": "boolean", "default": False},
+                "allow_private": {"type": "boolean", "default": False},
+                "allow_high_sensitivity": {"type": "boolean", "default": False},
+                "allow_restricted": {"type": "boolean", "default": False},
             },
             "required": ["task_id"],
         },
@@ -81,7 +92,12 @@ MCP_TASK_TOOLS = [
         "description": "Render a compact Markdown handoff for another agent or future session.",
         "inputSchema": {
             "type": "object",
-            "properties": {"task_id": {"type": "string"}},
+            "properties": {
+                "task_id": {"type": "string"},
+                "agent_id": {"type": "string", "default": ""},
+                "include_private": {"type": "boolean", "default": False},
+                "max_sensitivity": {"type": "string", "enum": ["", "low", "medium", "high", "restricted"], "default": ""},
+            },
             "required": ["task_id"],
         },
     },
@@ -95,6 +111,10 @@ MCP_TASK_TOOLS = [
                 "summary": {"type": "string", "default": ""},
                 "next_actions": {"type": "array", "items": {"type": "string"}, "default": []},
                 "agent_id": {"type": "string", "default": ""},
+                "allow_shared": {"type": "boolean", "default": False},
+                "allow_private": {"type": "boolean", "default": False},
+                "allow_high_sensitivity": {"type": "boolean", "default": False},
+                "allow_restricted": {"type": "boolean", "default": False},
             },
             "required": ["task_id"],
         },
@@ -131,6 +151,61 @@ def _error_payload(message: str, *, next_action: dict[str, Any] | None = None) -
     return payload
 
 
+def _task_lookup_next_action(arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+    arguments = arguments or {}
+    return {
+        "tool": "vault_task_status",
+        "arguments": {"status": "active", "limit": 10, "agent_id": arguments.get("agent_id", "")},
+        "instruction": "List active tasks, then retry with a valid task_id.",
+    }
+
+
+def _read_policy(arguments: dict[str, Any]):
+    from vault.access_policy import normalize_read_policy
+
+    return normalize_read_policy(
+        agent_id=arguments.get("agent_id", ""),
+        include_private=bool(arguments.get("include_private", False)),
+        max_sensitivity=arguments.get("max_sensitivity", ""),
+    )
+
+
+def _write_policy(arguments: dict[str, Any]):
+    from vault.access_policy import normalize_write_policy
+
+    return normalize_write_policy(
+        agent_id=arguments.get("agent_id", ""),
+        allow_shared=bool(arguments.get("allow_shared", False)),
+        allow_private=bool(arguments.get("allow_private", False)),
+        allow_high_sensitivity=bool(arguments.get("allow_high_sensitivity", False)),
+        allow_restricted=bool(arguments.get("allow_restricted", False)),
+    )
+
+
+def _can_read_task(task: dict[str, Any] | None, arguments: dict[str, Any]) -> bool:
+    if not task:
+        return False
+    from vault.access_policy import can_read_memory
+
+    return can_read_memory(task, _read_policy(arguments))
+
+
+def _write_denied(task_or_metadata: dict[str, Any], arguments: dict[str, Any]) -> dict[str, Any] | None:
+    from vault.access_policy import can_write_memory
+
+    ok, reason = can_write_memory(task_or_metadata, _write_policy(arguments))
+    if ok:
+        return None
+    return _error_payload(
+        f"access_denied: {reason}",
+        next_action={
+            "tool": "vault_task_status",
+            "arguments": {"status": "active", "limit": 10, "agent_id": arguments.get("agent_id", "")},
+            "instruction": "Retry with an authorized agent_id and the required allow_* capability flag.",
+        },
+    )
+
+
 def handle_task_tool_call(name: str, arguments: dict[str, Any], *, db_path: str) -> dict[str, str] | None:
     """Handle MCP Task Ledger calls, or return ``None`` if unknown."""
     if name not in MCP_TASK_TOOL_NAMES:
@@ -143,6 +218,17 @@ def handle_task_tool_call(name: str, arguments: dict[str, Any], *, db_path: str)
     try:
         with VaultDB(db_path) as db:
             if name == "vault_task_start":
+                denied = _write_denied(
+                    {
+                        "scope": arguments.get("scope", "project"),
+                        "sensitivity": arguments.get("sensitivity", "low"),
+                        "owner_agent": arguments.get("owner_agent", ""),
+                        "allowed_agents": arguments.get("allowed_agents", []),
+                    },
+                    arguments,
+                )
+                if denied is not None:
+                    return _json_result(denied)
                 payload = start_task(
                     db,
                     str(arguments.get("goal") or ""),
@@ -166,16 +252,28 @@ def handle_task_tool_call(name: str, arguments: dict[str, Any], *, db_path: str)
                 if task_id:
                     task = get_task(db, task_id, include_events=include_events)
                     if not task:
-                        return _json_result(_error_payload(f"task not found: {task_id}"))
+                        return _json_result(
+                            _error_payload(
+                                f"task not found: {task_id}",
+                                next_action=_task_lookup_next_action(arguments),
+                            )
+                        )
+                    if not _can_read_task(task, arguments):
+                        return _json_result(_error_payload("access_denied: task is not readable for this agent"))
                     return _json_result({"ok": True, "action": "status", "task": task})
-                payload = {
-                    "ok": True,
-                    "action": "status",
-                    "tasks": list_tasks(
+                tasks = [
+                    task
+                    for task in list_tasks(
                         db,
                         status=str(arguments.get("status") or "active"),
                         limit=_clamp_int(arguments.get("limit"), default=20, minimum=1, maximum=100),
-                    ),
+                    )
+                    if _can_read_task(task, arguments)
+                ]
+                payload = {
+                    "ok": True,
+                    "action": "status",
+                    "tasks": tasks,
                 }
                 return _json_result(payload)
 
@@ -183,6 +281,17 @@ def handle_task_tool_call(name: str, arguments: dict[str, Any], *, db_path: str)
                 task_id = str(arguments.get("task_id") or "").strip()
                 if not task_id:
                     return _json_result(_error_payload("task_id is required"))
+                existing = get_task(db, task_id, include_events=False)
+                if not existing:
+                    return _json_result(
+                        _error_payload(
+                            f"task not found: {task_id}",
+                            next_action=_task_lookup_next_action(arguments),
+                        )
+                    )
+                denied = _write_denied(existing, arguments)
+                if denied is not None:
+                    return _json_result(denied)
                 payload = update_task(
                     db,
                     task_id,
@@ -208,12 +317,33 @@ def handle_task_tool_call(name: str, arguments: dict[str, Any], *, db_path: str)
                 task_id = str(arguments.get("task_id") or "").strip()
                 if not task_id:
                     return _json_result(_error_payload("task_id is required"))
+                task = get_task(db, task_id, include_events=False)
+                if not task:
+                    return _json_result(
+                        _error_payload(
+                            f"task not found: {task_id}",
+                            next_action=_task_lookup_next_action(arguments),
+                        )
+                    )
+                if not _can_read_task(task, arguments):
+                    return _json_result(_error_payload("access_denied: task is not readable for this agent"))
                 return _json_result(task_handoff(db, task_id))
 
             if name == "vault_task_complete":
                 task_id = str(arguments.get("task_id") or "").strip()
                 if not task_id:
                     return _json_result(_error_payload("task_id is required"))
+                existing = get_task(db, task_id, include_events=False)
+                if not existing:
+                    return _json_result(
+                        _error_payload(
+                            f"task not found: {task_id}",
+                            next_action=_task_lookup_next_action(arguments),
+                        )
+                    )
+                denied = _write_denied(existing, arguments)
+                if denied is not None:
+                    return _json_result(denied)
                 return _json_result(
                     complete_task(
                         db,

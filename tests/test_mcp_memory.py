@@ -521,6 +521,48 @@ def test_mcp_memory_candidates_lists_review_queue_without_full_payload(tmp_path)
     assert detailed_item["gates"]["privacy"]["status"] == "pass"
 
 
+def test_mcp_memory_candidates_respects_read_policy(tmp_path):
+    _set_project_dir(tmp_path)
+    proposed = _payload(handle_tool_call(
+        "vault_memory_propose",
+        {
+            "title": "Private candidate queue",
+            "content": "Private candidate content should only be visible to the owning agent.",
+            "reason": "Exercise candidate read policy.",
+            "source": "test",
+            "scope": "private",
+            "sensitivity": "low",
+            "agent_id": "codex",
+            "owner_agent": "codex",
+            "allow_private": True,
+        },
+    ))
+    assert proposed["status"] == "candidate_created"
+
+    denied = _payload(handle_tool_call(
+        "vault_memory_candidates",
+        {
+            "agent_id": "other-agent",
+            "include_private": True,
+            "include_content": True,
+        },
+    ))
+    assert denied["count"] == 0
+    assert denied["candidates"] == []
+
+    allowed = _payload(handle_tool_call(
+        "vault_memory_candidates",
+        {
+            "agent_id": "codex",
+            "include_private": True,
+            "include_content": True,
+        },
+    ))
+    assert allowed["count"] == 1
+    assert allowed["candidates"][0]["id"] == proposed["candidate_id"]
+    assert allowed["candidates"][0]["content"].startswith("Private candidate content")
+
+
 def test_mcp_capture_discover_lists_project_transcripts_without_content(tmp_path):
     _set_project_dir(tmp_path)
     sessions = tmp_path / "sessions"

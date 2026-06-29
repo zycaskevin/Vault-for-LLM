@@ -278,6 +278,8 @@ def main(argv: list[str] | None = None):
 
     # stats
     p = sub.add_parser("stats", help="統計")
+    p.add_argument("--json", action="store_true", help="輸出 JSON")
+    p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     # usage — retrieval telemetry and TTL archival
     p = sub.add_parser("usage", help="記憶使用統計與 TTL 歸檔")

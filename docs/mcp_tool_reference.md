@@ -297,6 +297,11 @@ Close a working set after the task is done.
 }
 ```
 
+## Maintenance Tools
+
+The following tools maintain long-term memory lifecycle state. They are not
+Task Ledger runtime tools.
+
 ### `vault_cold_store_expired`
 
 Preview or apply summarize-then-cold-store for expired-but-used memories.
@@ -327,7 +332,7 @@ agents.
   "title": "Release smoke test rule",
   "content": "After publishing a release, install from PyPI in a clean virtual environment before calling the release done.",
   "reason": "This prevents source-checkout-only validation from hiding package issues.",
-  "layer": "L2",
+  "layer": "L3",
   "category": "workflow",
   "tags": "release,smoke-test",
   "scope": "project",
@@ -590,7 +595,7 @@ Supabase schema, this may be a local integer ID or a UUID.
 
 This requires the guarded Supabase RPCs from
 [`docs/supabase_read_policy.sql`](supabase_read_policy.sql). Reapply that SQL
-after upgrading to v0.6.61 or newer if your remote IDs are UUIDs.
+when upgrading from versions before v0.6.61 if your remote IDs are UUIDs.
 
 ### `vault_remote_read_range`
 

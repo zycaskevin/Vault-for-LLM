@@ -57,7 +57,7 @@ Vault-for-LLM 可能不是第一个该拿起来的工具。
 最推荐的方式，是直接把这段交给能执行本机命令的 Agent：
 
 ```text
-帮这个项目安装 Vault-for-LLM。使用 vault-for-llm[mcp]==0.6.60。
+帮这个项目安装 Vault-for-LLM。使用 vault-for-llm[mcp]==0.7.15。
 先问我要 shared、private、domain-specific 还是 temporary vault。
 询问稳定的 project directory，并为长期任务生成 stable venv script。
 逐项询问 MCP、semantic search、Supabase、Obsidian import、Headroom 压缩、
@@ -70,7 +70,7 @@ Agent 会使用安装精灵：
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.6.60"
+pip install "vault-for-llm[mcp]==0.7.15"
 
 vault setup-agent
 ```
@@ -97,7 +97,7 @@ vault setup-agent \
 ### 手动快速开始
 
 ```bash
-pip install "vault-for-llm[mcp]==0.6.60"
+pip install "vault-for-llm[mcp]==0.7.15"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -143,8 +143,12 @@ Vault 使用 L0-L3 表示记忆深度：
 |---|---|
 | `L0` | 身份、项目定位、不可轻易改动的框架 |
 | `L1` | 稳定事实、规则、偏好 |
-| `L2` | 近期上下文、摘要、当前工作 |
+| `L2` | 已审查的近期上下文、摘要、短中期背景 |
 | `L3` | 详细知识、SOP、bug、决策、来源笔记 |
+
+Task Ledger 是即时任务状态：blocker、下一步、证据链接与 handoff note。
+不要默认把进行中的 todo 放进 L2。只有经过审查后仍值得保留的教训、
+决策与摘要，才提升到 L2/L3。
 
 权限不要只靠 layer 判断，请搭配治理 metadata：
 
@@ -228,7 +232,7 @@ SQLite 仍然是 source of truth。Supabase 是可选的共享层。
 当不同主机、n8n、Coze 或 hosted agent 需要读取共享记忆时，可以同步安全摘要：
 
 ```bash
-pip install "vault-for-llm[supabase]==0.6.60"
+pip install "vault-for-llm[supabase]==0.7.15"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

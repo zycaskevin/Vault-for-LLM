@@ -243,6 +243,22 @@ TOOLS = [
                     "description": "Include the full gate payload for review.",
                     "default": False,
                 },
+                "agent_id": {
+                    "type": "string",
+                    "description": "Optional agent id for read-policy filtering.",
+                    "default": "",
+                },
+                "include_private": {
+                    "type": "boolean",
+                    "description": "Allow private candidates only when the agent is owner or allowed.",
+                    "default": False,
+                },
+                "max_sensitivity": {
+                    "type": "string",
+                    "enum": ["", "low", "medium", "high", "restricted"],
+                    "description": "Maximum candidate sensitivity to return.",
+                    "default": "",
+                },
             },
         }
     },

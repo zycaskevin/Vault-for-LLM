@@ -230,6 +230,7 @@ def start_task(
     if not goal_text:
         raise ValueError("goal is required")
     task_id = str(task_id or "").strip() or _new_task_id(goal_text)
+    title_text = str(title or "").strip() or task_id
     governance = normalize_governance_metadata(
         scope=scope,
         sensitivity=sensitivity,
@@ -247,7 +248,7 @@ def start_task(
             task_id,
             now,
             now,
-            str(title or "").strip(),
+            title_text,
             goal_text,
             _json_list(current_plan),
             _json_list(next_actions),
@@ -264,7 +265,7 @@ def start_task(
         task_id,
         "started",
         goal_text,
-        payload={"title": str(title or "").strip(), "source": str(source or "cli").strip() or "cli"},
+        payload={"title": title_text, "source": str(source or "cli").strip() or "cli"},
     )
     for ref in evidence_refs or []:
         if str(ref or "").strip():

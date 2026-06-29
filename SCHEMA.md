@@ -55,9 +55,32 @@ your-project/
 | L2 | Recent decisions, incidents, and working context | Load when relevant |
 | L3 | Deep knowledge, lessons, APIs, troubleshooting | Search on demand |
 
+Task Ledger is separate from L0-L3. It stores short-lived working state for
+active tasks, blockers, next actions, evidence references, and handoff notes.
+Only durable lessons, decisions, and summaries should be promoted from Task
+Ledger into L2/L3 after review.
+
 ---
 
-## 4. Knowledge frontmatter
+## 4. Task Ledger runtime tables
+
+Task Ledger is not a new memory layer and not a replacement for active
+knowledge. It is runtime continuity state for agents that need to resume work
+without turning every in-progress todo into permanent memory.
+
+| Table | Purpose |
+|---|---|
+| `task_ledger` | Current task snapshot, governance metadata, plan, blockers, next actions, and continuation notes |
+| `task_events` | Append-only task progress events such as start, update, handoff, and complete |
+| `task_evidence_refs` | Bounded links to files, PRs, docs, or source ranges used as task evidence |
+
+Backup and restore flows should preserve these tables together with the rest of
+`vault.db`. Agents should use Task Ledger handoff output for continuation, then
+promote only reviewed outcomes into L2/L3.
+
+---
+
+## 5. Knowledge frontmatter
 
 Each `raw/` Markdown entry should include YAML frontmatter:
 
@@ -118,7 +141,7 @@ It does not delete source rows.
 
 ---
 
-## 5. Suggested categories and tags
+## 6. Suggested categories and tags
 
 Suggested `category` values:
 
@@ -147,7 +170,7 @@ Use lowercase tags and hyphenate multi-word tags.
 
 ---
 
-## 6. Write and compile workflow
+## 7. Write and compile workflow
 
 ```bash
 # Add one entry directly
@@ -170,7 +193,7 @@ Compiler expectations:
 
 ---
 
-## 7. Retrieval rules for agents
+## 8. Retrieval rules for agents
 
 When an agent uses a Vault project:
 
@@ -183,7 +206,7 @@ When an agent uses a Vault project:
 
 ---
 
-## 8. Optional remote sync
+## 9. Optional remote sync
 
 Remote sync is optional. The expected public model is:
 
@@ -195,7 +218,7 @@ A remote store should not silently overwrite local source data. If bidirectional
 
 ---
 
-## 9. Public terminology
+## 10. Public terminology
 
 | Use | Avoid in public docs |
 |---|---|
@@ -208,4 +231,4 @@ A remote store should not silently overwrite local source data. If bidirectional
 
 ---
 
-_Last updated: 2026-05-16_
+_Last updated: 2026-06-29_

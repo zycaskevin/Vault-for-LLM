@@ -62,6 +62,13 @@ def test_task_ledger_lifecycle_does_not_write_active_knowledge(tmp_path):
         assert knowledge_count == 0
 
 
+def test_task_ledger_title_defaults_to_task_id(tmp_path):
+    db_path = tmp_path / "vault.db"
+    with VaultDB(db_path) as db:
+        started = start_task(db, "Resume release work", task_id="task-release")
+        assert started["task"]["title"] == "task-release"
+
+
 def test_task_cli_start_update_handoff_complete(tmp_path):
     project = tmp_path / "project"
     project.mkdir()
@@ -156,4 +163,3 @@ def test_task_cli_start_update_handoff_complete(tmp_path):
         check=True,
     )
     assert json.loads(complete.stdout)["task"]["status"] == "completed"
-

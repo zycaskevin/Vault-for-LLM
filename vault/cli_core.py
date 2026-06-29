@@ -586,6 +586,40 @@ def cmd_stats(args):
     db = VaultDB(str(db_path))
     db.connect()
     stats = db.stats()
+    layers = [
+        dict(row)
+        for row in db.conn.execute(
+            "SELECT layer, COUNT(*) as cnt FROM knowledge GROUP BY layer ORDER BY layer"
+        ).fetchall()
+    ]
+    categories = [
+        dict(row)
+        for row in db.conn.execute(
+            "SELECT category, COUNT(*) as cnt FROM knowledge GROUP BY category ORDER BY cnt DESC"
+        ).fetchall()
+    ]
+    connected = None
+    if stats.get("edge_count", 0) > 0:
+        connected = db.conn.execute(
+            "SELECT COUNT(DISTINCT n) FROM ("
+            "SELECT source_id AS n FROM edges UNION "
+            "SELECT target_id AS n FROM edges)"
+        ).fetchone()[0]
+
+    json_output = getattr(args, "json", False) is True
+    pretty_output = getattr(args, "pretty", False) is True
+    if json_output:
+        _json_print(
+            {
+                "stats": stats,
+                "layers": layers,
+                "categories": categories,
+                "graph_connected_nodes": connected,
+            },
+            pretty=pretty_output,
+        )
+        db.close()
+        return
 
     print("📊 Vault-for-LLM 統計\n")
     from vault.diagnostics import stats_summary_lines
@@ -593,30 +627,19 @@ def cmd_stats(args):
         print(line)
 
     # 分層統計
-    rows = db.conn.execute(
-        "SELECT layer, COUNT(*) as cnt FROM knowledge GROUP BY layer ORDER BY layer"
-    ).fetchall()
-    if rows:
+    if layers:
         print("\n  分層:")
-        for row in rows:
+        for row in layers:
             print(f"    {row['layer']}: {row['cnt']} 筆")
 
     # 分類統計
-    rows = db.conn.execute(
-        "SELECT category, COUNT(*) as cnt FROM knowledge GROUP BY category ORDER BY cnt DESC"
-    ).fetchall()
-    if rows:
+    if categories:
         print("\n  分類:")
-        for row in rows:
+        for row in categories:
             print(f"    {row['category']}: {row['cnt']} 筆")
 
     # 圖譜連通度
-    if stats.get('edge_count', 0) > 0:
-        connected = db.conn.execute(
-            "SELECT COUNT(DISTINCT n) FROM ("
-            "SELECT source_id AS n FROM edges UNION "
-            "SELECT target_id AS n FROM edges)"
-        ).fetchone()[0]
+    if connected is not None:
         print(f"\n  圖譜連通: {connected}/{stats['knowledge_count']} 節點")
 
     db.close()

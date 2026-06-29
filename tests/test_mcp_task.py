@@ -80,3 +80,69 @@ def test_mcp_task_errors_are_structured(tmp_path):
     assert missing["ok"] is False
     assert "task not found" in missing["error"]
     assert missing["next_action"]["tool"] == "vault_task_status"
+
+
+def test_mcp_task_read_policy_filters_private_tasks(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    _set_project_dir(project)
+
+    started = _payload(handle_tool_call(
+        "vault_task_start",
+        {
+            "task_id": "private-task",
+            "goal": "Private task",
+            "scope": "private",
+            "owner_agent": "codex",
+            "agent_id": "codex",
+            "allow_private": True,
+        },
+    ))
+    assert started["ok"] is True
+
+    denied = _payload(handle_tool_call(
+        "vault_task_handoff",
+        {"task_id": "private-task", "agent_id": "other", "include_private": True},
+    ))
+    assert denied["ok"] is False
+    assert "access_denied" in denied["error"]
+
+    hidden = _payload(handle_tool_call(
+        "vault_task_status",
+        {"status": "active", "agent_id": "other", "include_private": True},
+    ))
+    assert hidden["ok"] is True
+    assert hidden["tasks"] == []
+
+    allowed = _payload(handle_tool_call(
+        "vault_task_handoff",
+        {"task_id": "private-task", "agent_id": "codex", "include_private": True},
+    ))
+    assert allowed["ok"] is True
+    assert "Private task" in allowed["markdown"]
+
+
+def test_mcp_task_write_policy_blocks_private_updates_without_capability(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    _set_project_dir(project)
+
+    started = _payload(handle_tool_call(
+        "vault_task_start",
+        {
+            "task_id": "private-task",
+            "goal": "Private task",
+            "scope": "private",
+            "owner_agent": "codex",
+            "agent_id": "codex",
+            "allow_private": True,
+        },
+    ))
+    assert started["ok"] is True
+
+    denied = _payload(handle_tool_call(
+        "vault_task_update",
+        {"task_id": "private-task", "agent_id": "other", "completed": ["oops"]},
+    ))
+    assert denied["ok"] is False
+    assert "access_denied" in denied["error"]

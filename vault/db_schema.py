@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 KNOWLEDGE_UPDATE_COLUMNS = {
     "title",
@@ -93,4 +93,5 @@ MIGRATIONS = {
     9: "memory_usage_and_archive_columns",
     10: "memory_feedback_events",
     11: "temporal_validity_columns",
+    12: "task_ledger_tables",
 }

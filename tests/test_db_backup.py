@@ -221,6 +221,11 @@ def test_verify_rejects_fake_vault_table_names_with_invalid_columns(tmp_path):
         "knowledge_claims",
         "semantic_vectors",
         "embedding_cache",
+        "memory_candidates",
+        "memory_feedback_events",
+        "task_ledger",
+        "task_events",
+        "task_evidence_refs",
         "content_log",
         "skills",
         "lint_cache",
@@ -281,7 +286,19 @@ def test_verify_rejects_malformed_migration_metadata_without_crashing(tmp_path):
             provider_id TEXT, dimension INTEGER, text_hash TEXT, vector TEXT
         )"""
     )
-    for table in ["content_log", "skills", "lint_cache", "edges", "entities", "entity_knowledge"]:
+    for table in [
+        "content_log",
+        "skills",
+        "lint_cache",
+        "edges",
+        "entities",
+        "entity_knowledge",
+        "memory_candidates",
+        "memory_feedback_events",
+        "task_ledger",
+        "task_events",
+        "task_evidence_refs",
+    ]:
         conn.execute(f"CREATE TABLE {table}(id INTEGER)")
     conn.execute("PRAGMA user_version=5")
     conn.commit()
@@ -339,7 +356,19 @@ def test_verify_rejects_malformed_auxiliary_vault_tables(tmp_path):
             provider_id TEXT, dimension INTEGER, text_hash TEXT, vector TEXT
         )"""
     )
-    for table in ["content_log", "skills", "lint_cache", "edges", "entities", "entity_knowledge"]:
+    for table in [
+        "content_log",
+        "skills",
+        "lint_cache",
+        "edges",
+        "entities",
+        "entity_knowledge",
+        "memory_candidates",
+        "memory_feedback_events",
+        "task_ledger",
+        "task_events",
+        "task_evidence_refs",
+    ]:
         conn.execute(f"CREATE TABLE {table}(id INTEGER)")
     conn.execute(f"PRAGMA user_version={VaultDB.SCHEMA_VERSION}")
     conn.commit()

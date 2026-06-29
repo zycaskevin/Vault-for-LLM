@@ -14,6 +14,9 @@ with the daily loop in the README and only use these commands when needed.
 | `vault capture session codex-session.jsonl --pretty` | Preview candidate memories extracted from an agent session transcript |
 | `vault capture session codex-session.jsonl --write-candidates` | Write extracted session lessons into the candidate queue, not active knowledge |
 | `vault memory pipeline --search-dir sessions --write-candidates --write-report` | Run the automatic conversation-memory pipeline: discover transcripts, extract lessons, gate them, write candidates, and leave a compact ingestion receipt |
+| `vault task start "Ship feature"` | Create a Task Ledger working set for a long-running task without writing active knowledge |
+| `vault task update <task_id> --decision "..." --next-action "..."` | Update task-runtime state for handoff/resume; reusable lessons still go through candidates |
+| `vault task handoff <task_id>` | Print a compact continuation note for the next agent/session |
 | `vault memory temporal status` / `vault memory temporal list --state past` | Inspect current, past, future, and timeless fact windows |
 | `vault candidates` | List pending candidate memories without dumping full raw content |
 | `vault promote <candidate_id> --confirm` | Promote reviewed candidate memory |
@@ -170,6 +173,28 @@ For per-tool MCP examples, see `docs/mcp_tool_reference.md`.
 | `vault stats` | Show vault statistics |
 | `vault usage stats` / `vault usage archive-expired --apply` | Inspect retrieval usage and archive expired unused memories without deleting them |
 | `vault usage cold-store-expired --apply` | Summarize and archive expired-but-used memories; skips private/high/restricted/L0/L1 rows and retains original content |
+
+## Task Ledger / Working Set
+
+Task Ledger is the task-runtime workbench. It is not `L2`, not `L4`, and not
+active knowledge. Use it to keep long-running tasks resumable across Codex,
+Hermes, Claude Code, OpenClaw, or other agents without dumping whole chat
+history into the context window.
+
+| Command | Purpose |
+|---|---|
+| `vault task start "Repair benchmark" --plan "inspect failing tests" --next-action "run focused pytest"` | Create a task working set |
+| `vault task update <task_id> --done "schema added" --decision "Task Ledger is not L2"` | Append completed work and hard decisions |
+| `vault task update <task_id> --blocker "waiting for CI" --question "sync task fields to Supabase?"` | Track blockers and open questions |
+| `vault task status <task_id> --json` | Read the current working set for an agent |
+| `vault task status --status active` | List active task ledgers |
+| `vault task resume <task_id>` | Alias for reading one task with resume semantics |
+| `vault task handoff <task_id>` | Print compact Markdown for the next agent/session |
+| `vault task complete <task_id> --summary "..."` | Mark the task completed without promoting task events |
+
+At task phase end, extract only reusable lessons with the normal candidate-first
+workflow. Failed attempts and temporary task events should remain task history,
+not `knowledge` rows.
 
 ## Quality And Curation
 

@@ -220,6 +220,113 @@ def cmd_capture(args):
     _json_print(payload, pretty=args.pretty)
 
 
+def _print_task_summary(task: dict) -> None:
+    title = task.get("title") or task.get("id")
+    print(f"Task: {title}")
+    print(f"  id: {task.get('id')}")
+    print(f"  status: {task.get('status')}")
+    print(f"  goal: {task.get('goal')}")
+    if task.get("next_actions"):
+        print("  next_actions:")
+        for item in task.get("next_actions", []):
+            print(f"    - {item}")
+    if task.get("continuation_note"):
+        print(f"  continuation_note: {task.get('continuation_note')}")
+
+
+def cmd_task(args):
+    """Task Ledger runtime working-set workflows."""
+    from vault.db import VaultDB
+    from vault.task_ledger import (
+        complete_task,
+        get_task,
+        list_tasks,
+        start_task,
+        task_handoff,
+        update_task,
+    )
+
+    action = getattr(args, "task_action", "")
+    if action not in {"start", "update", "status", "resume", "handoff", "complete"}:
+        print("error: task requires action: start, update, status, resume, handoff, or complete", file=sys.stderr)
+        raise SystemExit(2)
+
+    try:
+        with VaultDB(find_project_dir() / "vault.db") as db:
+            if action == "start":
+                payload = start_task(
+                    db,
+                    args.goal,
+                    task_id=args.task_id,
+                    title=args.title,
+                    current_plan=args.plan,
+                    next_actions=args.next_action,
+                    evidence_refs=args.evidence_ref,
+                    continuation_note=args.continuation_note,
+                    scope=args.scope,
+                    sensitivity=args.sensitivity,
+                    owner_agent=args.owner_agent,
+                    allowed_agents=args.allowed_agents,
+                    source=args.source,
+                )
+            elif action == "update":
+                payload = update_task(
+                    db,
+                    args.task_id,
+                    current_plan=args.plan,
+                    completed=args.done,
+                    hard_decisions=args.decision,
+                    blockers=args.blocker,
+                    open_questions=args.question,
+                    next_actions=args.next_action,
+                    evidence_refs=args.evidence_ref,
+                    continuation_note=args.continuation_note,
+                    status=args.status,
+                    agent_id=args.agent_id,
+                    source_ref=args.source_ref,
+                )
+            elif action in {"status", "resume"}:
+                if args.task_id:
+                    task = get_task(db, args.task_id, include_events=bool(args.include_events))
+                    if not task:
+                        raise KeyError(f"task not found: {args.task_id}")
+                    payload = {"ok": True, "action": action, "task": task}
+                else:
+                    payload = {
+                        "ok": True,
+                        "action": "list",
+                        "status": args.status,
+                        "tasks": list_tasks(db, status=args.status, limit=args.limit),
+                    }
+            elif action == "handoff":
+                payload = task_handoff(db, args.task_id)
+            else:
+                payload = complete_task(
+                    db,
+                    args.task_id,
+                    summary=args.summary,
+                    next_actions=args.next_action,
+                    agent_id=args.agent_id,
+                )
+    except (KeyError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+
+    if getattr(args, "json", False) or getattr(args, "pretty", False):
+        _json_print(payload, pretty=args.pretty)
+        return
+
+    if action == "handoff":
+        print(payload["markdown"], end="")
+    elif payload.get("task"):
+        _print_task_summary(payload["task"])
+    else:
+        tasks = payload.get("tasks", [])
+        print(f"Tasks ({payload.get('status') or 'all'}): {len(tasks)}")
+        for task in tasks:
+            print(f"  {task.get('id')} [{task.get('status')}] {task.get('title') or task.get('goal')}")
+
+
 def cmd_dream(args):
     """Run a deterministic report-first dream curation pass."""
     from vault.dream import run_dream

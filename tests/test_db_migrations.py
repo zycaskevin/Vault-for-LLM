@@ -29,6 +29,9 @@ def test_fresh_db_status_is_current(tmp_path):
         assert len(status["applied_migrations"]) == VaultDB.SCHEMA_VERSION
         assert db.get_config("schema_version") == str(VaultDB.SCHEMA_VERSION)
         assert "memory_candidates" in status["tables_present"]
+        assert "task_ledger" in status["tables_present"]
+        assert "task_events" in status["tables_present"]
+        assert "task_evidence_refs" in status["tables_present"]
 
 
 def test_old_pre_v3_db_migrates_to_current(tmp_path):
@@ -82,6 +85,20 @@ def test_schema_status_requires_memory_candidates_table(tmp_path):
 
         assert status["needs_migration"] is True
         assert "memory_candidates" in status["tables_missing"]
+
+
+def test_schema_status_requires_task_ledger_tables(tmp_path):
+    db_path = tmp_path / "missing_task.db"
+    with VaultDB(db_path) as db:
+        assert db.conn is not None
+        db.conn.execute("DROP TABLE task_ledger")
+        db.conn.execute("DROP TABLE task_events")
+        db.conn.commit()
+        status = db.schema_status()
+
+        assert status["needs_migration"] is True
+        assert "task_ledger" in status["tables_missing"]
+        assert "task_events" in status["tables_missing"]
 
 
 def test_db_status_and_migrate_cli_pretty(tmp_path):

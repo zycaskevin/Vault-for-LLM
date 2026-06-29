@@ -76,6 +76,7 @@ from .cli_flow import (
     cmd_promote,
     cmd_remember,
     cmd_setup_agent,
+    cmd_task,
     cmd_update_status,
     cmd_usage,
 )
@@ -297,6 +298,69 @@ def main(argv: list[str] | None = None):
     up.add_argument("--apply", action="store_true", help="實際寫入 summary 並歸檔；預設只 dry-run")
     up.add_argument("--json", action="store_true", help="輸出 JSON")
     up.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    # task — Task Ledger / Working Set runtime state
+    p = sub.add_parser("task", help="Task Ledger 任務工作台")
+    task_sub = p.add_subparsers(dest="task_action", help="Task Ledger 子命令")
+
+    def add_task_output_args(ap):
+        ap.add_argument("--json", action="store_true", help="輸出 JSON")
+        ap.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    tp = task_sub.add_parser("start", help="建立新的 Task Ledger working set")
+    tp.add_argument("goal", help="任務目標")
+    tp.add_argument("--task-id", default="", help="自訂 task_id；省略時自動產生")
+    tp.add_argument("--title", default="", help="短標題；省略時使用 task_id")
+    tp.add_argument("--plan", action="append", default=[], help="初始計畫項目，可重複")
+    tp.add_argument("--next-action", action="append", default=[], help="下一步，可重複")
+    tp.add_argument("--evidence-ref", action="append", default=[], help="證據引用，例如 file:path 或 PR URL，可重複")
+    tp.add_argument("--continuation-note", default="", help="給下一個 Agent/session 的接手提示")
+    tp.add_argument("--scope", choices=["private", "project", "shared", "public"], default="project")
+    tp.add_argument("--sensitivity", choices=["low", "medium", "high", "restricted"], default="low")
+    tp.add_argument("--owner-agent", default="", help="擁有者 Agent")
+    tp.add_argument("--allowed-agents", default="", help="可讀 Agent 清單；JSON array 或逗號分隔")
+    tp.add_argument("--source", default="cli", help="來源標籤")
+    add_task_output_args(tp)
+
+    tp = task_sub.add_parser("update", help="更新 Task Ledger working set")
+    tp.add_argument("task_id", help="task id")
+    tp.add_argument("--plan", action="append", default=[], help="追加計畫項目，可重複")
+    tp.add_argument("--done", action="append", default=[], help="追加已完成項目，可重複")
+    tp.add_argument("--decision", action="append", default=[], help="追加 hard decision，可重複")
+    tp.add_argument("--blocker", action="append", default=[], help="追加阻塞項目，可重複")
+    tp.add_argument("--question", action="append", default=[], help="追加 open question，可重複")
+    tp.add_argument("--next-action", action="append", default=[], help="追加下一步，可重複")
+    tp.add_argument("--evidence-ref", action="append", default=[], help="追加證據引用，可重複")
+    tp.add_argument("--continuation-note", default=None, help="覆寫接手提示")
+    tp.add_argument("--status", choices=["active", "blocked", "completed", "archived"], default=None)
+    tp.add_argument("--agent-id", default="", help="更新此 task 的 Agent id")
+    tp.add_argument("--source-ref", default="", help="更新來源，例如 session 或 PR")
+    add_task_output_args(tp)
+
+    tp = task_sub.add_parser("status", help="顯示單一 task，或列出 tasks")
+    tp.add_argument("task_id", nargs="?", default="", help="task id；省略時列出 tasks")
+    tp.add_argument("--status", choices=["active", "blocked", "completed", "archived", "all"], default="active")
+    tp.add_argument("--limit", "-n", type=_positive_int, default=20)
+    tp.add_argument("--include-events", action="store_true", help="顯示最近事件")
+    add_task_output_args(tp)
+
+    tp = task_sub.add_parser("resume", help="status 的接手語意別名")
+    tp.add_argument("task_id", help="task id")
+    tp.add_argument("--status", choices=["active", "blocked", "completed", "archived", "all"], default="active")
+    tp.add_argument("--limit", "-n", type=_positive_int, default=20)
+    tp.add_argument("--include-events", action="store_true", help="顯示最近事件")
+    add_task_output_args(tp)
+
+    tp = task_sub.add_parser("handoff", help="輸出 compact handoff markdown")
+    tp.add_argument("task_id", help="task id")
+    add_task_output_args(tp)
+
+    tp = task_sub.add_parser("complete", help="完成 Task Ledger working set")
+    tp.add_argument("task_id", help="task id")
+    tp.add_argument("--summary", default="", help="完成摘要")
+    tp.add_argument("--next-action", action="append", default=[], help="任務完成後仍需追蹤的下一步，可重複")
+    tp.add_argument("--agent-id", default="", help="完成此 task 的 Agent id")
+    add_task_output_args(tp)
 
     # install-embedding
     p = sub.add_parser("install-embedding", help="安裝嵌入模型")
@@ -849,6 +913,7 @@ def main(argv: list[str] | None = None):
         "doctor": cmd_doctor,
         "stats": cmd_stats,
         "usage": cmd_usage,
+        "task": cmd_task,
         "automation": cmd_automation,
         "memory": lambda parsed: __import__("vault.cli_memory", fromlist=["cmd_memory"]).cmd_memory(parsed, find_project_dir=find_project_dir, json_print=_json_print),
         "install-embedding": cmd_install_embedding,

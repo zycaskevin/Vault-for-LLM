@@ -25,6 +25,55 @@ memory_type: care_summary
 expires_at: 2026-07-01
 ```
 
+## Task Ledger Versus L2
+
+Do not treat Task Ledger as `L2`, and do not create an `L4` layer for task
+state. `L0` through `L3` describe long-lived memory depth. Task Ledger describes
+the active working set for one task.
+
+`L2` is reviewed recent background that may help future tasks. Task Ledger is
+the current state of one task: current goal, plan, completed work, hard
+decisions, blockers, open questions, next actions, evidence references, and a
+continuation note.
+
+Use this distinction:
+
+| Content | Destination |
+|---|---|
+| "This project is moving toward multi-agent memory governance." | `L2` candidate |
+| "The active PR already merged the graph panel; next action is Task Ledger design." | Task Ledger |
+| "Future architecture discussions must become decision records." | `L1` or `L3` candidate |
+| "A failed implementation attempt during this task." | Task event/history, not active knowledge |
+
+Task Ledger can reference Vault memories, files, reports, issues, PRs, or
+Document Map nodes. It should not copy raw private content into shared task
+state. When a task phase ends, extract only reusable lessons into Vault
+candidates; promotion into `L0` through `L3` still requires the normal gates.
+
+Recommended task-runtime shape:
+
+```yaml
+task_id: example-task
+goal: Finish the current implementation safely.
+status: active
+current_plan:
+  - Inspect the focused failure.
+  - Patch the narrow cause.
+  - Re-run targeted tests.
+hard_decisions:
+  - Do not promote raw transcripts into active memory.
+blockers: []
+next_actions:
+  - Run the focused test file.
+evidence_refs:
+  - file: tests/test_example.py
+continuation_note: Resume from the focused failure, not from a broad repo scan.
+```
+
+See
+`docs/decision_records/2026-06-29-task-ledger-working-set-boundary.md` for the
+full decision record.
+
 ## Progressive Memory Disclosure
 
 Memory should be revealed in layers. A daily agent should start from the

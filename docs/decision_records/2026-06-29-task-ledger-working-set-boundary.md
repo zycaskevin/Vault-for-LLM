@@ -143,14 +143,17 @@ vault task resume <task_id>
 vault task complete <task_id>
 ```
 
-Suggested MCP tools:
+Implemented MCP tools:
 
+- `vault_task_start`
 - `vault_task_status`
 - `vault_task_update`
 - `vault_task_handoff`
+- `vault_task_complete`
 
-Keep task tools in a separate or review-oriented MCP profile if they become
-token-heavy.
+Task tools belong to review/maintenance/full profiles, not the core profile.
+They are useful for long-running agent work, but they are not needed for every
+startup and should not increase the default MCP schema surface.
 
 ## Relationship To GUI
 

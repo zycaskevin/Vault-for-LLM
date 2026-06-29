@@ -28,6 +28,11 @@ def test_mcp_memory_tools_are_advertised():
         "vault_memory_pipeline",
         "vault_memory_temporal_status",
         "vault_memory_reflection",
+        "vault_task_start",
+        "vault_task_status",
+        "vault_task_update",
+        "vault_task_handoff",
+        "vault_task_complete",
         "vault_update_status",
         "vault_dream_run",
     }.issubset(names)
@@ -69,6 +74,9 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
     assert "vault_memory_pipeline" in review_names
     assert "vault_memory_temporal_status" in review_names
     assert "vault_memory_reflection" in review_names
+    assert "vault_task_status" in review_names
+    assert "vault_task_update" in review_names
+    assert "vault_task_handoff" in review_names
     assert "vault_capture_discover" not in core_names
     assert "vault_capture_session" not in core_names
     assert "vault_automation_inbox" not in core_names
@@ -76,6 +84,7 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
     assert "vault_memory_pipeline" not in core_names
     assert "vault_memory_temporal_status" not in core_names
     assert "vault_memory_reflection" not in core_names
+    assert "vault_task_status" not in core_names
     assert "vault_memory_review" not in core_names
 
     maintenance_names = {tool["name"] for tool in select_tools("maintenance")}
@@ -83,6 +92,8 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
     assert "vault_memory_pipeline" in maintenance_names
     assert "vault_memory_temporal_status" in maintenance_names
     assert "vault_memory_reflection" in maintenance_names
+    assert "vault_task_start" in maintenance_names
+    assert "vault_task_complete" in maintenance_names
 
     full_names = {tool["name"] for tool in select_tools("full")}
     assert "vault_add" in full_names
@@ -94,6 +105,11 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
     assert "vault_memory_pipeline" in full_names
     assert "vault_memory_temporal_status" in full_names
     assert "vault_memory_reflection" in full_names
+    assert "vault_task_start" in full_names
+    assert "vault_task_status" in full_names
+    assert "vault_task_update" in full_names
+    assert "vault_task_handoff" in full_names
+    assert "vault_task_complete" in full_names
     assert "vault_remote_read_range" in full_names
     assert len(full_names) > len(core_names)
 

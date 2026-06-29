@@ -12,7 +12,7 @@ the model context and fewer ways for an agent to choose the wrong action.
 | Profile | Tools | Best For |
 |---|---|---|
 | `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats`, `vault_update_status`, `vault_automation_activity`, `vault_automation_brief`, `vault_automation_handoff` | Daily agent work: start from status/activity/brief/handoff, find memory, read bounded evidence, propose new memory. |
-| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_capture_discover`, `vault_capture_session`, `vault_automation_inbox`, `vault_dream_run` | A reviewer agent or operator session that discovers/captures, approves, rejects, or blocks candidate memories. |
+| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_capture_discover`, `vault_capture_session`, `vault_automation_inbox`, `vault_task_start/status/update/handoff/complete`, `vault_dream_run` | A reviewer agent or operator session that discovers/captures, approves/rejects candidates, or maintains a resumable task working set. |
 | `remote` | Core plus `vault_remote_search`, `vault_remote_map_show`, `vault_remote_read_range` | Hosted or cross-host agents reading a Supabase-synced vault. |
 | `maintenance` | Review plus cold-store lifecycle, Obsidian import, freshness, convergence, and curation tools | Scheduled maintenance or explicit operator-led cleanup. |
 | `full` | Every MCP tool, including low-level compatibility tools | Trusted local operators and backwards compatibility. |
@@ -210,6 +210,92 @@ health, and the smallest human-review queue.
 
 Agent rule: call this before opening full automation reports. It is read-only,
 does not include raw candidate content, and treats forgetting as strategy only.
+
+## Task Ledger Tools
+
+Task Ledger is runtime working memory. It is separate from active L0-L3
+knowledge and is meant for task continuity, not permanent facts.
+
+These tools are available in `review`, `maintenance`, and `full` profiles.
+They are hidden from `core` to keep the default MCP schema small.
+
+### `vault_task_start`
+
+Create a resumable task working set.
+
+```json
+{
+  "task_id": "task-release-hardening",
+  "goal": "Finish release hardening",
+  "title": "Release hardening",
+  "current_plan": ["patch failing tests", "run full suite"],
+  "next_actions": ["open PR"],
+  "evidence_refs": ["file:docs/release_stabilization.md"],
+  "owner_agent": "codex"
+}
+```
+
+### `vault_task_status`
+
+List active tasks or read one task by id.
+
+```json
+{
+  "status": "active",
+  "limit": 10,
+  "include_events": false
+}
+```
+
+```json
+{
+  "task_id": "task-release-hardening",
+  "include_events": true
+}
+```
+
+### `vault_task_update`
+
+Append progress without rewriting the whole task state.
+
+```json
+{
+  "task_id": "task-release-hardening",
+  "completed": ["fixed MCP regression"],
+  "hard_decisions": ["keep task tools out of core profile"],
+  "blockers": [],
+  "next_actions": ["run targeted tests"],
+  "evidence_refs": ["pr:229"],
+  "continuation_note": "Resume from MCP docs if interrupted.",
+  "agent_id": "codex"
+}
+```
+
+### `vault_task_handoff`
+
+Render a compact Markdown handoff for the next session.
+
+```json
+{
+  "task_id": "task-release-hardening"
+}
+```
+
+Agent rule: call this before switching agents or ending a long task. The
+returned `markdown` can be pasted into a handoff, but it is not automatically
+promoted into long-term memory.
+
+### `vault_task_complete`
+
+Close a working set after the task is done.
+
+```json
+{
+  "task_id": "task-release-hardening",
+  "summary": "Release hardening merged and tested.",
+  "agent_id": "codex"
+}
+```
 
 ### `vault_cold_store_expired`
 

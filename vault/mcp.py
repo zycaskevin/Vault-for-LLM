@@ -19,6 +19,7 @@ if VAULT_DIR not in sys.path:
 
 from vault.mcp_memory import handle_memory_tool_call
 from vault.mcp_automation import handle_automation_tool_call
+from vault.mcp_task import handle_task_tool_call
 from vault.mcp_security import (
     check_agent_signature as _check_agent_signature,
     check_mcp_rate_limit as _check_mcp_rate_limit,
@@ -235,6 +236,10 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
         automation_payload = handle_automation_tool_call(name, arguments, db_path=DB_PATH)
         if automation_payload is not None:
             return automation_payload
+
+        task_payload = handle_task_tool_call(name, arguments, db_path=DB_PATH)
+        if task_payload is not None:
+            return task_payload
 
         if name == "vault_obsidian_import":
             from vault.agent_setup import compile_project

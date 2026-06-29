@@ -8,6 +8,7 @@ from vault.mcp_memory import (
     MCP_MEMORY_LOOP_TOOLS,
 )
 from vault.mcp_search import MCP_SEARCH_MAX_LIMIT, MCP_SEARCH_MAX_OFFSET
+from vault.mcp_task import MCP_TASK_TOOL_NAMES, MCP_TASK_TOOLS
 
 
 TOOLS = [
@@ -469,6 +470,7 @@ TOOLS = [
         }
     },
     *MCP_MEMORY_LOOP_TOOLS,
+    *MCP_TASK_TOOLS,
     {
         "name": "vault_cold_store_expired",
         "description": "Preview or apply summarize-then-cold-store for expired-but-used memories. Defaults to dry-run; skips private, high/restricted, and L0/L1 memories.",
@@ -838,6 +840,7 @@ TOOL_PROFILES = {
         "vault_memory_promote",
         "vault_memory_review",
         "vault_memory_candidates",
+        *MCP_TASK_TOOL_NAMES,
         "vault_capture_discover",
         "vault_capture_session",
         "vault_automation_inbox",
@@ -869,6 +872,7 @@ TOOL_PROFILES = {
         "vault_memory_promote",
         "vault_memory_review",
         "vault_memory_candidates",
+        *MCP_TASK_TOOL_NAMES,
         "vault_capture_discover",
         "vault_capture_session",
         "vault_automation_inbox",

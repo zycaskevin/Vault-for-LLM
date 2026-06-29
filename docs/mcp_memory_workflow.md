@@ -16,7 +16,7 @@ Use the smallest MCP tool profile that fits the session:
 | Profile | Tools | Use when |
 |---|---|---|
 | `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats`, `vault_update_status`, `vault_automation_activity`, `vault_automation_brief`, `vault_automation_handoff` | Daily agent use with startup status, compact intelligence brief, and compact handoff |
-| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_capture_discover`, `vault_capture_session`, `vault_automation_inbox`, `vault_dream_run` | Discovering/capturing sessions and reviewing, rejecting, blocking, or promoting candidate memory |
+| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_capture_discover`, `vault_capture_session`, `vault_automation_inbox`, `vault_task_start/status/update/handoff/complete`, `vault_dream_run` | Discovering/capturing sessions, reviewing candidates, or maintaining a resumable task working set |
 | `remote` | Core plus `vault_remote_search`, `vault_remote_map_show`, `vault_remote_read_range` | Reading a Supabase-synced cross-host memory view |
 | `maintenance` | Review plus Obsidian import and freshness/convergence checks | Scheduled or operator-led curation |
 | `full` | All tools, including compatibility `vault_add` | Backward compatibility or explicit power-user setups |
@@ -44,9 +44,12 @@ selected project directory.
 7. vault_memory_propose      # candidate-first write with gates
 8. vault_capture_discover    # optional review profile: find transcripts without reading content
 9. vault_capture_session     # optional review profile: turn a transcript into candidates
-10. vault_memory_candidates  # optional review profile: inspect pending candidates
-11. vault_memory_review      # optional review profile: reject/block weak candidates
-12. vault_memory_promote     # optional review profile: explicit confirm=true promotion
+10. vault_task_status        # optional review profile: resume active working sets
+11. vault_task_update        # optional review profile: append decisions/blockers/progress
+12. vault_task_handoff       # optional review profile: compact handoff before switching agents
+13. vault_memory_candidates  # optional review profile: inspect pending candidates
+14. vault_memory_review      # optional review profile: reject/block weak candidates
+15. vault_memory_promote     # optional review profile: explicit confirm=true promotion
 ```
 
 When several local runtimes share one machine-level Vault install, use
@@ -118,6 +121,24 @@ After the user confirms the preview, apply and compile:
 ### `vault_memory_propose`
 
 Creates a memory candidate. It does not alter active knowledge unless `mode=promote_if_safe` is explicitly requested and gates allow it.
+
+### Task Ledger MCP Tools
+
+Task Ledger tools are in `review`, `maintenance`, and `full`, not `core`.
+They store current work state so another agent can resume the task without
+turning every temporary step into long-term L0-L3 memory.
+
+Use this loop for long-running work:
+
+```text
+vault_task_start -> vault_task_update -> vault_task_handoff -> vault_task_complete
+```
+
+`vault_task_status` can list active tasks or read one task by `task_id`.
+`vault_task_update` appends plan changes, completed steps, decisions, blockers,
+questions, evidence refs, and continuation notes. `vault_task_handoff` renders a
+compact Markdown handoff for the next session. `vault_task_complete` closes the
+working set and records a short summary.
 
 Required fields:
 

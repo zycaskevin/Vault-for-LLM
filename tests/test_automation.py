@@ -160,8 +160,11 @@ def test_automation_run_cold_stores_expired_but_used_memory(tmp_path):
     assert payload["dry_run_diff"]["highest_cold_store_importance"] == payload["cold_store_expired"]["items"][0]["importance_score"]
     assert payload["dry_run_diff"]["skipped_usage_count"] == 1
     assert payload["usage_review"]["expired_used_review_count"] == 1
-    assert payload["usage_review"]["importance_model"] == "usage_citation_recency_trust_freshness_ttl_v1"
+    assert payload["usage_review"]["importance_model"] == "usage_citation_recency_trust_freshness_ttl_v2"
     assert payload["usage_review"]["expired_but_used"][0]["importance_score"] > 0
+    assert payload["usage_review"]["expired_but_used"][0]["weight_tier"] in {"warm", "strong", "critical"}
+    assert payload["cold_store_expired"]["items"][0]["lifecycle_strategy"]["strategy"] == "compress_demote_archive"
+    assert payload["cold_store_expired"]["items"][0]["lifecycle_strategy"]["retain_original_for_audit"] is True
     assert payload["forgetting"]["candidates_written"] == 1
     assert any(
         item["operation"] == "archive_expired"
@@ -494,6 +497,42 @@ def test_automation_run_auto_promotes_only_low_risk_policy_matches(tmp_path):
         assert db.conn.execute("SELECT COUNT(*) AS n FROM knowledge WHERE status = 'active'").fetchone()["n"] == before_active + 1
 
 
+def test_automation_learning_downgrade_blocks_auto_promote(tmp_path):
+    project = _init_project(tmp_path)
+    _write_auto_promote_policy(project)
+    with VaultDB(project / "vault.db") as db:
+        for idx in range(3):
+            db.record_memory_feedback(
+                {
+                    "candidate_id": f"bad_session_{idx}",
+                    "source": "session_capture",
+                    "memory_type": "session_lesson",
+                    "category": "decision",
+                    "outcome": "rejected",
+                    "score": 0.0,
+                }
+            )
+        candidate_id = _create_low_risk_session_candidate(db, title="Learned reject should block promotion")
+        before_active = db.conn.execute("SELECT COUNT(*) AS n FROM knowledge WHERE status = 'active'").fetchone()["n"]
+
+    automation_eval(project, limit=20, min_events=3, write_learning_policy=True)
+    payload = automation_run(project, mode="balanced", apply=True, limit=10, write_reports=False)
+
+    assert payload["auto_promote"]["enabled"] is True
+    assert payload["auto_promote"]["would_promote_count"] == 0
+    assert payload["auto_promote"]["promoted_count"] == 0
+    assert payload["auto_promote"]["learning_policy"]["status"] == "loaded"
+    assert payload["auto_promote"]["learning_policy"]["applied_rules"] >= 1
+    assert payload["auto_promote"]["learning_policy"]["blocked_by_learning_count"] == 1
+    item = next(item for item in payload["auto_promote"]["items"] if item["candidate_id"] == candidate_id)
+    assert item["eligible"] is False
+    assert item["learning_action"] == "downgrade_or_require_review"
+    assert "learning_policy_requires_review" in item["reason"]
+    with VaultDB(project / "vault.db") as db:
+        assert db.get_memory_candidate(candidate_id)["status"] == "candidate"
+        assert db.conn.execute("SELECT COUNT(*) AS n FROM knowledge WHERE status = 'active'").fetchone()["n"] == before_active
+
+
 def test_automation_activity_summarizes_auto_promote_decisions_without_content(tmp_path):
     project = _init_project(tmp_path)
     _write_auto_promote_policy(project)
@@ -664,8 +703,10 @@ def test_automation_brief_memory_importance_explains_components(tmp_path):
     cited = next(item for item in top_used if item["knowledge_id"] == cited_id)
     accessed = next(item for item in top_used if item["knowledge_id"] == accessed_id)
 
-    assert payload["memory_weights"]["model"] == "usage_citation_recency_trust_freshness_ttl_v1"
+    assert payload["memory_weights"]["model"] == "usage_citation_recency_trust_freshness_ttl_v2"
     assert cited["importance_score"] > accessed["importance_score"]
+    assert cited["weight_tier"] in {"strong", "critical"}
+    assert cited["lifecycle_action"] == "refresh_or_summarize_before_cold_store"
     assert cited["importance_components"]["citation"] == 8.0
     assert cited["importance_components"]["ttl_pressure"] == 10.0
     assert cited["importance_components"]["trust"] == 8.0

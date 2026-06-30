@@ -287,7 +287,7 @@ content drift.
 | `vault capture session <transcript> --write-candidates` | Capture decisions, pitfalls, workflows, and source-of-truth lines from JSONL/Markdown/text transcripts as gated candidates |
 | `vault memory reflection --write-candidates` | Run Dream plus lifecycle automation as a report-first reflection pass |
 | `vault automation plan --write-policy` | Create a policy-based maintenance plan and starter `automation_policy.yaml` |
-| `vault automation run` / `vault automation run --apply` | Run report-first memory automation; reports include a dry-run diff and action ledger, and `--apply` only performs policy-allowed reversible actions or explicit low-risk auto-promote matches |
+| `vault automation run` / `vault automation run --apply` | Run report-first memory automation; reports include a dry-run diff and action ledger, and `--apply` only performs policy-allowed reversible actions or explicit low-risk auto-promote matches that are not downgraded by learned review feedback |
 | `vault automation cycle --apply` | Run one safe feedback-to-curation loop: evaluate reviewed candidate outcomes, write `learning_policy.json`, then run policy-based automation so Dream can consume the latest hints |
 | `vault automation cycle --write-workspace --include-transcripts` | Write `reports/automation/cycle-latest.json` and `.md`: compact candidate review, metadata-only transcript paths, priority brief, suggested next tasks, and learning-policy summary for the next agent |
 | `vault automation activity --pretty` | Show a compact read-only activity feed for recent auto-promote previews, promotions, and skipped reasons |

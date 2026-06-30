@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 
-MODEL_ID = "usage_citation_recency_trust_freshness_ttl_v1"
+MODEL_ID = "usage_citation_recency_trust_freshness_ttl_v2"
 
 
 def parse_utc_datetime(value: Any) -> datetime | None:
@@ -63,6 +63,8 @@ def compute_memory_importance(row: dict[str, Any], *, now: datetime | None = Non
     return {
         "model": MODEL_ID,
         "importance_score": score,
+        "weight_tier": _weight_tier(score),
+        "lifecycle_action": _lifecycle_action(score=score, ttl_signal=ttl_signal, citations=citations),
         "importance_components": components,
         "signals": signals,
         "recommendation": _importance_recommendation(
@@ -134,4 +136,32 @@ def _importance_recommendation(*, access: int, citations: int, ttl_signal: str, 
         return "protect_or_summarize_before_forgetting"
     if score > 0 or access > 0:
         return "keep_available"
+    return "observe"
+
+
+def _weight_tier(score: float) -> str:
+    if score >= 45:
+        return "critical"
+    if score >= 25:
+        return "strong"
+    if score >= 10:
+        return "warm"
+    if score > 0:
+        return "weak"
+    return "cold"
+
+
+def _lifecycle_action(*, score: float, ttl_signal: str, citations: int) -> str:
+    if ttl_signal == "expired_but_used":
+        if citations > 0 or score >= 25:
+            return "refresh_or_summarize_before_cold_store"
+        return "summarize_then_cold_store"
+    if ttl_signal == "expiring_soon_but_used":
+        return "review_ttl_before_expiry"
+    if score >= 45:
+        return "protect_and_refresh"
+    if score >= 25:
+        return "keep_hot"
+    if score > 0:
+        return "keep_warm"
     return "observe"

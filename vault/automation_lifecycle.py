@@ -18,6 +18,7 @@ from .automation_policy import (
     policy_int as _policy_int,
     policy_list as _policy_list,
 )
+from .automation_learning import _apply_learning_priority, _load_automation_learning_policy
 from .db import VaultDB
 from .importance import MODEL_ID as IMPORTANCE_MODEL_ID
 from .importance import compute_memory_importance
@@ -130,6 +131,10 @@ def _compact_memory_item(row: dict[str, Any]) -> dict[str, Any]:
     }
     if "importance_score" in row or importance:
         item["importance_score"] = float(row.get("importance_score") or importance.get("importance_score") or 0.0)
+    if "weight_tier" in row or importance:
+        item["weight_tier"] = row.get("weight_tier") or importance.get("weight_tier") or ""
+    if "lifecycle_action" in row or importance:
+        item["lifecycle_action"] = row.get("lifecycle_action") or importance.get("lifecycle_action") or ""
     if "importance_components" in row or importance:
         item["importance_components"] = row.get("importance_components") or importance.get("importance_components") or {}
     if "importance_signals" in row or importance:
@@ -345,11 +350,12 @@ def _auto_promote_low_risk_candidates(
     if not enabled or max_per_run <= 0:
         return payload
 
+    learning_policy = _load_automation_learning_policy(project)
     rows = db.list_memory_candidates(status="candidate", limit=1000)
     eligible: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     for row in rows:
-        decision = _auto_promote_candidate_decision(row, policy)
+        decision = _auto_promote_candidate_decision(row, policy, learning_policy=learning_policy)
         item = {
             "candidate_id": row.get("id", ""),
             "title": row.get("title", ""),
@@ -371,6 +377,15 @@ def _auto_promote_low_risk_candidates(
 
     payload["would_promote_count"] = len(eligible)
     payload["skipped_count"] = len(skipped)
+    payload["learning_policy"] = {
+        "status": learning_policy.get("status", "missing"),
+        "path": learning_policy.get("path", ""),
+        "applied_rules": int(learning_policy.get("applied_rules") or 0),
+        "blocked_by_learning_count": len([
+            item for item in skipped
+            if str(item.get("learning_action") or "") == "downgrade_or_require_review"
+        ]),
+    }
     payload["status"] = "preview" if not apply else "completed"
     payload["items"] = eligible + skipped[: max(0, 20 - len(eligible))]
     payload["next_action"] = (
@@ -407,7 +422,12 @@ def _auto_promote_low_risk_candidates(
     return payload
 
 
-def _auto_promote_candidate_decision(row: dict[str, Any], policy: dict[str, Any]) -> dict[str, Any]:
+def _auto_promote_candidate_decision(
+    row: dict[str, Any],
+    policy: dict[str, Any],
+    *,
+    learning_policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     reasons: list[str] = []
     gate_payload = _candidate_gate_payload(row)
     metadata_status = str((gate_payload.get("metadata") or {}).get("status") or "")
@@ -439,10 +459,26 @@ def _auto_promote_candidate_decision(row: dict[str, Any], policy: dict[str, Any]
         reasons.append("trust_below_threshold")
     if bool(policy.get("auto_promote_requires_source_ref", True)) and not source_ref:
         reasons.append("missing_source_ref")
+
+    learning_item = {
+        "source": source,
+        "memory_type": memory_type,
+        "category": str(row.get("category") or "").strip().lower(),
+        "base_priority": 100,
+        "priority": 100,
+    }
+    _apply_learning_priority(learning_item, learning_policy or {})
+    learning_action = str(learning_item.get("learning_action") or "")
+    if learning_action == "downgrade_or_require_review":
+        reasons.append("learning_policy_requires_review")
     return {
         "eligible": not reasons,
         "reason": "eligible low-risk candidate" if not reasons else "; ".join(reasons),
         "gate_statuses": required_statuses,
+        "learning_action": learning_action,
+        "learning_multiplier": float(learning_item.get("learning_multiplier") or 1.0),
+        "learning_rule_confidence": float(learning_item.get("learning_rule_confidence") or 0.0),
+        "learning_reason": str(learning_item.get("learning_reason") or ""),
     }
 
 

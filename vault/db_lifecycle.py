@@ -369,11 +369,14 @@ def cold_store_preview_row(
         "citation_count": citations,
         "usage_count": access + citations,
         "importance_score": importance["importance_score"],
+        "weight_tier": importance["weight_tier"],
+        "lifecycle_action": importance["lifecycle_action"],
         "importance_components": importance["importance_components"],
         "importance_signals": importance["signals"],
         "importance_recommendation": importance["recommendation"],
         "summary": summary,
         "operation": "summarize_then_cold_store",
+        "lifecycle_strategy": _cold_store_lifecycle_strategy(row, importance, target_layer=target_layer),
     }
 
 
@@ -408,4 +411,28 @@ def cold_store_safety() -> dict[str, bool]:
         "normal_recall_removed": True,
         "summary_written": True,
         "protected_private_high_restricted_skipped": True,
+    }
+
+
+def _cold_store_lifecycle_strategy(row: dict[str, Any], importance: dict[str, Any], *, target_layer: str) -> dict[str, Any]:
+    before_layer = str(row.get("layer") or "")
+    action = str(importance.get("lifecycle_action") or "")
+    demote = bool(before_layer and target_layer and before_layer != target_layer)
+    if action in {"refresh_or_summarize_before_cold_store", "protect_and_refresh"}:
+        review = "refresh_source_or_write_summary_candidate"
+    elif action == "review_ttl_before_expiry":
+        review = "extend_ttl_or_mark_superseded"
+    else:
+        review = "spot_check_summary_after_cold_store"
+    return {
+        "strategy": "compress_demote_archive",
+        "compress": True,
+        "demote_layer": demote,
+        "from_layer": before_layer,
+        "to_layer": target_layer,
+        "archive_from_daily_recall": True,
+        "retain_original_for_audit": True,
+        "review_action": review,
+        "weight_tier": importance.get("weight_tier", "cold"),
+        "lifecycle_action": action,
     }

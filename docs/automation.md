@@ -133,12 +133,19 @@ The importance model is intentionally small and auditable:
   cold-stored before they disappear from daily recall
 
 `weight_score` remains as a compatibility alias for `importance_score`, but new
-integrations should read `importance_score` and `importance_components`.
+integrations should read `importance_score`, `importance_components`,
+`weight_tier`, and `lifecycle_action`. `weight_tier` is the compact bucket
+(`critical`, `strong`, `warm`, `weak`, or `cold`) that dashboards and agents can
+sort on without reimplementing the scoring model. `lifecycle_action` explains
+what the system thinks should happen next, such as `protect_and_refresh`,
+`keep_hot`, `review_ttl_before_expiry`, or
+`refresh_or_summarize_before_cold_store`.
+
 The same model is used by `cold-store-expired`, `automation run`, and
 `automation cycle` lifecycle previews. Expired-but-used memories are sorted by
 importance before cold-store preview/apply, and the action ledger carries the
-score plus recommendation so dashboards and agents can explain why an item is
-near the top.
+score, tier, lifecycle action, and recommendation so dashboards and agents can
+explain why an item is near the top.
 
 `automation review-summary` is the shortest human approval surface. It derives
 cards from the brief, inbox, and latest report, hides raw candidate content, and
@@ -152,6 +159,11 @@ apply the recommended lifecycle action. With `--write-learning-policy`, the
 event immediately refreshes `reports/automation/learning_policy.json`,
 `review-summary-latest.json` / `.md`, and `learning-health-latest.json` / `.md`,
 so the next cards and dashboard show the effect of the decision right away.
+Repeated accepted feedback can move similar review cards earlier. Repeated
+rejected or blocked feedback can mark a matching source/type/category pattern as
+`downgrade_or_require_review`; when low-risk auto-promotion is explicitly
+enabled, that learned action blocks promotion and sends the candidate back to
+review instead of treating the learning signal as an authorization shortcut.
 
 `automation learning-health` is the dashboard-safe view of that feedback loop.
 It summarizes accepted/rejected/deferred outcomes, active learning rules, and
@@ -178,6 +190,13 @@ Cold-store is reversible by design. Eligible rows receive a compact summary,
 move to `status=archived`, and leave normal recall, but their original content
 stays in `vault.db` for audit or restore. Private, high/restricted, and L0/L1
 memories are skipped.
+
+Cold-store previews and applied items also expose a `lifecycle_strategy`.
+The default strategy is `compress_demote_archive`: write or keep a compact
+summary, demote daily-recall priority when the source layer allows it, archive
+the active row, and retain the original text for audit/restore. High-value
+expired memories can ask for `refresh_source_or_write_summary_candidate` before
+or alongside cold storage instead of disappearing silently.
 
 `vault automation run` and `vault automation cycle` include the same cold-store
 lifecycle. The action remains policy-gated: balanced/autonomous policies enable

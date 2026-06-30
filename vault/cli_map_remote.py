@@ -151,6 +151,21 @@ def cmd_map(args):
 
 def cmd_remote(args):
     """Supabase remote read workflow: search / map / read."""
+    if args.remote_action == "status":
+        from vault.remote_status import build_remote_status
+
+        project_dir = find_project_dir()
+        payload = build_remote_status(
+            project_dir,
+            agent_id=args.agent_id or "",
+            max_sync_age_minutes=args.max_sync_age_minutes,
+        )
+        if args.json or args.pretty:
+            print(json.dumps(payload, ensure_ascii=False, indent=2 if args.pretty else None))
+            return
+        _print_remote_status(payload)
+        return
+
     from vault.mcp import (
         _vault_remote_doctor_payload,
         _vault_remote_map_show_payload,
@@ -273,6 +288,58 @@ def cmd_remote(args):
         return
 
     print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def _print_remote_status(payload: dict) -> None:
+    """Print a human-friendly local remote-sharing status."""
+    local = payload.get("local", {})
+    supabase = payload.get("supabase", {})
+    remote_reader = payload.get("remote_reader", {})
+    sync = payload.get("sync", {})
+    access = payload.get("agent_access", {})
+
+    print("Vault remote status")
+    print(f"- Project: {payload.get('project_dir', '')}")
+    print("- Source of truth: local vault.db")
+    print("- Remote model: Supabase read-only copy, not real-time bidirectional sync")
+    print(f"- Local DB: {'ok' if local.get('db_exists') else 'missing'} ({local.get('knowledge_count', 0)} knowledge item(s))")
+    print(
+        "- Supabase env: "
+        f"url={'yes' if supabase.get('url_configured') else 'no'}, "
+        f"reader-key={'yes' if supabase.get('anon_key_configured') else 'no'}, "
+        f"service-role={'present' if supabase.get('service_role_key_present') else 'absent'}"
+    )
+    reader_targets = [key for key, enabled in (remote_reader.get("targets") or {}).items() if enabled]
+    sync_targets = [
+        key
+        for key, enabled in ((sync.get("templates") or {}).get("targets") or {}).items()
+        if enabled
+    ]
+    print(f"- Remote reader templates: {', '.join(reader_targets) if reader_targets else 'none'}")
+    print(f"- Sync templates: {', '.join(sync_targets) if sync_targets else 'none'}")
+    report = (sync.get("last_report") or {})
+    if report.get("exists"):
+        age = report.get("age_minutes")
+        age_text = f"{age} minutes old" if age is not None else "age unknown"
+        print(f"- Last sync report: {report.get('path')} ({age_text})")
+    else:
+        print("- Last sync report: not found")
+    print(
+        "- Agent access: "
+        f"{access.get('agent_count', 0)} roster agent(s), "
+        f"remote readers={len(access.get('remote_readers') or [])}, "
+        f"shared writers={len(access.get('shared_writers') or [])}"
+    )
+    warnings = payload.get("warnings") or []
+    if warnings:
+        print("\nWarnings:")
+        for item in warnings:
+            print(f"- [{item.get('severity', 'info')}] {item.get('message', '')}")
+    actions = payload.get("next_actions") or []
+    if actions:
+        print("\nNext actions:")
+        for item in actions:
+            print(f"- {item}")
 
 
 def _connect_map_readonly(db_path: Path) -> sqlite3.Connection | None:

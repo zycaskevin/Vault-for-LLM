@@ -14,6 +14,7 @@ import webbrowser
 
 from .daily_report import normalize_report_language
 from .gui_api import (
+    gui_agent_dashboard,
     gui_candidate,
     gui_candidates,
     gui_daily_report,
@@ -98,6 +99,15 @@ def make_gui_handler(project_dir: Path, *, auth_token: str = "", language: str =
             if path == "/api/daily-report":
                 self._send_json(
                     gui_daily_report(
+                        project,
+                        limit=_int_arg(query, "limit", 5),
+                        language=_str_arg(query, "lang", "en"),
+                    )
+                )
+                return
+            if path == "/api/agent-dashboard":
+                self._send_json(
+                    gui_agent_dashboard(
                         project,
                         limit=_int_arg(query, "limit", 5),
                         language=_str_arg(query, "lang", "en"),

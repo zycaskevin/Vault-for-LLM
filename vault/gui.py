@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .gui_api import (
+    gui_agent_dashboard,
     gui_candidate,
     gui_candidates,
     gui_daily_report,
@@ -37,6 +38,7 @@ __all__ = [
     "cmd_gui",
     "make_gui_handler",
     "run_gui",
+    "gui_agent_dashboard",
     "gui_candidate",
     "gui_candidates",
     "gui_daily_report",

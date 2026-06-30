@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .agent_registry import list_agents
 from .automation import automation_brief, automation_review_summary
 from .automation_inbox import automation_inbox
 from .daily_report import build_daily_report
@@ -40,6 +43,201 @@ _FACET_EXPRESSIONS = {
     "scopes": "COALESCE(scope, 'project')",
     "sensitivities": "COALESCE(sensitivity, 'low')",
 }
+
+
+def _file_updated_at(path: Path) -> str:
+    if not path.exists():
+        return ""
+    return datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
+
+
+def _load_json_file(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _project_matches_agent(agent: dict[str, Any], project: Path) -> bool:
+    project_resolved = project.expanduser().resolve()
+    for key in ("project_dir", "private_project_dir"):
+        value = str(agent.get(key) or "").strip()
+        if not value:
+            continue
+        try:
+            if Path(value).expanduser().resolve() == project_resolved:
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _compact_agent(agent: dict[str, Any], project: Path) -> dict[str, Any]:
+    return {
+        "agent_id": agent.get("agent_id", ""),
+        "scope": agent.get("scope", ""),
+        "tool_profile": agent.get("tool_profile", ""),
+        "memory_layout": agent.get("memory_layout", ""),
+        "features": agent.get("features", []),
+        "skills": agent.get("skills", []),
+        "vault_version": agent.get("vault_version", ""),
+        "last_seen_at": agent.get("last_seen_at", ""),
+        "project_dir": agent.get("project_dir", ""),
+        "private_project_dir": agent.get("private_project_dir", ""),
+        "connected_to_project": _project_matches_agent(agent, project),
+    }
+
+
+def _obsidian_sync_item(project: Path) -> dict[str, Any]:
+    manifest_path = project / ".vault" / "obsidian-import-manifest.json"
+    manifest = _load_json_file(manifest_path)
+    notes = manifest.get("notes") if isinstance(manifest.get("notes"), dict) else {}
+    missing = [
+        key for key, value in notes.items()
+        if isinstance(value, dict) and value.get("status") == "missing"
+    ]
+    return {
+        "kind": "obsidian",
+        "label": "Obsidian incremental import",
+        "status": "ok" if manifest else "not_configured",
+        "updated_at": manifest.get("updated_at", "") or _file_updated_at(manifest_path),
+        "path": str(manifest_path),
+        "summary": {
+            "active_notes": max(0, len(notes) - len(missing)),
+            "missing_notes": len(missing),
+            "raw_subdir": manifest.get("raw_subdir", ""),
+        },
+    }
+
+
+def _report_sync_items(project: Path) -> list[dict[str, Any]]:
+    report_dir = project / "reports"
+    candidates = [
+        ("automation_cycle", "Automation cycle", report_dir / "automation" / "cycle-latest.json"),
+        ("automation_inbox", "Automation inbox", report_dir / "automation" / "inbox-latest.json"),
+        ("review_summary", "Review summary", report_dir / "automation" / "review-summary-latest.json"),
+        ("fleet_health", "Fleet health", report_dir / "automation" / "fleet-health-latest.json"),
+        ("daily_report", "Daily report", report_dir / "daily" / "daily-report-latest.json"),
+    ]
+    items: list[dict[str, Any]] = []
+    for kind, label, path in candidates:
+        payload = _load_json_file(path)
+        if not payload and not path.exists():
+            continue
+        items.append(
+            {
+                "kind": kind,
+                "label": label,
+                "status": payload.get("status", "ok") if payload else "present",
+                "updated_at": (
+                    payload.get("generated_at")
+                    or payload.get("created_at")
+                    or payload.get("checked_at")
+                    or _file_updated_at(path)
+                ),
+                "path": str(path),
+                "summary": payload.get("summary", {}),
+            }
+        )
+    return items
+
+
+def gui_agent_dashboard(
+    project_dir: str | Path,
+    *,
+    limit: int = 5,
+    language: str = "en",
+    precomputed_brief: dict[str, Any] | None = None,
+    precomputed_review: dict[str, Any] | None = None,
+    precomputed_candidates: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Return the multi-agent dashboard payload for the local GUI."""
+    project = Path(project_dir)
+    limit_i = max(1, min(int(limit or 5), 20))
+    db_path = project / "vault.db"
+    if not db_path.exists():
+        return {
+            "status": "blocked",
+            "project_dir": str(project),
+            "reason": "vault.db missing",
+            "agents": {"count": 0, "connected_count": 0, "items": []},
+            "recent_sync": [],
+            "recent_candidates": [],
+            "human_review": {"items": []},
+        }
+
+    try:
+        registry = list_agents()
+        all_agents = [_compact_agent(agent, project) for agent in registry.get("agents", [])]
+        agent_error = ""
+    except (OSError, ValueError) as exc:
+        registry = {"registry_path": "", "updated_at": "", "agents": []}
+        all_agents = []
+        agent_error = str(exc)
+    connected_agents = [agent for agent in all_agents if agent.get("connected_to_project")]
+
+    if precomputed_candidates is None:
+        with VaultDB(db_path) as db:
+            candidate_rows = db.list_memory_candidates(status="candidate", limit=limit_i)
+        recent_candidates = [compact_candidate(row) for row in candidate_rows]
+    else:
+        recent_candidates = precomputed_candidates[:limit_i]
+    brief = precomputed_brief or automation_brief(project, limit=limit_i, review_limit=limit_i)
+    review = precomputed_review or automation_review_summary(
+        project,
+        limit=limit_i,
+        precomputed_brief=brief,
+    )
+
+    sync_items = [
+        {
+            "kind": "agent_registry",
+            "label": "Agent registry",
+            "status": "ok" if not agent_error else "warning",
+            "updated_at": registry.get("updated_at", ""),
+            "path": registry.get("registry_path", ""),
+            "summary": {"agents": len(all_agents), "connected_agents": len(connected_agents)},
+            "error": agent_error,
+        },
+        _obsidian_sync_item(project),
+        *_report_sync_items(project),
+    ]
+    sync_items = sorted(
+        sync_items,
+        key=lambda item: str(item.get("updated_at") or ""),
+        reverse=True,
+    )[:limit_i]
+
+    return {
+        "status": "ok",
+        "project_dir": str(project),
+        "language": language,
+        "agents": {
+            "count": len(all_agents),
+            "connected_count": len(connected_agents),
+            "registry_path": registry.get("registry_path", ""),
+            "updated_at": registry.get("updated_at", ""),
+            "items": connected_agents[:limit_i],
+            "all_items": all_agents,
+        },
+        "recent_sync": sync_items,
+        "recent_candidates": recent_candidates,
+        "human_review": {
+            "summary": (review.get("summary") or {}),
+            "items": (review.get("cards") or [])[:limit_i],
+            "human_review_5_percent": brief.get("human_review_5_percent", {}),
+            "next_action": review.get("next_action", "") or brief.get("next_action", ""),
+        },
+        "safety": {
+            "read_only": True,
+            "writes_active_memory": False,
+            "writes_candidates": False,
+            "includes_raw_candidate_content": False,
+        },
+    }
 
 
 def gui_overview(project_dir: str | Path, *, limit: int = 5, language: str = "en") -> dict[str, Any]:
@@ -83,6 +281,14 @@ def gui_overview(project_dir: str | Path, *, limit: int = 5, language: str = "en
         "status": "ok",
         "project_dir": str(project),
         "stats": stats,
+        "agent_dashboard": gui_agent_dashboard(
+            project,
+            limit=limit,
+            language=language,
+            precomputed_brief=brief,
+            precomputed_review=review,
+            precomputed_candidates=candidates,
+        ),
         "brief": compact_brief(brief),
         "inbox": compact_inbox(inbox),
         "daily_report": daily_report,

@@ -40,6 +40,7 @@ APP_HTML = r"""<!doctype html>
     h1 { margin: 0; font-size: 22px; letter-spacing: 0; }
     h2 { margin: 18px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
     h3 { margin: 0 0 4px; font-size: 15px; }
+    .dashboard-subhead { margin: 12px 0 8px; font-size: 14px; color: var(--muted); }
     .subtle { color: var(--muted); font-size: 13px; line-height: 1.45; }
     .section { padding: 0 18px 18px; }
     .metric-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -226,6 +227,8 @@ APP_HTML = r"""<!doctype html>
         <div id="dailyReport"></div>
         <h2 id="statusHeading">Status</h2>
         <div class="metric-grid" id="metrics"></div>
+        <h2 id="agentDashboardHeading">Agent Dashboard</h2>
+        <div id="agentDashboard"></div>
         <h2 id="tasksHeading">Active Tasks</h2>
         <div id="taskList"></div>
         <h2 id="reviewHeading">Review Inbox</h2>
@@ -289,6 +292,14 @@ APP_HTML = r"""<!doctype html>
         candidates: "候選",
         vectors: "向量",
         dbMb: "DB MB",
+        agentDashboard: "多 Agent Dashboard",
+        connectedAgents: "已連接 Agent",
+        recentSync: "最近同步",
+        recentCandidates: "最近候選",
+        humanReviewFivePercent: "需要人看的 5%",
+        noAgents: "尚未連接 Agent",
+        noSync: "還沒有同步紀錄",
+        lastSeen: "最近出現",
         anyLayer: "任何層級",
         anyCategory: "任何分類",
         anySensitivity: "任何敏感度",
@@ -364,6 +375,14 @@ APP_HTML = r"""<!doctype html>
         candidates: "候选",
         vectors: "向量",
         dbMb: "DB MB",
+        agentDashboard: "多 Agent Dashboard",
+        connectedAgents: "已连接 Agent",
+        recentSync: "最近同步",
+        recentCandidates: "最近候选",
+        humanReviewFivePercent: "需要人看的 5%",
+        noAgents: "尚未连接 Agent",
+        noSync: "还没有同步记录",
+        lastSeen: "最近出现",
         anyLayer: "任何层级",
         anyCategory: "任何分类",
         anySensitivity: "任何敏感度",
@@ -439,6 +458,14 @@ APP_HTML = r"""<!doctype html>
         candidates: "Candidates",
         vectors: "Vectors",
         dbMb: "DB MB",
+        agentDashboard: "Multi-Agent Dashboard",
+        connectedAgents: "Connected agents",
+        recentSync: "Recent sync",
+        recentCandidates: "Recent candidates",
+        humanReviewFivePercent: "Human 5%",
+        noAgents: "No connected agents yet",
+        noSync: "No sync record yet",
+        lastSeen: "Last seen",
         anyLayer: "Any layer",
         anyCategory: "Any category",
         anySensitivity: "Any sensitivity",
@@ -526,6 +553,7 @@ APP_HTML = r"""<!doctype html>
       $("appTitle").textContent = text.title;
       $("dailyHeading").textContent = text.daily;
       $("statusHeading").textContent = text.status;
+      $("agentDashboardHeading").textContent = text.agentDashboard;
       $("tasksHeading").textContent = text.tasks;
       $("reviewHeading").textContent = text.review;
       $("documentsHeading").textContent = text.documents;
@@ -580,6 +608,53 @@ APP_HTML = r"""<!doctype html>
           if (idValue) el.addEventListener("click", () => loadEntry(idValue));
         }
       });
+    }
+
+    function renderAgentDashboard(dashboard) {
+      const node = $("agentDashboard");
+      const text = ui();
+      if (!dashboard || dashboard.status !== "ok") {
+        node.innerHTML = `<div class="empty">${esc(dashboard?.reason || text.noSync)}</div>`;
+        return;
+      }
+      const agents = dashboard.agents?.items || [];
+      const sync = dashboard.recent_sync || [];
+      const candidates = dashboard.recent_candidates || [];
+      const reviewItems = dashboard.human_review?.items || dashboard.human_review?.human_review_5_percent?.items || [];
+      const agentHtml = agents.length ? agents.slice(0, 4).map(agent => `
+        <div class="item">
+          <h3>${esc(agent.agent_id || "agent")}</h3>
+          <div class="subtle">${esc(agent.memory_layout || "")} · ${esc(agent.tool_profile || "")}</div>
+          <div class="meta">
+            ${pill(agent.scope || "shared")}
+            ${pill(agent.connected_to_project ? text.connectedAgents : "registry")}
+            ${agent.last_seen_at ? pill(`${text.lastSeen}: ${agent.last_seen_at}`) : ""}
+          </div>
+        </div>
+      `).join("") : `<div class="empty">${esc(text.noAgents)}</div>`;
+      const syncHtml = sync.length ? sync.slice(0, 4).map(item => `
+        <div class="item">
+          <h3>${esc(item.label || item.kind || "")}</h3>
+          <div class="subtle">${esc(item.updated_at || item.path || "")}</div>
+          <div class="meta">
+            ${pill(item.status || "ok", item.status === "ok" ? "good" : "warn")}
+            ${item.summary?.missing_notes ? pill(`${item.summary.missing_notes} missing`, "warn") : ""}
+            ${item.summary?.connected_agents !== undefined ? pill(`${item.summary.connected_agents} ${text.connectedAgents}`) : ""}
+          </div>
+        </div>
+      `).join("") : `<div class="empty">${esc(text.noSync)}</div>`;
+      node.innerHTML = `
+        <div class="metric-grid">
+          <div class="metric"><strong>${esc(dashboard.agents?.connected_count ?? 0)}</strong><span>${esc(text.connectedAgents)}</span></div>
+          <div class="metric"><strong>${esc(reviewItems.length || 0)}</strong><span>${esc(text.humanReviewFivePercent)}</span></div>
+          <div class="metric"><strong>${esc(candidates.length || 0)}</strong><span>${esc(text.recentCandidates)}</span></div>
+          <div class="metric"><strong>${esc(sync.length || 0)}</strong><span>${esc(text.recentSync)}</span></div>
+        </div>
+        <div class="dashboard-subhead">${esc(text.connectedAgents)}</div>
+        ${agentHtml}
+        <div class="dashboard-subhead">${esc(text.recentSync)}</div>
+        ${syncHtml}
+      `;
     }
 
     function renderTaskList(items) {
@@ -1044,6 +1119,7 @@ APP_HTML = r"""<!doctype html>
       const overview = await api("/api/overview");
       $("projectPath").textContent = overview.project_dir || "";
       renderMetrics(overview.stats || {}, overview.inbox || {});
+      renderAgentDashboard(overview.agent_dashboard || {});
       renderTaskList(overview.tasks || []);
       renderDailyReport(overview.daily_report || {});
       renderList("reviewQueue", overview.candidates || overview.inbox?.review_queue || overview.inbox?.review_digest?.items || [], "No review items");

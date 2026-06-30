@@ -9,8 +9,10 @@ from vault.db import VaultDB
 from vault.docmap import build_document_map_for_entry
 from vault.gui_app import APP_HTML
 from vault.memory import create_candidate
+from vault.agent_registry import register_agent
 from vault.gui import (
     cmd_gui,
+    gui_agent_dashboard,
     gui_candidate,
     gui_candidates,
     gui_daily_report,
@@ -109,6 +111,7 @@ def test_gui_overview_search_entry_and_read(tmp_path):
     assert overview["daily_report"]["action"] == "daily-report"
     assert overview["daily_report"]["language"] == "zh-CN"
     assert overview["daily_report"]["review_cards"]
+    assert overview["agent_dashboard"]["status"] == "ok"
 
     daily = gui_daily_report(project)
     assert daily["status"] == "completed"
@@ -157,6 +160,10 @@ def test_gui_app_exposes_document_map_panel():
     assert "taskList" in APP_HTML
     assert "Daily Report" in APP_HTML
     assert "dailyReport" in APP_HTML
+    assert "agentDashboard" in APP_HTML
+    assert "dashboard-subhead" in APP_HTML
+    assert "Multi-Agent Dashboard" in APP_HTML
+    assert "多 Agent Dashboard" in APP_HTML
     assert "languageSelect" in APP_HTML
     assert "zh-Hant" in APP_HTML
     assert "zh-CN" in APP_HTML
@@ -168,6 +175,36 @@ def test_gui_app_exposes_document_map_panel():
     assert "rejectMemory" in APP_HTML
     assert "是否收進正式記憶" in APP_HTML
     assert "選項會在詳情頁分開操作" not in APP_HTML
+
+
+def test_gui_agent_dashboard_lists_agents_sync_and_review(tmp_path, monkeypatch):
+    project, _kid = _make_project(tmp_path)
+    candidate_id = _make_candidate(project)
+    monkeypatch.setenv("VAULT_AGENT_REGISTRY_DIR", str(tmp_path / "registry"))
+    register_agent(
+        agent="codex",
+        project_dir=project,
+        features=["mcp", "obsidian"],
+        tool_profile="core",
+        source="test",
+    )
+    manifest_dir = project / ".vault"
+    manifest_dir.mkdir()
+    (manifest_dir / "obsidian-import-manifest.json").write_text(
+        '{"version":1,"updated_at":"2026-07-01T00:00:00+00:00","raw_subdir":"obsidian","notes":{"A.md":{"status":"active"},"B.md":{"status":"missing"}}}',
+        encoding="utf-8",
+    )
+
+    dashboard = gui_agent_dashboard(project, limit=5)
+
+    assert dashboard["status"] == "ok"
+    assert dashboard["agents"]["connected_count"] == 1
+    assert dashboard["agents"]["items"][0]["agent_id"] == "codex"
+    assert dashboard["recent_candidates"][0]["id"] == candidate_id
+    obsidian = next(item for item in dashboard["recent_sync"] if item["kind"] == "obsidian")
+    assert obsidian["summary"]["active_notes"] == 1
+    assert obsidian["summary"]["missing_notes"] == 1
+    assert dashboard["human_review"]["items"]
 
 
 def test_gui_app_exposes_graph_visual_panel():

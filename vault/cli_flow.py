@@ -677,6 +677,10 @@ def cmd_setup_agent(args):
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
+    if payload.get("audience") == "consumer":
+        _print_consumer_setup_summary(payload)
+        return
+
     print("Agent setup complete")
     print(f"  project_dir: {payload['project_dir']}")
     print(f"  db_path: {payload['db_path']}")
@@ -763,6 +767,44 @@ def cmd_setup_agent(args):
     print("Next steps:")
     for step in payload["next_steps"]:
         print(f"  {step}")
+
+
+def _print_consumer_setup_summary(payload: dict) -> None:
+    print("Vault consumer setup complete")
+    print(f"  project_dir: {payload['project_dir']}")
+    print(f"  db_path: {payload['db_path']}")
+    print(f"  language: {payload.get('language', 'en')}")
+    if payload.get("consumer_daily_report"):
+        print(f"  daily_report_guide: {payload['consumer_daily_report'].get('guide')}")
+    if payload.get("automation_schedule_templates"):
+        templates = payload["automation_schedule_templates"]
+        if templates.get("cron"):
+            print(f"  daily_schedule: {templates['cron']}")
+        elif templates.get("launchagent"):
+            print(f"  daily_schedule: {templates['launchagent']}")
+        elif templates.get("n8n"):
+            print(f"  daily_schedule: {templates['n8n']}")
+    if payload.get("security_hardening"):
+        print(f"  safety_guide: {payload['security_hardening'].get('readme')}")
+
+    print("For you:")
+    for step in payload.get("human_next_steps") or []:
+        print(f"  {step}")
+
+    agent_steps: list[str] = []
+    if payload.get("local_smoke", {}).get("script"):
+        agent_steps.append(f"Run the smoke check: {payload['local_smoke']['script']}")
+    if payload.get("automation_schedule_templates", {}).get("readme"):
+        agent_steps.append(f"Review and enable the daily schedule: {payload['automation_schedule_templates']['readme']}")
+    if payload.get("security_hardening", {}).get("readme"):
+        agent_steps.append(f"Apply local safety defaults: {payload['security_hardening']['readme']}")
+    if payload.get("consumer_daily_report", {}).get("guide"):
+        agent_steps.append(f"Use the consumer guide when explaining Vault to the user: {payload['consumer_daily_report']['guide']}")
+
+    print("For your agent:")
+    for step in agent_steps[:5]:
+        print(f"  {step}")
+    print("  Full maintenance details are available with --json.")
 
 
 def cmd_agent(args):

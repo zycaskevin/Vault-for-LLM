@@ -364,6 +364,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         "agent_adapter_startup": {},
         "agent_registry": {},
         "human_next_steps": [],
+        "agent_next_steps": [],
         "next_steps": [
             f"vault search \"test query\" --project-dir {shlex.quote(str(project_path))} --limit 5 --json",
             f"vault-mcp --project-dir {shlex.quote(str(project_path))} --tool-profile {shlex.quote(config.tool_profile)}",
@@ -608,6 +609,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
                 "Low-risk auto-promote policy is enabled, but generated schedules omit --apply; scheduled runs will preview only until --automation-apply is enabled."
             )
 
+    result["agent_next_steps"] = list(result["next_steps"])
     return result
 
 

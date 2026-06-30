@@ -100,6 +100,7 @@ def test_run_agent_setup_consumer_audience_writes_daily_report_guide_and_safe_sc
     assert result["human_next_steps"]
     assert any("daily report" in step for step in result["human_next_steps"])
     assert any("daily-report" in step for step in result["next_steps"])
+    assert result["agent_next_steps"] == result["next_steps"]
 
 
 def test_run_agent_setup_consumer_audience_supports_simplified_chinese(tmp_path):
@@ -126,6 +127,40 @@ def test_run_agent_setup_consumer_audience_supports_simplified_chinese(tmp_path)
     cron = (tmp_path / "templates" / "memory-automation.cron").read_text(encoding="utf-8")
     assert "--language zh-CN" in cron
     assert "本机安全默认值" in safety
+
+
+def test_setup_agent_consumer_text_output_separates_human_and_agent_steps(tmp_path, capsys):
+    from vault.cli import main
+
+    project = tmp_path / "consumer-project"
+    main(
+        [
+            "setup-agent",
+            "--non-interactive",
+            "--audience",
+            "consumer",
+            "--agent",
+            "consumer-agent",
+            "--scope",
+            "shared",
+            "--memory-layout",
+            "shared",
+            "--agent-project-dir",
+            str(project),
+            "--features",
+            "core,mcp",
+            "--language",
+            "zh-Hant",
+        ]
+    )
+
+    out = capsys.readouterr().out
+    assert "Vault consumer setup complete" in out
+    assert "For you:" in out
+    assert "For your agent:" in out
+    assert "Full maintenance details are available with --json." in out
+    assert "Next steps:" not in out
+    assert "Review MCP startup guide" not in out
 
 
 def test_run_agent_setup_writes_supabase_sync_templates(tmp_path):

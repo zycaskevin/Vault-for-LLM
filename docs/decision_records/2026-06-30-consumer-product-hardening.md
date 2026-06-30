@@ -22,6 +22,18 @@ are:
 
 Everything else remains available through flags or builder mode.
 
+## Consumer Output
+
+Consumer setup output should be split by audience:
+
+- the default terminal output is for the human and should stay short,
+- Agent maintenance details go under a separate "For your agent" section,
+- full setup payloads remain available with `--json`,
+- builder mode can still print the detailed maintenance checklist.
+
+This keeps "agent-driven install" from turning back into an engineering
+questionnaire after setup succeeds.
+
 ## Safety Boundary
 
 Consumer mode stays report-first:

@@ -1,9 +1,10 @@
 # Vault Console
 
-`vault gui` starts a local, read-only browser console for one project vault.
+`vault gui` starts a local browser memory control center for one project vault.
 
-It is the first GUI slice for Vault-for-LLM. It does not replace CLI/MCP. Use it
-to inspect the memory loop and handle explicit candidate review decisions.
+It does not replace CLI/MCP. Agents should still operate the toolbox. Humans use
+the GUI to see the daily memory report first, then inspect review cards,
+bounded evidence, tasks, and document maps when needed.
 
 ## Start
 
@@ -14,6 +15,9 @@ vault gui --project-dir ~/Vaults/my-project
 The server binds to `127.0.0.1:8765` by default and opens the browser.
 It generates an ephemeral access token by default and opens the browser with
 that token in the URL. Set `VAULT_GUI_TOKEN` to reuse a stable local token.
+The top-right language selector supports Traditional Chinese, Simplified
+Chinese, and English. The selected language is stored in the browser and is
+also sent to the daily-report API.
 
 For headless validation or remote shells:
 
@@ -33,9 +37,18 @@ vault gui --project-dir ~/Vaults/my-project --no-auth --no-open
 
 | Area | Purpose |
 |---|---|
-| Left | Project status, active Task Ledger items, candidate review queue, filterable document list |
-| Center | Search results, task handoff, candidate review, and bounded evidence reader |
+| Left | Daily report, project status, active Task Ledger items, candidate review queue, filterable document list |
+| Center | Memory Control Center by default, then search results, task handoff, candidate review, and bounded evidence reader |
 | Right | Task details, or Document Map, graph, timeline, governance, and usage metadata for the selected memory |
+
+The first screen is intentionally not a raw database browser. It starts with the
+same read-only daily report as `vault daily-report`, shows the few decisions that
+need human attention, and reminds the user that Vault will not silently promote,
+archive, or delete memory.
+
+For non-technical users, keep the GUI in their preferred language and let the
+Agent handle CLI details. The human-facing surface should be the daily report,
+review cards, and bounded evidence, not the full command set.
 
 The document list is the first Obsidian-like navigation slice: it lets a user
 filter active memory by text, layer, category, and sensitivity before opening a

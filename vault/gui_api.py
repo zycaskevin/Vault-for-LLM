@@ -42,7 +42,7 @@ _FACET_EXPRESSIONS = {
 }
 
 
-def gui_overview(project_dir: str | Path, *, limit: int = 5) -> dict[str, Any]:
+def gui_overview(project_dir: str | Path, *, limit: int = 5, language: str = "en") -> dict[str, Any]:
     """Return the startup payload shown by the local GUI."""
     project = Path(project_dir)
     db_path = project / "vault.db"
@@ -71,7 +71,7 @@ def gui_overview(project_dir: str | Path, *, limit: int = 5) -> dict[str, Any]:
         task_rows = list_tasks(db, status="active", limit=max(1, min(int(limit or 5), 20)))
     brief = automation_brief(project, limit=limit, review_limit=limit)
     inbox = automation_inbox(project, limit=limit, include_content=False)
-    daily_report = build_daily_report(project, limit=limit)
+    daily_report = build_daily_report(project, limit=limit, language=language)
     return {
         "status": "ok",
         "project_dir": str(project),
@@ -85,9 +85,9 @@ def gui_overview(project_dir: str | Path, *, limit: int = 5) -> dict[str, Any]:
     }
 
 
-def gui_daily_report(project_dir: str | Path, *, limit: int = 5) -> dict[str, Any]:
+def gui_daily_report(project_dir: str | Path, *, limit: int = 5, language: str = "en") -> dict[str, Any]:
     """Return the consumer-facing daily report for the local GUI."""
-    return build_daily_report(project_dir, limit=limit)
+    return build_daily_report(project_dir, limit=limit, language=language)
 
 
 def gui_tasks(project_dir: str | Path, *, status: str = "active", limit: int = 20) -> dict[str, Any]:

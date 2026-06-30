@@ -20,6 +20,7 @@ def cmd_daily_report(
         min_events=getattr(args, "min_events", 5),
         write_report=bool(getattr(args, "write_report", False)),
         report_path=getattr(args, "report_path", ""),
+        language=getattr(args, "language", "en"),
     )
     if getattr(args, "json", False) or getattr(args, "pretty", False):
         json_print(payload, pretty=bool(getattr(args, "pretty", False)))

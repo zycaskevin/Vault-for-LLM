@@ -606,6 +606,7 @@ def cmd_setup_agent(args):
             automation_capture_transcripts=bool(args.automation_capture_transcripts),
             automation_capture_transcript_limit=args.automation_capture_transcript_limit,
             automation_auto_promote_low_risk=bool(args.automation_auto_promote_low_risk),
+            daily_report_time=args.daily_report_time,
             template_dir=Path(args.template_dir).expanduser() if args.template_dir else None,
             allow_private=bool(args.allow_private),
             stable_venv_path=(
@@ -637,6 +638,7 @@ def cmd_setup_agent(args):
             "automation_workspace_inbox_limit": args.automation_workspace_inbox_limit,
             "automation_transcript_limit": args.automation_transcript_limit,
             "automation_capture_transcript_limit": args.automation_capture_transcript_limit,
+            "daily_report_time": args.daily_report_time,
             "template_dir": args.template_dir,
             "allow_private": args.allow_private,
             "stable_venv_path": args.stable_venv,
@@ -749,6 +751,10 @@ def cmd_setup_agent(args):
     if payload.get("agent_adapter_startup"):
         print("  agent_adapter_startup:")
         for name, path in payload["agent_adapter_startup"].items():
+            print(f"    {name}: {path}")
+    if payload.get("security_hardening"):
+        print("  security_hardening:")
+        for name, path in payload["security_hardening"].items():
             print(f"    {name}: {path}")
     if payload.get("human_next_steps"):
         print("For the user:")

@@ -21,7 +21,8 @@ Most people only need these entrypoints:
 
 | Intent | Command |
 |---|---|
-| Install or connect an agent | `vault setup-agent` |
+| Install or connect an agent | `vault setup-agent --audience consumer` |
+| Read today's memory report | `vault daily-report` |
 | See the small command map | `vault guide` |
 | Browse locally | `vault gui` |
 | Search memory | `vault search "query"` |
@@ -68,13 +69,16 @@ the human quickstart keeps the product usable.
 
 ## Recommended Flow
 
-1. Ask an agent to install Vault with `vault setup-agent`.
-2. Use `vault guide` when you want a compact map.
-3. Use `vault guide --intent skills` when you only need Skill upgrade review.
-4. Let daily agents use `core` MCP.
-5. Let review agents use `review` MCP only when they need candidate or task
+1. Ask an agent to install Vault with `vault setup-agent --audience consumer`.
+2. Answer only the consumer questions: language, independent/shared vault,
+   optional Obsidian/Supabase connection, and daily report time.
+3. Read `vault daily-report` or open `vault gui` for daily use.
+4. Use `vault guide` when you want a compact map.
+5. Use `vault guide --intent skills` when you only need Skill upgrade review.
+6. Let daily agents use `core` MCP.
+7. Let review agents use `review` MCP only when they need candidate or task
    review.
-6. Reserve `maintenance` for scheduled jobs or explicit operator-led cleanup.
+8. Reserve `maintenance` for scheduled jobs or explicit operator-led cleanup.
 
 ## Non-Goals
 
@@ -84,3 +88,10 @@ the human quickstart keeps the product usable.
   stable configuration.
 - Do not silently promote memory, install skills, or apply maintenance actions
   just because a command exists.
+
+## Language Choice
+
+Consumer setup supports `zh-Hant`, `zh-CN`, and `en`. The selected language is
+used for the generated consumer guide, daily report output, and the local GUI
+language selector. Agents should ask this once during setup, then keep using
+the same language in scheduled daily reports.

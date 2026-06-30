@@ -67,6 +67,10 @@ from vault.agent_setup_runtime import (
     install_runtime_template,
     startup_contract_doctor,
 )
+from vault.agent_setup_consumer import (
+    write_consumer_daily_report_guide,
+    write_consumer_security_hardening_guide,
+)
 from vault.agent_setup_supabase import (
     SUPABASE_READ_POLICY_SQL,
     SUPABASE_SETUP_DOC_URL,
@@ -285,6 +289,7 @@ class AgentSetupConfig:
     automation_capture_transcripts: bool = False
     automation_capture_transcript_limit: int = 3
     automation_auto_promote_low_risk: bool = False
+    daily_report_time: str = ""
     template_dir: Path | None = None
     allow_private: bool = False
     stable_venv_path: Path | None = None
@@ -347,6 +352,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         "stable_venv": {},
         "memory_layout_files": {},
         "consumer_daily_report": {},
+        "security_hardening": {},
         "mcp_startup": {},
         "update_status_templates": {},
         "agent_adapter_startup": {},
@@ -425,6 +431,14 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
             "Read the daily report instead of learning commands.",
             "Only decide the few cards marked keep, private, reject, or defer.",
         ]
+        result["security_hardening"] = write_consumer_security_hardening_guide(
+            output_dir=template_dir,
+            agent=config.agent,
+            language=language,
+        )
+        result["next_steps"].append(
+            f"Review local safety guide: {result['security_hardening']['readme']}"
+        )
     if environment_warnings:
         result["next_steps"].append(
             "Move temporary Python virtualenvs to a stable path such as ~/.hermes/venvs/vault-for-llm/ before relying on scheduled jobs."
@@ -545,6 +559,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
     if audience == "consumer" and _normalize_sync_targets(automation_schedule_targets) == set():
         automation_schedule_targets = "cron"
         automation_write_workspace = True
+    daily_report_time = str(config.daily_report_time or ("09:00" if audience == "consumer" else ""))
     automation_targets = _normalize_sync_targets(automation_schedule_targets)
     if config.automation_auto_promote_low_risk:
         result["automation_policy"] = write_automation_policy_template(
@@ -571,6 +586,8 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
             capture_transcripts=config.automation_capture_transcripts,
             capture_transcript_limit=config.automation_capture_transcript_limit,
             auto_promote_low_risk=config.automation_auto_promote_low_risk,
+            write_daily_report=audience == "consumer",
+            daily_report_time=daily_report_time,
         )
         result["next_steps"].append(
             f"Review memory automation schedule: {result['automation_schedule_templates']['readme']}"
@@ -593,79 +610,6 @@ def _normalize_audience(value: str | None) -> str:
     if text in {"builder", "developer", "agent-builder", "dev"}:
         return "builder"
     raise ValueError("audience must be consumer or builder")
-
-
-def write_consumer_daily_report_guide(
-    *,
-    output_dir: str | Path,
-    project_dir: str | Path,
-    agent: str,
-    language: str = "en",
-) -> dict[str, str]:
-    """Write a plain-language guide for non-technical users."""
-    out = Path(output_dir).expanduser()
-    out.mkdir(parents=True, exist_ok=True)
-    guide = out / "README-consumer-daily-report.md"
-    if language == "zh-Hant":
-        content = f"""# Vault 一般使用者模式
-
-這個安裝包是給 `{agent}` 這類 Agent 使用的。你不需要學 CLI。
-
-每天你只需要看：
-
-```bash
-vault daily-report --project-dir {shlex.quote(str(Path(project_dir).expanduser()))}
-```
-
-日報只會顯示：
-
-- 今天記憶系統觀察到什麼
-- 有幾筆候選記憶等待整理
-- 哪幾筆真的需要你按「保留 / 私人 / 不要記 / 延後」
-- 有沒有過期或需要冷存的記憶
-
-安全邊界：
-
-- 日報是 read-only。
-- 不會自動 promote、archive、delete。
-- 不會顯示 raw candidate content。
-- 你可以讓 Agent 代跑自動化，但最後 5% 的重要決策仍然留給你。
-
-建議給 Agent 的指令：
-
-> 請幫我維護 Vault 記憶。平常你自己查詢、整理、提候選；每天只給我一份短版 daily report，需要我決定的項目不要超過 5 筆。
-"""
-    else:
-        content = f"""# Vault Consumer Mode
-
-This install pack is for agents such as `{agent}`. You do not need to learn the CLI.
-
-Each day, read:
-
-```bash
-vault daily-report --project-dir {shlex.quote(str(Path(project_dir).expanduser()))}
-```
-
-The report shows only:
-
-- what the memory system observed today
-- how many candidate memories are waiting
-- which few items need your decision
-- whether expired memory needs cleanup
-
-Safety boundary:
-
-- The daily report is read-only.
-- It does not promote, archive, or delete memory.
-- It does not show raw candidate content.
-- Agents can run the loop; the important 5% stays reviewable by you.
-
-Suggested instruction for your agent:
-
-> Maintain Vault memory for me. Search, organize, and propose candidates yourself. Give me only a short daily report, with at most 5 decisions that need me.
-"""
-    guide.write_text(content, encoding="utf-8")
-    return {"guide": str(guide)}
 
 
 def default_stable_venv_path() -> Path:
@@ -949,6 +893,8 @@ def optional_feature_next_steps(
 def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
     agent = str(argv_config.get("agent") or _ask("Agent/runtime", "generic"))
     audience = _normalize_audience(str(argv_config.get("audience") or "builder"))
+    if audience == "consumer":
+        return _interactive_consumer_setup(argv_config, agent=agent, audience=audience)
     scope = str(argv_config.get("scope") or _ask("Vault scope (shared/private/domain/temporary)", "private"))
     memory_layout = str(
         argv_config.get("memory_layout")
@@ -1116,6 +1062,72 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
         template_dir=Path(argv_config["template_dir"]) if argv_config.get("template_dir") else None,
         allow_private=bool(argv_config.get("allow_private", False)),
         stable_venv_path=Path(stable_venv_path).expanduser() if stable_venv_path else None,
+    )
+
+
+def _interactive_consumer_setup(argv_config: dict[str, Any], *, agent: str, audience: str) -> AgentSetupConfig:
+    """Small consumer wizard: vault layout, optional connectors, daily report time."""
+    language = argv_config.get("language")
+    if language is None:
+        language = _ask("Language / 語言 / 语言 (zh-Hant/zh-CN/en)", "en")
+    layout_choice = str(
+        argv_config.get("consumer_memory_choice")
+        or argv_config.get("scope")
+        or _ask("Memory vault (independent/shared)", "independent")
+    ).strip().lower()
+    shared = layout_choice in {"shared", "share", "team", "merge", "merged"}
+    scope = "shared" if shared else "private"
+    memory_layout = "shared" if shared else "private"
+    project_dir = argv_config.get("project_dir") or argv_config.get("agent_project_dir")
+    if not project_dir:
+        project_dir = str(default_project_dir(scope, agent=agent))
+
+    connections = str(
+        argv_config.get("consumer_connections")
+        or _ask("Optional connections (none/obsidian/supabase/both)", "none")
+    ).strip().lower()
+    wants_obsidian = connections in {"obsidian", "both", "all"}
+    wants_supabase = connections in {"supabase", "both", "all"}
+    features = ["core", "mcp"]
+    if wants_obsidian:
+        features.append("obsidian_import")
+    if wants_supabase:
+        features.append("supabase")
+
+    obsidian_vault = argv_config.get("obsidian_vault")
+    if wants_obsidian and obsidian_vault is None:
+        obsidian_vault = _ask("Obsidian vault path", "")
+    daily_report_time = str(
+        argv_config.get("daily_report_time") or _ask("Daily report time (HH:MM)", "09:00")
+    ).strip() or "09:00"
+
+    return AgentSetupConfig(
+        project_dir=Path(project_dir),
+        scope=scope,
+        agent=agent,
+        audience=audience,
+        memory_layout=memory_layout,
+        features=features,
+        language=_normalize_setup_language(str(language)),
+        tool_profile=str(argv_config.get("tool_profile") or "core"),
+        obsidian_vault=Path(obsidian_vault).expanduser() if obsidian_vault else None,
+        import_obsidian=bool(argv_config.get("import_obsidian", False)),
+        sync_targets="cron" if wants_obsidian else "none",
+        supabase_setup_mode="simple" if wants_supabase else "none",
+        supabase_sync_targets="cron" if wants_supabase else "none",
+        remote_reader_targets="shell" if wants_supabase else "none",
+        automation_schedule_targets="cron",
+        automation_mode="balanced",
+        automation_command="cycle",
+        automation_apply=False,
+        automation_write_workspace=True,
+        daily_report_time=daily_report_time,
+        template_dir=Path(argv_config["template_dir"]) if argv_config.get("template_dir") else None,
+        stable_venv_path=(
+            Path(argv_config["stable_venv_path"]).expanduser()
+            if argv_config.get("stable_venv_path")
+            else None
+        ),
     )
 
 

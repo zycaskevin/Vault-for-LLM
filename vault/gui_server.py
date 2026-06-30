@@ -83,10 +83,22 @@ def make_gui_handler(project_dir: Path, *, auth_token: str = ""):
                 self._send_html(APP_HTML, set_cookie=bool(token and _query_token(query) == token))
                 return
             if path == "/api/overview":
-                self._send_json(gui_overview(project, limit=_int_arg(query, "limit", 5)))
+                self._send_json(
+                    gui_overview(
+                        project,
+                        limit=_int_arg(query, "limit", 5),
+                        language=_str_arg(query, "lang", "en"),
+                    )
+                )
                 return
             if path == "/api/daily-report":
-                self._send_json(gui_daily_report(project, limit=_int_arg(query, "limit", 5)))
+                self._send_json(
+                    gui_daily_report(
+                        project,
+                        limit=_int_arg(query, "limit", 5),
+                        language=_str_arg(query, "lang", "en"),
+                    )
+                )
                 return
             if path == "/api/candidates":
                 self._send_json(

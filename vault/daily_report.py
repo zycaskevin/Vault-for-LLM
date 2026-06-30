@@ -15,6 +15,145 @@ from typing import Any
 from .automation import automation_brief, automation_review_summary
 
 
+def normalize_report_language(value: Any = "en") -> str:
+    text = str(value or "en").strip()
+    lowered = text.lower()
+    if lowered in {"zh-hant", "zh_tw", "zh-tw", "tw", "繁中", "繁體", "繁体", "traditional"}:
+        return "zh-Hant"
+    if lowered in {"zh-cn", "zh_cn", "zh-hans", "cn", "簡中", "简中", "簡體", "简体", "simplified"}:
+        return "zh-CN"
+    return "en"
+
+
+def _labels(language: str) -> dict[str, str]:
+    lang = normalize_report_language(language)
+    if lang == "zh-Hant":
+        return {
+            "title": "Vault 每日記憶報告",
+            "today": "今天",
+            "auto_kept": "自動保留/觀察",
+            "pending_candidates": "待整理候選記憶",
+            "needs_confirmation": "需要你確認",
+            "learning_rules": "學習規則",
+            "expired_active": "過期活躍記憶",
+            "needs_decision": "需要你決定",
+            "none": "無",
+            "suggested": "建議",
+            "why": "原因",
+            "choices": "選項",
+            "next": "下一步",
+            "review": "審核",
+            "accept": "接受",
+            "reject": "拒絕",
+            "defer": "延後",
+            "keep": "保留",
+            "make_private": "改成私人",
+            "do_not_remember": "不要記住",
+            "keep_active": "保持活躍",
+            "summarize_cold_store": "摘要後冷存",
+            "keep_private": "保留為私人記憶",
+            "approve_if_source": "來源正確才批准",
+            "cleanup_after_review": "看過證據後再允許清理",
+            "review_evidence_first": "先看短證據再決定。",
+            "next_review_cards": "只看這幾張卡片。用接受/拒絕/延後回饋；除非卡片要求，不需要打開原始記憶。",
+            "next_no_action": "今天不需要你處理。讓 Agent 的自動化排程繼續跑。",
+            "intended_for": "給人看的短報告；Agent 應繼續使用 automation/MCP 工具",
+            "headline_needs": "{needs} 筆記憶決策需要你確認；{pending} 筆候選記憶等待整理。",
+            "headline_pending": "今天沒有緊急決策；{pending} 筆候選記憶可以等 Agent 審核。",
+            "headline_clear": "今天沒有需要人決定的記憶事項。",
+            "generated_at": "產生時間",
+            "status": "狀態",
+            "headline": "摘要",
+            "safety": "安全邊界",
+            "read_only": "這份報告是 read-only。",
+            "no_raw": "不包含原始候選內容。",
+            "no_mutation": "不會 promote、archive、delete 或修改記憶。",
+        }
+    if lang == "zh-CN":
+        return {
+            "title": "Vault 每日记忆报告",
+            "today": "今天",
+            "auto_kept": "自动保留/观察",
+            "pending_candidates": "待整理候选记忆",
+            "needs_confirmation": "需要你确认",
+            "learning_rules": "学习规则",
+            "expired_active": "过期活跃记忆",
+            "needs_decision": "需要你决定",
+            "none": "无",
+            "suggested": "建议",
+            "why": "原因",
+            "choices": "选项",
+            "next": "下一步",
+            "review": "审核",
+            "accept": "接受",
+            "reject": "拒绝",
+            "defer": "延后",
+            "keep": "保留",
+            "make_private": "改成私人",
+            "do_not_remember": "不要记住",
+            "keep_active": "保持活跃",
+            "summarize_cold_store": "摘要后冷存",
+            "keep_private": "保留为私人记忆",
+            "approve_if_source": "来源正确才批准",
+            "cleanup_after_review": "看过证据后再允许清理",
+            "review_evidence_first": "先看短证据再决定。",
+            "next_review_cards": "只看这几张卡片。用接受/拒绝/延后反馈；除非卡片要求，不需要打开原始记忆。",
+            "next_no_action": "今天不需要你处理。让 Agent 的自动化排程继续跑。",
+            "intended_for": "给人看的短报告；Agent 应继续使用 automation/MCP 工具",
+            "headline_needs": "{needs} 条记忆决策需要你确认；{pending} 条候选记忆等待整理。",
+            "headline_pending": "今天没有紧急决策；{pending} 条候选记忆可以等 Agent 审核。",
+            "headline_clear": "今天没有需要人决定的记忆事项。",
+            "generated_at": "生成时间",
+            "status": "状态",
+            "headline": "摘要",
+            "safety": "安全边界",
+            "read_only": "这份报告是 read-only。",
+            "no_raw": "不包含原始候选内容。",
+            "no_mutation": "不会 promote、archive、delete 或修改记忆。",
+        }
+    return {
+        "title": "Vault Daily Memory Report",
+        "today": "Today",
+        "auto_kept": "auto-kept/observed",
+        "pending_candidates": "pending candidates",
+        "needs_confirmation": "needs your confirmation",
+        "learning_rules": "learning rules",
+        "expired_active": "expired active memory",
+        "needs_decision": "Needs Your Decision",
+        "none": "none",
+        "suggested": "suggested",
+        "why": "why",
+        "choices": "choices",
+        "next": "Next",
+        "review": "review",
+        "accept": "accept",
+        "reject": "reject",
+        "defer": "defer",
+        "keep": "keep",
+        "make_private": "make private",
+        "do_not_remember": "do not remember",
+        "keep_active": "keep active",
+        "summarize_cold_store": "summarize then cold-store",
+        "keep_private": "keep private",
+        "approve_if_source": "approve if the source is correct",
+        "cleanup_after_review": "allow cleanup only after evidence review",
+        "review_evidence_first": "Review compact evidence first.",
+        "next_review_cards": "Review the cards only. Use accept/reject/defer feedback; do not open raw memory unless a card asks for evidence.",
+        "next_no_action": "No human action needed today. Keep the agent automation schedule running.",
+        "intended_for": "humans; agents should keep using automation/MCP profiles",
+        "headline_needs": "{needs} memory decision(s) need your confirmation; {pending} candidate(s) are waiting.",
+        "headline_pending": "No urgent decision today; {pending} candidate(s) can wait for an agent review pass.",
+        "headline_clear": "No human memory decision is needed today.",
+        "generated_at": "generated_at",
+        "status": "status",
+        "headline": "headline",
+        "safety": "Safety",
+        "read_only": "This report is read-only.",
+        "no_raw": "It does not include raw candidate content.",
+        "no_mutation": "It does not promote, archive, delete, or change memory.",
+    }
+
+
 def build_daily_report(
     project_dir: str | Path,
     *,
@@ -22,6 +161,7 @@ def build_daily_report(
     min_events: int = 5,
     write_report: bool = False,
     report_path: str | Path = "",
+    language: str = "en",
 ) -> dict[str, Any]:
     """Build a short, human-first daily memory report.
 
@@ -30,18 +170,22 @@ def build_daily_report(
     """
     project = Path(project_dir)
     limit_i = max(1, min(int(limit or 5), 20))
+    lang = normalize_report_language(language)
+    labels = _labels(lang)
     generated_at = datetime.now(timezone.utc).isoformat()
     brief = automation_brief(project, limit=limit_i, review_limit=limit_i, min_events=min_events)
     review = automation_review_summary(project, limit=limit_i, min_events=min_events)
     brief_summary = brief.get("summary") or {}
-    cards = [_compact_card(card) for card in (review.get("cards") or [])[:limit_i]]
+    cards = [_compact_card(card, language=lang) for card in (review.get("cards") or [])[:limit_i]]
     quiet_actions = _quiet_actions(brief_summary)
     payload = {
         "action": "daily-report",
+        "language": lang,
         "generated_at": generated_at,
         "project_dir": str(project),
         "status": "completed" if brief.get("status") == "completed" else brief.get("status", "blocked"),
-        "headline": _headline(brief_summary, cards),
+        "headline": _headline(brief_summary, cards, language=lang),
+        "labels": labels,
         "summary": {
             "auto_kept_or_observed": int(quiet_actions.get("total", 0)),
             "pending_candidates": int(brief_summary.get("pending_candidates") or 0),
@@ -65,12 +209,12 @@ def build_daily_report(
             "writes_candidates": False,
             "hard_delete": False,
             "includes_raw_candidate_content": False,
-            "intended_for": "humans; agents should keep using automation/MCP profiles",
+            "intended_for": labels["intended_for"],
         },
         "next_action": (
-            "Review the cards only. Use accept/reject/defer feedback; do not open raw memory unless a card asks for evidence."
+            labels["next_review_cards"]
             if cards
-            else "No human action needed today. Keep the agent automation schedule running."
+            else labels["next_no_action"]
         ),
     }
     if write_report:
@@ -81,30 +225,31 @@ def build_daily_report(
 def render_daily_report_text(payload: dict[str, Any]) -> str:
     """Render a concise terminal-friendly daily report."""
     summary = payload.get("summary") or {}
+    labels = payload.get("labels") or _labels(normalize_report_language(payload.get("language")))
     lines = [
-        "Vault Daily Memory Report",
+        labels["title"],
         "",
         str(payload.get("headline") or ""),
         "",
-        "Today:",
-        f"  auto-kept/observed: {summary.get('auto_kept_or_observed', 0)}",
-        f"  pending candidates: {summary.get('pending_candidates', 0)}",
-        f"  needs your confirmation: {summary.get('needs_confirmation', 0)}",
-        f"  learning rules: {summary.get('learning_rules', 0)}",
-        f"  expired active memory: {summary.get('expired_active', 0)}",
+        f"{labels['today']}:",
+        f"  {labels['auto_kept']}: {summary.get('auto_kept_or_observed', 0)}",
+        f"  {labels['pending_candidates']}: {summary.get('pending_candidates', 0)}",
+        f"  {labels['needs_confirmation']}: {summary.get('needs_confirmation', 0)}",
+        f"  {labels['learning_rules']}: {summary.get('learning_rules', 0)}",
+        f"  {labels['expired_active']}: {summary.get('expired_active', 0)}",
     ]
     cards = payload.get("review_cards") or []
-    lines += ["", "Needs Your Decision:"]
+    lines += ["", f"{labels['needs_decision']}:"]
     if not cards:
-        lines.append("  none")
+        lines.append(f"  {labels['none']}")
     for index, card in enumerate(cards, start=1):
         lines += [
             f"  {index}. {card.get('title') or card.get('id') or card.get('kind')}",
-            f"     suggested: {card.get('suggested_decision')}",
-            f"     why: {card.get('reason')}",
-            f"     choices: {', '.join(card.get('choices') or [])}",
+            f"     {labels['suggested']}: {card.get('suggested_decision')}",
+            f"     {labels['why']}: {card.get('reason')}",
+            f"     {labels['choices']}: {', '.join(card.get('choices') or [])}",
         ]
-    lines += ["", f"Next: {payload.get('next_action', '')}"]
+    lines += ["", f"{labels['next']}: {payload.get('next_action', '')}"]
     paths = payload.get("paths") or {}
     if paths.get("markdown"):
         lines.append(f"Markdown: {paths['markdown']}")
@@ -113,42 +258,44 @@ def render_daily_report_text(payload: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _compact_card(card: dict[str, Any]) -> dict[str, Any]:
+def _compact_card(card: dict[str, Any], *, language: str = "en") -> dict[str, Any]:
     action = str(card.get("recommended_action") or "review").strip() or "review"
     return {
         "kind": card.get("kind", ""),
         "id": card.get("id", ""),
         "title": card.get("title", ""),
         "priority": int(card.get("priority") or 0),
-        "suggested_decision": _suggested_decision(action),
+        "suggested_decision": _suggested_decision(action, language=language),
         "recommended_action": action,
         "reason": card.get("reason", ""),
-        "safe_action": card.get("safe_action") or "Review compact evidence first.",
-        "choices": _choices_for_action(action),
+        "safe_action": card.get("safe_action") or _labels(language)["review_evidence_first"],
+        "choices": _choices_for_action(action, language=language),
         "requires_human_decision": bool(card.get("requires_human_decision", True)),
     }
 
 
-def _suggested_decision(action: str) -> str:
+def _suggested_decision(action: str, *, language: str = "en") -> str:
+    labels = _labels(language)
     text = action.lower()
     if "private" in text:
-        return "keep private"
+        return labels["keep_private"]
     if "share" in text or "promote" in text:
-        return "approve if the source is correct"
+        return labels["approve_if_source"]
     if "archive" in text or "cold" in text:
-        return "allow cleanup only after evidence review"
+        return labels["cleanup_after_review"]
     if "reject" in text:
-        return "reject"
-    return "review"
+        return labels["reject"]
+    return labels["review"]
 
 
-def _choices_for_action(action: str) -> list[str]:
+def _choices_for_action(action: str, *, language: str = "en") -> list[str]:
+    labels = _labels(language)
     text = action.lower()
     if "archive" in text or "cold" in text:
-        return ["keep active", "summarize then cold-store", "defer"]
+        return [labels["keep_active"], labels["summarize_cold_store"], labels["defer"]]
     if "promote" in text or "candidate" in text:
-        return ["keep", "make private", "do not remember", "defer"]
-    return ["accept", "reject", "defer"]
+        return [labels["keep"], labels["make_private"], labels["do_not_remember"], labels["defer"]]
+    return [labels["accept"], labels["reject"], labels["defer"]]
 
 
 def _quiet_actions(summary: dict[str, Any]) -> dict[str, int]:
@@ -173,14 +320,15 @@ def _daily_choices(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
-def _headline(summary: dict[str, Any], cards: list[dict[str, Any]]) -> str:
+def _headline(summary: dict[str, Any], cards: list[dict[str, Any]], *, language: str = "en") -> str:
+    labels = _labels(language)
     needs = len(cards)
     pending = int(summary.get("pending_candidates") or 0)
     if needs:
-        return f"{needs} memory decision(s) need your confirmation; {pending} candidate(s) are waiting."
+        return labels["headline_needs"].format(needs=needs, pending=pending)
     if pending:
-        return f"No urgent decision today; {pending} candidate(s) can wait for an agent review pass."
-    return "No human memory decision is needed today."
+        return labels["headline_pending"].format(pending=pending)
+    return labels["headline_clear"]
 
 
 def _write_daily_report(project: Path, payload: dict[str, Any], *, report_path: str | Path = "") -> dict[str, str]:
@@ -209,45 +357,46 @@ def _write_daily_report(project: Path, payload: dict[str, Any], *, report_path: 
 
 def _render_daily_markdown(payload: dict[str, Any]) -> str:
     summary = payload.get("summary") or {}
+    labels = payload.get("labels") or _labels(normalize_report_language(payload.get("language")))
     lines = [
-        "# Vault Daily Memory Report",
+        f"# {labels['title']}",
         "",
-        f"- generated_at: `{_md(payload.get('generated_at', ''))}`",
-        f"- status: `{_md(payload.get('status', ''))}`",
-        f"- headline: {_md(payload.get('headline', ''))}",
+        f"- {labels['generated_at']}: `{_md(payload.get('generated_at', ''))}`",
+        f"- {labels['status']}: `{_md(payload.get('status', ''))}`",
+        f"- {labels['headline']}: {_md(payload.get('headline', ''))}",
         "",
-        "## Today",
+        f"## {labels['today']}",
         "",
-        f"- auto-kept/observed: `{int(summary.get('auto_kept_or_observed') or 0)}`",
-        f"- pending candidates: `{int(summary.get('pending_candidates') or 0)}`",
-        f"- needs confirmation: `{int(summary.get('needs_confirmation') or 0)}`",
-        f"- learning rules: `{int(summary.get('learning_rules') or 0)}`",
-        f"- expired active memory: `{int(summary.get('expired_active') or 0)}`",
+        f"- {labels['auto_kept']}: `{int(summary.get('auto_kept_or_observed') or 0)}`",
+        f"- {labels['pending_candidates']}: `{int(summary.get('pending_candidates') or 0)}`",
+        f"- {labels['needs_confirmation']}: `{int(summary.get('needs_confirmation') or 0)}`",
+        f"- {labels['learning_rules']}: `{int(summary.get('learning_rules') or 0)}`",
+        f"- {labels['expired_active']}: `{int(summary.get('expired_active') or 0)}`",
         "",
-        "## Needs Your Decision",
+        f"## {labels['needs_decision']}",
         "",
     ]
     cards = payload.get("review_cards") or []
     if not cards:
-        lines.append("No human decision is needed today.")
+        lines.append(labels["headline_clear"])
     for index, card in enumerate(cards, start=1):
         lines += [
             f"### {index}. {_md(card.get('title') or card.get('id') or card.get('kind') or 'Review item')}",
             "",
-            f"- suggested: `{_md(card.get('suggested_decision', 'review'))}`",
-            f"- why: {_md(card.get('reason', ''))}",
+            f"- {labels['suggested']}: `{_md(card.get('suggested_decision', labels['review']))}`",
+            f"- {labels['why']}: {_md(card.get('reason', ''))}",
             f"- safe action: {_md(card.get('safe_action', ''))}",
-            f"- choices: `{_md(', '.join(card.get('choices') or []))}`",
+            f"- {labels['choices']}: `{_md(', '.join(card.get('choices') or []))}`",
             "",
         ]
     lines += [
-        "## Safety",
+        f"## {labels['safety']}",
         "",
-        "- This report is read-only.",
-        "- It does not include raw candidate content.",
-        "- It does not promote, archive, delete, or change memory.",
+        f"- {labels['read_only']}",
+        f"- {labels['no_raw']}",
+        f"- {labels['no_mutation']}",
         "",
-        f"Next: {_md(payload.get('next_action', ''))}",
+        f"{labels['next']}: {_md(payload.get('next_action', ''))}",
     ]
     return "\n".join(lines).rstrip() + "\n"
 

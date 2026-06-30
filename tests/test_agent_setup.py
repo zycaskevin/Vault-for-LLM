@@ -84,12 +84,44 @@ def test_run_agent_setup_consumer_audience_writes_daily_report_guide_and_safe_sc
     assert "vault daily-report" in guide
     assert {"cron", "readme"}.issubset(result["automation_schedule_templates"])
     cron = (tmp_path / "templates" / "memory-automation.cron").read_text(encoding="utf-8")
+    readme = (tmp_path / "templates" / "README-memory-automation.md").read_text(encoding="utf-8")
     assert "vault automation cycle" in cron
     assert "--write-workspace" in cron
+    assert "vault daily-report" in cron
+    assert "0 9 * * * sh -lc" in cron
+    assert "daily-report-latest" in readme
     assert "--apply" not in cron
+    assert result["security_hardening"]["readme"].endswith("README-local-safety.md")
+    security_env = (tmp_path / "templates" / "local-safety.env.example").read_text(encoding="utf-8")
+    assert "VAULT_MCP_REQUIRE_AGENT_SIGNATURE=1" in security_env
+    assert "VAULT_GUI_TOKEN=" in security_env
     assert result["human_next_steps"]
     assert any("daily report" in step for step in result["human_next_steps"])
     assert any("daily-report" in step for step in result["next_steps"])
+
+
+def test_run_agent_setup_consumer_audience_supports_simplified_chinese(tmp_path):
+    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+
+    project = tmp_path / "consumer-project"
+    result = run_agent_setup(
+        AgentSetupConfig(
+            project_dir=project,
+            scope="shared",
+            agent="consumer-agent",
+            audience="consumer",
+            features=["core", "mcp"],
+            language="zh-CN",
+            template_dir=tmp_path / "templates",
+        )
+    )
+
+    assert result["language"] == "zh-CN"
+    guide = (tmp_path / "templates" / "README-consumer-daily-report.md").read_text(encoding="utf-8")
+    safety = (tmp_path / "templates" / "README-local-safety.md").read_text(encoding="utf-8")
+    assert "一般用户模式" in guide
+    assert "你不需要学习 CLI" in guide
+    assert "本机安全默认值" in safety
 
 
 def test_run_agent_setup_writes_supabase_sync_templates(tmp_path):
@@ -1276,6 +1308,52 @@ def test_interactive_setup_asks_optional_feature_questions(tmp_path, monkeypatch
     assert config.automation_include_transcripts is True
     assert config.automation_transcript_limit == 5
     assert config.automation_auto_promote_low_risk is True
+
+
+def test_interactive_consumer_setup_keeps_questions_short(tmp_path, monkeypatch):
+    from vault.agent_setup import interactive_setup
+
+    answers = iter(
+        [
+            "daily-agent",
+            "zh-Hant",
+            "shared",
+            "both",
+            str(tmp_path / "obsidian"),
+            "08:30",
+        ]
+    )
+    prompts: list[str] = []
+
+    def fake_input(prompt: str) -> str:
+        prompts.append(prompt)
+        return next(answers)
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    config = interactive_setup(
+        {
+            "audience": "consumer",
+            "template_dir": str(tmp_path / "templates"),
+        }
+    )
+
+    assert config.audience == "consumer"
+    assert config.language == "zh-Hant"
+    assert config.scope == "shared"
+    assert config.memory_layout == "shared"
+    assert config.features == ["core", "mcp", "obsidian_import", "supabase"]
+    assert config.obsidian_vault == tmp_path / "obsidian"
+    assert config.supabase_setup_mode == "simple"
+    assert config.supabase_sync_targets == "cron"
+    assert config.remote_reader_targets == "shell"
+    assert config.automation_schedule_targets == "cron"
+    assert config.automation_write_workspace is True
+    assert config.automation_apply is False
+    assert config.daily_report_time == "08:30"
+    assert len(prompts) == 6
+    assert any("語言" in prompt for prompt in prompts)
+    assert not any("semantic search" in prompt for prompt in prompts)
+    assert not any("auto-promote" in prompt for prompt in prompts)
 
 
 def test_interactive_setup_does_not_ask_optional_deps_for_core_mcp_only(tmp_path, monkeypatch):

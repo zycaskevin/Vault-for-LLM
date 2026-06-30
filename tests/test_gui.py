@@ -99,12 +99,13 @@ def test_gui_overview_search_entry_and_read(tmp_path):
     project, kid = _make_project(tmp_path)
     candidate_id = _make_candidate(project)
 
-    overview = gui_overview(project)
+    overview = gui_overview(project, language="zh-CN")
     assert overview["status"] == "ok"
     assert overview["recent"][0]["title"] == "GUI Console Runbook"
     assert overview["candidates"][0]["id"] == candidate_id
     assert overview["tasks"][0]["id"] == "task-gui"
     assert overview["daily_report"]["action"] == "daily-report"
+    assert overview["daily_report"]["language"] == "zh-CN"
     assert overview["daily_report"]["review_cards"]
 
     daily = gui_daily_report(project)
@@ -142,6 +143,10 @@ def test_gui_overview_search_entry_and_read(tmp_path):
 
 def test_gui_app_exposes_document_map_panel():
     assert 'data-tab="map"' in APP_HTML
+    assert "Vault Memory Control Center" in APP_HTML
+    assert "Memory Control Center" in APP_HTML
+    assert "read-only report" in APP_HTML
+    assert "No silent promote/archive/delete" in APP_HTML
     assert "Sections" in APP_HTML
     assert "Claims" in APP_HTML
     assert "data-read-node" in APP_HTML
@@ -149,6 +154,10 @@ def test_gui_app_exposes_document_map_panel():
     assert "taskList" in APP_HTML
     assert "Daily Report" in APP_HTML
     assert "dailyReport" in APP_HTML
+    assert "languageSelect" in APP_HTML
+    assert "zh-Hant" in APP_HTML
+    assert "zh-CN" in APP_HTML
+    assert "English" in APP_HTML
 
 
 def test_gui_app_exposes_graph_visual_panel():

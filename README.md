@@ -82,6 +82,7 @@ For most users, the right path is to ask an agent to install it:
 
 ```text
 Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.18.
+Ask which language to use: Traditional Chinese, Simplified Chinese, or English.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -112,10 +113,24 @@ and safe daily automation templates. The templates are report-first: they can
 prepare a daily memory report and review queue, but they do not silently promote,
 archive, or delete memory.
 
+In interactive consumer mode, the installer keeps the human questions small:
+
+- language: Traditional Chinese, Simplified Chinese, or English,
+- independent vault or shared vault,
+- optional Obsidian / Supabase connection,
+- daily report time.
+
+It also writes `agent-install/README-local-safety.md` and
+`local-safety.env.example` so the Agent can enable a GUI token and MCP HMAC
+without asking the user to learn security flags.
+
+Consumer daily reports and the local GUI can speak the selected language:
+`zh-Hant`, `zh-CN`, or `en`.
+
 Daily human surface:
 
 ```bash
-vault daily-report
+vault daily-report --language zh-Hant
 vault gui
 ```
 

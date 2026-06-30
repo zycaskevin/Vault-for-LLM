@@ -78,6 +78,29 @@ def render_daily_cron_template(*, command: list[str], hour: int = 3, minute: int
     )
 
 
+def _parse_daily_time(value: str | None, *, default_hour: int = 3, default_minute: int = 0) -> tuple[int, int]:
+    text = str(value or "").strip()
+    if not text:
+        return default_hour, default_minute
+    if ":" not in text:
+        try:
+            return max(0, min(23, int(text))), 0
+        except ValueError:
+            return default_hour, default_minute
+    hour_text, minute_text = text.split(":", 1)
+    try:
+        hour = max(0, min(23, int(hour_text)))
+        minute = max(0, min(59, int(minute_text)))
+    except ValueError:
+        return default_hour, default_minute
+    return hour, minute
+
+
+def _format_daily_time(value: str | None) -> str:
+    hour, minute = _parse_daily_time(value)
+    return f"{hour:02d}:{minute:02d}"
+
+
 def render_launchagent_plist(
     *,
     command: list[str],
@@ -555,6 +578,21 @@ def memory_reflection_command(
     ]
 
 
+def daily_report_command(
+    *,
+    project_dir: str | Path,
+    vault_executable: str = "vault",
+) -> list[str]:
+    return [
+        vault_executable,
+        "daily-report",
+        "--project-dir",
+        str(Path(project_dir).expanduser()),
+        "--write-report",
+        "--pretty",
+    ]
+
+
 def automation_schedule_with_inbox_command(
     *,
     project_dir: str | Path,
@@ -568,6 +606,7 @@ def automation_schedule_with_inbox_command(
     transcript_limit: int = 5,
     capture_transcripts: bool = False,
     capture_transcript_limit: int = 3,
+    write_daily_report: bool = False,
 ) -> list[str]:
     primary = automation_schedule_command(
         project_dir=project_dir,
@@ -605,10 +644,21 @@ def automation_schedule_with_inbox_command(
         project_dir=project_dir,
         vault_executable=vault_executable,
     )
+    daily = daily_report_command(project_dir=project_dir, vault_executable=vault_executable)
+    commands = [
+        shell_join(pipeline),
+        shell_join(reflection),
+        shell_join(primary),
+        shell_join(inbox),
+        shell_join(review_summary),
+        shell_join(health),
+    ]
+    if write_daily_report:
+        commands.append(shell_join(daily))
     return [
         "sh",
         "-lc",
-        f"{shell_join(pipeline)} && {shell_join(reflection)} && {shell_join(primary)} && {shell_join(inbox)} && {shell_join(review_summary)} && {shell_join(health)}",
+        " && ".join(commands),
     ]
 
 
@@ -629,6 +679,8 @@ def write_automation_schedule_templates(
     capture_transcripts: bool = False,
     capture_transcript_limit: int = 3,
     auto_promote_low_risk: bool = False,
+    write_daily_report: bool = False,
+    daily_report_time: str = "",
 ) -> dict[str, str]:
     out = Path(output_dir).expanduser().resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -660,6 +712,7 @@ def write_automation_schedule_templates(
         transcript_limit=transcript_limit,
         capture_transcripts=capture_transcripts,
         capture_transcript_limit=capture_transcript_limit,
+        write_daily_report=write_daily_report,
     )
     inbox_args = automation_inbox_handoff_command(
         project_dir=project_dir,
@@ -684,6 +737,10 @@ def write_automation_schedule_templates(
         project_dir=project_dir,
         vault_executable=vault_executable,
     )
+    daily_report_args = daily_report_command(
+        project_dir=project_dir,
+        vault_executable=vault_executable,
+    )
     handoff_args = [
         vault_executable,
         "automation",
@@ -696,7 +753,8 @@ def write_automation_schedule_templates(
     if "cron" in selected:
         path = out / "memory-automation.cron"
         interval = max(1, int(interval_minutes))
-        schedule = f"*/{interval} * * * *" if interval < 60 else "0 3 * * *"
+        hour, minute = _parse_daily_time(daily_report_time)
+        schedule = f"*/{interval} * * * *" if interval < 60 else f"{minute} {hour} * * *"
         path.write_text(
             "\n".join(
                 [
@@ -754,6 +812,10 @@ def write_automation_schedule_templates(
                 "",
                 f"```bash\n{shell_join(health_args)}\n```",
                 "",
+                "Scheduled templates can also write the human daily report:",
+                "",
+                f"```bash\n{shell_join(daily_report_args)}\n```",
+                "",
                 "Next agent startup handoff:",
                 "",
                 f"```bash\n{shell_join(handoff_args)}\n```",
@@ -778,6 +840,8 @@ def write_automation_schedule_templates(
                 "- scheduled runs write `reports/automation/inbox-latest.json` as the next-agent handoff",
                 "- scheduled runs write `reports/automation/review-summary-latest.json` and `.md` as the 5% human-review card deck",
                 "- scheduled runs write `reports/automation/learning-health-latest.json` and `.md` as the short learning dashboard",
+                f"- scheduled runs write `reports/daily/daily-report-latest.json` and `.md`: `{str(bool(write_daily_report)).lower()}`",
+                f"- daily report time for cron templates: `{_format_daily_time(daily_report_time)}`",
                 "- scheduled runs write session lessons as candidate memories through `vault memory pipeline`",
                 "- scheduled runs write `reports/automation/pipeline-latest.json` and `.md` as the memory-ingestion receipt",
                 "- scheduled runs write reflection review cards through `vault memory reflection`",

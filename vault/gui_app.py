@@ -310,20 +310,19 @@ APP_HTML = r"""<!doctype html>
         reviewItem: "審核項目",
         reviewAction: "審核",
         decide: "決定",
-        decisionQuestion: "要決定",
-        candidateDecisionQuestion: "要不要把這筆候選記憶放進正式 Vault？",
-        cleanupDecisionQuestion: "要不要整理、冷存，或繼續保留這筆記憶？",
-        reviewDecisionQuestion: "要不要接受這個記憶建議？",
-        suggestedDirection: "建議方向",
-        viewBeforeDecision: "查看內容再決定",
-        optionsAfterOpen: "選項會在詳情頁分開操作",
-        candidateContent: "候選記憶內容",
-        reviewReason: "審核理由",
-        optionalReason: "可選：寫下拒絕或封鎖原因。保留會重新跑 gate 並記錄結果。",
-        keepMemory: "保留",
-        rejectMemory: "拒絕",
-        blockMemory: "封鎖",
-        actionAuditNote: "每個動作都需要明確確認，並會記錄回饋給自動化學習。",
+        reviewPrompt: "請確認",
+        candidateDecisionQuestion: "是否收進正式記憶？",
+        cleanupDecisionQuestion: "是否需要整理或冷存？",
+        reviewDecisionQuestion: "是否保留這則建議？",
+        suggestedDirection: "建議",
+        viewBeforeDecision: "查看內容",
+        candidateContent: "候選記憶",
+        reviewReason: "你的備註",
+        optionalReason: "如果不收錄或封鎖，可以簡短寫原因。",
+        keepMemory: "保留為正式記憶",
+        rejectMemory: "不收錄",
+        blockMemory: "封鎖類似內容",
+        actionAuditNote: "按下前會再次確認，並記錄這次選擇。",
         readOnly: "read-only 報告",
         tokenProtected: "GUI token 保護",
         noSilentMutation: "不會偷偷 promote/archive/delete",
@@ -367,20 +366,19 @@ APP_HTML = r"""<!doctype html>
         reviewItem: "审核项目",
         reviewAction: "审核",
         decide: "决定",
-        decisionQuestion: "要决定",
-        candidateDecisionQuestion: "要不要把这条候选记忆放进正式 Vault？",
-        cleanupDecisionQuestion: "要不要整理、冷存，或继续保留这条记忆？",
-        reviewDecisionQuestion: "要不要接受这个记忆建议？",
-        suggestedDirection: "建议方向",
-        viewBeforeDecision: "查看内容再决定",
-        optionsAfterOpen: "选项会在详情页分开操作",
-        candidateContent: "候选记忆内容",
-        reviewReason: "审核理由",
-        optionalReason: "可选：写下拒绝或封锁原因。保留会重新跑 gate 并记录结果。",
-        keepMemory: "保留",
-        rejectMemory: "拒绝",
-        blockMemory: "封锁",
-        actionAuditNote: "每个动作都需要明确确认，并会记录反馈给自动化学习。",
+        reviewPrompt: "请确认",
+        candidateDecisionQuestion: "是否收进正式记忆？",
+        cleanupDecisionQuestion: "是否需要整理或冷存？",
+        reviewDecisionQuestion: "是否保留这条建议？",
+        suggestedDirection: "建议",
+        viewBeforeDecision: "查看内容",
+        candidateContent: "候选记忆",
+        reviewReason: "你的备注",
+        optionalReason: "如果不收录或封锁，可以简短写原因。",
+        keepMemory: "保留为正式记忆",
+        rejectMemory: "不收录",
+        blockMemory: "封锁类似内容",
+        actionAuditNote: "按下前会再次确认，并记录这次选择。",
         readOnly: "read-only 报告",
         tokenProtected: "GUI token 保护",
         noSilentMutation: "不会偷偷 promote/archive/delete",
@@ -424,20 +422,19 @@ APP_HTML = r"""<!doctype html>
         reviewItem: "Review item",
         reviewAction: "review",
         decide: "decide",
-        decisionQuestion: "Decision",
-        candidateDecisionQuestion: "Should this candidate memory become active Vault knowledge?",
-        cleanupDecisionQuestion: "Should this memory be cleaned up, cold-stored, or kept active?",
-        reviewDecisionQuestion: "Should this memory suggestion be accepted?",
-        suggestedDirection: "Suggested direction",
-        viewBeforeDecision: "Open before deciding",
-        optionsAfterOpen: "Options are separated on the detail page",
-        candidateContent: "Candidate Content",
-        reviewReason: "Review Reason",
-        optionalReason: "Optional reason for reject/block. Promotion reruns gates and records the result.",
-        keepMemory: "Keep",
-        rejectMemory: "Reject",
-        blockMemory: "Block",
-        actionAuditNote: "Every action requires explicit confirmation and records feedback for automation learning.",
+        reviewPrompt: "Please confirm",
+        candidateDecisionQuestion: "Save this to official memory?",
+        cleanupDecisionQuestion: "Clean up or cold-store this memory?",
+        reviewDecisionQuestion: "Keep this suggestion?",
+        suggestedDirection: "Suggestion",
+        viewBeforeDecision: "View details",
+        candidateContent: "Candidate Memory",
+        reviewReason: "Your note",
+        optionalReason: "If you do not keep it or want to block it, add a short reason.",
+        keepMemory: "Save to official memory",
+        rejectMemory: "Do not save",
+        blockMemory: "Block similar items",
+        actionAuditNote: "You will confirm before it runs, and this choice will be recorded.",
         readOnly: "read-only report",
         tokenProtected: "GUI token protected",
         noSilentMutation: "No silent promote/archive/delete",
@@ -560,11 +557,10 @@ APP_HTML = r"""<!doctype html>
       return `
         <div class="${className}" data-daily-card="${esc(card.id || "")}">
           <h3>${esc(card.title || card.id || card.kind || text.reviewItem)}</h3>
-          <div class="subtle"><strong>${esc(text.decisionQuestion)}:</strong> ${esc(decisionQuestionFor(card))}</div>
+          <div class="subtle"><strong>${esc(text.reviewPrompt)}:</strong> ${esc(decisionQuestionFor(card))}</div>
           <div class="subtle">${esc(card.reason || card.safe_action || "")}</div>
           <div class="meta">
             ${pill(`${text.suggestedDirection}: ${card.suggested_decision || text.reviewAction}`, "warn")}
-            ${pill(text.optionsAfterOpen)}
           </div>
           <button class="secondary mini-action" type="button" data-open-daily-card="${esc(card.id || "")}">${esc(text.viewBeforeDecision)}</button>
         </div>
@@ -739,7 +735,7 @@ APP_HTML = r"""<!doctype html>
         </article>
         <div class="panel">
           <h3>${esc(ui().candidateContent)}</h3>
-          <div class="subtle"><strong>${esc(ui().decisionQuestion)}:</strong> ${esc(ui().candidateDecisionQuestion)}</div>
+          <div class="subtle"><strong>${esc(ui().reviewPrompt)}:</strong> ${esc(ui().candidateDecisionQuestion)}</div>
           <pre>${esc(row.content || "")}</pre>
         </div>
         <div class="panel">

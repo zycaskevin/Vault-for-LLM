@@ -158,11 +158,13 @@ def test_gui_app_exposes_document_map_panel():
     assert "zh-Hant" in APP_HTML
     assert "zh-CN" in APP_HTML
     assert "English" in APP_HTML
+    assert "reviewPrompt" in APP_HTML
     assert "viewBeforeDecision" in APP_HTML
     assert "candidateDecisionQuestion" in APP_HTML
-    assert "optionsAfterOpen" in APP_HTML
     assert "keepMemory" in APP_HTML
     assert "rejectMemory" in APP_HTML
+    assert "是否收進正式記憶" in APP_HTML
+    assert "選項會在詳情頁分開操作" not in APP_HTML
 
 
 def test_gui_app_exposes_graph_visual_panel():

@@ -673,11 +673,17 @@ Use it when agents on different machines or hosted platforms need to read a
 shared, filtered copy of reviewed project memory.
 Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
+Before handing a vault to another agent, check the sharing boundary locally:
 
 ```bash
 pip install "vault-for-llm[supabase]==0.7.19"
+vault remote status --project-dir ~/Vaults/my-project
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
+
+`vault remote status` does not contact Supabase. It tells agents that the local
+SQLite vault is still the source of truth, Supabase is a read-only copy, and
+remote freshness is unknown unless a sync report exists.
 
 Setup guide: [docs/supabase_setup.md](docs/supabase_setup.md).
 Read policy template: [docs/supabase_read_policy.sql](docs/supabase_read_policy.sql).

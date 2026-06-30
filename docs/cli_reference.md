@@ -55,6 +55,7 @@ scheduled jobs, or explicit maintenance sessions.
 | `vault map read <id> --lines 10-30` | Read a bounded source range for citation |
 | `vault gui` | Start the local read-only Vault Console |
 | `vault security doctor` | Check local GUI/MCP security posture, including GUI token and MCP HMAC settings |
+| `vault remote status --json` | Offline check for local source-of-truth, Supabase read-copy setup, sync freshness hints, and Agent sharing policy files |
 | `vault remote smoke --agent-id remote-agent --query "deployment SOP" --json` | Verify Supabase remote reader credentials and the `vault_search_readable` RPC |
 | `vault remote doctor --agent-id remote-agent --query "deployment SOP" --json` | Diagnose the full Supabase remote reader path: search, readable-entry RPCs, Document Map, claims, content, map, and bounded read |
 | `vault remote search "query" --agent-id remote-agent --json` | Search the Supabase read-only memory view through `vault_search_readable` |
@@ -152,6 +153,10 @@ and use `python -m scripts.sync_to_supabase --db <project>/vault.db`.
 Supabase remote reader templates are opt-in with
 `--remote-reader shell|n8n|coze|all`; validate credentials with
 `vault remote smoke --agent-id <agent> --json`.
+Before live validation, run `vault remote status --json` from the project vault.
+It does not contact Supabase. It tells agents that the local SQLite vault is the
+source of truth, Supabase is a read-only copy, sync is not real-time
+bidirectional, and remote freshness is unknown unless a local sync report exists.
 Multi-agent roster templates are opt-in with `--agent-roster`; each entry uses
 `agent_id:role[:scope[:max_sensitivity]]`, for example
 `profile-agent:profile,work-agent:work,remote-agent:remote,n8n:automation`.

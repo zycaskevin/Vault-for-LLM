@@ -213,14 +213,18 @@ After applying `docs/supabase_read_policy.sql`, verify the remote reader path:
 ```bash
 export SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 export SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+vault remote status --json
 vault remote smoke --agent-id remote-agent --query "deployment SOP" --json
 vault remote doctor --agent-id remote-agent --query "deployment SOP" --json
 ```
 
-`vault remote smoke` checks the basic search RPC. `vault remote doctor` checks
-the full remote-reader path: search, readable-entry RPCs, Document Map nodes,
-claims, content access, map, and bounded read. It returns status checks and next
-actions without printing raw synced content.
+`vault remote status` is an offline safety check. It confirms that the local
+SQLite vault remains the source of truth, Supabase is a read-only copy, sync is
+not real-time bidirectional, and remote freshness is unknown unless a local sync
+report exists. `vault remote smoke` checks the basic search RPC. `vault remote
+doctor` checks the full remote-reader path: search, readable-entry RPCs,
+Document Map nodes, claims, content access, map, and bounded read. It returns
+status checks and next actions without printing raw synced content.
 
 Remote readers must not receive `SUPABASE_SERVICE_ROLE_KEY`.
 

@@ -732,6 +732,12 @@ def main(argv: list[str] | None = None):
         rp.add_argument("--json", action="store_true", help="輸出 JSON")
         rp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
+    rp = remote_sub.add_parser("status", help="離線檢查本機主庫、Supabase 副本、同步模板與 Agent 權限狀態")
+    rp.add_argument("--agent-id", default="", help="聚焦特定 Agent/remote reader")
+    rp.add_argument("--max-sync-age-minutes", type=_positive_int, default=24 * 60,
+                    help="判定 sync report 過期的分鐘數")
+    add_remote_output_args(rp)
+
     rp = remote_sub.add_parser("search", help="透過 Supabase vault_search_readable RPC 搜尋")
     rp.add_argument("query", nargs="?", default="", help="搜尋文字；省略時回傳最新可讀記憶")
     rp.add_argument("--agent-id", default="", help="Agent 身份，用於 owner/allowed_agents 過濾")

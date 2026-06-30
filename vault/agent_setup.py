@@ -19,7 +19,11 @@ from typing import Any
 import yaml
 
 from vault import __version__
-from vault.agent_access import agent_access_preset, render_agent_access_presets_markdown
+from vault.agent_access import (
+    apply_agent_access_overrides,
+    agent_access_preset,
+    render_agent_access_presets_markdown,
+)
 from vault.agent_registry import register_agent
 from vault.agent_setup_templates import (
     DEFAULT_AUTOMATION_INTERVAL_MINUTES,
@@ -303,10 +307,14 @@ class AgentSetupConfig:
     template_dir: Path | None = None
     allow_private: bool = False
     stable_venv_path: Path | None = None
+    agent_access_overrides: dict[str, Any] = field(default_factory=dict)
 
 
 def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
-    access_preset = agent_access_preset(config.agent_preset)
+    access_preset = apply_agent_access_overrides(
+        agent_access_preset(config.agent_preset),
+        config.agent_access_overrides,
+    )
     project_path = ensure_project(config.project_dir)
     features = normalize_features(config.features)
     language = _normalize_setup_language(config.language)
@@ -962,6 +970,7 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
         template_dir=Path(argv_config["template_dir"]) if argv_config.get("template_dir") else None,
         allow_private=bool(argv_config.get("allow_private", False)),
         stable_venv_path=Path(stable_venv_path).expanduser() if stable_venv_path else None,
+        agent_access_overrides=dict(argv_config.get("agent_access_overrides") or {}),
     )
 
 
@@ -1029,6 +1038,7 @@ def _interactive_consumer_setup(argv_config: dict[str, Any], *, agent: str, audi
             if argv_config.get("stable_venv_path")
             else None
         ),
+        agent_access_overrides=dict(argv_config.get("agent_access_overrides") or {}),
     )
 
 

@@ -117,6 +117,20 @@ ROLE_PRESET_ALIASES = {
 }
 
 
+AGENT_ACCESS_OVERRIDE_FIELDS = {
+    "scope",
+    "max_sensitivity",
+    "tool_profile",
+    "can_write_candidates",
+    "can_promote",
+    "can_write_shared",
+    "can_write_private",
+    "private_memory",
+    "remote_reader",
+    "memory_layout",
+}
+
+
 def valid_agent_access_presets() -> set[str]:
     return set(AGENT_ACCESS_PRESETS)
 
@@ -154,6 +168,57 @@ def agent_access_preset(value: str | None) -> dict[str, Any]:
     item = deepcopy(AGENT_ACCESS_PRESETS[preset])
     item["preset"] = preset
     return item
+
+
+def _custom_agent_access_base() -> dict[str, Any]:
+    return {
+        "preset": "custom",
+        "label": "Custom Agent",
+        "role": "custom",
+        "scope": "shared",
+        "max_sensitivity": "medium",
+        "tool_profile": "core",
+        "can_write_candidates": True,
+        "can_promote": False,
+        "can_write_shared": False,
+        "can_write_private": False,
+        "private_memory": False,
+        "remote_reader": False,
+        "memory_layout": "hybrid",
+        "setup_scope": "shared",
+        "summary": "Custom access settings selected manually by the installer.",
+    }
+
+
+def apply_agent_access_overrides(
+    preset: dict[str, Any] | None,
+    overrides: dict[str, Any] | None,
+) -> dict[str, Any]:
+    clean = {
+        key: value
+        for key, value in (overrides or {}).items()
+        if key in AGENT_ACCESS_OVERRIDE_FIELDS and value is not None and value != ""
+    }
+    if not preset and not clean:
+        return {}
+    result = deepcopy(preset) if preset else _custom_agent_access_base()
+    base_preset = str(result.get("preset") or "")
+    applied: list[str] = []
+    for key in sorted(clean):
+        if result.get(key) != clean[key]:
+            result[key] = clean[key]
+            applied.append(key)
+    if applied:
+        result["customized"] = True
+        result["base_preset"] = base_preset
+        result["overrides"] = applied
+        if base_preset and base_preset != "custom":
+            result["preset"] = f"{base_preset}+custom"
+            result["summary"] = f"{result.get('summary', '').rstrip()} Manual overrides: {', '.join(applied)}."
+    else:
+        result["customized"] = False
+        result["overrides"] = []
+    return result
 
 
 def preset_for_role(role: str | None) -> dict[str, Any]:

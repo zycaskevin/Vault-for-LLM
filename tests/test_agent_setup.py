@@ -719,6 +719,7 @@ def test_run_agent_setup_writes_agent_roster_and_validation_pack(tmp_path):
     roster_json = json.loads((tmp_path / "templates" / "agent-roster.json").read_text(encoding="utf-8"))
     matrix = (tmp_path / "templates" / "AGENT_ACCESS_MATRIX.md").read_text(encoding="utf-8")
     profile_agent_env = (tmp_path / "templates" / "agent-env" / "profile-agent.env.example").read_text(encoding="utf-8")
+    commands = (tmp_path / "templates" / "agent-setup-commands.sh").read_text(encoding="utf-8")
     validate_remote = (tmp_path / "templates" / "validate-remote-reader.sh").read_text(encoding="utf-8")
     validate_coze = (tmp_path / "templates" / "VALIDATE-coze.md").read_text(encoding="utf-8")
 
@@ -732,6 +733,9 @@ def test_run_agent_setup_writes_agent_roster_and_validation_pack(tmp_path):
     assert "VAULT_AGENT_ROLE=profile" in profile_agent_env
     assert "VAULT_AGENT_ACCESS_PRESET=personal-agent" in profile_agent_env
     assert "VAULT_CAN_PROMOTE=false" in profile_agent_env
+    assert "--agent-preset personal-agent" in commands
+    assert "--max-sensitivity high" in commands
+    assert "--no-can-promote" in commands
     assert "vault remote smoke" in validate_remote
     assert "--json" in validate_remote
     assert "pricing SOP" in validate_remote
@@ -812,6 +816,47 @@ def test_setup_agent_cli_agent_preset_applies_safe_defaults(tmp_path, capsys):
     assert payload["agent_access"]["preset"] == "remote-readonly-agent"
     assert Path(payload["agent_access"]["path"]).exists()
     assert Path(payload["agent_access"]["catalog"]).exists()
+
+
+def test_setup_agent_cli_agent_preset_allows_manual_permission_overrides(tmp_path, capsys):
+    from vault.cli import main
+
+    project = tmp_path / "custom-work-agent"
+    main(
+        [
+            "setup-agent",
+            "--non-interactive",
+            "--agent",
+            "codex",
+            "--agent-preset",
+            "work-agent",
+            "--agent-project-dir",
+            str(project),
+            "--features",
+            "core,mcp",
+            "--max-sensitivity",
+            "high",
+            "--can-promote",
+            "--no-can-write-shared",
+            "--private-memory",
+            "--json",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    access = payload["agent_preset"]
+    assert access["preset"] == "work-agent+custom"
+    assert access["base_preset"] == "work-agent"
+    assert access["customized"] is True
+    assert access["max_sensitivity"] == "high"
+    assert access["can_promote"] is True
+    assert access["can_write_shared"] is False
+    assert access["private_memory"] is True
+    assert set(access["overrides"]) >= {"max_sensitivity", "can_promote", "can_write_shared", "private_memory"}
+    saved = json.loads(Path(payload["agent_access"]["path"]).read_text(encoding="utf-8"))
+    assert saved["preset"] == "work-agent+custom"
+    assert saved["customized"] is True
 
 
 def test_agent_install_runtime_template_is_dry_run_then_apply(tmp_path, capsys):
@@ -1078,6 +1123,9 @@ def test_setup_agent_help_exposes_supabase_sync_options(capsys):
     assert "--supabase-sync-interval-minutes" in captured.out
     assert "--remote-reader" in captured.out
     assert "--agent-preset" in captured.out
+    assert "--max-sensitivity" in captured.out
+    assert "--can-promote" in captured.out
+    assert "--agent-remote-reader" in captured.out
     assert "--agent-roster" in captured.out
     assert "work/profile/care/dream/remote/automation/observer" in captured.out
     assert "--validation-pack" in captured.out

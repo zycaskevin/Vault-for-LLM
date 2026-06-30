@@ -569,6 +569,30 @@ def cmd_setup_agent(args):
         run_agent_setup,
     )
 
+    def _agent_access_overrides_from_args() -> dict[str, object]:
+        overrides: dict[str, object] = {}
+        if args.scope in {"private", "shared"}:
+            overrides["scope"] = args.scope
+        if args.tool_profile:
+            overrides["tool_profile"] = args.tool_profile
+        if args.memory_layout:
+            overrides["memory_layout"] = args.memory_layout
+        if getattr(args, "max_sensitivity", None):
+            overrides["max_sensitivity"] = args.max_sensitivity
+        for attr in [
+            "can_write_candidates",
+            "can_promote",
+            "can_write_shared",
+            "can_write_private",
+            "private_memory",
+            "agent_remote_reader",
+        ]:
+            value = getattr(args, attr, None)
+            if value is not None:
+                key = "remote_reader" if attr == "agent_remote_reader" else attr
+                overrides[key] = bool(value)
+        return overrides
+
     if getattr(args, "non_interactive", False):
         preset = agent_access_preset(args.agent_preset)
         scope = args.scope or preset.get("setup_scope") or "private"
@@ -617,6 +641,7 @@ def cmd_setup_agent(args):
                 if args.stable_venv
                 else (default_stable_venv_path() if args.write_stable_venv_script else None)
             ),
+            agent_access_overrides=_agent_access_overrides_from_args(),
         )
     else:
         setup_values = {
@@ -630,6 +655,7 @@ def cmd_setup_agent(args):
             "features": args.features,
             "language": args.language,
             "tool_profile": args.tool_profile,
+            "max_sensitivity": args.max_sensitivity,
             "install_optional_deps": args.install_optional_deps,
             "install_embedding_model": args.install_embedding_model,
             "obsidian_vault": args.obsidian_vault,
@@ -648,6 +674,7 @@ def cmd_setup_agent(args):
             "stable_venv_path": args.stable_venv,
             "write_stable_venv_script": args.write_stable_venv_script,
         }
+        setup_values["agent_access_overrides"] = _agent_access_overrides_from_args()
         if args.import_obsidian:
             setup_values["import_obsidian"] = True
         if args.obsidian_sync != "none":

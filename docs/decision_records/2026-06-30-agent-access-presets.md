@@ -33,9 +33,17 @@ them. Generated multi-agent roster files now include:
 - per-agent env examples with the selected preset
 - setup commands that preserve the preset
 
+Advanced installers can override individual preset fields, including maximum
+sensitivity, candidate writes, promotion, shared/private writes, private-memory
+marker, and remote-reader marker. Overridden presets are marked with
+`customized: true`, keep the `base_preset`, and list the changed fields in
+`overrides`.
+
 ## Boundaries
 
 Presets are defaults and documentation, not cryptographic identity.
+Manual overrides are still defaults and documentation, not cryptographic
+identity.
 
 They do not replace:
 

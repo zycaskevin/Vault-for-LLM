@@ -215,6 +215,14 @@ def write_agent_roster_templates(
                     item["tool_profile"],
                     "--agent-preset",
                     item["access_preset"] or "work-agent",
+                    "--max-sensitivity",
+                    item["max_sensitivity"],
+                    "--can-write-candidates" if item["can_write_candidates"] else "--no-can-write-candidates",
+                    "--can-promote" if item["can_promote"] else "--no-can-promote",
+                    "--can-write-shared" if item["can_write_shared"] else "--no-can-write-shared",
+                    "--can-write-private" if item["can_write_private"] else "--no-can-write-private",
+                    "--private-memory" if item["private_memory"] else "--no-private-memory",
+                    "--agent-remote-reader" if item["remote_reader"] else "--no-agent-remote-reader",
                     "--json",
                 ]
             )

@@ -212,6 +212,22 @@ Preset choices are `personal-agent`, `work-agent`, `review-agent`,
 defaults, not authentication; keep MCP HMAC, Supabase RLS/RPC, service-key
 separation, and review gates enabled where they matter.
 
+Advanced teams can override individual preset permissions when needed:
+
+```bash
+vault setup-agent \
+  --non-interactive \
+  --agent codex \
+  --agent-preset work-agent \
+  --max-sensitivity high \
+  --can-promote \
+  --no-can-write-shared \
+  --json
+```
+
+Overridden presets are saved as customized access artifacts, so reviewers can
+see exactly which permissions differ from the base role.
+
 Smoke-test note: `vault remember` creates a candidate memory. It should not
 appear in normal `vault search` until reviewed and promoted. Use `vault add` for
 the temporary active note in a search/read smoke test, then use `vault remember`

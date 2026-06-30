@@ -534,6 +534,20 @@ def main(argv: list[str] | None = None):
                         default=None, help="建議的 MCP tool profile；未提供時可由 --agent-preset 決定")
         ap.add_argument("--memory-layout", choices=["hybrid", "shared", "private"], default=None,
                         help="記憶庫布局：hybrid=shared project vault + private Agent vault")
+        ap.add_argument("--max-sensitivity", choices=["low", "medium", "high", "restricted"],
+                        default=None, help="進階權限：此 Agent 預設可讀取的最高敏感度")
+        ap.add_argument("--can-write-candidates", action=argparse.BooleanOptionalAction,
+                        default=None, help="進階權限：是否可寫入候選記憶")
+        ap.add_argument("--can-promote", action=argparse.BooleanOptionalAction,
+                        default=None, help="進階權限：是否可 promote 候選記憶")
+        ap.add_argument("--can-write-shared", action=argparse.BooleanOptionalAction,
+                        default=None, help="進階權限：是否可寫入 shared 記憶")
+        ap.add_argument("--can-write-private", action=argparse.BooleanOptionalAction,
+                        default=None, help="進階權限：是否可寫入 private 記憶")
+        ap.add_argument("--private-memory", action=argparse.BooleanOptionalAction,
+                        default=None, help="進階權限：是否產生/使用 Agent 私有記憶")
+        ap.add_argument("--agent-remote-reader", action=argparse.BooleanOptionalAction,
+                        default=None, help="進階權限：此 Agent 是否視為 remote reader")
         ap.add_argument("--agent-private-dir",
                         help="hybrid/private layout 使用的 Agent 私有 vault 目錄")
         ap.add_argument("--install-optional-deps", action="store_true",

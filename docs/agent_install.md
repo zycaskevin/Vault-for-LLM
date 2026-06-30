@@ -385,6 +385,36 @@ vault setup-agent \
 Presets are installation defaults. They do not replace MCP HMAC signatures,
 Supabase RLS/RPC, service-role key separation, or candidate review.
 
+Advanced installs can override a preset one field at a time:
+
+```bash
+vault setup-agent \
+  --non-interactive \
+  --agent codex \
+  --agent-preset work-agent \
+  --max-sensitivity high \
+  --can-promote \
+  --no-can-write-shared \
+  --private-memory \
+  --json
+```
+
+Manual override fields:
+
+| Field | CLI |
+|---|---|
+| Highest readable sensitivity | `--max-sensitivity low|medium|high|restricted` |
+| Candidate writes | `--can-write-candidates` / `--no-can-write-candidates` |
+| Candidate promotion | `--can-promote` / `--no-can-promote` |
+| Shared memory writes | `--can-write-shared` / `--no-can-write-shared` |
+| Private memory writes | `--can-write-private` / `--no-can-write-private` |
+| Private memory layout marker | `--private-memory` / `--no-private-memory` |
+| Remote-reader marker | `--agent-remote-reader` / `--no-agent-remote-reader` |
+
+When overrides are used, setup output marks the access artifact as
+`customized: true`, keeps the `base_preset`, and lists the changed fields in
+`overrides`.
+
 ## MCP Profiles
 
 Use the smallest tool profile that can do the job:

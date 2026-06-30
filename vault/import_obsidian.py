@@ -35,9 +35,13 @@ class ObsidianImportResult:
     added: int = 0
     updated: int = 0
     skipped: int = 0
+    deleted: int = 0
+    missing: int = 0
     ignored: int = 0
     errors: list[str] = field(default_factory=list)
     paths: list[str] = field(default_factory=list)
+    missing_paths: list[str] = field(default_factory=list)
+    manifest_path: str = ""
     dry_run: bool = False
 
     def as_dict(self) -> dict[str, Any]:
@@ -46,15 +50,47 @@ class ObsidianImportResult:
             "added": self.added,
             "updated": self.updated,
             "skipped": self.skipped,
+            "deleted": self.deleted,
+            "missing": self.missing,
             "ignored": self.ignored,
             "errors": self.errors,
             "paths": self.paths,
+            "missing_paths": self.missing_paths,
+            "manifest_path": self.manifest_path,
             "dry_run": self.dry_run,
         }
 
 
 def _content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _manifest_path(project_dir: Path) -> Path:
+    return project_dir / ".vault" / "obsidian-import-manifest.json"
+
+
+def _load_manifest(project_dir: Path) -> dict[str, Any]:
+    path = _manifest_path(project_dir)
+    if not path.exists():
+        return {"version": 1, "notes": {}}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"version": 1, "notes": {}}
+    if not isinstance(payload, dict):
+        return {"version": 1, "notes": {}}
+    notes = payload.get("notes")
+    if not isinstance(notes, dict):
+        payload["notes"] = {}
+    payload.setdefault("version", 1)
+    return payload
+
+
+def _write_manifest(project_dir: Path, payload: dict[str, Any]) -> Path:
+    path = _manifest_path(project_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
 
 
 def _normalize_tags(value: Any) -> list[str]:
@@ -189,6 +225,7 @@ def sync_obsidian_vault(
     excludes: set[str] | list[str] | None = None,
     dry_run: bool = False,
     allow_private: bool = False,
+    prune_missing: bool = False,
 ) -> dict[str, Any]:
     """Sync Obsidian Markdown notes into ``raw/<raw_subdir>/``.
 
@@ -205,6 +242,9 @@ def sync_obsidian_vault(
     import_tags = _normalize_tags(tags)
     imported_at = datetime.now(timezone.utc).isoformat()
     result = ObsidianImportResult(dry_run=dry_run)
+    manifest = _load_manifest(project_path)
+    previous_notes = dict(manifest.get("notes") or {})
+    current_notes: dict[str, dict[str, Any]] = {}
 
     active_excludes = set(excludes or [])
     notes = iter_obsidian_markdown(obsidian_root, active_excludes)
@@ -213,6 +253,7 @@ def sync_obsidian_vault(
     for note in notes:
         result.scanned += 1
         relative = note.relative_to(obsidian_root)
+        relative_text = relative.as_posix()
         destination = raw_root / _safe_relative_markdown_path(relative)
 
         try:
@@ -248,6 +289,12 @@ def sync_obsidian_vault(
 
             if existing_hash == source_hash:
                 result.skipped += 1
+                current_notes[relative_text] = {
+                    "source_hash": source_hash,
+                    "raw_path": str(destination.relative_to(project_path)),
+                    "last_seen_at": imported_at,
+                    "status": "active",
+                }
                 continue
 
             if destination.exists():
@@ -256,6 +303,12 @@ def sync_obsidian_vault(
                 result.added += 1
 
             result.paths.append(str(destination))
+            current_notes[relative_text] = {
+                "source_hash": source_hash,
+                "raw_path": str(destination.relative_to(project_path)),
+                "last_seen_at": imported_at,
+                "status": "active",
+            }
             if dry_run:
                 continue
 
@@ -263,5 +316,46 @@ def sync_obsidian_vault(
             destination.write_text(content, encoding="utf-8")
         except Exception as exc:  # pragma: no cover - defensive per-file isolation
             result.errors.append(f"{relative.as_posix()}: {exc}")
+
+    missing_notes = sorted(set(previous_notes) - set(current_notes))
+    for relative_text in missing_notes:
+        previous = previous_notes.get(relative_text) if isinstance(previous_notes.get(relative_text), dict) else {}
+        raw_path = str(previous.get("raw_path") or "")
+        if not raw_path:
+            continue
+        raw_file = (project_path / raw_path).resolve()
+        try:
+            raw_file.relative_to((project_path / "raw").resolve())
+        except ValueError:
+            result.errors.append(f"{relative_text}: manifest raw_path escaped raw/ ({raw_path})")
+            continue
+        result.missing += 1
+        result.missing_paths.append(str(raw_file))
+        if prune_missing and raw_file.exists():
+            result.deleted += 1
+            if not dry_run:
+                raw_file.unlink()
+
+    if not dry_run:
+        if prune_missing:
+            manifest_notes = current_notes
+        else:
+            manifest_notes = dict(previous_notes)
+            manifest_notes.update(current_notes)
+            for relative_text in missing_notes:
+                previous = manifest_notes.get(relative_text)
+                if isinstance(previous, dict):
+                    previous["status"] = "missing"
+                    previous["missing_at"] = imported_at
+        manifest.update(
+            {
+                "version": 1,
+                "vault_dir": str(obsidian_root),
+                "raw_subdir": safe_path_segment(raw_subdir, default="obsidian"),
+                "updated_at": imported_at,
+                "notes": manifest_notes,
+            }
+        )
+        result.manifest_path = str(_write_manifest(project_path, manifest))
 
     return result.as_dict()

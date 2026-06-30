@@ -265,6 +265,7 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     trust=float(arguments.get("trust", 0.5)),
                     dry_run=dry_run,
                     allow_private=bool(arguments.get("allow_private", False)),
+                    prune_missing=bool(arguments.get("prune_missing", False)),
                 ),
             }
             if bool(arguments.get("compile", False)) and not dry_run:

@@ -5,10 +5,13 @@ def test_mcp_obsidian_import_is_maintenance_not_core():
     from vault.mcp import select_tools
 
     core_names = {tool["name"] for tool in select_tools("core")}
-    maintenance_names = {tool["name"] for tool in select_tools("maintenance")}
+    maintenance = select_tools("maintenance")
+    maintenance_names = {tool["name"] for tool in maintenance}
 
     assert "vault_obsidian_import" not in core_names
     assert "vault_obsidian_import" in maintenance_names
+    import_tool = next(tool for tool in maintenance if tool["name"] == "vault_obsidian_import")
+    assert import_tool["inputSchema"]["properties"]["prune_missing"]["default"] is False
 
 
 def test_mcp_obsidian_import_dry_run_and_compile(tmp_path):
@@ -43,4 +46,15 @@ def test_mcp_obsidian_import_dry_run_and_compile(tmp_path):
     )
     assert applied["import"]["added"] == 1
     assert applied["compile"]["new"] == 1
+    assert (project / "raw" / "obsidian" / "MCP.md").exists()
+
+    (obsidian / "MCP.md").unlink()
+    missing = json.loads(
+        handle_tool_call(
+            "vault_obsidian_import",
+            {"vault_dir": str(obsidian), "dry_run": False},
+        )["result"]
+    )
+    assert missing["import"]["missing"] == 1
+    assert missing["import"]["deleted"] == 0
     assert (project / "raw" / "obsidian" / "MCP.md").exists()

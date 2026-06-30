@@ -640,10 +640,11 @@ def main(argv: list[str] | None = None):
     p.add_argument("--vault", help="Obsidian vault 目錄；僅用於 `vault import obsidian`")
     p.add_argument("--obsidian-raw-subdir", default="obsidian", help="Obsidian notes 寫入 raw/ 下的子目錄")
     p.add_argument("--exclude", action="append", default=[], help="Obsidian 匯入時額外忽略的目錄或檔名，可重複")
+    p.add_argument("--prune-missing", action="store_true", help="Obsidian 增量匯入時刪除已不在來源 vault 的 raw copy")
     p.add_argument("--dry-run", action="store_true", help="Obsidian 匯入時只列出新增/更新，不寫入")
     p.add_argument("--compile", action="store_true", help="Obsidian 匯入完成後立刻執行 vault compile")
-    p.add_argument("--json", action="store_true", help="輸出 JSON；OKF 匯入支援")
-    p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出；OKF 匯入支援")
+    p.add_argument("--json", action="store_true", help="輸出 JSON；OKF/Obsidian 匯入支援")
+    p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出；OKF/Obsidian 匯入支援")
     add_governance_args(p)
 
     # export — read-only export targets

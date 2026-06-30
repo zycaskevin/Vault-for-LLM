@@ -697,6 +697,11 @@ vault import obsidian --vault ~/Documents/ObsidianVault --project-dir ~/Vaults/m
 vault import obsidian --vault ~/Documents/ObsidianVault --project-dir ~/Vaults/my-project --compile
 ```
 
+Imports are incremental. Vault stores source hashes in
+`.vault/obsidian-import-manifest.json`, updates changed notes, and reports notes
+that disappeared from the source vault. It does not delete raw copies for
+missing notes unless you explicitly pass `--prune-missing`.
+
 Export compiled Vault knowledge back into Obsidian-readable notes:
 
 ```bash

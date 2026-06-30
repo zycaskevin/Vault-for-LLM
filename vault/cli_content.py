@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import sqlite3
@@ -234,16 +236,37 @@ def cmd_import(args):
                 excludes=set(args.exclude or []),
                 dry_run=args.dry_run,
                 allow_private=getattr(args, "allow_private", False),
+                prune_missing=getattr(args, "prune_missing", False),
             )
         except Exception as e:
             print(f"❌ Obsidian 匯入失敗: {e}")
             raise SystemExit(2) from e
+
+        if getattr(args, "json", False) or getattr(args, "pretty", False):
+            payload = {"import": result}
+            if not args.dry_run and args.compile:
+                import argparse
+                from .cli_core import cmd_compile
+
+                compile_args = argparse.Namespace(
+                    dry_run=False,
+                    no_embed=args.no_embed,
+                    allow_private=getattr(args, "allow_private", False),
+                )
+                captured = io.StringIO()
+                with contextlib.redirect_stdout(captured):
+                    cmd_compile(compile_args)
+                payload["compile_output"] = captured.getvalue()
+            _json_print(payload, pretty=getattr(args, "pretty", False))
+            return
 
         print("📥 Obsidian 匯入結果:")
         print(f"  掃描: {result['scanned']}")
         print(f"  新增: {result['added']}")
         print(f"  更新: {result['updated']}")
         print(f"  跳過: {result['skipped']}")
+        print(f"  來源已移除: {result.get('missing', 0)}")
+        print(f"  已刪除 raw copy: {result.get('deleted', 0)}")
         print(f"  忽略: {result['ignored']}")
         if result["errors"]:
             print(f"  錯誤: {len(result['errors'])}")

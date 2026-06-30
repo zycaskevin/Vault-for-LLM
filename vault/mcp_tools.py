@@ -543,6 +543,11 @@ TOOLS = [
                 "layer": {"type": "string", "enum": ["L0", "L1", "L2", "L3"], "default": "L3"},
                 "trust": {"type": "number", "default": 0.5},
                 "allow_private": {"type": "boolean", "default": False},
+                "prune_missing": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Delete raw copies for Obsidian notes no longer present in the source vault. Defaults false.",
+                },
             },
             "required": ["vault_dir"]
         }

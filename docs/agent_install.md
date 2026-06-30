@@ -250,6 +250,10 @@ vault import obsidian \
 
 Generated sync templates can include cron, macOS LaunchAgent, and n8n workflow
 JSON under `agent-install/`.
+These jobs are incremental: Vault records Obsidian source hashes in
+`.vault/obsidian-import-manifest.json`, updates changed notes, and reports
+missing source notes. Missing notes are not pruned from `raw/` unless the command
+explicitly uses `--prune-missing`.
 
 ### Headroom Context Compression
 

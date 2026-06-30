@@ -1056,6 +1056,7 @@ def write_sync_templates(
                 f"```bash\n{shell_join(command)}\n```",
                 "",
                 "Review paths before enabling any scheduled job.",
+                "The import is incremental: Vault tracks Obsidian source hashes in `.vault/obsidian-import-manifest.json`, updates changed notes, and reports missing source notes without pruning raw copies unless `--prune-missing` is used.",
                 "",
             ]
         ),

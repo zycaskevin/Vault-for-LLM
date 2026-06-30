@@ -1,4 +1,5 @@
 from argparse import Namespace
+import json
 
 
 def test_sync_obsidian_vault_imports_notes_idempotently(tmp_path):
@@ -38,6 +39,13 @@ def test_sync_obsidian_vault_imports_notes_idempotently(tmp_path):
     assert first["added"] == 1
     assert first["updated"] == 0
     assert first["skipped"] == 0
+    assert first["missing"] == 0
+    assert first["deleted"] == 0
+    manifest_path = project_dir / ".vault" / "obsidian-import-manifest.json"
+    assert first["manifest_path"] == str(manifest_path)
+    assert manifest_path.exists()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["notes"]["Projects/Decision.md"]["status"] == "active"
 
     imported = project_dir / "raw" / "obsidian" / "Projects" / "Decision.md"
     assert imported.exists()
@@ -69,6 +77,37 @@ def test_sync_obsidian_vault_imports_notes_idempotently(tmp_path):
     assert third["updated"] == 1
 
 
+def test_sync_obsidian_vault_marks_and_prunes_missing_notes(tmp_path):
+    from vault.import_obsidian import sync_obsidian_vault
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    obsidian = tmp_path / "ObsidianVault"
+    obsidian.mkdir()
+    note = obsidian / "DeletedLater.md"
+    note.write_text("# Deleted Later\n\nThis note will move away.\n", encoding="utf-8")
+
+    first = sync_obsidian_vault(project_dir=project_dir, vault_dir=obsidian)
+    assert first["added"] == 1
+    raw_note = project_dir / "raw" / "obsidian" / "DeletedLater.md"
+    assert raw_note.exists()
+
+    note.unlink()
+    second = sync_obsidian_vault(project_dir=project_dir, vault_dir=obsidian)
+    assert second["missing"] == 1
+    assert second["deleted"] == 0
+    assert raw_note.exists()
+    manifest = json.loads((project_dir / ".vault" / "obsidian-import-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["notes"]["DeletedLater.md"]["status"] == "missing"
+
+    third = sync_obsidian_vault(project_dir=project_dir, vault_dir=obsidian, prune_missing=True)
+    assert third["missing"] == 1
+    assert third["deleted"] == 1
+    assert not raw_note.exists()
+    manifest = json.loads((project_dir / ".vault" / "obsidian-import-manifest.json").read_text(encoding="utf-8"))
+    assert "DeletedLater.md" not in manifest["notes"]
+
+
 def test_cmd_import_obsidian_compile_writes_vault_db(tmp_path, monkeypatch, capsys):
     from vault.cli import cmd_import
     from vault.db import VaultDB
@@ -95,6 +134,7 @@ def test_cmd_import_obsidian_compile_writes_vault_db(tmp_path, monkeypatch, caps
         trust=0.8,
         obsidian_raw_subdir="obsidian",
         exclude=[],
+        prune_missing=False,
         dry_run=False,
         compile=True,
         no_embed=True,
@@ -116,3 +156,37 @@ def test_cmd_import_obsidian_compile_writes_vault_db(tmp_path, monkeypatch, caps
     assert row["category"] == "runbook"
     assert row["tags"] == "ops,obsidian"
     assert row["source"] == "obsidian/Runbook.md"
+
+
+def test_cmd_import_obsidian_json_output_is_machine_readable(tmp_path, monkeypatch, capsys):
+    from vault.cli import cmd_import
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    obsidian = tmp_path / "ObsidianVault"
+    obsidian.mkdir()
+    (obsidian / "Agent.md").write_text("# Agent\n\nShared setup note.\n", encoding="utf-8")
+
+    monkeypatch.chdir(project_dir)
+    args = Namespace(
+        file="obsidian",
+        vault=str(obsidian),
+        category="general",
+        tags="agent",
+        layer="L2",
+        trust=0.8,
+        obsidian_raw_subdir="obsidian",
+        exclude=[],
+        prune_missing=False,
+        dry_run=False,
+        compile=False,
+        no_embed=True,
+        allow_private=False,
+        json=True,
+        pretty=False,
+    )
+
+    cmd_import(args)
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["import"]["added"] == 1
+    assert payload["import"]["manifest_path"]

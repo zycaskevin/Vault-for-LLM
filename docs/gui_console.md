@@ -46,6 +46,10 @@ same read-only daily report as `vault daily-report`, shows the few decisions tha
 need human attention, and reminds the user that Vault will not silently promote,
 archive, or delete memory.
 
+Daily report cards are not decision buttons. Each card should explain what the
+human is deciding and then open the detailed candidate/evidence view. The actual
+actions stay separated there, such as keep, reject, or block.
+
 For non-technical users, keep the GUI in their preferred language and let the
 Agent handle CLI details. The human-facing surface should be the daily report,
 review cards, and bounded evidence, not the full command set.

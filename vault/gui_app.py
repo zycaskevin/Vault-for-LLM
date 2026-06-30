@@ -95,6 +95,7 @@ APP_HTML = r"""<!doctype html>
     button.danger { background: var(--danger); border-color: var(--danger); }
     button.warn { background: var(--warn); border-color: var(--warn); }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    .mini-action { margin-top: 10px; padding: 7px 9px; font-size: 13px; }
     .filter-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
     .filter-grid input, .filter-grid select { width: 100%; padding: 8px 9px; font-size: 13px; }
     textarea {
@@ -309,6 +310,20 @@ APP_HTML = r"""<!doctype html>
         reviewItem: "審核項目",
         reviewAction: "審核",
         decide: "決定",
+        decisionQuestion: "要決定",
+        candidateDecisionQuestion: "要不要把這筆候選記憶放進正式 Vault？",
+        cleanupDecisionQuestion: "要不要整理、冷存，或繼續保留這筆記憶？",
+        reviewDecisionQuestion: "要不要接受這個記憶建議？",
+        suggestedDirection: "建議方向",
+        viewBeforeDecision: "查看內容再決定",
+        optionsAfterOpen: "選項會在詳情頁分開操作",
+        candidateContent: "候選記憶內容",
+        reviewReason: "審核理由",
+        optionalReason: "可選：寫下拒絕或封鎖原因。保留會重新跑 gate 並記錄結果。",
+        keepMemory: "保留",
+        rejectMemory: "拒絕",
+        blockMemory: "封鎖",
+        actionAuditNote: "每個動作都需要明確確認，並會記錄回饋給自動化學習。",
         readOnly: "read-only 報告",
         tokenProtected: "GUI token 保護",
         noSilentMutation: "不會偷偷 promote/archive/delete",
@@ -352,6 +367,20 @@ APP_HTML = r"""<!doctype html>
         reviewItem: "审核项目",
         reviewAction: "审核",
         decide: "决定",
+        decisionQuestion: "要决定",
+        candidateDecisionQuestion: "要不要把这条候选记忆放进正式 Vault？",
+        cleanupDecisionQuestion: "要不要整理、冷存，或继续保留这条记忆？",
+        reviewDecisionQuestion: "要不要接受这个记忆建议？",
+        suggestedDirection: "建议方向",
+        viewBeforeDecision: "查看内容再决定",
+        optionsAfterOpen: "选项会在详情页分开操作",
+        candidateContent: "候选记忆内容",
+        reviewReason: "审核理由",
+        optionalReason: "可选：写下拒绝或封锁原因。保留会重新跑 gate 并记录结果。",
+        keepMemory: "保留",
+        rejectMemory: "拒绝",
+        blockMemory: "封锁",
+        actionAuditNote: "每个动作都需要明确确认，并会记录反馈给自动化学习。",
         readOnly: "read-only 报告",
         tokenProtected: "GUI token 保护",
         noSilentMutation: "不会偷偷 promote/archive/delete",
@@ -395,6 +424,20 @@ APP_HTML = r"""<!doctype html>
         reviewItem: "Review item",
         reviewAction: "review",
         decide: "decide",
+        decisionQuestion: "Decision",
+        candidateDecisionQuestion: "Should this candidate memory become active Vault knowledge?",
+        cleanupDecisionQuestion: "Should this memory be cleaned up, cold-stored, or kept active?",
+        reviewDecisionQuestion: "Should this memory suggestion be accepted?",
+        suggestedDirection: "Suggested direction",
+        viewBeforeDecision: "Open before deciding",
+        optionsAfterOpen: "Options are separated on the detail page",
+        candidateContent: "Candidate Content",
+        reviewReason: "Review Reason",
+        optionalReason: "Optional reason for reject/block. Promotion reruns gates and records the result.",
+        keepMemory: "Keep",
+        rejectMemory: "Reject",
+        blockMemory: "Block",
+        actionAuditNote: "Every action requires explicit confirmation and records feedback for automation learning.",
         readOnly: "read-only report",
         tokenProtected: "GUI token protected",
         noSilentMutation: "No silent promote/archive/delete",
@@ -501,6 +544,43 @@ APP_HTML = r"""<!doctype html>
       });
     }
 
+    function decisionQuestionFor(card) {
+      const action = String(card.recommended_action || card.suggested_decision || "").toLowerCase();
+      if (String(card.id || "").startsWith("mem_") || action.includes("promote") || action.includes("candidate")) {
+        return ui().candidateDecisionQuestion;
+      }
+      if (action.includes("archive") || action.includes("cold") || action.includes("cleanup")) {
+        return ui().cleanupDecisionQuestion;
+      }
+      return ui().reviewDecisionQuestion;
+    }
+
+    function renderDecisionCard(card, className="item") {
+      const text = ui();
+      return `
+        <div class="${className}" data-daily-card="${esc(card.id || "")}">
+          <h3>${esc(card.title || card.id || card.kind || text.reviewItem)}</h3>
+          <div class="subtle"><strong>${esc(text.decisionQuestion)}:</strong> ${esc(decisionQuestionFor(card))}</div>
+          <div class="subtle">${esc(card.reason || card.safe_action || "")}</div>
+          <div class="meta">
+            ${pill(`${text.suggestedDirection}: ${card.suggested_decision || text.reviewAction}`, "warn")}
+            ${pill(text.optionsAfterOpen)}
+          </div>
+          <button class="secondary mini-action" type="button" data-open-daily-card="${esc(card.id || "")}">${esc(text.viewBeforeDecision)}</button>
+        </div>
+      `;
+    }
+
+    function bindDecisionCards(root) {
+      root.querySelectorAll("[data-daily-card], [data-open-daily-card]").forEach(el => {
+        const id = el.dataset.dailyCard || el.dataset.openDailyCard || "";
+        if (id.startsWith("mem_")) el.addEventListener("click", (event) => {
+          if (el.dataset.openDailyCard) event.stopPropagation();
+          loadCandidate(id);
+        });
+      });
+    }
+
     function renderDailyReport(report) {
       const node = $("dailyReport");
       const text = ui();
@@ -510,16 +590,7 @@ APP_HTML = r"""<!doctype html>
       }
       const summary = report.summary || {};
       const cards = report.review_cards || [];
-      const cardHtml = cards.length ? cards.slice(0, 3).map(card => `
-        <div class="item" data-daily-card="${esc(card.id || "")}">
-          <h3>${esc(card.title || card.id || card.kind || text.reviewItem)}</h3>
-          <div class="subtle">${esc(card.reason || card.safe_action || "")}</div>
-          <div class="meta">
-            ${pill(card.suggested_decision || text.reviewAction, "warn")}
-            ${pill((card.choices || []).slice(0, 2).join(" / ") || text.decide)}
-          </div>
-        </div>
-      `).join("") : `<div class="empty">${esc(text.noDecision)}</div>`;
+      const cardHtml = cards.length ? cards.slice(0, 3).map(card => renderDecisionCard(card)).join("") : `<div class="empty">${esc(text.noDecision)}</div>`;
       node.innerHTML = `
         <div class="panel">
           <h3>${esc(report.headline || text.daily)}</h3>
@@ -533,10 +604,7 @@ APP_HTML = r"""<!doctype html>
         </div>
         ${cardHtml}
       `;
-      node.querySelectorAll("[data-daily-card]").forEach(el => {
-        const id = el.dataset.dailyCard || "";
-        if (id.startsWith("mem_")) el.addEventListener("click", () => loadCandidate(id));
-      });
+      bindDecisionCards(node);
     }
 
     function renderMemoryControlCenter(overview) {
@@ -544,16 +612,7 @@ APP_HTML = r"""<!doctype html>
       const summary = report.summary || {};
       const cards = report.review_cards || [];
       const text = ui();
-      const choices = cards.length ? cards.slice(0, 3).map(card => `
-        <div class="panel">
-          <h3>${esc(card.title || card.id || text.reviewItem)}</h3>
-          <div class="subtle">${esc(card.reason || card.safe_action || "")}</div>
-          <div class="meta">
-            ${pill(card.suggested_decision || text.reviewAction, "warn")}
-            ${pill((card.choices || []).slice(0, 3).join(" / ") || text.decide)}
-          </div>
-        </div>
-      `).join("") : `
+      const choices = cards.length ? cards.slice(0, 3).map(card => renderDecisionCard(card, "panel")).join("") : `
         <div class="panel">
           <h3>${esc(text.noDecision)}</h3>
           <div class="subtle">${esc(text.noDecisionBody)}</div>
@@ -578,6 +637,7 @@ APP_HTML = r"""<!doctype html>
         </div>
         <div class="choice-row">${choices}</div>
       `;
+      bindDecisionCards($("results"));
     }
 
     function renderFacetSelect(id, label, items, selected) {
@@ -678,18 +738,19 @@ APP_HTML = r"""<!doctype html>
           </div>
         </article>
         <div class="panel">
-          <h3>Candidate Content</h3>
+          <h3>${esc(ui().candidateContent)}</h3>
+          <div class="subtle"><strong>${esc(ui().decisionQuestion)}:</strong> ${esc(ui().candidateDecisionQuestion)}</div>
           <pre>${esc(row.content || "")}</pre>
         </div>
         <div class="panel">
-          <h3>Review Reason</h3>
-          <textarea id="reviewReason" placeholder="Optional reason for reject/block. Promotion records the existing gate result."></textarea>
+          <h3>${esc(ui().reviewReason)}</h3>
+          <textarea id="reviewReason" placeholder="${esc(ui().optionalReason)}"></textarea>
           <div class="actions">
-            <button id="promoteCandidate" type="button">Promote</button>
-            <button id="rejectCandidate" class="warn" type="button">Reject</button>
-            <button id="blockCandidate" class="danger" type="button">Block</button>
+            <button id="promoteCandidate" type="button">${esc(ui().keepMemory)}</button>
+            <button id="rejectCandidate" class="warn" type="button">${esc(ui().rejectMemory)}</button>
+            <button id="blockCandidate" class="danger" type="button">${esc(ui().blockMemory)}</button>
           </div>
-          <div class="subtle">Every action requires explicit confirmation and records feedback for automation learning.</div>
+          <div class="subtle">${esc(ui().actionAuditNote)}</div>
         </div>
       `;
       $("sidePanel").innerHTML = renderCandidateSide(row);

@@ -14,6 +14,11 @@ The default path is agent-driven: ask your coding agent to install Vault, choose
 where the database should live, and run a small search/read/propose smoke test.
 Manual commands are still here, but they are no longer the main story.
 
+For non-technical users, the intended daily surface is even smaller: let the
+agent run Vault, then read `vault daily-report` or open the GUI. The report shows
+only what changed, which few memory decisions need confirmation, and what stayed
+quietly report-only.
+
 If the CLI feels large, run `vault guide`. It shows the small human surface and
 points agents toward the right MCP profile for the wider toolbox.
 
@@ -93,6 +98,25 @@ source .venv/bin/activate
 pip install "vault-for-llm[mcp]==0.7.18"
 
 vault setup-agent
+```
+
+For people who do not want to learn commands, ask the agent to use consumer
+mode:
+
+```bash
+vault setup-agent --audience consumer
+```
+
+Consumer mode writes an `agent-install/README-consumer-daily-report.md` guide
+and safe daily automation templates. The templates are report-first: they can
+prepare a daily memory report and review queue, but they do not silently promote,
+archive, or delete memory.
+
+Daily human surface:
+
+```bash
+vault daily-report
+vault gui
 ```
 
 `setup-agent` registers the Agent in the local registry at

@@ -81,6 +81,7 @@ from .cli_flow import (
     cmd_usage,
 )
 from .cli_guide import cmd_guide as _cmd_guide_impl
+from .cli_daily_report import cmd_daily_report as _cmd_daily_report_impl
 from .cli_map_remote import cmd_map, cmd_remote, _parse_map_line_range, _positive_int
 from .cli_okf import add_okf_parser, cmd_okf
 from .cli_quality import (
@@ -143,6 +144,15 @@ def cmd_guide(args):
     return _cmd_guide_impl(args, json_print=lambda payload, pretty: _json_print(payload, pretty=pretty))
 
 
+def cmd_daily_report(args):
+    """Dispatch consumer daily report command."""
+    return _cmd_daily_report_impl(
+        args,
+        find_project_dir=find_project_dir,
+        json_print=lambda payload, pretty: _json_print(payload, pretty=pretty),
+    )
+
+
 def main(argv: list[str] | None = None):
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     normalized_argv, explicit_project_dir = _extract_project_dir_arg(raw_argv)
@@ -166,6 +176,15 @@ def main(argv: list[str] | None = None):
         default="all",
         help="依使用意圖縮小指南內容",
     )
+    p.add_argument("--json", action="store_true", help="輸出 JSON")
+    p.add_argument("--pretty", action="store_true", help="輸出 pretty JSON")
+
+    # daily-report
+    p = sub.add_parser("daily-report", help="顯示一般使用者每天只需要看的短版記憶報告")
+    p.add_argument("--limit", "-n", type=int, default=5, help="最多顯示幾張人工確認卡")
+    p.add_argument("--min-events", type=int, default=5, help="學習規則需要的最少 feedback 事件")
+    p.add_argument("--write-report", action="store_true", help="寫入 reports/daily/daily-report-latest.json 和 .md")
+    p.add_argument("--report-path", default="", help="自訂 reports/daily/*.json 輸出路徑")
     p.add_argument("--json", action="store_true", help="輸出 JSON")
     p.add_argument("--pretty", action="store_true", help="輸出 pretty JSON")
 
@@ -489,6 +508,8 @@ def main(argv: list[str] | None = None):
 
     def add_agent_setup_args(ap):
         ap.add_argument("--agent", default="generic", help="Agent/runtime 名稱，例如 hermes/openclaw/codex/n8n")
+        ap.add_argument("--audience", choices=["consumer", "builder"], default="builder",
+                        help="安裝受眾；consumer 會產生日報導向的一般使用者說明與安全排程模板")
         ap.add_argument("--scope", choices=["shared", "private", "domain", "temporary"], help="Vault 資料庫範圍")
         ap.add_argument("--agent-project-dir", "--project", dest="agent_project_dir",
                         help="要初始化/使用的 Vault project directory")
@@ -972,6 +993,7 @@ def main(argv: list[str] | None = None):
     commands = {
         "init": cmd_init,
         "guide": cmd_guide,
+        "daily-report": cmd_daily_report,
         "add": cmd_add,
         "remember": cmd_remember,
         "promote": cmd_promote,

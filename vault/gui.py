@@ -5,6 +5,7 @@ from __future__ import annotations
 from .gui_api import (
     gui_candidate,
     gui_candidates,
+    gui_daily_report,
     gui_documents,
     gui_entry,
     gui_overview,
@@ -37,6 +38,7 @@ __all__ = [
     "run_gui",
     "gui_candidate",
     "gui_candidates",
+    "gui_daily_report",
     "gui_documents",
     "gui_entry",
     "gui_overview",

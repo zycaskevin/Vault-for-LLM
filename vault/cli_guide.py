@@ -15,6 +15,11 @@ def guide_payload(mode: str = "human", intent: str = "all") -> dict:
         },
         {
             "intent": "daily",
+            "command": "vault daily-report",
+            "purpose": "Show the one-minute memory report for humans: what changed and which few items need a decision.",
+        },
+        {
+            "intent": "daily",
             "command": "vault guide",
             "purpose": "Show the small recommended entrypoints and where advanced commands live.",
         },
@@ -99,7 +104,7 @@ def guide_payload(mode: str = "human", intent: str = "all") -> dict:
         "ok": True,
         "mode": mode,
         "intent": intent,
-        "message": "Humans should start with the small entrypoints. Agents and scheduled jobs should use MCP profiles and generated setup artifacts for the wider toolbox.",
+        "message": "Most humans should ask their agent to install and operate Vault. Daily use should be a short report, not a CLI lesson.",
         "intent_shortcuts": [
             {"intent": "install", "use": "Set up or connect an agent"},
             {"intent": "daily", "use": "Search, browse, and continue normal work"},
@@ -113,7 +118,7 @@ def guide_payload(mode: str = "human", intent: str = "all") -> dict:
         "agent_mcp_profiles": agent,
         "maintenance_entrypoints": _filter_by_intent(maintenance, intent),
         "docs": docs,
-        "next_action": "Run vault setup-agent for installation, or configure vault-mcp --tool-profile core for daily agent recall.",
+        "next_action": "Ask your agent to run vault setup-agent --audience consumer, then read vault daily-report or open vault gui.",
     }
     if mode == "human":
         keys = ["ok", "mode", "intent", "message", "intent_shortcuts", "everyday_entrypoints", "docs", "next_action"]

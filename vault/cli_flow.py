@@ -575,6 +575,7 @@ def cmd_setup_agent(args):
             project_dir=project_dir,
             scope=scope,
             agent=args.agent,
+            audience=args.audience,
             memory_layout=args.memory_layout,
             agent_private_dir=Path(args.agent_private_dir).expanduser() if args.agent_private_dir else None,
             features=normalize_features(args.features),
@@ -617,6 +618,7 @@ def cmd_setup_agent(args):
         setup_values = {
             "agent": args.agent,
             "scope": args.scope,
+            "audience": args.audience,
             "project_dir": args.agent_project_dir,
             "memory_layout": args.memory_layout,
             "agent_private_dir": args.agent_private_dir,
@@ -748,6 +750,10 @@ def cmd_setup_agent(args):
         print("  agent_adapter_startup:")
         for name, path in payload["agent_adapter_startup"].items():
             print(f"    {name}: {path}")
+    if payload.get("human_next_steps"):
+        print("For the user:")
+        for step in payload["human_next_steps"]:
+            print(f"  {step}")
     print("Next steps:")
     for step in payload["next_steps"]:
         print(f"  {step}")

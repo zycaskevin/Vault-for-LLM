@@ -61,6 +61,37 @@ def test_run_agent_setup_imports_obsidian_and_writes_templates(tmp_path):
     assert workflow["nodes"][1]["type"] == "n8n-nodes-base.executeCommand"
 
 
+def test_run_agent_setup_consumer_audience_writes_daily_report_guide_and_safe_schedule(tmp_path):
+    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+
+    project = tmp_path / "consumer-project"
+    result = run_agent_setup(
+        AgentSetupConfig(
+            project_dir=project,
+            scope="shared",
+            agent="consumer-agent",
+            audience="consumer",
+            features=["core", "mcp"],
+            language="zh-Hant",
+            template_dir=tmp_path / "templates",
+        )
+    )
+
+    assert result["audience"] == "consumer"
+    assert result["consumer_daily_report"]["guide"].endswith("README-consumer-daily-report.md")
+    guide = (tmp_path / "templates" / "README-consumer-daily-report.md").read_text(encoding="utf-8")
+    assert "你不需要學 CLI" in guide
+    assert "vault daily-report" in guide
+    assert {"cron", "readme"}.issubset(result["automation_schedule_templates"])
+    cron = (tmp_path / "templates" / "memory-automation.cron").read_text(encoding="utf-8")
+    assert "vault automation cycle" in cron
+    assert "--write-workspace" in cron
+    assert "--apply" not in cron
+    assert result["human_next_steps"]
+    assert any("daily report" in step for step in result["human_next_steps"])
+    assert any("daily-report" in step for step in result["next_steps"])
+
+
 def test_run_agent_setup_writes_supabase_sync_templates(tmp_path):
     from vault.agent_setup import AgentSetupConfig, run_agent_setup
 

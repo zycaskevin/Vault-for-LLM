@@ -13,6 +13,7 @@ from vault.gui import (
     cmd_gui,
     gui_candidate,
     gui_candidates,
+    gui_daily_report,
     gui_documents,
     gui_entry,
     gui_overview,
@@ -103,6 +104,12 @@ def test_gui_overview_search_entry_and_read(tmp_path):
     assert overview["recent"][0]["title"] == "GUI Console Runbook"
     assert overview["candidates"][0]["id"] == candidate_id
     assert overview["tasks"][0]["id"] == "task-gui"
+    assert overview["daily_report"]["action"] == "daily-report"
+    assert overview["daily_report"]["review_cards"]
+
+    daily = gui_daily_report(project)
+    assert daily["status"] == "completed"
+    assert daily["summary"]["needs_confirmation"] >= 1
 
     tasks = gui_tasks(project)
     assert tasks["status"] == "ok"
@@ -140,6 +147,8 @@ def test_gui_app_exposes_document_map_panel():
     assert "data-read-node" in APP_HTML
     assert "Active Tasks" in APP_HTML
     assert "taskList" in APP_HTML
+    assert "Daily Report" in APP_HTML
+    assert "dailyReport" in APP_HTML
 
 
 def test_gui_app_exposes_graph_visual_panel():

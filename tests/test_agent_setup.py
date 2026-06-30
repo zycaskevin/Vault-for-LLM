@@ -383,6 +383,8 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     adapters = result["agent_adapter_startup"]
     adapter_contract = json.loads(Path(adapters["contract"]).read_text(encoding="utf-8"))
     adapter_readme = Path(adapters["readme"]).read_text(encoding="utf-8")
+    minimal_configs = json.loads(Path(adapters["minimal_configs"]).read_text(encoding="utf-8"))
+    minimal_configs_readme = Path(adapters["minimal_configs_readme"]).read_text(encoding="utf-8")
     runtime_playbook = json.loads(Path(adapters["runtime_playbook"]).read_text(encoding="utf-8"))
     runtime_playbook_readme = Path(adapters["runtime_playbook_readme"]).read_text(encoding="utf-8")
     codex_template = Path(adapters["codex"]).read_text(encoding="utf-8")
@@ -408,6 +410,20 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert adapter_contract["safety"]["candidate_first_memory"] is True
     assert adapter_contract["safety"]["remote_status_offline"] is True
     assert adapter_contract["safety"]["supabase_bidirectional_sync_default"] is False
+    assert sorted(minimal_configs["local_stdio_mcp_clients"]) == ["claude_code", "codex", "hermes", "openclaw"]
+    assert sorted(minimal_configs["hosted_or_workflow_readers"]) == ["coze", "n8n"]
+    assert minimal_configs["mcp_server"]["command"] == "vault-mcp"
+    assert minimal_configs["local_stdio_mcp_clients"]["codex"]["server_config"]["mcpServers"]["vault"]["command"] == "vault-mcp"
+    assert minimal_configs["hosted_or_workflow_readers"]["coze"]["mode"] == "remote_read_only"
+    assert minimal_configs["hosted_or_workflow_readers"]["n8n"]["mode"] == "workflow_bridge"
+    assert minimal_configs["safety"]["hmac_recommended"] is True
+    assert "Codex" in minimal_configs_readme
+    assert "Claude Code" in minimal_configs_readme
+    assert "Hermes Agent" in minimal_configs_readme
+    assert "OpenClaw" in minimal_configs_readme
+    assert "Coze" in minimal_configs_readme
+    assert "n8n" in minimal_configs_readme
+    assert "never service-role key" in minimal_configs_readme
     assert adapter_readme.count("vault guide") >= 1
     assert runtime_playbook["agent_first_entrypoints"]["human"] == "vault guide"
     assert runtime_playbook["startup_rule"][0].startswith("Keep the human-facing surface small")
@@ -457,6 +473,7 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert "one shared project vault" in runtime_playbook_readme
     assert "not an auto-upgrader" in runtime_playbook_readme
     assert "README-runtime-update-playbook.md" in adapter_readme
+    assert "README-mcp-minimal-configs.md" in adapter_readme
     assert any("memory automation schedule" in step for step in result["next_steps"])
     assert any("vault automation handoff --project-dir" in step for step in result["next_steps"])
     assert any("MCP startup guide" in step for step in result["next_steps"])

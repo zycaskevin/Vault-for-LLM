@@ -350,8 +350,11 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert mcp_json["safety"]["check_pypi_default"] is False
     assert mcp_json["safety"]["auto_promote_memory"] is False
     assert mcp_json["safety"]["read_existing_update_status_first"] is True
+    assert "vault remote status" in mcp_json["cli_preflight"]["remote_sharing_status"]
+    assert mcp_json["cli_preflight"]["network"] is False
     assert "vault_update_status" in mcp_readme
     assert "vault_automation_handoff" in mcp_readme
+    assert "vault remote status" in mcp_readme
     assert "fleet_health_content" in mcp_readme
     assert "pipeline_receipt_content" in mcp_readme
     update_status = result["update_status_templates"]
@@ -389,6 +392,9 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert adapter_contract["startup_sequence"][0]["mcp"]["arguments"]["read_status"] is True
     assert adapter_contract["startup_sequence"][0]["mcp"]["arguments"]["agent_id"] == "automation-agent"
     assert adapter_contract["startup_sequence"][0]["fallback"]["mcp"]["arguments"]["check_pypi"] is False
+    assert adapter_contract["startup_sequence"][1]["name"] == "check_remote_sharing_status"
+    assert "vault remote status" in adapter_contract["startup_sequence"][1]["cli"]
+    assert adapter_contract["startup_sequence"][1]["network"] is False
     assert adapter_contract["handoff_contract"]["read_order"] == [
         "fleet_health_content",
         "pipeline_receipt_content",
@@ -396,15 +402,22 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
         "learning_health_content",
         "content",
     ]
-    assert adapter_contract["startup_sequence"][1]["result_contract"]["do_not_replace_content"] is True
+    assert adapter_contract["startup_sequence"][2]["result_contract"]["do_not_replace_content"] is True
     assert any(step["name"] == "check_update_distribution_when_needed" for step in adapter_contract["startup_sequence"])
     assert adapter_contract["safety"]["auto_upgrade"] is False
     assert adapter_contract["safety"]["candidate_first_memory"] is True
+    assert adapter_contract["safety"]["remote_status_offline"] is True
+    assert adapter_contract["safety"]["supabase_bidirectional_sync_default"] is False
     assert adapter_readme.count("vault guide") >= 1
     assert runtime_playbook["agent_first_entrypoints"]["human"] == "vault guide"
     assert runtime_playbook["startup_rule"][0].startswith("Keep the human-facing surface small")
+    assert runtime_playbook["cli"]["remote_status"].startswith("vault remote status")
+    assert runtime_playbook["safety"]["remote_status_offline"] is True
+    assert runtime_playbook["safety"]["supabase_bidirectional_sync_default"] is False
     assert "Humans choose intent; agents choose commands" in runtime_playbook_readme
+    assert "vault remote status" in runtime_playbook_readme
     assert "update-status -> automation handoff -> search/read/propose" in adapter_readme
+    assert "remote-status between update-status and handoff" in adapter_readme
     assert "fleet_health_content" in adapter_readme
     assert "pipeline_receipt_content" in adapter_readme
     assert "review_summary_content" in adapter_readme
@@ -412,6 +425,7 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert "MCP doctor" in adapter_readme
     assert "no auto-upgrade" in adapter_readme
     assert "doctor=true" in codex_template
+    assert "vault remote status" in codex_template
     assert "vault guide --mode agent --json" in codex_template
     assert "fleet_health_content" in codex_template
     assert "pipeline_receipt_content" in codex_template
@@ -981,7 +995,10 @@ def test_agent_startup_doctor_passes_current_setup_pack(tmp_path, capsys):
     assert payload["summary"]["fail"] == 0
     assert payload["safety"]["read_only"] is True
     assert any(check["name"] == "mcp_handoff_result_contract" for check in payload["checks"])
+    assert any(check["name"] == "mcp_remote_status_preflight" and check["status"] == "pass" for check in payload["checks"])
     assert any(check["name"] == "adapter_handoff_contract" for check in payload["checks"])
+    assert any(check["name"] == "adapter_remote_status_step" and check["status"] == "pass" for check in payload["checks"])
+    assert any(check["name"] == "runtime_playbook_remote_status" and check["status"] == "pass" for check in payload["checks"])
 
 
 def test_agent_startup_doctor_fails_old_handoff_contract(tmp_path, capsys):

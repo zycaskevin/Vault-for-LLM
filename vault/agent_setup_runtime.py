@@ -159,6 +159,11 @@ def _has_handoff_read_order(value: object) -> bool:
     return list(value or []) == EXPECTED_HANDOFF_READ_ORDER
 
 
+def _has_remote_status_command(value: object) -> bool:
+    text = json.dumps(value, ensure_ascii=False, sort_keys=True) if isinstance(value, (dict, list)) else str(value or "")
+    return "remote" in text and "status" in text and "--json" in text
+
+
 def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
     """Check whether setup-agent startup files use the current fleet-aware contract."""
     root = Path(template_dir).expanduser().resolve()
@@ -197,6 +202,17 @@ def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
             else "missing startup preface handoff result_contract read order"
         ),
     )
+    _startup_doctor_check(
+        checks,
+        name="mcp_remote_status_preflight",
+        status="pass" if _has_remote_status_command(mcp.get("cli_preflight")) else "warn",
+        path=mcp_path,
+        detail=(
+            "MCP startup includes CLI remote-status preflight"
+            if _has_remote_status_command(mcp.get("cli_preflight"))
+            else "MCP startup is missing CLI `vault remote status --json` preflight"
+        ),
+    )
 
     adapter_order = (adapter.get("handoff_contract") or {}).get("read_order")
     _startup_doctor_check(
@@ -211,6 +227,21 @@ def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
         ),
     )
     adapter_sequence = adapter.get("startup_sequence") if isinstance(adapter.get("startup_sequence"), list) else []
+    remote_status_step = next(
+        (step for step in adapter_sequence if isinstance(step, dict) and step.get("name") == "check_remote_sharing_status"),
+        {},
+    )
+    _startup_doctor_check(
+        checks,
+        name="adapter_remote_status_step",
+        status="pass" if _has_remote_status_command(remote_status_step) else "fail",
+        path=adapter_path,
+        detail=(
+            "adapter startup checks remote sharing status before live remote calls"
+            if _has_remote_status_command(remote_status_step)
+            else "adapter startup is missing `check_remote_sharing_status`"
+        ),
+    )
     adapter_handoff = next(
         (step for step in adapter_sequence if isinstance(step, dict) and step.get("name") == "read_automation_handoff"),
         {},
@@ -232,6 +263,7 @@ def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
     )
 
     playbook_order = ((playbook.get("mcp") or {}).get("handoff") or {}).get("read_order")
+    playbook_cli = playbook.get("cli") if isinstance(playbook.get("cli"), dict) else {}
     playbook_safety = playbook.get("safety") or {}
     playbook_prefaces_read_only = all(
         bool(playbook_safety.get(name))
@@ -254,6 +286,17 @@ def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
             else "runtime playbook is missing startup-preface read order or read-only safety flag"
         ),
     )
+    _startup_doctor_check(
+        checks,
+        name="runtime_playbook_remote_status",
+        status="pass" if _has_remote_status_command(playbook_cli.get("remote_status")) else "warn",
+        path=playbook_path,
+        detail=(
+            "runtime playbook includes CLI remote-status preflight"
+            if _has_remote_status_command(playbook_cli.get("remote_status"))
+            else "runtime playbook is missing remote-status startup guidance"
+        ),
+    )
 
     for name, filename in STARTUP_DOCTOR_TEMPLATE_FILES.items():
         path = root / filename
@@ -266,6 +309,7 @@ def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
             and "review_summary_content" in text
             and "learning_health_content" in text
             and "vault_automation_handoff" in text
+            and "vault remote status" in text
         )
         _startup_doctor_check(
             checks,
@@ -275,7 +319,7 @@ def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
             detail=(
                 "runtime template names the startup-preface handoff contract"
                 if ok
-                else "runtime template is missing startup-preface handoff guidance"
+                else "runtime template is missing startup-preface handoff or remote-status guidance"
             ),
         )
 
@@ -289,6 +333,7 @@ def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
             "fleet_health_content" in text
             and "review_summary_content" in text
             and "learning_health_content" in text
+            and "remote status" in text
         )
         _startup_doctor_check(
             checks,
@@ -298,7 +343,7 @@ def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
             detail=(
                 "README documents startup-preface handoff"
                 if ok
-                else "README is missing startup-preface guidance; regenerate setup files for clearer guidance"
+                else "README is missing startup-preface or remote-status guidance; regenerate setup files for clearer guidance"
             ),
         )
 

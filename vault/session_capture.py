@@ -16,6 +16,7 @@ from .memory import (
     normalize_metadata,
     propose_memory,
     quality_gate,
+    text_similarity,
 )
 from .privacy import redact_secrets, scan_privacy
 
@@ -217,6 +218,7 @@ def capture_session_candidates(
         owner_agent=owner_agent or agent_id,
         allowed_agents=allowed_agents,
     )
+    proposals = _attach_memory_intelligence(db, proposals)
 
     results: list[dict[str, Any]] = []
     written_count = 0
@@ -232,6 +234,10 @@ def capture_session_candidates(
             item = {
                 "title": output_title,
                 "score": proposal["capture_score"],
+                "extraction_score": proposal.get("extraction_score", proposal["capture_score"]),
+                "novelty_score": proposal.get("novelty_score", 1.0),
+                "recommended_action": proposal.get("recommended_action", "create_candidate"),
+                "merge_target": proposal.get("merge_target"),
                 "rule": proposal["capture_rule"],
                 "source_ref": proposal["source_ref"],
                 "status": result.get("status"),
@@ -250,6 +256,10 @@ def capture_session_candidates(
             item = {
                 "title": output_title,
                 "score": proposal["capture_score"],
+                "extraction_score": proposal.get("extraction_score", proposal["capture_score"]),
+                "novelty_score": proposal.get("novelty_score", 1.0),
+                "recommended_action": proposal.get("recommended_action", "create_candidate"),
+                "merge_target": proposal.get("merge_target"),
                 "rule": proposal["capture_rule"],
                 "source_ref": proposal["source_ref"],
                 "status": "preview",
@@ -606,12 +616,127 @@ def _extract_proposals(
                 "allowed_agents": allowed_agents,
                 "memory_type": "session_lesson",
                 "capture_score": round(score, 3),
+                "extraction_score": round(score, 3),
                 "capture_rule": rule.name,
                 "agent_id": agent_id,
             }
         )
     proposals.sort(key=lambda item: (-float(item["capture_score"]), item["source_ref"], item["title"]))
     return proposals[:max_candidates]
+
+
+def _attach_memory_intelligence(db: VaultDB, proposals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Annotate proposals with novelty and merge guidance."""
+    active_rows = [
+        dict(row)
+        for row in db.conn.execute(
+            """SELECT id, title, content_raw, updated_at
+               FROM knowledge
+               WHERE COALESCE(status, 'active') != 'archived'
+               ORDER BY updated_at DESC, id DESC
+               LIMIT 500"""
+        ).fetchall()
+    ]
+    candidate_rows = [
+        dict(row)
+        for row in db.conn.execute(
+            """SELECT id, title, content
+               FROM memory_candidates
+               WHERE status IN ('candidate', 'approved')
+               ORDER BY updated_at DESC
+               LIMIT 500"""
+        ).fetchall()
+    ]
+    annotated: list[dict[str, Any]] = []
+    for proposal in proposals:
+        item = dict(proposal)
+        match = _best_memory_match(item["content"], item["title"], active_rows, candidate_rows)
+        novelty = round(max(0.0, 1.0 - float(match.get("score") or 0.0)), 3)
+        action = "create_candidate"
+        if match.get("kind") == "knowledge" and match.get("score", 0.0) >= 0.72:
+            action = "merge_into_existing"
+        elif match.get("kind") == "candidate" and match.get("score", 0.0) >= 0.72:
+            action = "review_existing_candidate"
+        item["novelty_score"] = novelty
+        item["merge_target"] = match if match.get("score", 0.0) >= 0.55 else None
+        item["recommended_action"] = action
+        item["reason"] = _append_intelligence_reason(item["reason"], item)
+        annotated.append(item)
+    annotated.sort(
+        key=lambda item: (
+            str(item.get("recommended_action")) == "create_candidate",
+            float(item.get("capture_score") or 0.0),
+            float(item.get("novelty_score") or 0.0),
+        ),
+        reverse=True,
+    )
+    return annotated
+
+
+def _best_memory_match(
+    content: str,
+    title: str,
+    active_rows: list[dict[str, Any]],
+    candidate_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    best: dict[str, Any] = {"kind": "", "id": None, "title": "", "score": 0.0}
+    for row in active_rows:
+        score = max(
+            _memory_similarity(content, row.get("content_raw") or ""),
+            text_similarity(title, row.get("title") or ""),
+        )
+        if score > float(best.get("score") or 0.0):
+            best = {
+                "kind": "knowledge",
+                "id": row.get("id"),
+                "title": row.get("title", ""),
+                "score": round(score, 3),
+            }
+    for row in candidate_rows:
+        score = max(
+            _memory_similarity(content, row.get("content") or ""),
+            text_similarity(title, row.get("title") or ""),
+        )
+        if score > float(best.get("score") or 0.0):
+            best = {
+                "kind": "candidate",
+                "id": row.get("id"),
+                "title": row.get("title", ""),
+                "score": round(score, 3),
+            }
+    return best
+
+
+def _memory_similarity(left: str, right: str) -> float:
+    left_evidence = _evidence_text(left)
+    right_evidence = _evidence_text(right)
+    return max(
+        text_similarity(left, right),
+        text_similarity(left_evidence, right),
+        text_similarity(left, right_evidence),
+        text_similarity(left_evidence, right_evidence),
+    )
+
+
+def _evidence_text(value: str) -> str:
+    text = str(value or "")
+    marker = "Evidence:"
+    if marker not in text:
+        return text
+    evidence = text.split(marker, 1)[1]
+    return evidence.split("\n\n", 1)[0].strip()
+
+
+def _append_intelligence_reason(reason: str, proposal: dict[str, Any]) -> str:
+    target = proposal.get("merge_target") or {}
+    target_text = ""
+    if target:
+        target_text = f", match={target.get('kind')}:{target.get('id')} score={target.get('score')}"
+    return (
+        f"{reason} Memory intelligence: extraction={proposal.get('extraction_score')}, "
+        f"novelty={proposal.get('novelty_score')}, action={proposal.get('recommended_action')}"
+        f"{target_text}."
+    )
 
 
 def _score_unit(text: str) -> tuple[CaptureRule, float] | None:

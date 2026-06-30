@@ -561,6 +561,17 @@ review and learning panels as startup prefaces when they exist; the pipeline
 receipt stays available as a separate ingestion audit file. Use `--automation-command run` when you want a
 maintenance-only cycle step without the feedback-learning phase.
 
+The memory pipeline now annotates each capture candidate with deterministic
+memory-intelligence hints: `extraction_score`, `novelty_score`,
+`recommended_action`, and `merge_target`. These are review and sorting signals
+only. They do not authorize promotion, rewrite existing memory, or bypass the
+normal candidate gates.
+
+Reflection can also write `consolidation_suggestion` candidates for similar
+active memories. The suggested candidate includes source memory IDs and a short
+review summary, leaving the originals untouched until a human or explicit
+policy decides what to do next.
+
 Add `--automation-write-workspace` when generated schedules should also pass
 `--write-workspace` to the scheduled cycle. This writes
 `reports/automation/cycle-latest.json` and `reports/automation/cycle-latest.md`

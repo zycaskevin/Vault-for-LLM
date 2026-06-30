@@ -13,7 +13,7 @@ from typing import Optional
 
 from .db import VaultDB
 from .access_policy import ReadPolicy, filter_readable_memories, normalize_read_policy
-from .temporal import filter_temporal_rows
+from .temporal import filter_temporal_rows, rerank_temporal_rows
 from .search_graph import apply_graph_expand
 from .embed import (
     create_embedding_provider,
@@ -802,6 +802,13 @@ class VaultSearch(SearchQueryMixin, SearchCacheMixin, SearchResultMixin, SearchS
         # Reranker
         if use_rerank and results:
             results = self._rerank_with_strategy(results, query=query)
+
+        results = rerank_temporal_rows(
+            results,
+            include_expired=include_expired_temporal,
+            include_future=include_future_temporal,
+            as_of=temporal_as_of,
+        )
 
         # 提取 best_claim
         for r in results:

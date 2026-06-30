@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.16.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.17.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -84,7 +84,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.7.16"
+pip install "vault-for-llm[mcp]==0.7.17"
 
 vault setup-agent
 ```
@@ -152,7 +152,7 @@ to verify the candidate-first propose path.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.7.16"
+pip install "vault-for-llm[mcp]==0.7.17"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -289,9 +289,11 @@ vault search "office location" --exclude-expired
 ```
 
 Search results include `temporal_state` when fact-window metadata exists, so an
-agent can tell current facts from historical facts before it answers. By default
-Vault keeps past facts searchable for audit; use `--exclude-expired` when a task
-needs only currently valid facts.
+agent can tell current facts from historical facts before it answers. Search
+ranking gives current facts a small deterministic boost and lowers past/future
+facts, so historical memory stays auditable without casually outranking current
+truth. By default Vault keeps past facts searchable for audit; use
+`--exclude-expired` when a task needs only currently valid facts.
 
 Short-lived memories with `expires_at` can be moved to `status: archived`
 instead of deleted:
@@ -351,6 +353,19 @@ vault memory reflection --write-candidates
 automation from one command. It can propose consolidation, archive, or
 cold-store review items, but it does not hard-delete or silently promote active
 knowledge.
+
+Pipeline and reflection now include memory-intelligence hints:
+
+- `extraction_score`: why the transcript line was worth considering.
+- `novelty_score`: how different it looks from existing knowledge.
+- `recommended_action`: create a candidate, merge into existing memory, or
+  review an existing candidate.
+- `merge_target`: the closest active memory or pending candidate when one is
+  found.
+
+Reflection can also write `consolidation_suggestion` candidates for similar
+active memories. These candidates ask for review before any merge, archive, or
+rewrite happens.
 
 `vault capture discover` and `vault capture session` are the ingestion side of
 that loop. Discovery finds likely transcript files without reading their
@@ -571,7 +586,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.7.16"
+pip install "vault-for-llm[supabase]==0.7.17"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

@@ -7,6 +7,7 @@ from pathlib import Path
 from vault.db import VaultDB
 from vault.memory_pipeline import run_memory_pipeline
 from vault.reflection import run_reflection
+from vault.search import VaultSearch
 from vault.temporal import list_temporal_memories, temporal_summary
 
 
@@ -76,6 +77,35 @@ def test_memory_pipeline_previews_then_writes_candidates(tmp_path):
     assert all(row["source"] == "session_capture" for row in rows)
 
 
+def test_memory_pipeline_marks_merge_targets_for_existing_memory(tmp_path):
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    (sessions / "codex-session.md").write_text(
+        "Decision: Use candidate memory first because automation should not write active knowledge directly.",
+        encoding="utf-8",
+    )
+    with VaultDB(tmp_path / "vault.db") as db:
+        db.add_knowledge(
+            "Candidate-first automation",
+            "Decision: Use candidate memory first because automation should not write active knowledge directly.",
+            category="decision",
+        )
+
+    preview = run_memory_pipeline(
+        tmp_path,
+        search_dirs=["sessions"],
+        source_system="codex",
+        transcript_limit=1,
+        write_candidates=False,
+    )
+
+    candidates = preview["captures"][0]["candidates"]
+    assert candidates
+    assert candidates[0]["recommended_action"] == "merge_into_existing"
+    assert candidates[0]["novelty_score"] < 0.4
+    assert candidates[0]["merge_target"]["kind"] == "knowledge"
+
+
 def test_memory_pipeline_writes_safe_latest_report(tmp_path):
     sessions = tmp_path / "sessions"
     sessions.mkdir()
@@ -121,6 +151,56 @@ def test_reflection_run_is_report_first_and_does_not_promote(tmp_path):
     assert payload["safety"]["report_first"] is True
     assert payload["safety"]["hard_delete"] is False
     assert active_count == 2
+
+
+def test_reflection_writes_consolidation_candidates(tmp_path):
+    with VaultDB(tmp_path / "vault.db") as db:
+        db.add_knowledge(
+            "Deploy pitfall",
+            "Deploy failed because environment variables were missing; fix by checking the release checklist.",
+            category="error",
+        )
+        db.add_knowledge(
+            "Deploy pitfall duplicate",
+            "Deployment failure happened because environment variables were missing; fix by checking the release checklist.",
+            category="error",
+        )
+
+    payload = run_reflection(tmp_path, limit=10, write_candidates=True, apply=False)
+    with VaultDB(tmp_path / "vault.db") as db:
+        rows = db.list_memory_candidates(status="candidate", limit=10)
+
+    assert payload["consolidation"]["suggestion_count"] >= 1
+    assert payload["consolidation"]["written_count"] >= 1
+    assert any(row["memory_type"] == "consolidation_suggestion" for row in rows)
+
+
+def test_search_temporal_ranking_prefers_current_fact(tmp_path):
+    now = datetime.now(timezone.utc)
+    past = (now - timedelta(days=2)).isoformat()
+    with VaultDB(tmp_path / "vault.db") as db:
+        old_id = db.add_knowledge(
+            "Office location",
+            "The office location is City A.",
+            valid_until=past,
+        )
+        current_id = db.add_knowledge(
+            "Office location",
+            "The office location is City B.",
+            valid_from=past,
+            supersedes_id=old_id,
+        )
+        results = VaultSearch(db, enable_query_expansion=False).search(
+            "office location",
+            mode="keyword",
+            limit=5,
+            use_rerank=False,
+            temporal_as_of=now.isoformat(),
+        )
+
+    assert results[0]["id"] == current_id
+    assert results[0]["temporal_state"] == "current"
+    assert any(row["id"] == old_id and row["temporal_state"] == "past" for row in results)
 
 
 def test_cli_memory_group_smoke(tmp_path):

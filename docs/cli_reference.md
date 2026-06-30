@@ -83,7 +83,7 @@ changed notes without duplicating unchanged ones.
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent register --agent codex --project ~/Vaults/my-project --skills review-helper@1.0.0,task-helper` | Register which local skills this Agent expects, so update status can make skill usage visible |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.7.16` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.7.17` | Show the same registry/update status without contacting the network |
 | `vault agent doctor --json` | Run the same shared update-distribution health check through the Agent registry namespace |
 | `vault agent startup-doctor --template-dir ./agent-install --json` | Check whether generated startup contracts include the current fleet-aware handoff order |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md` | Preview applying the generated Codex startup template into a runtime instruction file |

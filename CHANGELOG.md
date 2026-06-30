@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.7.17] - 2026-06-30
+
+### Added
+
+- Added memory-intelligence annotations to automatic session capture, including `extraction_score`, `novelty_score`, `recommended_action`, and `merge_target` so agents can distinguish new memory from updates to existing memory.
+- Added reflection consolidation suggestions that cluster similar active memories and write reviewable `consolidation_suggestion` candidates without rewriting active knowledge.
+- Added temporal search ranking so current facts are preferred, historical facts remain auditable but slightly lower ranked, and future facts are visible only with a lower truth priority.
+- Added a decision record for the Memory Intelligence loop: candidate scoring, time-aware recall, and report-first consolidation.
+
+### Safety
+
+- Memory-intelligence outputs remain candidate-first and deterministic. They do not auto-promote, hard-delete, rewrite active knowledge, or bypass governance.
+
 ## [0.7.16] - 2026-06-30
 
 ### Added

@@ -147,6 +147,53 @@ def filter_temporal_rows(
     return out
 
 
+def rerank_temporal_rows(
+    rows: list[dict[str, Any]],
+    *,
+    include_expired: bool = True,
+    include_future: bool = True,
+    as_of: str = "",
+) -> list[dict[str, Any]]:
+    """Apply a small, explainable temporal preference to search rows.
+
+    Current facts should win ties against past facts. Historical facts remain
+    auditable, but should not outrank current facts unless their textual/search
+    relevance is clearly stronger. Future facts stay visible only when callers
+    include them, and receive the strongest penalty because they are plans, not
+    current truth.
+    """
+    filtered = filter_temporal_rows(
+        rows,
+        include_expired=include_expired,
+        include_future=include_future,
+        as_of=as_of,
+    )
+    if not filtered:
+        return []
+    weights = {
+        "current": 1.08,
+        "timeless": 1.0,
+        "past": 0.92,
+        "future": 0.85,
+    }
+    for row in filtered:
+        state = str(row.get("temporal_state") or "timeless")
+        weight = weights.get(state, 1.0)
+        base = _float_score(row.get("_score"), default=0.0)
+        row["_temporal_rank_weight"] = weight
+        row["_temporal_adjusted_score"] = round(base * weight, 6)
+        row["_score"] = base * weight
+    filtered.sort(
+        key=lambda row: (
+            _float_score(row.get("_score"), default=0.0),
+            _temporal_priority(str(row.get("temporal_state") or "timeless")),
+            str(row.get("updated_at") or ""),
+        ),
+        reverse=True,
+    )
+    return filtered
+
+
 def _iso_text(value: Any) -> str:
     if hasattr(value, "isoformat"):
         return value.isoformat()
@@ -183,3 +230,14 @@ def _positive_int_or_none(value: Any) -> int | None:
     except (TypeError, ValueError):
         return None
     return number if number > 0 else None
+
+
+def _temporal_priority(state: str) -> int:
+    return {"current": 3, "timeless": 2, "past": 1, "future": 0}.get(state, 2)
+
+
+def _float_score(value: Any, *, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default

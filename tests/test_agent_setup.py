@@ -298,6 +298,10 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert any(step["name"] == "check_update_distribution_when_needed" for step in adapter_contract["startup_sequence"])
     assert adapter_contract["safety"]["auto_upgrade"] is False
     assert adapter_contract["safety"]["candidate_first_memory"] is True
+    assert adapter_readme.count("vault guide") >= 1
+    assert runtime_playbook["agent_first_entrypoints"]["human"] == "vault guide"
+    assert runtime_playbook["startup_rule"][0].startswith("Keep the human-facing surface small")
+    assert "Humans choose intent; agents choose commands" in runtime_playbook_readme
     assert "update-status -> automation handoff -> search/read/propose" in adapter_readme
     assert "fleet_health_content" in adapter_readme
     assert "pipeline_receipt_content" in adapter_readme
@@ -306,6 +310,7 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert "MCP doctor" in adapter_readme
     assert "no auto-upgrade" in adapter_readme
     assert "doctor=true" in codex_template
+    assert "vault guide --mode agent --json" in codex_template
     assert "fleet_health_content" in codex_template
     assert "pipeline_receipt_content" in codex_template
     assert "review_summary_content" in codex_template
@@ -328,6 +333,7 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert runtime_playbook["safety"]["auto_upgrade"] is False
     assert sorted(runtime_playbook["runtime_targets"]) == ["claude_code", "codex", "hermes", "openclaw"]
     assert "Runtime Update Playbook" in runtime_playbook_readme
+    assert "vault guide --mode maintenance --json" in runtime_playbook_readme
     assert "fleet_health_content" in runtime_playbook_readme
     assert "pipeline_receipt_content" in runtime_playbook_readme
     assert "review_summary_content" in runtime_playbook_readme
@@ -816,6 +822,10 @@ def test_agent_startup_doctor_fails_old_handoff_contract(tmp_path, capsys):
     install_dir = project / "agent-install"
     mcp_path = install_dir / "mcp-startup.json"
     mcp_json = json.loads(mcp_path.read_text(encoding="utf-8"))
+    assert mcp_json["agent_first_entrypoints"]["agent"] == "vault guide --mode agent --json"
+    mcp_readme = (install_dir / "README-mcp-startup.md").read_text(encoding="utf-8")
+    assert "Humans choose intent; agents choose commands" in mcp_readme
+    assert "vault guide" in mcp_readme
     mcp_json["startup_sequence"][1].pop("result_contract", None)
     mcp_path.write_text(json.dumps(mcp_json), encoding="utf-8")
     codex_path = install_dir / "codex-startup.md"

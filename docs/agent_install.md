@@ -127,6 +127,11 @@ backs up existing target files before changing them.
 The installer also writes `agent-install/mcp-startup.json` and
 `agent-install/README-mcp-startup.md`, which define the MCP startup sequence:
 `vault_update_status` -> `vault_automation_handoff` -> search/read/propose.
+Those files also include the compact agent-first entrypoints:
+`vault guide`, `vault guide --mode agent --json`, and
+`vault guide --mode maintenance --json`. Humans should start from `vault guide`
+instead of the full CLI reference; agents should use the smallest MCP profile
+that can do the job.
 When the handoff payload includes `fleet_health_content` or
 `pipeline_receipt_content`, generated startup guides tell agents to read those
 startup prefaces before the selected cycle/inbox `content`.
@@ -361,6 +366,12 @@ Use the smallest tool profile that can do the job:
 | `remote` | Remote read helpers. |
 | `maintenance` | Curation, Obsidian import, and memory upkeep. |
 | `full` | Trusted local operator needs everything. |
+
+The same profile map is available locally:
+
+```bash
+vault guide --mode agent
+```
 
 Daily setup:
 

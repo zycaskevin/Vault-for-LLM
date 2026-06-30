@@ -50,6 +50,31 @@ def test_skill_helper_add_update_and_sync(tmp_path):
         plan = db.skill_upgrade_plan(installed={"review-helper": "1.0.0"})
         assert plan["upgrade_count"] == 1
         assert plan["skills"][0]["status"] == "upgrade_available"
+        assert plan["skills"][0]["recommended_action"] == "upgrade"
+    finally:
+        db.close()
+
+
+def test_skill_upgrade_plan_detects_hash_drift_and_local_newer(tmp_path):
+    db = VaultDB(tmp_path / "vault.db").connect()
+    try:
+        db.add_skill(name="drift-helper", version="1.0.0", content_raw="Registry content")
+        db.add_skill(name="local-helper", version="1.0.0", content_raw="Registry content")
+
+        plan = db.skill_upgrade_plan(
+            installed={
+                "drift-helper": {"version": "1.0.0", "content_hash": "differenthash"},
+                "local-helper": {"version": "2.0.0", "content_hash": "localhash"},
+            }
+        )
+        by_name = {row["name"]: row for row in plan["skills"]}
+        assert by_name["drift-helper"]["status"] == "drift"
+        assert by_name["drift-helper"]["recommended_action"] == "inspect_diff"
+        assert by_name["local-helper"]["status"] == "local_newer"
+        assert by_name["local-helper"]["recommended_action"] == "publish_or_keep_local"
+        assert plan["status_counts"]["drift"] == 1
+        assert plan["status_counts"]["local_newer"] == 1
+        assert "operator-approved sync step" in plan["next_action"]
     finally:
         db.close()
 

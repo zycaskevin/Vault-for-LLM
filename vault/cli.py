@@ -160,6 +160,12 @@ def main(argv: list[str] | None = None):
     # guide
     p = sub.add_parser("guide", help="顯示人類/Agent 友善的最小入口指南")
     p.add_argument("--mode", choices=["human", "agent", "maintenance", "all"], default="human")
+    p.add_argument(
+        "--intent",
+        choices=["all", "install", "daily", "remember", "task", "review", "skills", "maintenance"],
+        default="all",
+        help="依使用意圖縮小指南內容",
+    )
     p.add_argument("--json", action="store_true", help="輸出 JSON")
     p.add_argument("--pretty", action="store_true", help="輸出 pretty JSON")
 
@@ -768,6 +774,8 @@ def main(argv: list[str] | None = None):
 
     sp = skill_sub.add_parser("upgrade-plan", help="列出技能升級計畫")
     sp.add_argument("--installed", default="", help="已安裝版本 JSON，例如 '{\"review-helper\":\"1.0.0\"}'")
+    sp.add_argument("--installed-file", default="", help="已安裝 Skill manifest JSON 檔；支援 version/content_hash")
+    sp.add_argument("--outdated-only", action="store_true", help="只顯示需要處理的已安裝 Skill")
     sp.add_argument("--json", action="store_true", help="輸出 JSON")
     sp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 

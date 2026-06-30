@@ -92,7 +92,7 @@ MCP_SKILL_TOOLS = [
             "properties": {
                 "installed": {
                     "type": "object",
-                    "description": "Map of skill name to installed version.",
+                    "description": "Map of skill name to installed version, or to {version, content_hash}.",
                     "default": {},
                 },
             },
@@ -250,10 +250,7 @@ def handle_skill_tool_call(name: str, arguments: dict[str, Any], *, db_path: str
 
         if name == "vault_skill_upgrade_plan":
             installed = arguments.get("installed")
-            installed_map = {
-                str(key): str(value)
-                for key, value in (installed or {}).items()
-            } if isinstance(installed, dict) else {}
+            installed_map = {str(key): value for key, value in (installed or {}).items()} if isinstance(installed, dict) else {}
             return _json_result(db.skill_upgrade_plan(installed=installed_map))
 
         if name == "vault_skill_sync_status":

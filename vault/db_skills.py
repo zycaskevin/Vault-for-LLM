@@ -329,33 +329,62 @@ def mark_skill_synced(conn: sqlite3.Connection, name: str) -> None:
     conn.commit()
 
 
-def skill_upgrade_plan(conn: sqlite3.Connection, *, installed: dict[str, str] | None = None) -> dict:
-    """Compare installed skill versions to the registry's latest versions."""
+def skill_upgrade_plan(conn: sqlite3.Connection, *, installed: dict[str, Any] | None = None) -> dict:
+    """Compare installed Skill versions and optional hashes to registry latest."""
     installed = installed or {}
     rows = list_skills(conn, limit=1000)
     items = []
     for row in rows:
         name = str(row.get("name") or "")
         latest = str(row.get("version") or "")
-        current = str(installed.get(name) or "")
+        installed_meta = _normalize_installed_skill(installed.get(name))
+        current = installed_meta["version"]
+        installed_hash = installed_meta["content_hash"]
+        latest_hash = str(row.get("content_hash") or "")
         upgrade_available = bool(current and _version_key(latest) > _version_key(current))
+        local_newer = bool(current and _version_key(current) > _version_key(latest))
+        drift = bool(current and current == latest and installed_hash and latest_hash and installed_hash != latest_hash)
+        if not current:
+            status = "not_installed"
+            action = "install"
+        elif upgrade_available:
+            status = "upgrade_available"
+            action = "upgrade"
+        elif local_newer:
+            status = "local_newer"
+            action = "publish_or_keep_local"
+        elif drift:
+            status = "drift"
+            action = "inspect_diff"
+        else:
+            status = "current"
+            action = "none"
         items.append(
             {
                 "name": name,
                 "current_version": current,
                 "latest_version": latest,
+                "installed_hash": installed_hash,
+                "latest_hash": latest_hash,
                 "upgrade_available": upgrade_available,
-                "status": "not_installed" if not current else ("upgrade_available" if upgrade_available else "current"),
+                "status": status,
+                "recommended_action": action,
                 "category": row.get("category", ""),
                 "agent_source": row.get("agent_source", ""),
                 "trust": row.get("trust", 0.0),
                 "description": row.get("description", ""),
             }
         )
+    counts: dict[str, int] = {}
+    for item in items:
+        status = str(item.get("status") or "unknown")
+        counts[status] = counts.get(status, 0) + 1
     return {
         "ok": True,
         "skill_count": len(items),
         "upgrade_count": sum(1 for item in items if item["upgrade_available"]),
+        "status_counts": counts,
+        "next_action": "Review upgrade_available and drift items; apply runtime Skill updates only through an explicit operator-approved sync step.",
         "skills": items,
     }
 
@@ -363,6 +392,20 @@ def skill_upgrade_plan(conn: sqlite3.Connection, *, installed: dict[str, str] | 
 def _version_key(value: Any) -> tuple[int, ...]:
     parts = re.findall(r"\d+", str(value or ""))
     return tuple(int(part) for part in parts[:4]) or (0,)
+
+
+def _normalize_installed_skill(value: Any) -> dict[str, str]:
+    """Normalize installed Skill manifest entries.
+
+    Accepts the old compact form, ``{"name": "1.0.0"}``, and the newer form,
+    ``{"name": {"version": "1.0.0", "content_hash": "..."}}``.
+    """
+    if isinstance(value, dict):
+        return {
+            "version": str(value.get("version") or value.get("installed_version") or ""),
+            "content_hash": str(value.get("content_hash") or value.get("hash") or ""),
+        }
+    return {"version": str(value or ""), "content_hash": ""}
 
 
 def _get_skill_revision(conn: sqlite3.Connection, name: str, version: str) -> dict | None:

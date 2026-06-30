@@ -7,6 +7,14 @@ Use this rule:
 
 > Humans choose intent. Agents choose commands.
 
+Use `vault guide --intent <intent>` when you want an even smaller map:
+
+```bash
+vault guide --intent install
+vault guide --intent daily
+vault guide --intent skills
+```
+
 ## Human Surface
 
 Most people only need these entrypoints:
@@ -62,10 +70,11 @@ the human quickstart keeps the product usable.
 
 1. Ask an agent to install Vault with `vault setup-agent`.
 2. Use `vault guide` when you want a compact map.
-3. Let daily agents use `core` MCP.
-4. Let review agents use `review` MCP only when they need candidate or task
+3. Use `vault guide --intent skills` when you only need Skill upgrade review.
+4. Let daily agents use `core` MCP.
+5. Let review agents use `review` MCP only when they need candidate or task
    review.
-5. Reserve `maintenance` for scheduled jobs or explicit operator-led cleanup.
+6. Reserve `maintenance` for scheduled jobs or explicit operator-led cleanup.
 
 ## Non-Goals
 

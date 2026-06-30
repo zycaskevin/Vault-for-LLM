@@ -604,11 +604,23 @@ def cmd_skill_upgrade_plan(args):
     from vault.db import VaultDB
 
     installed = {}
+    if getattr(args, "installed_file", ""):
+        installed_path = Path(args.installed_file)
+        if not installed_path.exists():
+            print(f"❌ --installed-file 不存在: {installed_path}")
+            return
+        try:
+            loaded_file = json.loads(installed_path.read_text(encoding="utf-8"))
+            if isinstance(loaded_file, dict):
+                installed = loaded_file
+        except json.JSONDecodeError as exc:
+            print(f"❌ --installed-file 必須是 JSON object: {exc}")
+            return
     if getattr(args, "installed", ""):
         try:
             loaded = json.loads(args.installed)
             if isinstance(loaded, dict):
-                installed = {str(k): str(v) for k, v in loaded.items()}
+                installed.update(loaded)
         except json.JSONDecodeError as exc:
             print(f"❌ --installed 必須是 JSON object: {exc}")
             return
@@ -619,8 +631,19 @@ def cmd_skill_upgrade_plan(args):
         if getattr(args, "json", False) or getattr(args, "pretty", False):
             print(json.dumps(payload, ensure_ascii=False, indent=2 if getattr(args, "pretty", False) else None))
             return
+        counts = payload.get("status_counts", {})
         print(f"🛠️  Skill upgrade plan: {payload['upgrade_count']} upgrades / {payload['skill_count']} skills")
+        if counts:
+            summary = ", ".join(f"{key}={counts[key]}" for key in sorted(counts))
+            print(f"   狀態: {summary}")
         for row in payload["skills"]:
-            print(f"  - {row['name']}: {row['current_version'] or '-'} → {row['latest_version']} ({row['status']})")
+            if getattr(args, "outdated_only", False) and row["status"] in {"current", "not_installed"}:
+                continue
+            print(
+                f"  - {row['name']}: {row['current_version'] or '-'} → {row['latest_version']} "
+                f"({row['status']}; action={row['recommended_action']})"
+            )
+        if payload.get("next_action"):
+            print(f"Next: {payload['next_action']}")
     finally:
         db.close()

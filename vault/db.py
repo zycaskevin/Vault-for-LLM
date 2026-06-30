@@ -1147,7 +1147,7 @@ class VaultDB:
         """比較兩個技能版本。"""
         return db_skills_diff_skill_versions(self.conn, name, from_version, to_version)
 
-    def skill_upgrade_plan(self, installed: dict[str, str] | None = None) -> dict:
+    def skill_upgrade_plan(self, installed: dict[str, Any] | None = None) -> dict:
         """回傳本機技能升級計畫。"""
         return db_skills_skill_upgrade_plan(self.conn, installed=installed)
 

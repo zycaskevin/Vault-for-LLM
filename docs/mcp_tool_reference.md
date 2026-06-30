@@ -359,13 +359,20 @@ Compare the caller's installed skill versions with the local registry.
 ```json
 {
   "installed": {
-    "review-helper": "1.0.0"
+    "review-helper": {
+      "version": "1.0.0",
+      "content_hash": "abc123"
+    }
   }
 }
 ```
 
 Agent rule: use this as an advisory checklist. Do not overwrite an agent's
 runtime skill files without explicit user or operator approval.
+
+Possible statuses are `not_installed`, `current`, `upgrade_available`, `drift`,
+and `local_newer`. `drift` means the installed manifest reports the same
+version but a different content hash.
 
 ### `vault_skill_sync_status`
 

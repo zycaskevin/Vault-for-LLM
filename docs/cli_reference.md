@@ -245,6 +245,7 @@ an agent's runtime.
 | `vault skill versions review-helper` | List known versions without raw Skill content |
 | `vault skill diff review-helper --from-version 1.0.0 --to-version 1.1.0` | Compare compact metadata/content hashes between two versions |
 | `vault skill upgrade-plan --installed '{"review-helper":"1.0.0"}' --json` | Compare caller-installed skill versions with the registry latest versions |
+| `vault skill upgrade-plan --installed-file installed-skills.json --outdated-only` | Compare an installed Skill manifest and show only upgrade/drift/local-newer items |
 | `vault skill pull review-helper` | Write the latest Skill content into the local skills cache |
 
 MCP exposes Skill tools outside `core`; this keeps daily agent startup small.
@@ -259,6 +260,21 @@ and `full` can also use permission-gated registry writes:
 These MCP tools do not install, overwrite, or delete runtime Skill files. Agent
 runtime updates still require an explicit user/operator-approved installer or
 adapter step.
+
+Installed manifests may use either compact versions:
+
+```json
+{"review-helper": "1.0.0"}
+```
+
+or version plus content hash:
+
+```json
+{"review-helper": {"version": "1.0.0", "content_hash": "abc123"}}
+```
+
+The richer form lets Vault distinguish normal upgrades from same-version
+content drift.
 
 ## Quality And Curation
 

@@ -60,6 +60,14 @@ def test_mcp_skill_registry_tools_are_profiled_and_bounded(tmp_path):
     assert plan["upgrade_count"] == 1
     assert plan["skills"][0]["latest_version"] == "1.1.0"
 
+    drift_plan = _payload(handle_tool_call(
+        "vault_skill_upgrade_plan",
+        {"installed": {"review-helper": {"version": "1.1.0", "content_hash": "differenthash"}}},
+    ))
+    assert drift_plan["upgrade_count"] == 0
+    assert drift_plan["skills"][0]["status"] == "drift"
+    assert drift_plan["skills"][0]["recommended_action"] == "inspect_diff"
+
 
 def test_mcp_skill_push_requires_explicit_permission_and_privacy_gate(tmp_path):
     project = tmp_path / "project"

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -55,16 +57,19 @@ def cmd_add(args):
 
     project_dir = find_project_dir()
 
-    # 如果指定 --file，讀取檔案內容
-    content = args.content
-    if args.file:
-        content = Path(args.file).read_text(encoding="utf-8")
-
-    # 如果只有標題沒內容，開編輯器或 stdin
-    if not content:
+    # 如果指定 --file，讀取檔案內容。省略 --content 才讀 stdin；
+    # 明確傳入 --content "" 時要快速失敗，避免 n8n/agent subprocess 卡住。
+    content = _arg_value(args, "content", None)
+    file_arg = _arg_value(args, "file", None)
+    if file_arg:
+        content = Path(file_arg).read_text(encoding="utf-8")
+    elif content is None:
         print(f"標題: {args.title}")
         print("請輸入內容（Ctrl+D 結束）:")
         content = sys.stdin.read()
+    if content == "":
+        print("error: content is empty; pass non-empty --content, --file, or stdin input", file=sys.stderr)
+        raise SystemExit(2)
 
     _enforce_cli_privacy(
         content,
@@ -100,7 +105,7 @@ def cmd_add(args):
         print(f"✅ 新增知識 ID={kid}")
 
     # 也寫到 raw/
-    raw_file = project_dir / "raw" / f"{args.title.replace(' ', '_').replace('/', '-')}.md"
+    raw_file = project_dir / "raw" / _safe_raw_filename(args.title)
     fm = {
         "title": args.title,
         "layer": args.layer or "L3",
@@ -109,11 +114,25 @@ def cmd_add(args):
         "trust": args.trust or 0.5,
         **governance,
     }
-    raw_file.write_text(
-        f"---\n{json.dumps(fm, ensure_ascii=False, indent=2)}\n---\n\n{content}\n",
-        encoding="utf-8",
-    )
-    print(f"✅ 同步寫入 raw/{raw_file.name}")
+    try:
+        raw_file.write_text(
+            f"---\n{json.dumps(fm, ensure_ascii=False, indent=2)}\n---\n\n{content}\n",
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        print(f"warning: active knowledge was added, but raw sync failed: {exc}", file=sys.stderr)
+    else:
+        print(f"✅ 同步寫入 raw/{raw_file.name}")
+
+
+def _safe_raw_filename(title: object, *, max_stem_chars: int = 80) -> str:
+    stem = re.sub(r"[^\w.-]+", "_", str(title or "untitled").strip(), flags=re.UNICODE)
+    stem = re.sub(r"_+", "_", stem).strip("._-") or "untitled"
+    if len(stem) > max_stem_chars:
+        digest = hashlib.sha256(str(title).encode("utf-8")).hexdigest()[:12]
+        keep = max(1, max_stem_chars - len(digest) - 1)
+        stem = f"{stem[:keep].rstrip('._-')}-{digest}"
+    return f"{stem}.md"
 
 
 def cmd_compile(args):

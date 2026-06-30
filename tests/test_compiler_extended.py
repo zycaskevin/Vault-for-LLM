@@ -531,10 +531,15 @@ class TestClassifyContentExtended:
     def test_classify_content_general(self):
         """Test general classification for uncategorized content."""
         from vault.compiler import classify_content
-        # Use content with no matching keywords and non-empty source
-        # (empty source causes '' in cat to be True, giving bonus to all categories)
         content = "今天天氣很好，適合出去散步。"
         cat = classify_content(content, {"source": "personal"})
+        assert cat == "general"
+
+    def test_classify_content_general_with_empty_source_metadata(self):
+        """Empty source metadata must not bonus-match every category."""
+        from vault.compiler import classify_content
+        content = "今天天氣很好，適合出去散步。"
+        cat = classify_content(content, {})
         assert cat == "general"
 
     def test_classify_content_source_bonus(self):

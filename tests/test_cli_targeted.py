@@ -82,6 +82,68 @@ class TestCmdInit:
 
 class TestCmdAdd:
     """Test cmd_add edge cases."""
+
+    def test_add_explicit_empty_content_fails_without_reading_stdin(self, initialized_project, monkeypatch, capsys):
+        """Explicit --content "" should fail fast in non-interactive agent runs."""
+        from vault.cli import cmd_add
+
+        class ExplodingStdin:
+            def read(self):
+                raise AssertionError("stdin should not be read for explicit empty content")
+
+        monkeypatch.chdir(initialized_project)
+        monkeypatch.setattr(sys, "stdin", ExplodingStdin())
+
+        args = MagicMock()
+        args.title = "Empty Content Entry"
+        args.content = ""
+        args.category = "test"
+        args.tags = ""
+        args.layer = "L3"
+        args.trust = 0.5
+        args.source = "cli"
+        args.source_ref = None
+        args.file = None
+        args.edit = False
+
+        with pytest.raises(SystemExit) as exc:
+            cmd_add(args)
+
+        captured = capsys.readouterr()
+        assert exc.value.code == 2
+        assert "content is empty" in captured.err
+
+    def test_add_long_title_uses_bounded_raw_filename(self, initialized_project, monkeypatch):
+        """Long titles should not surface OS-level filename errors."""
+        from vault.cli import cmd_add
+
+        monkeypatch.chdir(initialized_project)
+        title = "A" * 10000
+
+        args = MagicMock()
+        args.title = title
+        args.content = "Long title content should still be stored safely."
+        args.category = "test"
+        args.tags = ""
+        args.layer = "L3"
+        args.trust = 0.5
+        args.source = "cli"
+        args.source_ref = None
+        args.file = None
+        args.edit = False
+
+        cmd_add(args)
+
+        from vault.db import VaultDB
+        db = VaultDB(str(initialized_project / "vault.db"))
+        db.connect()
+        entries = db.list_knowledge()
+        db.close()
+
+        assert any(entry["title"] == title for entry in entries)
+        raw_files = list((initialized_project / "raw").glob("*.md"))
+        assert raw_files
+        assert max(len(path.name) for path in raw_files) < 120
     
     def test_add_with_stdin_content(self, initialized_project, monkeypatch, capsys):
         """Test add when content comes from stdin."""
@@ -529,6 +591,33 @@ class TestCmdDoctor:
 
 class TestCmdRemember:
     """Test cmd_remember command."""
+
+    def test_remember_explicit_empty_content_fails_without_reading_stdin(self, initialized_project, monkeypatch, capsys):
+        """Explicit --content "" should fail fast for candidate-first writes too."""
+        from vault.cli import cmd_remember
+
+        class ExplodingStdin:
+            def read(self):
+                raise AssertionError("stdin should not be read for explicit empty content")
+
+        monkeypatch.chdir(initialized_project)
+        monkeypatch.setattr(sys, "stdin", ExplodingStdin())
+        args = MagicMock()
+        args.content = ""
+        args.title = "Empty Candidate"
+        args.category = "general"
+        args.tags = ""
+        args.source = "test"
+        args.file = None
+        args.reason = "testing empty guard"
+        args.source_ref = None
+
+        with pytest.raises(SystemExit) as exc:
+            cmd_remember(args)
+
+        captured = capsys.readouterr()
+        assert exc.value.code == 2
+        assert "content is empty" in captured.err
     
     def test_remember_basic(self, initialized_project, monkeypatch, capsys):
         """Test remember basic functionality."""

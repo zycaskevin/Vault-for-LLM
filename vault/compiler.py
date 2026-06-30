@@ -362,8 +362,9 @@ def classify_content(content: str, metadata: dict) -> str:
     best_score = 0
     for cat, keywords in patterns.items():
         score = sum(1 for kw in keywords if kw in text)
-        # 來源加權
-        if source in cat:
+        # 來源加權。空 source 不應該匹配所有分類；分類名稱出現在
+        # source path/tag 時才加權，例如 source="error-log"。
+        if source and cat in source:
             score += 2
         if score > best_score:
             best_score = score

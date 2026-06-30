@@ -178,7 +178,7 @@ def main(argv: list[str] | None = None):
 
     p = sub.add_parser("add", help="新增知識")
     p.add_argument("title", help="標題")
-    p.add_argument("--content", "-c", default="", help="內容")
+    p.add_argument("--content", "-c", default=None, help="內容；省略時讀 stdin")
     p.add_argument("--file", "-f", help="從檔案讀取內容")
     p.add_argument("--layer", choices=["L0", "L1", "L2", "L3"], default="L3")
     p.add_argument("--category", default="general")
@@ -191,7 +191,7 @@ def main(argv: list[str] | None = None):
     # remember/promote — safe memory curator workflow
     p = sub.add_parser("remember", help="提出記憶候選（預設不寫入 active knowledge）")
     p.add_argument("title", help="記憶標題")
-    p.add_argument("--content", "-c", default="", help="記憶內容；省略時讀 stdin")
+    p.add_argument("--content", "-c", default=None, help="記憶內容；省略時讀 stdin")
     p.add_argument("--file", "-f", help="從檔案讀取記憶內容")
     p.add_argument("--reason", required=True, help="為什麼值得記住")
     p.add_argument("--mode", choices=["candidate", "promote_if_safe"], default="candidate")

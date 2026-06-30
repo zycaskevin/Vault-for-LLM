@@ -19,11 +19,15 @@ def cmd_remember(args):
     from vault.memory import propose_memory
 
     project_dir = find_project_dir()
-    content = args.content or ""
-    if args.file:
-        content = Path(args.file).read_text(encoding="utf-8")
-    if not content:
+    content = _arg_value(args, "content", None)
+    file_arg = _arg_value(args, "file", None)
+    if file_arg:
+        content = Path(file_arg).read_text(encoding="utf-8")
+    elif content is None:
         content = sys.stdin.read()
+    if content == "":
+        print("error: content is empty; pass non-empty --content, --file, or stdin input", file=sys.stderr)
+        raise SystemExit(2)
     try:
         with VaultDB(project_dir / "vault.db") as db:
             payload = propose_memory(

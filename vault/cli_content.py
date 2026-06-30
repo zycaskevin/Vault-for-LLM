@@ -369,8 +369,14 @@ def cmd_skill(args):
         cmd_skill_list(args)
     elif args.skill_action == "stats":
         cmd_skill_stats(args)
+    elif args.skill_action == "versions":
+        cmd_skill_versions(args)
+    elif args.skill_action == "diff":
+        cmd_skill_diff(args)
+    elif args.skill_action == "upgrade-plan":
+        cmd_skill_upgrade_plan(args)
     else:
-        print("用法: vault skill {push|search|pull|list|stats}")
+        print("用法: vault skill {push|search|pull|list|stats|versions|diff|upgrade-plan}")
 
 
 def cmd_skill_push(args):
@@ -404,6 +410,7 @@ def cmd_skill_push(args):
     if not name:
         name = skill_path.stem if skill_path else "unnamed-skill"
 
+    existed_before = db.get_skill(name) is not None
     kid = db.add_skill(
         name=name,
         content_raw=content,
@@ -414,24 +421,13 @@ def cmd_skill_push(args):
         dependencies=args.dependencies or "",
         trust=args.trust or 0.5,
         description=args.description or "",
+        force=bool(getattr(args, "force", False)),
     )
 
     if kid == -1:
-        if getattr(args, 'force', False):
-            db.update_skill(
-                name,
-                version=args.version or "1.0.0",
-                content_raw=content,
-                agent_source=args.agent or "vault-cli",
-                category=args.category or "general",
-                capabilities=args.capabilities or "",
-                dependencies=args.dependencies or "",
-                trust=args.trust or 0.5,
-                description=args.description or "",
-            )
-            print(f"✅ 技能 '{name}' 已強制覆蓋")
-        else:
-            print(f"⚠️ 技能 '{name}' 已存在。用 --force 覆蓋或先刪除。")
+        print(f"⚠️ 技能 '{name}' 已存在，且版本未更新。用較新的 --version 或 --force 覆蓋。")
+    elif existed_before and getattr(args, "force", False):
+        print(f"✅ 技能 '{name}' 已強制覆蓋")
     else:
         print(f"✅ 技能 '{name}' 已註冊 (ID={kid})")
 
@@ -558,3 +554,73 @@ def cmd_skill_stats(args):
     print(f"   DB 大小: {stats.get('db_size_mb', 0)} MB")
 
     db.close()
+
+
+def cmd_skill_versions(args):
+    """列出一個技能的版本歷史。"""
+    from vault.db import VaultDB
+
+    project_dir = find_project_dir()
+    db = VaultDB(str(project_dir / "vault.db")).connect()
+    try:
+        payload = {"ok": True, "name": args.name, "versions": db.list_skill_versions(args.name)}
+        if getattr(args, "json", False) or getattr(args, "pretty", False):
+            print(json.dumps(payload, ensure_ascii=False, indent=2 if getattr(args, "pretty", False) else None))
+            return
+        if not payload["versions"]:
+            print(f"📭 技能 '{args.name}' 沒有版本紀錄")
+            return
+        print(f"🛠️  {args.name} versions:")
+        for row in payload["versions"]:
+            print(f"  - v{row['version']} hash={row['content_hash']} updated={row['updated_at']}")
+    finally:
+        db.close()
+
+
+def cmd_skill_diff(args):
+    """比較技能版本。"""
+    from vault.db import VaultDB
+
+    project_dir = find_project_dir()
+    db = VaultDB(str(project_dir / "vault.db")).connect()
+    try:
+        payload = db.diff_skill_versions(args.name, args.from_version, args.to_version)
+        if getattr(args, "json", False) or getattr(args, "pretty", False):
+            print(json.dumps(payload, ensure_ascii=False, indent=2 if getattr(args, "pretty", False) else None))
+            return
+        if not payload.get("ok"):
+            print(f"❌ {payload.get('error')}: {args.name}")
+            return
+        print(f"🛠️  {args.name}: v{args.from_version} → v{args.to_version}")
+        print(f"   content_changed: {payload['content_changed']}")
+        for field, change in payload["changed_fields"].items():
+            print(f"   {field}: {change['from']} → {change['to']}")
+    finally:
+        db.close()
+
+
+def cmd_skill_upgrade_plan(args):
+    """列出技能升級計畫。"""
+    from vault.db import VaultDB
+
+    installed = {}
+    if getattr(args, "installed", ""):
+        try:
+            loaded = json.loads(args.installed)
+            if isinstance(loaded, dict):
+                installed = {str(k): str(v) for k, v in loaded.items()}
+        except json.JSONDecodeError as exc:
+            print(f"❌ --installed 必須是 JSON object: {exc}")
+            return
+    project_dir = find_project_dir()
+    db = VaultDB(str(project_dir / "vault.db")).connect()
+    try:
+        payload = db.skill_upgrade_plan(installed=installed)
+        if getattr(args, "json", False) or getattr(args, "pretty", False):
+            print(json.dumps(payload, ensure_ascii=False, indent=2 if getattr(args, "pretty", False) else None))
+            return
+        print(f"🛠️  Skill upgrade plan: {payload['upgrade_count']} upgrades / {payload['skill_count']} skills")
+        for row in payload["skills"]:
+            print(f"  - {row['name']}: {row['current_version'] or '-'} → {row['latest_version']} ({row['status']})")
+    finally:
+        db.close()

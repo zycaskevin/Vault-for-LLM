@@ -113,7 +113,28 @@ def cmd_skill(args):
         return cmd_skill_list(args)
     if args.skill_action == "stats":
         return cmd_skill_stats(args)
+    if args.skill_action in {"versions", "diff", "upgrade-plan"}:
+        return _cmd_skill_impl(args)
     return _cmd_skill_impl(args)
+
+
+def cmd_security(args):
+    """Security diagnostics."""
+    from vault.security import security_doctor
+
+    action = getattr(args, "security_action", "")
+    if action != "doctor":
+        print("用法: vault security doctor [--json|--pretty]")
+        return
+    payload = security_doctor()
+    if getattr(args, "json", False) or getattr(args, "pretty", False):
+        _json_print(payload, pretty=getattr(args, "pretty", False))
+        return
+    print("Vault security doctor")
+    for check in payload["checks"]:
+        marker = "OK" if check["ok"] else "WARN"
+        print(f"  [{marker}] {check['id']}: {check['message']}")
+    print(f"Next: {payload['next_action']}")
 
 
 def main(argv: list[str] | None = None):
@@ -183,6 +204,14 @@ def main(argv: list[str] | None = None):
     p.add_argument("--host", default=DEFAULT_HOST, help="bind host；預設 127.0.0.1")
     p.add_argument("--port", type=int, default=DEFAULT_PORT, help="bind port；預設 8765")
     p.add_argument("--no-open", action="store_true", help="不要自動開啟瀏覽器")
+    p.add_argument("--auth-token", default=None, help="GUI 存取 token；省略時自動產生或讀 VAULT_GUI_TOKEN")
+    p.add_argument("--no-auth", action="store_true", help="只允許 localhost 使用；關閉 GUI token 驗證")
+
+    p = sub.add_parser("security", help="安全預設與 agent-facing surface 自檢")
+    security_sub = p.add_subparsers(dest="security_action", help="安全子命令")
+    sp = security_sub.add_parser("doctor", help="檢查 GUI/MCP 安全設定")
+    sp.add_argument("--json", action="store_true", help="輸出 JSON")
+    sp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     p = sub.add_parser("candidates", help="列出候選記憶（預設只列待審候選）")
     p.add_argument("--status", default="candidate", help="候選狀態，例如 candidate/promoted/rejected")
@@ -317,6 +346,8 @@ def main(argv: list[str] | None = None):
     tp.add_argument("--next-action", action="append", default=[], help="下一步，可重複")
     tp.add_argument("--evidence-ref", action="append", default=[], help="證據引用，例如 file:path 或 PR URL，可重複")
     tp.add_argument("--continuation-note", default="", help="給下一個 Agent/session 的接手提示")
+    tp.add_argument("--priority", choices=["P0", "P1", "P2", "P3"], default="P2", help="任務優先級")
+    tp.add_argument("--due-at", default="", help="截止/提醒時間，例如 2026-06-30 或 ISO 時間")
     tp.add_argument("--scope", choices=["private", "project", "shared", "public"], default="project")
     tp.add_argument("--sensitivity", choices=["low", "medium", "high", "restricted"], default="low")
     tp.add_argument("--owner-agent", default="", help="擁有者 Agent")
@@ -334,6 +365,8 @@ def main(argv: list[str] | None = None):
     tp.add_argument("--next-action", action="append", default=[], help="追加下一步，可重複")
     tp.add_argument("--evidence-ref", action="append", default=[], help="追加證據引用，可重複")
     tp.add_argument("--continuation-note", default=None, help="覆寫接手提示")
+    tp.add_argument("--priority", choices=["P0", "P1", "P2", "P3"], default=None, help="更新任務優先級")
+    tp.add_argument("--due-at", default=None, help="更新截止/提醒時間；傳空字串可清除")
     tp.add_argument("--status", choices=["active", "blocked", "completed", "archived"], default=None)
     tp.add_argument("--agent-id", default="", help="更新此 task 的 Agent id")
     tp.add_argument("--source-ref", default="", help="更新來源，例如 session 或 PR")
@@ -391,6 +424,7 @@ def main(argv: list[str] | None = None):
     ap.add_argument("--scope", choices=["shared", "private", "project", "public", "domain", "temporary"],
                     default="shared", help="此 Agent 使用的記憶範圍")
     ap.add_argument("--features", default="core,mcp", help="已啟用功能 CSV")
+    ap.add_argument("--skills", default="", help="此 Agent 使用的技能 CSV；可用 name 或 name@version")
     ap.add_argument("--tool-profile", choices=["core", "review", "remote", "maintenance", "full"],
                     default="core", help="建議 MCP tool profile")
     ap.add_argument("--memory-layout", choices=["hybrid", "shared", "private"], default="shared",
@@ -708,6 +742,23 @@ def main(argv: list[str] | None = None):
 
     sp = skill_sub.add_parser("stats", help="本機技能登錄統計")
 
+    sp = skill_sub.add_parser("versions", help="列出技能版本歷史")
+    sp.add_argument("name", help="技能名稱")
+    sp.add_argument("--json", action="store_true", help="輸出 JSON")
+    sp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    sp = skill_sub.add_parser("diff", help="比較兩個技能版本")
+    sp.add_argument("name", help="技能名稱")
+    sp.add_argument("--from-version", required=True, help="舊版本")
+    sp.add_argument("--to-version", required=True, help="新版本")
+    sp.add_argument("--json", action="store_true", help="輸出 JSON")
+    sp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    sp = skill_sub.add_parser("upgrade-plan", help="列出技能升級計畫")
+    sp.add_argument("--installed", default="", help="已安裝版本 JSON，例如 '{\"review-helper\":\"1.0.0\"}'")
+    sp.add_argument("--json", action="store_true", help="輸出 JSON")
+    sp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
     # graph
     p = sub.add_parser("graph", help="圖譜操作")
     graph_sub = p.add_subparsers(dest="graph_action", help="圖譜子命令")
@@ -940,6 +991,7 @@ def main(argv: list[str] | None = None):
         "semantic": cmd_semantic,
         "okf": cmd_okf,
         "gui": cmd_gui,
+        "security": cmd_security,
     }
 
     try:

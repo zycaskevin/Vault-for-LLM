@@ -14,6 +14,8 @@ def init_task_tables(conn: sqlite3.Connection) -> None:
             updated_at TEXT NOT NULL,
             completed_at TEXT NOT NULL DEFAULT '',
             status TEXT NOT NULL DEFAULT 'active',
+            priority TEXT NOT NULL DEFAULT 'P2',
+            due_at TEXT NOT NULL DEFAULT '',
             title TEXT NOT NULL DEFAULT '',
             goal TEXT NOT NULL,
             current_plan_json TEXT NOT NULL DEFAULT '[]',
@@ -30,7 +32,11 @@ def init_task_tables(conn: sqlite3.Connection) -> None:
             source TEXT NOT NULL DEFAULT 'cli'
         )
     """)
+    _ensure_task_column(conn, "priority", "TEXT NOT NULL DEFAULT 'P2'")
+    _ensure_task_column(conn, "due_at", "TEXT NOT NULL DEFAULT ''")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_task_ledger_status ON task_ledger(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_task_ledger_priority ON task_ledger(priority)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_task_ledger_due_at ON task_ledger(due_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_task_ledger_updated_at ON task_ledger(updated_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_task_ledger_scope ON task_ledger(scope)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_task_ledger_sensitivity ON task_ledger(sensitivity)")
@@ -67,3 +73,9 @@ def init_task_tables(conn: sqlite3.Connection) -> None:
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_task_evidence_task_id ON task_evidence_refs(task_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_task_evidence_ref_type ON task_evidence_refs(ref_type)")
+
+
+def _ensure_task_column(conn: sqlite3.Connection, name: str, definition: str) -> None:
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(task_ledger)").fetchall()}
+    if name not in columns:
+        conn.execute(f"ALTER TABLE task_ledger ADD COLUMN {name} {definition}")

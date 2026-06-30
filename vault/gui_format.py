@@ -84,6 +84,8 @@ def compact_task(row: dict[str, Any]) -> dict[str, Any]:
         "title": row.get("title", "") or row.get("id", ""),
         "goal": row.get("goal", ""),
         "status": row.get("status", ""),
+        "priority": row.get("priority", "P2"),
+        "due_at": row.get("due_at", ""),
         "current_plan": row.get("current_plan", []),
         "completed": row.get("completed", []),
         "hard_decisions": row.get("hard_decisions", []),
@@ -221,4 +223,3 @@ def _path_int(path: str, prefix: str) -> int:
 
 def _path_str(path: str, prefix: str) -> str:
     return path[len(prefix) :].strip("/")
-

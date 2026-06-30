@@ -25,6 +25,8 @@ def cmd_gui(args) -> None:
         host=str(getattr(args, "host", DEFAULT_HOST) or DEFAULT_HOST),
         port=int(getattr(args, "port", DEFAULT_PORT) or DEFAULT_PORT),
         open_browser=not bool(getattr(args, "no_open", False)),
+        auth_token=getattr(args, "auth_token", None),
+        no_auth=bool(getattr(args, "no_auth", False)),
     )
 
 __all__ = [

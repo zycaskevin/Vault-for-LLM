@@ -107,6 +107,7 @@ def register_agent(
     source: str = "manual",
     memory_layout: str = "shared",
     private_project_dir: str | Path | None = None,
+    skills: list[str] | tuple[str, ...] | None = None,
     path: str | Path | None = None,
 ) -> dict[str, Any]:
     agent_id = safe_agent_id(agent)
@@ -125,6 +126,7 @@ def register_agent(
         "private_project_dir": str(private_path) if private_path else "",
         "private_db_path": str(private_path / "vault.db") if private_path else "",
         "features": sorted(str(item) for item in (features or []) if str(item).strip()),
+        "skills": sorted(str(item) for item in (skills or []) if str(item).strip()),
         "tool_profile": tool_profile,
         "source": source,
         "vault_version": __version__,
@@ -324,6 +326,7 @@ def build_agent_update_notices(
                 "project_dir": agent.get("project_dir", ""),
                 "private_project_dir": agent.get("private_project_dir", ""),
                 "tool_profile": agent.get("tool_profile", ""),
+                "skills": agent.get("skills", []),
                 "registered_version": recorded_version or "unknown",
                 "current_runtime_version": current_version,
                 "latest_known_version": latest,

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from argparse import Namespace
+import http.client
+from http.server import ThreadingHTTPServer
+import threading
 
 from vault.db import VaultDB
 from vault.docmap import build_document_map_for_entry
@@ -18,6 +21,7 @@ from vault.gui import (
     gui_search,
     gui_task,
     gui_tasks,
+    make_gui_handler,
 )
 from vault.task_ledger import start_task, update_task
 
@@ -249,22 +253,52 @@ def test_gui_missing_or_invalid_project(tmp_path):
 def test_cmd_gui_passes_cli_options(monkeypatch, tmp_path):
     calls = {}
 
-    def fake_run_gui(project_dir, *, host, port, open_browser):
+    def fake_run_gui(project_dir, *, host, port, open_browser, auth_token=None, no_auth=False):
         calls.update(
             {
                 "project_dir": project_dir,
                 "host": host,
                 "port": port,
                 "open_browser": open_browser,
+                "auth_token": auth_token,
+                "no_auth": no_auth,
             }
         )
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("vault.gui.run_gui", fake_run_gui)
 
-    cmd_gui(Namespace(host="127.0.0.1", port=9999, no_open=True))
+    cmd_gui(Namespace(host="127.0.0.1", port=9999, no_open=True, auth_token="test-token", no_auth=False))
 
     assert calls["project_dir"] == tmp_path
     assert calls["host"] == "127.0.0.1"
     assert calls["port"] == 9999
     assert calls["open_browser"] is False
+    assert calls["auth_token"] == "test-token"
+    assert calls["no_auth"] is False
+
+
+def test_gui_handler_requires_token_for_api(tmp_path):
+    project, _kid = _make_project(tmp_path)
+    handler = make_gui_handler(project, auth_token="secret-token")
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        host, port = server.server_address
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("GET", "/api/overview")
+        denied = conn.getresponse()
+        assert denied.status == 401
+        denied.read()
+        conn.close()
+
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("GET", "/api/overview?token=secret-token")
+        allowed = conn.getresponse()
+        assert allowed.status == 200
+        assert b'"status": "ok"' in allowed.read()
+        conn.close()
+    finally:
+        server.shutdown()
+        server.server_close()

@@ -22,12 +22,16 @@ def test_mcp_task_ledger_lifecycle(tmp_path):
             "current_plan": ["add task tools"],
             "next_actions": ["run tests"],
             "evidence_refs": ["pr:229"],
+            "priority": "P1",
+            "due_at": "2026-06-30",
             "owner_agent": "codex",
         },
     ))
     assert started["ok"] is True
     assert started["task"]["id"] == "task-mcp"
     assert started["task"]["source"] == "mcp"
+    assert started["task"]["priority"] == "P1"
+    assert started["task"]["due_at"] == "2026-06-30"
 
     listed = _payload(handle_tool_call("vault_task_status", {"status": "active", "limit": -10}))
     assert listed["ok"] is True
@@ -44,6 +48,7 @@ def test_mcp_task_ledger_lifecycle(tmp_path):
             "next_actions": ["document MCP tools"],
             "evidence_refs": ["file:tests/test_mcp_task.py"],
             "continuation_note": "Use vault_task_handoff before switching agents.",
+            "priority": "P0",
             "agent_id": "codex",
             "source_ref": "test",
         },
@@ -51,6 +56,7 @@ def test_mcp_task_ledger_lifecycle(tmp_path):
     task = updated["task"]
     assert task["completed"] == ["dispatcher wired"]
     assert task["hard_decisions"] == ["keep task tools outside core profile"]
+    assert task["priority"] == "P0"
     assert task["continuation_note"] == "Use vault_task_handoff before switching agents."
 
     status = _payload(handle_tool_call(

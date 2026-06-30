@@ -12,12 +12,22 @@ vault gui --project-dir ~/Vaults/my-project
 ```
 
 The server binds to `127.0.0.1:8765` by default and opens the browser.
+It generates an ephemeral access token by default and opens the browser with
+that token in the URL. Set `VAULT_GUI_TOKEN` to reuse a stable local token.
 
 For headless validation or remote shells:
 
 ```bash
 vault gui --project-dir ~/Vaults/my-project --no-open --port 8765
 ```
+
+For localhost-only test sessions, the token can be disabled explicitly:
+
+```bash
+vault gui --project-dir ~/Vaults/my-project --no-auth --no-open
+```
+
+`--no-auth` is rejected for non-localhost binds.
 
 ## Layout
 
@@ -65,6 +75,9 @@ The local server exposes read-only JSON endpoints:
 ## Safety
 
 - The default host is localhost only.
+- The GUI requires a token by default. API calls can pass the token in the
+  `token` query parameter, `X-Vault-Gui-Token` header, or the local
+  `vault_gui_token` cookie set after opening the tokenized URL.
 - Active memory edits, archive, and policy edits remain CLI/MCP operations.
 - Task Ledger updates remain CLI/MCP operations; the GUI displays task state
   but does not mutate it.
@@ -75,7 +88,8 @@ The local server exposes read-only JSON endpoints:
 - Candidate rejection/blocking uses the existing review workflow and records
   feedback for automation learning.
 - Private or restricted data should not be exposed by binding the GUI to a
-  public network interface.
+  public network interface. If a broader bind is needed, keep token auth enabled
+  and put the GUI behind a trusted local tunnel or reverse proxy.
 
 ## Product Direction
 

@@ -28,6 +28,28 @@ def test_skill_helper_add_update_and_sync(tmp_path):
         db.mark_skill_synced("review-helper")
         synced = db.get_skill("review-helper")
         assert synced["last_synced"]
+
+        newer_id = db.add_skill(
+            name="review-helper",
+            version="1.1.0",
+            content_raw="Updated review workflow with version history.",
+            capabilities="review,testing",
+            category="engineering",
+            trust=0.85,
+            description="Review helper v1.1",
+        )
+        assert newer_id == skill_id
+        latest = db.get_skill("review-helper")
+        assert latest["version"] == "1.1.0"
+        versions = db.list_skill_versions("review-helper")
+        assert [row["version"] for row in versions] == ["1.1.0", "1.0.0"]
+        diff = db.diff_skill_versions("review-helper", "1.0.0", "1.1.0")
+        assert diff["ok"] is True
+        assert diff["content_changed"] is True
+
+        plan = db.skill_upgrade_plan(installed={"review-helper": "1.0.0"})
+        assert plan["upgrade_count"] == 1
+        assert plan["skills"][0]["status"] == "upgrade_available"
     finally:
         db.close()
 

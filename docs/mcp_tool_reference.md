@@ -12,7 +12,7 @@ the model context and fewer ways for an agent to choose the wrong action.
 | Profile | Tools | Best For |
 |---|---|---|
 | `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats`, `vault_update_status`, `vault_automation_activity`, `vault_automation_brief`, `vault_automation_handoff` | Daily agent work: start from status/activity/brief/handoff, find memory, read bounded evidence, propose new memory. |
-| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_capture_discover`, `vault_capture_session`, `vault_automation_inbox`, `vault_task_start/status/update/handoff/complete`, `vault_dream_run` | A reviewer agent or operator session that discovers/captures, approves/rejects candidates, or maintains a resumable task working set. |
+| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_capture_discover`, `vault_capture_session`, `vault_automation_inbox`, `vault_task_start/status/update/handoff/complete`, `vault_skill_*`, `vault_dream_run` | A reviewer agent or operator session that discovers/captures, approves/rejects candidates, inspects Skill versions, or maintains a resumable task working set. |
 | `remote` | Core plus `vault_remote_search`, `vault_remote_map_show`, `vault_remote_read_range` | Hosted or cross-host agents reading a Supabase-synced vault. |
 | `maintenance` | Review plus cold-store lifecycle, Obsidian import, freshness, convergence, and curation tools | Scheduled maintenance or explicit operator-led cleanup. |
 | `full` | Every MCP tool, including low-level compatibility tools | Trusted local operators and backwards compatibility. |
@@ -25,6 +25,12 @@ Tool profiles reduce the exposed tool list. They are not a security boundary by
 themselves. Use Vault read-policy fields and Supabase RLS/RPC for actual access
 control.
 
+Local MCP read tools default to `max_sensitivity=medium`; agents must
+explicitly request `high` or `restricted` and still pass normal read policy
+checks. This keeps daily local reads from accidentally surfacing high-sensitivity
+memory.
+
+Run `vault security doctor` from the CLI to inspect the local GUI/MCP posture.
 For stricter local identity checks, set `VAULT_MCP_REQUIRE_AGENT_SIGNATURE=1`
 and configure `VAULT_MCP_AGENT_SECRET` or a scoped
 `VAULT_MCP_AGENT_SECRET_<AGENT>`. Signed calls include `agent_id` and
@@ -228,6 +234,8 @@ Create a resumable task working set.
   "task_id": "task-release-hardening",
   "goal": "Finish release hardening",
   "title": "Release hardening",
+  "priority": "P1",
+  "due_at": "2026-07-01",
   "current_plan": ["patch failing tests", "run full suite"],
   "next_actions": ["open PR"],
   "evidence_refs": ["file:docs/release_stabilization.md"],
@@ -265,6 +273,7 @@ Append progress without rewriting the whole task state.
   "hard_decisions": ["keep task tools out of core profile"],
   "blockers": [],
   "next_actions": ["run targeted tests"],
+  "priority": "P0",
   "evidence_refs": ["pr:229"],
   "continuation_note": "Resume from MCP docs if interrupted.",
   "agent_id": "codex"
@@ -296,6 +305,60 @@ Close a working set after the task is done.
   "agent_id": "codex"
 }
 ```
+
+## Skill Registry Tools
+
+Skill tools are available in `review`, `maintenance`, and `full`, but not in
+`core`. They let an agent inspect capabilities and upgrade plans without
+silently installing or overwriting runtime skills.
+
+### `vault_skill_search`
+
+Search registered skills without raw content.
+
+```json
+{
+  "query": "review",
+  "capabilities": "testing",
+  "limit": 10
+}
+```
+
+### `vault_skill_versions`
+
+List versions for one skill.
+
+```json
+{
+  "name": "review-helper"
+}
+```
+
+### `vault_skill_pull`
+
+Read one skill with a bounded content payload.
+
+```json
+{
+  "name": "review-helper",
+  "max_chars": 12000
+}
+```
+
+### `vault_skill_upgrade_plan`
+
+Compare the caller's installed skill versions with the local registry.
+
+```json
+{
+  "installed": {
+    "review-helper": "1.0.0"
+  }
+}
+```
+
+Agent rule: use this as an advisory checklist. Do not overwrite an agent's
+runtime skill files without explicit user or operator approval.
 
 ## Maintenance Tools
 

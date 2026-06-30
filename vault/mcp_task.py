@@ -28,6 +28,8 @@ MCP_TASK_TOOLS = [
                 "next_actions": {"type": "array", "items": {"type": "string"}, "default": []},
                 "evidence_refs": {"type": "array", "items": {"type": "string"}, "default": []},
                 "continuation_note": {"type": "string", "default": ""},
+                "priority": {"type": "string", "enum": ["P0", "P1", "P2", "P3"], "default": "P2"},
+                "due_at": {"type": "string", "default": ""},
                 "scope": {"type": "string", "enum": ["private", "project", "shared", "public"], "default": "project"},
                 "sensitivity": {"type": "string", "enum": ["low", "medium", "high", "restricted"], "default": "low"},
                 "owner_agent": {"type": "string", "default": ""},
@@ -57,7 +59,7 @@ MCP_TASK_TOOLS = [
                 "include_events": {"type": "boolean", "default": False},
                 "agent_id": {"type": "string", "default": ""},
                 "include_private": {"type": "boolean", "default": False},
-                "max_sensitivity": {"type": "string", "enum": ["", "low", "medium", "high", "restricted"], "default": ""},
+                "max_sensitivity": {"type": "string", "enum": ["low", "medium", "high", "restricted"], "default": "medium"},
             },
         },
     },
@@ -76,6 +78,8 @@ MCP_TASK_TOOLS = [
                 "next_actions": {"type": "array", "items": {"type": "string"}, "default": []},
                 "evidence_refs": {"type": "array", "items": {"type": "string"}, "default": []},
                 "continuation_note": {"type": "string", "default": ""},
+                "priority": {"type": "string", "enum": ["", "P0", "P1", "P2", "P3"], "default": ""},
+                "due_at": {"type": "string", "default": ""},
                 "status": {"type": "string", "enum": ["active", "blocked", "completed", "archived", ""], "default": ""},
                 "agent_id": {"type": "string", "default": ""},
                 "source_ref": {"type": "string", "default": ""},
@@ -96,7 +100,7 @@ MCP_TASK_TOOLS = [
                 "task_id": {"type": "string"},
                 "agent_id": {"type": "string", "default": ""},
                 "include_private": {"type": "boolean", "default": False},
-                "max_sensitivity": {"type": "string", "enum": ["", "low", "medium", "high", "restricted"], "default": ""},
+                "max_sensitivity": {"type": "string", "enum": ["low", "medium", "high", "restricted"], "default": "medium"},
             },
             "required": ["task_id"],
         },
@@ -166,7 +170,7 @@ def _read_policy(arguments: dict[str, Any]):
     return normalize_read_policy(
         agent_id=arguments.get("agent_id", ""),
         include_private=bool(arguments.get("include_private", False)),
-        max_sensitivity=arguments.get("max_sensitivity", ""),
+        max_sensitivity=arguments.get("max_sensitivity") or "medium",
     )
 
 
@@ -238,6 +242,8 @@ def handle_task_tool_call(name: str, arguments: dict[str, Any], *, db_path: str)
                     next_actions=_as_list(arguments.get("next_actions")),
                     evidence_refs=_as_list(arguments.get("evidence_refs")),
                     continuation_note=str(arguments.get("continuation_note") or ""),
+                    priority=str(arguments.get("priority") or "P2"),
+                    due_at=str(arguments.get("due_at") or ""),
                     scope=str(arguments.get("scope") or "project"),
                     sensitivity=str(arguments.get("sensitivity") or "low"),
                     owner_agent=str(arguments.get("owner_agent") or ""),
@@ -307,6 +313,8 @@ def handle_task_tool_call(name: str, arguments: dict[str, Any], *, db_path: str)
                         if "continuation_note" in arguments
                         else None
                     ),
+                    priority=(str(arguments.get("priority") or "") or None),
+                    due_at=(str(arguments.get("due_at") or "") if "due_at" in arguments else None),
                     status=str(arguments.get("status") or "") or None,
                     agent_id=str(arguments.get("agent_id") or ""),
                     source_ref=str(arguments.get("source_ref") or ""),

@@ -70,7 +70,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install it:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.15.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.16.
 Ask whether the vault should be shared, private, domain-specific, or temporary.
 Ask for a stable project directory and generate a stable venv script for
 long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
@@ -84,7 +84,7 @@ The agent should use the guided installer:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.7.15"
+pip install "vault-for-llm[mcp]==0.7.16"
 
 vault setup-agent
 ```
@@ -152,7 +152,7 @@ to verify the candidate-first propose path.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.7.15"
+pip install "vault-for-llm[mcp]==0.7.16"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -247,6 +247,8 @@ Vault uses depth layers for how memory is used:
 Task Ledger is for live task state: blockers, next actions, evidence links, and
 handoff notes. Do not store active todos in L2 by default. Promote only durable
 lessons, decisions, and summaries from Task Ledger into L2/L3 after review.
+Task Ledger entries can carry `priority` (`P0` to `P3`) and `due_at` so agents
+resume urgent work first without turning todo state into long-term memory.
 
 Access is not controlled by layer alone. Use governance metadata for policy:
 
@@ -528,6 +530,9 @@ For stricter local MCP identity checks, set `VAULT_MCP_REQUIRE_AGENT_SIGNATURE=1
 and provide `VAULT_MCP_AGENT_SECRET` or `VAULT_MCP_AGENT_SECRET_<AGENT>`. Signed
 agents send `agent_id` plus an HMAC-SHA256 `agent_signature`; unsigned legacy
 clients continue to work unless the require flag is enabled.
+Run `vault security doctor` to check the local GUI/MCP security posture. The
+GUI generates a token by default, while local MCP read tools default to
+`max_sensitivity=medium`.
 
 Automation details: [docs/automation.md](docs/automation.md).
 
@@ -566,7 +571,7 @@ Remote readers should pass the search result `id` directly into map/read; it
 may be an integer or a Supabase UUID.
 
 ```bash
-pip install "vault-for-llm[supabase]==0.7.15"
+pip install "vault-for-llm[supabase]==0.7.16"
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 

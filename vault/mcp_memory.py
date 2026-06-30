@@ -145,7 +145,7 @@ def _candidate_read_policy(arguments: dict[str, Any]):
     return normalize_read_policy(
         agent_id=arguments.get("agent_id", ""),
         include_private=bool(arguments.get("include_private", False)),
-        max_sensitivity=arguments.get("max_sensitivity", ""),
+        max_sensitivity=arguments.get("max_sensitivity") or "medium",
     )
 
 

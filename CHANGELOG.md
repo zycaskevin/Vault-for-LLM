@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## [0.7.16] - 2026-06-30
+
+### Added
+
+- Added `vault security doctor` for local GUI/MCP security posture checks.
+- Added Skill Registry revision history, compact version diffs, upgrade-plan CLI, and read-oriented MCP Skill tools in review/maintenance/full profiles.
+- Added Task Ledger `priority` and `due_at` fields across schema, CLI, MCP, GUI payloads, handoff markdown, and automation-cycle snapshots.
+- Added a decision record for selectively adopting Letta-style memory management without turning Vault into a full agent runtime.
+
+### Changed
+
+- GUI now requires an access token by default; `--no-auth` is only allowed for localhost-bound test sessions.
+- Local MCP read tools now default to `max_sensitivity=medium`; high/restricted reads must be requested explicitly.
+- Agent registry entries can declare expected Skills with `vault agent register --skills`.
+
 ## [0.7.15] - 2026-06-29
 
 ### Added

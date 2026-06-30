@@ -21,6 +21,8 @@ def test_agent_register_and_update_status_cli(tmp_path, monkeypatch, capsys):
             "shared",
             "--features",
             "core,mcp",
+            "--skills",
+            "review-helper@1.0.0,task-helper",
             "--memory-layout",
             "hybrid",
             "--agent-private-dir",
@@ -33,6 +35,7 @@ def test_agent_register_and_update_status_cli(tmp_path, monkeypatch, capsys):
     assert registered["agent"]["agent_id"] == "codex"
     assert registered["agent"]["project_dir"] == str(project.resolve())
     assert registered["agent"]["memory_layout"] == "hybrid"
+    assert registered["agent"]["skills"] == ["review-helper@1.0.0", "task-helper"]
     assert registered["agent"]["private_project_dir"] == str((tmp_path / "codex-private").resolve())
     assert registered["agent"]["vault_version"] == __version__
 
@@ -43,6 +46,7 @@ def test_agent_register_and_update_status_cli(tmp_path, monkeypatch, capsys):
     assert status["update_available"] is True
     assert status["agent_count"] == 1
     assert status["agents"][0]["agent_id"] == "codex"
+    assert status["agents"][0]["skills"] == ["review-helper@1.0.0", "task-helper"]
     assert status["private_projects"] == [str((tmp_path / "codex-private").resolve())]
     assert f"vault automation handoff --project-dir {project.resolve()}" in status["startup_commands"]
     assert status["agent_update_notice_count"] == 1

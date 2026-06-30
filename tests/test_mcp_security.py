@@ -1,4 +1,5 @@
 from vault import mcp_security
+from vault.security import security_doctor
 
 
 def test_mcp_security_rate_limit_can_be_disabled(monkeypatch):
@@ -73,3 +74,20 @@ def test_mcp_agent_signature_optional_rejects_bad_signature(monkeypatch):
 
     assert denied is not None
     assert denied["failure_mode"] == "agent_signature_required"
+
+
+def test_security_doctor_reports_hmac_posture():
+    loose = security_doctor({})
+    assert loose["ok"] is False
+    assert loose["warning_count"] == 2
+    assert any(check["id"] == "mcp_hmac_required" and not check["ok"] for check in loose["checks"])
+
+    strict = security_doctor(
+        {
+            "VAULT_MCP_REQUIRE_AGENT_SIGNATURE": "1",
+            "VAULT_MCP_AGENT_SECRET_CODEX": "secret",
+            "VAULT_GUI_TOKEN": "gui-token",
+        }
+    )
+    assert strict["ok"] is True
+    assert strict["warning_count"] == 0

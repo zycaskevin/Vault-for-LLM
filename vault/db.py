@@ -77,10 +77,14 @@ from .db_schema import (
 )
 from .db_skills import add_skill as db_skills_add_skill
 from .db_skills import delete_skill as db_skills_delete_skill
+from .db_skills import diff_skill_versions as db_skills_diff_skill_versions
 from .db_skills import get_skill as db_skills_get_skill
+from .db_skills import init_skill_tables as db_skills_init_skill_tables
 from .db_skills import list_skills as db_skills_list_skills
+from .db_skills import list_skill_versions as db_skills_list_skill_versions
 from .db_skills import mark_skill_synced as db_skills_mark_skill_synced
 from .db_skills import search_skills as db_skills_search_skills
+from .db_skills import skill_upgrade_plan as db_skills_skill_upgrade_plan
 from .db_skills import update_skill as db_skills_update_skill
 from .db_tasks import init_task_tables as db_tasks_init_task_tables
 from .db_vector import add_embedding as db_vector_add_embedding
@@ -498,29 +502,7 @@ class VaultDB:
             )
         """)
 
-        # 本機技能登錄表 — 跨 Agent 技能註冊與同步
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS skills (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                name          TEXT NOT NULL UNIQUE,
-                version       TEXT NOT NULL DEFAULT '1.0.0',
-                agent_source  TEXT NOT NULL DEFAULT '',
-                category      TEXT NOT NULL DEFAULT 'general',
-                capabilities  TEXT NOT NULL DEFAULT '',
-                dependencies  TEXT NOT NULL DEFAULT '',
-                trust         REAL  NOT NULL DEFAULT 0.5,
-                content_raw   TEXT NOT NULL DEFAULT '',
-                content_hash  TEXT NOT NULL DEFAULT '',
-                description   TEXT NOT NULL DEFAULT '',
-                created_at    TEXT NOT NULL DEFAULT '',
-                updated_at    TEXT NOT NULL DEFAULT '',
-                last_synced   TEXT NOT NULL DEFAULT ''
-            )
-        """)
-        c.execute("CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_skills_agent ON skills(agent_source)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_skills_trust ON skills(trust)")
+        db_skills_init_skill_tables(c)
 
         # Lint 快取表
         c.execute("""
@@ -1088,6 +1070,7 @@ class VaultDB:
         dependencies: str = "",
         trust: float = 0.5,
         description: str = "",
+        force: bool = False,
     ) -> int:
         """註冊一個技能，回傳 id。已有同名技能則回傳 -1。"""
         return db_skills_add_skill(
@@ -1101,6 +1084,7 @@ class VaultDB:
             dependencies=dependencies,
             trust=trust,
             description=description,
+            force=force,
         )
 
     def update_skill(self, name: str, **fields) -> bool:
@@ -1154,6 +1138,18 @@ class VaultDB:
     def mark_skill_synced(self, name: str):
         """標記技能已同步到 Supabase。"""
         db_skills_mark_skill_synced(self.conn, name)
+
+    def list_skill_versions(self, name: str) -> list[dict]:
+        """列出技能版本歷史。"""
+        return db_skills_list_skill_versions(self.conn, name)
+
+    def diff_skill_versions(self, name: str, from_version: str, to_version: str) -> dict:
+        """比較兩個技能版本。"""
+        return db_skills_diff_skill_versions(self.conn, name, from_version, to_version)
+
+    def skill_upgrade_plan(self, installed: dict[str, str] | None = None) -> dict:
+        """回傳本機技能升級計畫。"""
+        return db_skills_skill_upgrade_plan(self.conn, installed=installed)
 
     # ── 統計 ────────────────────────────────────────────────
 

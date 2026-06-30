@@ -17,6 +17,7 @@ from .db import VaultDB, normalize_governance_metadata
 
 
 VALID_TASK_STATUSES = {"active", "blocked", "completed", "archived"}
+VALID_TASK_PRIORITIES = {"P0", "P1", "P2", "P3"}
 LIST_FIELDS = {
     "current_plan": "current_plan_json",
     "completed": "completed_json",
@@ -120,7 +121,7 @@ def _task_evidence_refs(db: VaultDB, task_id: str) -> list[dict[str, Any]]:
 
 def get_task(db: VaultDB, task_id: str, *, include_events: bool = True) -> dict[str, Any] | None:
     row = db.conn.execute(
-        """SELECT id, created_at, updated_at, completed_at, status, title, goal,
+        """SELECT id, created_at, updated_at, completed_at, status, priority, due_at, title, goal,
                   current_plan_json, completed_json, hard_decisions_json, blockers_json,
                   open_questions_json, next_actions_json, continuation_note,
                   scope, sensitivity, owner_agent, allowed_agents, source
@@ -145,13 +146,18 @@ def list_tasks(db: VaultDB, *, status: str | None = "active", limit: int = 50) -
         params.append(status)
     params.append(max(1, int(limit)))
     rows = db.conn.execute(
-        f"""SELECT id, created_at, updated_at, completed_at, status, title, goal,
+        f"""SELECT id, created_at, updated_at, completed_at, status, priority, due_at, title, goal,
                    current_plan_json, completed_json, hard_decisions_json, blockers_json,
                    open_questions_json, next_actions_json, continuation_note,
                    scope, sensitivity, owner_agent, allowed_agents, source
             FROM task_ledger
             {where}
-            ORDER BY updated_at DESC, created_at DESC
+            ORDER BY
+                CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 2 END,
+                CASE WHEN due_at='' THEN 1 ELSE 0 END,
+                due_at ASC,
+                updated_at DESC,
+                created_at DESC
             LIMIT ?""",
         params,
     ).fetchall()
@@ -220,6 +226,8 @@ def start_task(
     next_actions: list[str] | None = None,
     evidence_refs: list[str] | None = None,
     continuation_note: str = "",
+    priority: str = "P2",
+    due_at: str = "",
     scope: str = "project",
     sensitivity: str = "low",
     owner_agent: str = "",
@@ -231,6 +239,9 @@ def start_task(
         raise ValueError("goal is required")
     task_id = str(task_id or "").strip() or _new_task_id(goal_text)
     title_text = str(title or "").strip() or task_id
+    priority_text = str(priority or "P2").strip().upper()
+    if priority_text not in VALID_TASK_PRIORITIES:
+        raise ValueError(f"invalid task priority: {priority}")
     governance = normalize_governance_metadata(
         scope=scope,
         sensitivity=sensitivity,
@@ -240,14 +251,16 @@ def start_task(
     now = _now()
     db.conn.execute(
         """INSERT INTO task_ledger(
-               id, created_at, updated_at, status, title, goal, current_plan_json,
+               id, created_at, updated_at, status, priority, due_at, title, goal, current_plan_json,
                next_actions_json, continuation_note, scope, sensitivity, owner_agent,
                allowed_agents, source
-           ) VALUES(?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           ) VALUES(?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             task_id,
             now,
             now,
+            priority_text,
+            str(due_at or "").strip(),
             title_text,
             goal_text,
             _json_list(current_plan),
@@ -265,7 +278,12 @@ def start_task(
         task_id,
         "started",
         goal_text,
-        payload={"title": title_text, "source": str(source or "cli").strip() or "cli"},
+        payload={
+            "title": title_text,
+            "priority": priority_text,
+            "due_at": str(due_at or "").strip(),
+            "source": str(source or "cli").strip() or "cli",
+        },
     )
     for ref in evidence_refs or []:
         if str(ref or "").strip():
@@ -287,6 +305,8 @@ def update_task(
     next_actions: list[str] | None = None,
     evidence_refs: list[str] | None = None,
     continuation_note: str | None = None,
+    priority: str | None = None,
+    due_at: str | None = None,
     status: str | None = None,
     agent_id: str = "",
     source_ref: str = "",
@@ -312,6 +332,15 @@ def update_task(
     if continuation_note is not None:
         updates["continuation_note"] = str(continuation_note or "").strip()
         event_payload["continuation_note"] = updates["continuation_note"]
+    if priority is not None:
+        priority_text = str(priority or "P2").strip().upper()
+        if priority_text not in VALID_TASK_PRIORITIES:
+            raise ValueError(f"invalid task priority: {priority}")
+        updates["priority"] = priority_text
+        event_payload["priority"] = priority_text
+    if due_at is not None:
+        updates["due_at"] = str(due_at or "").strip()
+        event_payload["due_at"] = updates["due_at"]
     if status:
         norm_status = str(status).strip().lower()
         if norm_status not in VALID_TASK_STATUSES:
@@ -380,6 +409,8 @@ def task_handoff(db: VaultDB, task_id: str) -> dict[str, Any]:
         "",
         f"- task_id: {task.get('id')}",
         f"- status: {task.get('status')}",
+        f"- priority: {task.get('priority') or 'P2'}",
+        f"- due_at: {task.get('due_at') or ''}",
         f"- goal: {task.get('goal')}",
         "",
     ]

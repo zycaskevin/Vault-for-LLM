@@ -1,5 +1,22 @@
 # CHANGELOG
 
+## [0.7.19] - 2026-06-30
+
+### Changed
+
+- Refined the consumer `setup-agent` terminal output so normal users see a
+  short "For you" section while agent maintenance details stay under
+  "For your agent".
+- Added `agent_next_steps` to the setup payload as a clearer alias for
+  automation/agent-facing setup follow-up work while preserving the existing
+  `next_steps` field for compatibility.
+
+### Docs
+
+- Documented the consumer-output boundary in the product hardening decision
+  record: humans get the short daily-memory workflow, agents use `--json` for
+  the full maintenance checklist.
+
 ## [0.7.18] - 2026-06-30
 
 ### Added

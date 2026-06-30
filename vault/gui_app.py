@@ -192,6 +192,8 @@ APP_HTML = r"""<!doctype html>
         <div class="metric-grid" id="metrics"></div>
         <h2>Active Tasks</h2>
         <div id="taskList"></div>
+        <h2>Daily Report</h2>
+        <div id="dailyReport"></div>
         <h2>Review Inbox</h2>
         <div id="reviewQueue"></div>
         <h2>Documents</h2>
@@ -310,6 +312,37 @@ APP_HTML = r"""<!doctype html>
       node.querySelectorAll("[data-task-id]").forEach(el => {
         el.addEventListener("click", () => loadTask(el.dataset.taskId));
       });
+    }
+
+    function renderDailyReport(report) {
+      const node = $("dailyReport");
+      if (!report || !report.summary) {
+        node.innerHTML = `<div class="empty">No daily report yet</div>`;
+        return;
+      }
+      const summary = report.summary || {};
+      const cards = report.review_cards || [];
+      const cardHtml = cards.length ? cards.slice(0, 3).map(card => `
+        <div class="item">
+          <h3>${esc(card.title || card.id || card.kind || "Review item")}</h3>
+          <div class="subtle">${esc(card.reason || card.safe_action || "")}</div>
+          <div class="meta">
+            ${pill(card.suggested_decision || "review", "warn")}
+            ${pill((card.choices || []).slice(0, 2).join(" / ") || "decide")}
+          </div>
+        </div>
+      `).join("") : `<div class="empty">No human decision needed today</div>`;
+      node.innerHTML = `
+        <div class="panel">
+          <h3>${esc(report.headline || "Daily memory report")}</h3>
+          <div class="meta">
+            ${pill(`${summary.needs_confirmation || 0} to confirm`, summary.needs_confirmation ? "warn" : "good")}
+            ${pill(`${summary.pending_candidates || 0} candidates`)}
+            ${pill(`${summary.expired_active || 0} expired`)}
+          </div>
+        </div>
+        ${cardHtml}
+      `;
     }
 
     function renderFacetSelect(id, label, items, selected) {
@@ -651,6 +684,7 @@ APP_HTML = r"""<!doctype html>
       $("projectPath").textContent = overview.project_dir || "";
       renderMetrics(overview.stats || {}, overview.inbox || {});
       renderTaskList(overview.tasks || []);
+      renderDailyReport(overview.daily_report || {});
       renderList("reviewQueue", overview.candidates || overview.inbox?.review_queue || overview.inbox?.review_digest?.items || [], "No review items");
       await loadDocuments();
       $("results").innerHTML = `<div class="empty">Search or choose a memory</div>`;

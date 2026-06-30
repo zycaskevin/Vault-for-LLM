@@ -15,6 +15,7 @@ import webbrowser
 from .gui_api import (
     gui_candidate,
     gui_candidates,
+    gui_daily_report,
     gui_documents,
     gui_entry,
     gui_overview,
@@ -83,6 +84,9 @@ def make_gui_handler(project_dir: Path, *, auth_token: str = ""):
                 return
             if path == "/api/overview":
                 self._send_json(gui_overview(project, limit=_int_arg(query, "limit", 5)))
+                return
+            if path == "/api/daily-report":
+                self._send_json(gui_daily_report(project, limit=_int_arg(query, "limit", 5)))
                 return
             if path == "/api/candidates":
                 self._send_json(

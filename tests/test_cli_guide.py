@@ -11,7 +11,7 @@ def test_cli_guide_defaults_to_human_surface(capsys):
     assert "Intent shortcuts" in out
     assert "For humans, keep the surface small" in out
     assert "vault setup-agent" in out
-    assert "vault-mcp --tool-profile core" in out
+    assert "vault daily-report" in out
 
 
 def test_cli_guide_agent_json_lists_mcp_profiles(capsys):
@@ -36,6 +36,7 @@ def test_cli_guide_all_pretty_includes_all_surfaces(capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["mode"] == "all"
     assert payload["everyday_entrypoints"]
+    assert any(row["command"] == "vault daily-report" for row in payload["everyday_entrypoints"])
     assert payload["agent_mcp_profiles"]
     assert payload["maintenance_entrypoints"]
 

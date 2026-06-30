@@ -7,6 +7,7 @@ from typing import Any
 
 from .automation import automation_brief
 from .automation_inbox import automation_inbox
+from .daily_report import build_daily_report
 from .db import VaultDB
 from .db_knowledge import escape_like_pattern
 from .memory import promote_candidate, review_candidate
@@ -53,6 +54,7 @@ def gui_overview(project_dir: str | Path, *, limit: int = 5) -> dict[str, Any]:
             "stats": {},
             "brief": {},
             "inbox": {},
+            "daily_report": {},
             "recent": [],
         }
 
@@ -69,16 +71,23 @@ def gui_overview(project_dir: str | Path, *, limit: int = 5) -> dict[str, Any]:
         task_rows = list_tasks(db, status="active", limit=max(1, min(int(limit or 5), 20)))
     brief = automation_brief(project, limit=limit, review_limit=limit)
     inbox = automation_inbox(project, limit=limit, include_content=False)
+    daily_report = build_daily_report(project, limit=limit)
     return {
         "status": "ok",
         "project_dir": str(project),
         "stats": stats,
         "brief": compact_brief(brief),
         "inbox": compact_inbox(inbox),
+        "daily_report": daily_report,
         "tasks": [compact_task(row) for row in task_rows],
         "candidates": candidates,
         "recent": recent,
     }
+
+
+def gui_daily_report(project_dir: str | Path, *, limit: int = 5) -> dict[str, Any]:
+    """Return the consumer-facing daily report for the local GUI."""
+    return build_daily_report(project_dir, limit=limit)
 
 
 def gui_tasks(project_dir: str | Path, *, status: str = "active", limit: int = 20) -> dict[str, Any]:

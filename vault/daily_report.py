@@ -65,9 +65,9 @@ def _labels(language: str) -> dict[str, str]:
             "status": "狀態",
             "headline": "摘要",
             "safety": "安全邊界",
-            "read_only": "這份報告是 read-only。",
+            "read_only": "這份報告是唯讀報告。",
             "no_raw": "不包含原始候選內容。",
-            "no_mutation": "不會 promote、archive、delete 或修改記憶。",
+            "no_mutation": "不會收進正式記憶、封存、刪除或修改記憶。",
         }
     if lang == "zh-CN":
         return {
@@ -107,9 +107,9 @@ def _labels(language: str) -> dict[str, str]:
             "status": "状态",
             "headline": "摘要",
             "safety": "安全边界",
-            "read_only": "这份报告是 read-only。",
+            "read_only": "这份报告是只读报告。",
             "no_raw": "不包含原始候选内容。",
-            "no_mutation": "不会 promote、archive、delete 或修改记忆。",
+            "no_mutation": "不会收进正式记忆、归档、删除或修改记忆。",
         }
     return {
         "title": "Vault Daily Memory Report",
@@ -162,6 +162,8 @@ def build_daily_report(
     write_report: bool = False,
     report_path: str | Path = "",
     language: str = "en",
+    precomputed_brief: dict[str, Any] | None = None,
+    precomputed_review: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a short, human-first daily memory report.
 
@@ -173,10 +175,16 @@ def build_daily_report(
     lang = normalize_report_language(language)
     labels = _labels(lang)
     generated_at = datetime.now(timezone.utc).isoformat()
-    brief = automation_brief(project, limit=limit_i, review_limit=limit_i, min_events=min_events)
-    review = automation_review_summary(project, limit=limit_i, min_events=min_events)
+    brief = precomputed_brief or automation_brief(project, limit=limit_i, review_limit=limit_i, min_events=min_events)
+    review = precomputed_review or automation_review_summary(
+        project,
+        limit=limit_i,
+        min_events=min_events,
+        precomputed_brief=brief,
+    )
     brief_summary = brief.get("summary") or {}
-    cards = [_compact_card(card, language=lang) for card in (review.get("cards") or [])[:limit_i]]
+    cards_all = [_compact_card(card, language=lang) for card in (review.get("cards") or [])[:limit_i]]
+    decision_cards = [card for card in cards_all if card.get("requires_human_decision", True)]
     quiet_actions = _quiet_actions(brief_summary)
     payload = {
         "action": "daily-report",
@@ -184,12 +192,12 @@ def build_daily_report(
         "generated_at": generated_at,
         "project_dir": str(project),
         "status": "completed" if brief.get("status") == "completed" else brief.get("status", "blocked"),
-        "headline": _headline(brief_summary, cards, language=lang),
+        "headline": _headline(brief_summary, decision_cards, language=lang),
         "labels": labels,
         "summary": {
             "auto_kept_or_observed": int(quiet_actions.get("total", 0)),
             "pending_candidates": int(brief_summary.get("pending_candidates") or 0),
-            "needs_confirmation": len(cards),
+            "needs_confirmation": len(decision_cards),
             "learning_rules": int(brief_summary.get("learning_rules") or 0),
             "expired_active": int(brief_summary.get("expired_active") or 0),
             "cold_store_preview": int(brief_summary.get("cold_store_preview") or 0),
@@ -197,8 +205,8 @@ def build_daily_report(
             "registered_agents": int((brief.get("agent_health") or {}).get("agent_count") or 0),
         },
         "quiet_actions": quiet_actions,
-        "review_cards": cards,
-        "daily_choices": _daily_choices(cards),
+        "review_cards": decision_cards,
+        "daily_choices": _daily_choices(decision_cards),
         "paths": {
             "json": "",
             "markdown": "",
@@ -213,7 +221,7 @@ def build_daily_report(
         },
         "next_action": (
             labels["next_review_cards"]
-            if cards
+            if decision_cards
             else labels["next_no_action"]
         ),
     }

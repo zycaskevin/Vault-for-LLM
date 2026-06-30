@@ -646,6 +646,7 @@ def automation_review_summary(
     min_events: int = 5,
     write_summary: bool = False,
     summary_path: str | Path = "",
+    precomputed_brief: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the shortest human approval surface for automation.
 
@@ -655,7 +656,13 @@ def automation_review_summary(
     """
     project = Path(project_dir)
     limit_i = max(1, min(int(limit or 5), 20))
-    brief = automation_brief(project, limit=limit_i, review_limit=limit_i, min_events=min_events, write_brief=False)
+    brief = precomputed_brief or automation_brief(
+        project,
+        limit=limit_i,
+        review_limit=limit_i,
+        min_events=min_events,
+        write_brief=False,
+    )
     cards = _review_summary_cards(brief, limit=limit_i)
     required = any(card.get("requires_human_decision") for card in cards)
     payload = {

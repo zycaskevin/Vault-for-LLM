@@ -28,6 +28,7 @@ def cmd_gui(args) -> None:
         open_browser=not bool(getattr(args, "no_open", False)),
         auth_token=getattr(args, "auth_token", None),
         no_auth=bool(getattr(args, "no_auth", False)),
+        language=getattr(args, "language", "zh-Hant"),
     )
 
 __all__ = [

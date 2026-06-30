@@ -271,7 +271,8 @@ APP_HTML = r"""<!doctype html>
     let currentTask = null;
     let activeTab = "map";
     let documentFacets = {};
-    let currentLanguage = localStorage.getItem("vaultGuiLanguage") || "zh-Hant";
+    const defaultLanguage = "__VAULT_DEFAULT_LANGUAGE__";
+    let currentLanguage = localStorage.getItem("vaultGuiLanguage") || (defaultLanguage.startsWith("__") ? "zh-Hant" : defaultLanguage);
 
     const $ = (id) => document.getElementById(id);
     const esc = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -323,14 +324,33 @@ APP_HTML = r"""<!doctype html>
         rejectMemory: "不收錄",
         blockMemory: "封鎖類似內容",
         actionAuditNote: "按下前會再次確認，並記錄這次選擇。",
-        readOnly: "read-only 報告",
+        readOnly: "唯讀報告",
         tokenProtected: "GUI token 保護",
-        noSilentMutation: "不會偷偷 promote/archive/delete",
+        noSilentMutation: "不會偷偷收錄、封存或刪除",
         boundedReads: "先讀有邊界證據",
         agentDefaultHeadline: "你的 Agent 可以操作 Vault；你只看每日短報告。",
         noHumanAction: "今天不需要人處理。",
         next: "下一步",
         blockers: "阻礙",
+        map: "地圖",
+        graph: "圖譜",
+        timeline: "時間線",
+        governance: "治理",
+        usage: "使用",
+        currentPlan: "目前計畫",
+        completed: "已完成",
+        hardDecisions: "重要決定",
+        nextActions: "下一步",
+        handoffMarkdown: "交接摘要",
+        candidateReview: "候選記憶審核",
+        privacy: "隱私",
+        duplicate: "重複",
+        quality: "品質",
+        unknown: "未知",
+        confirmAction: "確認執行這次記憶決定？",
+        confirmToken: "確認碼",
+        reviewFailed: "審核動作失敗",
+        reviewCompleted: "審核已完成",
       },
       "zh-CN": {
         title: "Vault 记忆",
@@ -379,14 +399,33 @@ APP_HTML = r"""<!doctype html>
         rejectMemory: "不收录",
         blockMemory: "封锁类似内容",
         actionAuditNote: "按下前会再次确认，并记录这次选择。",
-        readOnly: "read-only 报告",
+        readOnly: "只读报告",
         tokenProtected: "GUI token 保护",
-        noSilentMutation: "不会偷偷 promote/archive/delete",
+        noSilentMutation: "不会偷偷收录、归档或删除",
         boundedReads: "先读有边界证据",
         agentDefaultHeadline: "你的 Agent 可以操作 Vault；你只看每日短报告。",
         noHumanAction: "今天不需要人处理。",
         next: "下一步",
         blockers: "阻碍",
+        map: "地图",
+        graph: "图谱",
+        timeline: "时间线",
+        governance: "治理",
+        usage: "使用",
+        currentPlan: "当前计划",
+        completed: "已完成",
+        hardDecisions: "重要决定",
+        nextActions: "下一步",
+        handoffMarkdown: "交接摘要",
+        candidateReview: "候选记忆审核",
+        privacy: "隐私",
+        duplicate: "重复",
+        quality: "质量",
+        unknown: "未知",
+        confirmAction: "确认执行这次记忆决定？",
+        confirmToken: "确认码",
+        reviewFailed: "审核动作失败",
+        reviewCompleted: "审核已完成",
       },
       en: {
         title: "Vault Memory",
@@ -443,6 +482,25 @@ APP_HTML = r"""<!doctype html>
         noHumanAction: "No human action needed today.",
         next: "next",
         blockers: "blockers",
+        map: "Map",
+        graph: "Graph",
+        timeline: "Timeline",
+        governance: "Governance",
+        usage: "Usage",
+        currentPlan: "Current Plan",
+        completed: "Completed",
+        hardDecisions: "Hard Decisions",
+        nextActions: "Next Actions",
+        handoffMarkdown: "Handoff Markdown",
+        candidateReview: "Candidate review",
+        privacy: "privacy",
+        duplicate: "duplicate",
+        quality: "quality",
+        unknown: "unknown",
+        confirmAction: "Confirm this memory decision?",
+        confirmToken: "Confirmation token",
+        reviewFailed: "Review action failed",
+        reviewCompleted: "Review action completed",
       }
     };
     const ui = () => UI_TEXT[currentLanguage] || UI_TEXT.en;
@@ -476,6 +534,11 @@ APP_HTML = r"""<!doctype html>
       $("searchButton").textContent = text.search;
       $("applyDocFilters").textContent = text.apply;
       $("clearDocFilters").textContent = text.clear;
+      document.querySelector('[data-tab="map"]').textContent = text.map;
+      document.querySelector('[data-tab="graph"]').textContent = text.graph;
+      document.querySelector('[data-tab="timeline"]').textContent = text.timeline;
+      document.querySelector('[data-tab="governance"]').textContent = text.governance;
+      document.querySelector('[data-tab="usage"]').textContent = text.usage;
     }
 
     function renderMetrics(stats, inbox) {
@@ -554,6 +617,8 @@ APP_HTML = r"""<!doctype html>
 
     function renderDecisionCard(card, className="item") {
       const text = ui();
+      const cardId = String(card.id || "");
+      const canOpen = cardId.startsWith("mem_") || Number(cardId || 0) > 0;
       return `
         <div class="${className}" data-daily-card="${esc(card.id || "")}">
           <h3>${esc(card.title || card.id || card.kind || text.reviewItem)}</h3>
@@ -562,7 +627,7 @@ APP_HTML = r"""<!doctype html>
           <div class="meta">
             ${pill(`${text.suggestedDirection}: ${card.suggested_decision || text.reviewAction}`, "warn")}
           </div>
-          <button class="secondary mini-action" type="button" data-open-daily-card="${esc(card.id || "")}">${esc(text.viewBeforeDecision)}</button>
+          ${canOpen ? `<button class="secondary mini-action" type="button" data-open-daily-card="${esc(card.id || "")}">${esc(text.viewBeforeDecision)}</button>` : ""}
         </div>
       `;
     }
@@ -573,6 +638,10 @@ APP_HTML = r"""<!doctype html>
         if (id.startsWith("mem_")) el.addEventListener("click", (event) => {
           if (el.dataset.openDailyCard) event.stopPropagation();
           loadCandidate(id);
+        });
+        else if (Number(id || 0) > 0) el.addEventListener("click", (event) => {
+          if (el.dataset.openDailyCard) event.stopPropagation();
+          loadEntry(Number(id));
         });
       });
     }
@@ -728,9 +797,9 @@ APP_HTML = r"""<!doctype html>
             ${pill(row.layer)}
             ${pill(row.scope)}
             ${pill(row.sensitivity, row.sensitivity === "low" ? "good" : "warn")}
-            ${pill("privacy:" + (row.privacy_status || "unknown"))}
-            ${pill("duplicate:" + (row.duplicate_status || "unknown"))}
-            ${pill("quality:" + (row.quality_status || "unknown"))}
+            ${pill(ui().privacy + ":" + (row.privacy_status || ui().unknown))}
+            ${pill(ui().duplicate + ":" + (row.duplicate_status || ui().unknown))}
+            ${pill(ui().quality + ":" + (row.quality_status || ui().unknown))}
           </div>
         </article>
         <div class="panel">
@@ -785,13 +854,13 @@ APP_HTML = r"""<!doctype html>
             ${pill(task.sensitivity || "low", task.sensitivity === "low" ? "good" : "warn")}
           </div>
         </article>
-        ${section("Current Plan", task.current_plan)}
-        ${section("Completed", task.completed)}
-        ${section("Hard Decisions", task.hard_decisions)}
-        ${section("Blockers", task.blockers)}
-        ${section("Next Actions", task.next_actions)}
+        ${section(ui().currentPlan, task.current_plan)}
+        ${section(ui().completed, task.completed)}
+        ${section(ui().hardDecisions, task.hard_decisions)}
+        ${section(ui().blockers, task.blockers)}
+        ${section(ui().nextActions, task.next_actions)}
         <div class="panel">
-          <h3>Handoff Markdown</h3>
+          <h3>${esc(ui().handoffMarkdown)}</h3>
           <pre>${esc(markdown || "")}</pre>
         </div>
       `;
@@ -801,13 +870,12 @@ APP_HTML = r"""<!doctype html>
       const keys = ["status", "source", "source_ref", "memory_type", "trust", "created_at", "updated_at", "valid_from", "valid_until", "expires_at"];
       const fields = keys.map(key => `<div class="kv"><span>${esc(key)}</span><strong>${esc(row[key] || "—")}</strong></div>`).join("");
       const gates = row.gates ? `<pre>${esc(JSON.stringify(row.gates, null, 2))}</pre>` : "";
-      return `<div class="panel"><h3>${esc(row.title)}</h3><div class="subtle">Candidate review</div></div>${fields}${gates}`;
+      return `<div class="panel"><h3>${esc(row.title)}</h3><div class="subtle">${esc(ui().candidateReview)}</div></div>${fields}${gates}`;
     }
 
     async function reviewCandidate(id, action) {
       const token = `${id}:${action}`;
-      const label = action === "promote" ? "promote into active knowledge" : `${action} this candidate`;
-      if (!window.confirm(`Confirm ${label}?\\n\\nRequired token: ${token}`)) return;
+      if (!window.confirm(`${ui().confirmAction}\\n\\n${ui().confirmToken}: ${token}`)) return;
       const reason = $("reviewReason")?.value || "";
       const payload = await postApi(`/api/candidate/${encodeURIComponent(id)}/review`, {
         action,
@@ -815,10 +883,10 @@ APP_HTML = r"""<!doctype html>
         confirm: token
       });
       if (payload.status !== "ok") {
-        window.alert(payload.error || payload.reason || "Review action failed");
+        window.alert(payload.error || payload.reason || ui().reviewFailed);
         return;
       }
-      window.alert(`Review action completed: ${payload.result?.status || action}`);
+      window.alert(`${ui().reviewCompleted}: ${payload.result?.status || action}`);
       await boot();
       if (payload.result?.knowledge_id) {
         await loadEntry(payload.result.knowledge_id);

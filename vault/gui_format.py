@@ -38,6 +38,7 @@ def compact_candidate(
     row: dict[str, Any],
     *,
     include_content: bool = False,
+    include_preview: bool = False,
     include_gates: bool = False,
 ) -> dict[str, Any]:
     content = row.get("content") or ""
@@ -68,8 +69,9 @@ def compact_candidate(
         "created_at": row.get("created_at", ""),
         "updated_at": row.get("updated_at", ""),
         "content_length": len(content),
-        "content_preview": " ".join(content.split())[:220],
     }
+    if include_preview:
+        item["content_preview"] = " ".join(content.split())[:220]
     if include_content:
         item["content"] = content
     if include_gates:

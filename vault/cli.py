@@ -244,6 +244,8 @@ def main(argv: list[str] | None = None):
     p.add_argument("--no-open", action="store_true", help="不要自動開啟瀏覽器")
     p.add_argument("--auth-token", default=None, help="GUI 存取 token；省略時自動產生或讀 VAULT_GUI_TOKEN")
     p.add_argument("--no-auth", action="store_true", help="只允許 localhost 使用；關閉 GUI token 驗證")
+    p.add_argument("--language", choices=["en", "zh-Hant", "zh-CN"], default="zh-Hant",
+                   help="GUI 預設語言；瀏覽器 localStorage 仍可覆蓋")
 
     p = sub.add_parser("security", help="安全預設與 agent-facing surface 自檢")
     security_sub = p.add_subparsers(dest="security_action", help="安全子命令")
@@ -574,7 +576,7 @@ def main(argv: list[str] | None = None):
         ap.add_argument("--automation-auto-promote-low-risk", action="store_true",
                         help="寫入 policy，允許 --automation-apply 只提升低風險 session_capture/session_lesson 候選")
         ap.add_argument("--daily-report-time", default="",
-                        help="consumer 排程寫出 daily-report 的時間，例如 09:00；consumer 預設 09:00")
+                        help="consumer 每日記憶整理與報告排程時間，例如 09:00；consumer 預設 09:00")
         ap.add_argument("--stable-venv",
                         help="產生穩定 Python virtualenv bootstrap 腳本，建議 ~/.hermes/venvs/vault-for-llm")
         ap.add_argument("--write-stable-venv-script", action="store_true",

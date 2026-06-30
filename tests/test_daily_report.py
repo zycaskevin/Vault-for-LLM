@@ -73,6 +73,51 @@ def test_daily_report_supports_traditional_and_simplified_chinese(tmp_path):
     assert "Vault 每日记忆报告" in render_daily_report_text(zh_cn)
 
 
+def test_daily_report_does_not_escalate_observe_cards_to_human_decisions(tmp_path, monkeypatch):
+    import vault.daily_report as daily_report
+
+    project = tmp_path / "project"
+    project.mkdir()
+    with VaultDB(project / "vault.db"):
+        pass
+
+    monkeypatch.setattr(
+        daily_report,
+        "automation_brief",
+        lambda *args, **kwargs: {
+            "status": "completed",
+            "summary": {
+                "pending_candidates": 0,
+                "learning_rules": 0,
+                "expired_active": 0,
+            },
+            "agent_health": {"agent_count": 1},
+        },
+    )
+    monkeypatch.setattr(
+        daily_report,
+        "automation_review_summary",
+        lambda *args, **kwargs: {
+            "cards": [
+                {
+                    "kind": "memory_importance",
+                    "id": 1,
+                    "title": "Observed useful memory",
+                    "recommended_action": "keep_observing",
+                    "reason": "This is useful but does not need a human decision.",
+                    "requires_human_decision": False,
+                }
+            ]
+        },
+    )
+
+    payload = daily_report.build_daily_report(project, language="zh-Hant")
+
+    assert payload["summary"]["needs_confirmation"] == 0
+    assert payload["review_cards"] == []
+    assert "今天沒有需要人決定" in payload["headline"]
+
+
 def test_cli_daily_report_json_and_write_report(tmp_path, capsys):
     project, _candidate_id = _project_with_candidate(tmp_path)
 

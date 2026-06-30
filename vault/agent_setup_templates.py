@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from vault import __version__
+from vault.agent_setup_supabase import _normalize_setup_language
 
 
 VALID_SYNC_TARGETS = {"none", "cron", "launchagent", "n8n", "all"}
@@ -582,12 +583,15 @@ def daily_report_command(
     *,
     project_dir: str | Path,
     vault_executable: str = "vault",
+    language: str = "en",
 ) -> list[str]:
     return [
         vault_executable,
         "daily-report",
         "--project-dir",
         str(Path(project_dir).expanduser()),
+        "--language",
+        _normalize_setup_language(language),
         "--write-report",
         "--pretty",
     ]
@@ -607,6 +611,7 @@ def automation_schedule_with_inbox_command(
     capture_transcripts: bool = False,
     capture_transcript_limit: int = 3,
     write_daily_report: bool = False,
+    language: str = "en",
 ) -> list[str]:
     primary = automation_schedule_command(
         project_dir=project_dir,
@@ -644,7 +649,7 @@ def automation_schedule_with_inbox_command(
         project_dir=project_dir,
         vault_executable=vault_executable,
     )
-    daily = daily_report_command(project_dir=project_dir, vault_executable=vault_executable)
+    daily = daily_report_command(project_dir=project_dir, vault_executable=vault_executable, language=language)
     commands = [
         shell_join(pipeline),
         shell_join(reflection),
@@ -681,6 +686,7 @@ def write_automation_schedule_templates(
     auto_promote_low_risk: bool = False,
     write_daily_report: bool = False,
     daily_report_time: str = "",
+    language: str = "en",
 ) -> dict[str, str]:
     out = Path(output_dir).expanduser().resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -713,6 +719,7 @@ def write_automation_schedule_templates(
         capture_transcripts=capture_transcripts,
         capture_transcript_limit=capture_transcript_limit,
         write_daily_report=write_daily_report,
+        language=language,
     )
     inbox_args = automation_inbox_handoff_command(
         project_dir=project_dir,
@@ -740,6 +747,7 @@ def write_automation_schedule_templates(
     daily_report_args = daily_report_command(
         project_dir=project_dir,
         vault_executable=vault_executable,
+        language=language,
     )
     handoff_args = [
         vault_executable,

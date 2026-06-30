@@ -62,7 +62,7 @@ def test_run_agent_setup_imports_obsidian_and_writes_templates(tmp_path):
 
 
 def test_run_agent_setup_consumer_audience_writes_daily_report_guide_and_safe_schedule(tmp_path):
-    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+    from vault.agent_setup import AgentSetupConfig, current_vault_executable, run_agent_setup
 
     project = tmp_path / "consumer-project"
     result = run_agent_setup(
@@ -88,6 +88,8 @@ def test_run_agent_setup_consumer_audience_writes_daily_report_guide_and_safe_sc
     assert "vault automation cycle" in cron
     assert "--write-workspace" in cron
     assert "vault daily-report" in cron
+    assert current_vault_executable() in cron
+    assert "--language zh-Hant" in cron
     assert "0 9 * * * sh -lc" in cron
     assert "daily-report-latest" in readme
     assert "--apply" not in cron
@@ -121,6 +123,8 @@ def test_run_agent_setup_consumer_audience_supports_simplified_chinese(tmp_path)
     safety = (tmp_path / "templates" / "README-local-safety.md").read_text(encoding="utf-8")
     assert "一般用户模式" in guide
     assert "你不需要学习 CLI" in guide
+    cron = (tmp_path / "templates" / "memory-automation.cron").read_text(encoding="utf-8")
+    assert "--language zh-CN" in cron
     assert "本机安全默认值" in safety
 
 

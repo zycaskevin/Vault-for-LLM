@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 import webbrowser
 
+from .daily_report import normalize_report_language
 from .gui_api import (
     gui_candidate,
     gui_candidates,
@@ -39,6 +40,7 @@ def run_gui(
     open_browser: bool = True,
     auth_token: str | None = None,
     no_auth: bool = False,
+    language: str = "zh-Hant",
 ) -> None:
     """Start the local GUI server and block until interrupted."""
     project = Path(project_dir).expanduser().resolve()
@@ -46,7 +48,7 @@ def run_gui(
     if no_auth and host_text not in {"127.0.0.1", "localhost", "::1"}:
         raise ValueError("--no-auth is only allowed for localhost binds")
     token = "" if no_auth else (auth_token or os.environ.get("VAULT_GUI_TOKEN", "").strip() or secrets.token_urlsafe(24))
-    handler = make_gui_handler(project, auth_token=token)
+    handler = make_gui_handler(project, auth_token=token, language=language)
     server = ThreadingHTTPServer((host, int(port)), handler)
     url = f"http://{host}:{int(port)}/"
     browser_url = f"{url}?token={token}" if token else url
@@ -64,9 +66,11 @@ def run_gui(
         server.server_close()
 
 
-def make_gui_handler(project_dir: Path, *, auth_token: str = ""):
+def make_gui_handler(project_dir: Path, *, auth_token: str = "", language: str = "zh-Hant"):
     project = Path(project_dir)
     token = str(auth_token or "")
+    default_language = normalize_report_language(language)
+    app_html = APP_HTML.replace("__VAULT_DEFAULT_LANGUAGE__", default_language)
 
     class VaultGuiHandler(BaseHTTPRequestHandler):
         server_version = "VaultGui/0.1"
@@ -80,7 +84,7 @@ def make_gui_handler(project_dir: Path, *, auth_token: str = ""):
                 self._send_unauthorized()
                 return
             if path == "/":
-                self._send_html(APP_HTML, set_cookie=bool(token and _query_token(query) == token))
+                self._send_html(app_html, set_cookie=bool(token and _query_token(query) == token))
                 return
             if path == "/api/overview":
                 self._send_json(
@@ -202,7 +206,7 @@ def make_gui_handler(project_dir: Path, *, auth_token: str = ""):
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
             if set_cookie and token:
-                self.send_header("Set-Cookie", f"vault_gui_token={token}; Path=/; SameSite=Strict")
+                self.send_header("Set-Cookie", f"vault_gui_token={token}; Path=/; SameSite=Strict; HttpOnly")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
@@ -254,6 +258,7 @@ def cmd_gui(args: Any) -> None:
         open_browser=not bool(getattr(args, "no_open", False)),
         auth_token=getattr(args, "auth_token", None),
         no_auth=bool(getattr(args, "no_auth", False)),
+        language=getattr(args, "language", "zh-Hant"),
     )
 
 

@@ -42,9 +42,9 @@ vault gui --project-dir ~/Vaults/my-project --no-auth --no-open
 | Right | Task details, or Document Map, graph, timeline, governance, and usage metadata for the selected memory |
 
 The first screen is intentionally not a raw database browser. It starts with the
-same read-only daily report as `vault daily-report`, shows the few decisions that
-need human attention, and reminds the user that Vault will not silently promote,
-archive, or delete memory.
+same read-only daily report as `vault daily-report`, shows only the decisions
+that truly need human attention, and reminds the user that Vault will not
+silently promote, archive, or delete memory.
 
 Daily report cards are not decision buttons. Each card should explain what the
 human is deciding and then open the detailed candidate/evidence view. The actual
@@ -74,7 +74,8 @@ open the related memory without leaving the console.
 
 ## API
 
-The local server exposes read-only JSON endpoints:
+Most local server endpoints are read-only. The only GUI write path is the
+explicit candidate review endpoint, which is separated as a `POST` action:
 
 | Endpoint | Purpose |
 |---|---|

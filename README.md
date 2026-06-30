@@ -78,34 +78,32 @@ app, or an automatic conversation memory product.
 
 ### Agent-Driven Install
 
-For most users, the right path is to ask an agent to install it:
+For most users, the right path is to ask an agent to install consumer mode:
 
 ```text
 Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.18.
-Ask which language to use: Traditional Chinese, Simplified Chinese, or English.
-Ask whether the vault should be shared, private, domain-specific, or temporary.
-Ask for a stable project directory and generate a stable venv script for
-long-lived agent jobs. Ask separately about MCP, semantic search, Supabase,
-Obsidian import, Headroom compression, and memory-agent guidance. Install only
-the optional dependencies I approve. Finish with two smoke checks: add/search/read
-against an active test note, then remember/propose as a candidate-only test.
+Use consumer mode. Ask me only:
+1. Traditional Chinese, Simplified Chinese, or English?
+2. Independent vault or shared vault?
+3. Connect Obsidian, Supabase, both, or neither?
+4. What time should the daily memory report run?
+Then finish with a small smoke check and show me the daily report / GUI link.
 ```
 
 The agent should use the guided installer:
 
 ```bash
-python3 -m venv .venv
+python3.10 -m venv .venv
 source .venv/bin/activate
 pip install "vault-for-llm[mcp]==0.7.18"
 
-vault setup-agent
+vault setup-agent --audience consumer
 ```
 
-For people who do not want to learn commands, ask the agent to use consumer
-mode:
+Builder or advanced agent installs can use the full setup flow:
 
 ```bash
-vault setup-agent --audience consumer
+vault setup-agent
 ```
 
 Consumer mode writes an `agent-install/README-consumer-daily-report.md` guide

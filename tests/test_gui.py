@@ -103,6 +103,8 @@ def test_gui_overview_search_entry_and_read(tmp_path):
     assert overview["status"] == "ok"
     assert overview["recent"][0]["title"] == "GUI Console Runbook"
     assert overview["candidates"][0]["id"] == candidate_id
+    assert "content" not in overview["candidates"][0]
+    assert "content_preview" not in overview["candidates"][0]
     assert overview["tasks"][0]["id"] == "task-gui"
     assert overview["daily_report"]["action"] == "daily-report"
     assert overview["daily_report"]["language"] == "zh-CN"
@@ -147,6 +149,7 @@ def test_gui_app_exposes_document_map_panel():
     assert "Memory Control Center" in APP_HTML
     assert "read-only report" in APP_HTML
     assert "No silent promote/archive/delete" in APP_HTML
+    assert "__VAULT_DEFAULT_LANGUAGE__" in APP_HTML
     assert "Sections" in APP_HTML
     assert "Claims" in APP_HTML
     assert "data-read-node" in APP_HTML
@@ -201,6 +204,7 @@ def test_gui_candidate_review_requires_confirmation(tmp_path):
 
     assert payload["status"] == "error"
     assert payload["error"] == "confirmation_required"
+    assert "expected_confirmation" not in payload
     with VaultDB(project / "vault.db") as db:
         assert db.get_memory_candidate(candidate_id)["status"] == "candidate"
 
@@ -212,6 +216,8 @@ def test_gui_candidate_reject_records_review(tmp_path):
     listed = gui_candidates(project)
     assert listed["status"] == "ok"
     assert listed["candidates"][0]["id"] == candidate_id
+    assert "content" not in listed["candidates"][0]
+    assert "content_preview" not in listed["candidates"][0]
 
     detail = gui_candidate(project, candidate_id)
     assert detail["status"] == "ok"
@@ -278,7 +284,7 @@ def test_gui_missing_or_invalid_project(tmp_path):
 def test_cmd_gui_passes_cli_options(monkeypatch, tmp_path):
     calls = {}
 
-    def fake_run_gui(project_dir, *, host, port, open_browser, auth_token=None, no_auth=False):
+    def fake_run_gui(project_dir, *, host, port, open_browser, auth_token=None, no_auth=False, language="zh-Hant"):
         calls.update(
             {
                 "project_dir": project_dir,
@@ -287,13 +293,14 @@ def test_cmd_gui_passes_cli_options(monkeypatch, tmp_path):
                 "open_browser": open_browser,
                 "auth_token": auth_token,
                 "no_auth": no_auth,
+                "language": language,
             }
         )
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("vault.gui.run_gui", fake_run_gui)
 
-    cmd_gui(Namespace(host="127.0.0.1", port=9999, no_open=True, auth_token="test-token", no_auth=False))
+    cmd_gui(Namespace(host="127.0.0.1", port=9999, no_open=True, auth_token="test-token", no_auth=False, language="zh-CN"))
 
     assert calls["project_dir"] == tmp_path
     assert calls["host"] == "127.0.0.1"
@@ -301,6 +308,7 @@ def test_cmd_gui_passes_cli_options(monkeypatch, tmp_path):
     assert calls["open_browser"] is False
     assert calls["auth_token"] == "test-token"
     assert calls["no_auth"] is False
+    assert calls["language"] == "zh-CN"
 
 
 def test_gui_handler_requires_token_for_api(tmp_path):
@@ -323,6 +331,14 @@ def test_gui_handler_requires_token_for_api(tmp_path):
         allowed = conn.getresponse()
         assert allowed.status == 200
         assert b'"status": "ok"' in allowed.read()
+        conn.close()
+
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("GET", "/?token=secret-token")
+        page = conn.getresponse()
+        assert page.status == 200
+        assert "HttpOnly" in (page.getheader("Set-Cookie") or "")
+        assert b"__VAULT_DEFAULT_LANGUAGE__" not in page.read()
         conn.close()
     finally:
         server.shutdown()

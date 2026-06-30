@@ -6,6 +6,7 @@ import contextlib
 import io
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -118,6 +119,11 @@ VALID_MEMORY_LAYOUTS = {"shared", "private", "hybrid"}
 VALID_RUNTIME_TEMPLATES = {"codex", "claude-code", "claude_code", "openclaw", "hermes"}
 PYPI_EXTRA_FEATURES = {"mcp", "semantic", "supabase", "dev"}
 VALID_EMBEDDING_MODELS = {"zh", "en", "mix"}
+
+
+def current_vault_executable() -> str:
+    """Return the best stable vault executable path for generated schedules."""
+    return shutil.which("vault") or "vault"
 
 
 def default_project_dir(scope: str, *, agent: str = "generic") -> Path:
@@ -579,6 +585,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
             mode=config.automation_mode,
             command=config.automation_command,
             apply=config.automation_apply,
+            vault_executable=current_vault_executable(),
             write_workspace=automation_write_workspace,
             workspace_inbox_limit=config.automation_workspace_inbox_limit,
             include_transcripts=config.automation_include_transcripts,
@@ -588,6 +595,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
             auto_promote_low_risk=config.automation_auto_promote_low_risk,
             write_daily_report=audience == "consumer",
             daily_report_time=daily_report_time,
+            language=language,
         )
         result["next_steps"].append(
             f"Review memory automation schedule: {result['automation_schedule_templates']['readme']}"

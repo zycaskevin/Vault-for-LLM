@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .automation import automation_brief
+from .automation import automation_brief, automation_review_summary
 from .automation_inbox import automation_inbox
 from .daily_report import build_daily_report
 from .db import VaultDB
@@ -70,8 +70,15 @@ def gui_overview(project_dir: str | Path, *, limit: int = 5, language: str = "en
         ]
         task_rows = list_tasks(db, status="active", limit=max(1, min(int(limit or 5), 20)))
     brief = automation_brief(project, limit=limit, review_limit=limit)
+    review = automation_review_summary(project, limit=limit, precomputed_brief=brief)
     inbox = automation_inbox(project, limit=limit, include_content=False)
-    daily_report = build_daily_report(project, limit=limit, language=language)
+    daily_report = build_daily_report(
+        project,
+        limit=limit,
+        language=language,
+        precomputed_brief=brief,
+        precomputed_review=review,
+    )
     return {
         "status": "ok",
         "project_dir": str(project),
@@ -461,7 +468,6 @@ def gui_review_candidate(
         return {
             "status": "error",
             "error": "confirmation_required",
-            "expected_confirmation": expected,
         }
 
     with VaultDB(db_path) as db:

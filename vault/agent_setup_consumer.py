@@ -27,7 +27,7 @@ def write_consumer_daily_report_guide(
 每天你只需要看：
 
 ```bash
-vault daily-report --project-dir {shlex.quote(str(Path(project_dir).expanduser()))}
+vault daily-report --project-dir {shlex.quote(str(Path(project_dir).expanduser()))} --language zh-Hant
 ```
 
 日報只會顯示：
@@ -39,9 +39,9 @@ vault daily-report --project-dir {shlex.quote(str(Path(project_dir).expanduser()
 
 安全邊界：
 
-- 日報是 read-only。
-- 不會自動 promote、archive、delete。
-- 不會顯示 raw candidate content。
+- 日報是唯讀報告。
+- 不會自動收進正式記憶、封存或刪除。
+- 不會顯示原始候選記憶內容。
 - 你可以讓 Agent 代跑自動化，但最後 5% 的重要決策仍然留給你。
 
 安裝包也會產生：
@@ -62,7 +62,7 @@ vault daily-report --project-dir {shlex.quote(str(Path(project_dir).expanduser()
 每天你只需要看：
 
 ```bash
-vault daily-report --project-dir {shlex.quote(str(Path(project_dir).expanduser()))}
+vault daily-report --project-dir {shlex.quote(str(Path(project_dir).expanduser()))} --language zh-CN
 ```
 
 日报只会显示：
@@ -74,9 +74,9 @@ vault daily-report --project-dir {shlex.quote(str(Path(project_dir).expanduser()
 
 安全边界：
 
-- 日报是 read-only。
-- 不会自动 promote、archive、delete。
-- 不会显示 raw candidate content。
+- 日报是只读报告。
+- 不会自动收进正式记忆、归档或删除。
+- 不会显示原始候选记忆内容。
 - 你可以让 Agent 代跑自动化，但最后 5% 的重要决策仍然留给你。
 
 安装包也会产生：

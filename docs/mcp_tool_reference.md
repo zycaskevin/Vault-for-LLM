@@ -12,9 +12,9 @@ the model context and fewer ways for an agent to choose the wrong action.
 | Profile | Tools | Best For |
 |---|---|---|
 | `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats`, `vault_update_status`, `vault_automation_activity`, `vault_automation_brief`, `vault_automation_handoff` | Daily agent work: start from status/activity/brief/handoff, find memory, read bounded evidence, propose new memory. |
-| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_capture_discover`, `vault_capture_session`, `vault_automation_inbox`, `vault_task_start/status/update/handoff/complete`, `vault_skill_*`, `vault_dream_run` | A reviewer agent or operator session that discovers/captures, approves/rejects candidates, inspects Skill versions, or maintains a resumable task working set. |
+| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_capture_discover`, `vault_capture_session`, `vault_automation_inbox`, `vault_task_start/status/update/handoff/complete`, Skill read/sync-inspection tools, `vault_dream_run` | A reviewer agent or operator session that discovers/captures, approves/rejects candidates, inspects Skill versions, or maintains a resumable task working set. |
 | `remote` | Core plus `vault_remote_search`, `vault_remote_map_show`, `vault_remote_read_range` | Hosted or cross-host agents reading a Supabase-synced vault. |
-| `maintenance` | Review plus cold-store lifecycle, Obsidian import, freshness, convergence, and curation tools | Scheduled maintenance or explicit operator-led cleanup. |
+| `maintenance` | Review plus Skill registry writes, Skill sync marking, cold-store lifecycle, Obsidian import, freshness, convergence, and curation tools | Scheduled maintenance or explicit operator-led cleanup. |
 | `full` | Every MCP tool, including low-level compatibility tools | Trusted local operators and backwards compatibility. |
 
 ```bash
@@ -308,9 +308,16 @@ Close a working set after the task is done.
 
 ## Skill Registry Tools
 
-Skill tools are available in `review`, `maintenance`, and `full`, but not in
-`core`. They let an agent inspect capabilities and upgrade plans without
-silently installing or overwriting runtime skills.
+Skill tools are not available in `core`.
+
+- `review` can inspect skills, version history, upgrade plans, and sync
+  manifests.
+- `maintenance` and `full` can also write to the local Skill registry and mark
+  a skill as synced.
+
+MCP Skill writes update the Vault registry only. They do not install, overwrite,
+or delete runtime Skill files in Codex, Claude Code, OpenClaw, Hermes Agent, or
+any other agent directory.
 
 ### `vault_skill_search`
 
@@ -359,6 +366,80 @@ Compare the caller's installed skill versions with the local registry.
 
 Agent rule: use this as an advisory checklist. Do not overwrite an agent's
 runtime skill files without explicit user or operator approval.
+
+### `vault_skill_sync_status`
+
+List sync state without raw Skill content.
+
+```json
+{
+  "include_synced": false,
+  "limit": 100
+}
+```
+
+Returns `never_synced`, `pending`, and `synced` counts. `pending` means the
+registry row was updated after `last_synced`.
+
+### `vault_skill_sync_manifest`
+
+Build a compact manifest for a trusted external sync worker.
+
+```json
+{
+  "include_synced": false,
+  "include_content": false,
+  "limit": 100
+}
+```
+
+The default manifest contains metadata and hashes only. To export bounded Skill
+content, the caller must set both:
+
+```json
+{
+  "include_content": true,
+  "allow_skill_content_export": true
+}
+```
+
+Content export is privacy-gated. If a Skill body contains fail-level secret
+patterns, the manifest omits the content and reports `content_export_blocked`.
+
+### `vault_skill_push`
+
+Write or revise a Skill in the local registry.
+
+```json
+{
+  "name": "review-helper",
+  "version": "1.1.0",
+  "content": "# Review Helper\n\nUse bounded evidence before judging a PR.",
+  "capabilities": "review,testing",
+  "category": "engineering",
+  "trust": 0.9,
+  "allow_skill_write": true
+}
+```
+
+This tool requires `allow_skill_write=true`, validates the registry name, caps
+payload size, and blocks fail-level privacy findings. It may create a new
+registry row, update the latest version, or store an older/equal version as a
+revision only. It never writes runtime Skill files.
+
+### `vault_skill_mark_synced`
+
+Mark one Skill as synced after an external sync worker succeeds.
+
+```json
+{
+  "name": "review-helper",
+  "allow_skill_sync_mark": true
+}
+```
+
+This is a bookkeeping operation. It does not upload data. Use it only after a
+trusted CLI, Supabase, n8n, or other sync process has completed successfully.
 
 ## Maintenance Tools
 

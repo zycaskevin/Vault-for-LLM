@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## [0.7.18] - 2026-06-30
+
+### Added
+
+- Added permission-gated MCP Skill registry writes with `vault_skill_push`; writes stay inside the Vault registry, are privacy-gated, validate Skill names, and never install runtime Skill files.
+- Added MCP Skill sync status and sync manifest tools so trusted external workers can sync by metadata/hash first and export bounded content only with explicit approval.
+- Added `vault_skill_mark_synced` for recording successful external Skill sync handoff.
+- Added a decision record documenting the Skill MCP write/sync boundary.
+
+### Safety
+
+- Kept Skill write tools out of the `core` and `review` profiles; only `maintenance` and `full` expose registry writes.
+- Kept Skill sync manifests content-free by default and blocked fail-level privacy findings during content export.
+
 ## [0.7.17] - 2026-06-30
 
 ### Added

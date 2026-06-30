@@ -83,7 +83,7 @@ changed notes without duplicating unchanged ones.
 | `vault agent register --agent codex --project ~/Vaults/my-project --scope shared` | Manually register an Agent/runtime in the local multi-agent registry |
 | `vault agent register --agent codex --project ~/Vaults/my-project --skills review-helper@1.0.0,task-helper` | Register which local skills this Agent expects, so update status can make skill usage visible |
 | `vault agent list` | List Agents registered on this machine |
-| `vault agent status --latest-version 0.7.17` | Show the same registry/update status without contacting the network |
+| `vault agent status --latest-version 0.7.18` | Show the same registry/update status without contacting the network |
 | `vault agent doctor --json` | Run the same shared update-distribution health check through the Agent registry namespace |
 | `vault agent startup-doctor --template-dir ./agent-install --json` | Check whether generated startup contracts include the current fleet-aware handoff order |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md` | Preview applying the generated Codex startup template into a runtime instruction file |
@@ -221,9 +221,18 @@ an agent's runtime.
 | `vault skill upgrade-plan --installed '{"review-helper":"1.0.0"}' --json` | Compare caller-installed skill versions with the registry latest versions |
 | `vault skill pull review-helper` | Write the latest Skill content into the local skills cache |
 
-MCP exposes read-oriented Skill tools in `review`, `maintenance`, and `full`,
-but not in `core`; this keeps daily agent startup small while still letting
-reviewer agents inspect versions and upgrade plans.
+MCP exposes Skill tools outside `core`; this keeps daily agent startup small.
+`review` can inspect versions, upgrade plans, and sync manifests. `maintenance`
+and `full` can also use permission-gated registry writes:
+
+- `vault_skill_push` writes or revises a Skill in the local registry only.
+- `vault_skill_sync_manifest` gives trusted sync workers hashes and metadata,
+  and exports bounded content only when explicitly allowed.
+- `vault_skill_mark_synced` records that an external sync worker succeeded.
+
+These MCP tools do not install, overwrite, or delete runtime Skill files. Agent
+runtime updates still require an explicit user/operator-approved installer or
+adapter step.
 
 ## Quality And Curation
 

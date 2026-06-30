@@ -1,7 +1,7 @@
 # README Claim Matrix
 
 Generated: 2026-06-25
-Scope: public README feature/capability claims for the v0.7.17 Agent Knowledge Platform patch release. Localized README files should mirror the same maturity and non-goal language.
+Scope: public README feature/capability claims for the v0.7.18 Agent Knowledge Platform patch release. Localized README files should mirror the same maturity and non-goal language.
 
 ## Maturity Tiers
 
@@ -18,7 +18,7 @@ Scope: public README feature/capability claims for the v0.7.17 Agent Knowledge P
 | C01 | Vault-for-LLM is local-first project memory for AI agents. | stable | Base storage is Markdown plus SQLite; `vault init/add/compile/search` works locally. | README command smoke passes. |
 | C02 | Vault does not replace models, wikis, Obsidian, or hosted memory systems. | positioning | README and docs frame Vault as the governed layer between human notes and agent access. | Product positioning only. |
 | C03 | Agent-driven install is the recommended path. | usable | `vault setup-agent` and `vault install-agent` generate project setup, optional feature guidance, stable venv scripts, sync templates, local agent registry entries, hybrid vault layout manifests, MCP startup guides, update-status install packs, update rollout health scripts, runtime update playbooks, common Agent adapter startup templates with fleet-aware handoff contracts, startup contract doctor checks, safe runtime-template apply commands, optional low-risk auto-promote policy files, and smoke-test next steps. | `tests/test_agent_setup.py` and `tests/test_agent_registry.py` pass; PyPI smoke is part of release closeout. |
-| C04 | Manual quickstart works from PyPI. | stable | `vault-for-llm[mcp]==0.7.17` installs and exposes `vault`. | Clean Python 3.11 PyPI install smoke is part of release closeout. |
+| C04 | Manual quickstart works from PyPI. | stable | `vault-for-llm[mcp]==0.7.18` installs and exposes `vault`. | Clean Python 3.11 PyPI install smoke is part of release closeout. |
 | C05 | MCP lets agents start from status/activity/brief/handoff, search, read bounded ranges, propose memory, inspect stats, and diagnose update rollout health. | usable | `vault-mcp` exposes the core tool profile: `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats`, `vault_update_status`, `vault_automation_activity`, `vault_automation_brief`, `vault_automation_handoff`. `vault_update_status` includes per-Agent update notices from the local registry, can read existing `update-status.json` with `read_status=true`, can return `current_agent_notice` plus `startup_checklist` when `agent_id` is provided, and can run the update-distribution health check with `doctor=true` without adding another MCP tool. `vault_automation_activity` reads recent closed-loop automation activity without raw candidate content. `vault_automation_brief` joins learning hints, explainable memory importance, forgetting pressure, agent health, and the 5% human-review queue without raw candidate content. `vault_automation_handoff` keeps cycle/inbox content stable and exposes `fleet_health_content`, `pipeline_receipt_content`, `review_summary_content`, and `learning_health_content` as read-only startup prefaces when present. MCP calls are rate-limited in-process with configurable environment variables, and deployments can opt into HMAC-signed agent identity. | MCP tests and README command smoke pass. |
 | C06 | L0-L3 are depth layers, not access-control boundaries by themselves. | stable docs / usable implementation | Schema supports `layer`; governance metadata handles `scope`, `sensitivity`, `owner_agent`, `allowed_agents`, `memory_type`, and expiry. Read filters apply to search/map/range. MCP write-side governance requires explicit `allow_*` capability flags for shared/public, private, high, and restricted writes. | Access-policy and MCP/read/write tests pass. |
 | C07 | Usage counters can influence ranking only as a small boost. | usable-alpha | Search uses `access_count`, `citation_count`, and `last_accessed_at` as a saturated rerank signal. | Usage/rerank tests pass. |
@@ -36,6 +36,7 @@ Scope: public README feature/capability claims for the v0.7.17 Agent Knowledge P
 | C19 | Memory reflection is a first-class report-first workflow. | usable-alpha | `vault memory reflection` wraps Dream curation and lifecycle automation while preserving candidate-first and hard-delete-free defaults. It can write `consolidation_suggestion` candidates for similar active memories without changing the originals. | Reflection unit, consolidation, and CLI smoke tests pass. |
 | C20 | MCP agent identity can be signed for stricter local deployments. | advanced optional | `VAULT_MCP_REQUIRE_AGENT_SIGNATURE=1` requires HMAC-SHA256 `agent_signature`; `VAULT_MCP_AGENT_SECRET_<AGENT>` supports per-agent local secrets and `VAULT_MCP_AGENT_SECRET` is the fallback. | `tests/test_mcp_security.py` covers optional, required, valid, and invalid signature paths. |
 | C21 | Task Ledger gives agents resumable runtime working state without turning in-progress tasks into L0-L3 memory. | usable-alpha | `vault task start/status/update/handoff/complete` stores active work in `task_ledger`. MCP `vault_task_*` tools are available in review/maintenance/full profiles and hidden from core. The local GUI exposes a read-only Active Tasks panel, and `vault automation cycle --write-workspace` includes compact task snapshots in handoff output. | Task Ledger unit, CLI, MCP, GUI API, and automation cycle tests pass. |
+| C22 | Skill Registry MCP tools support reviewable write/sync handoff without silently changing runtime skills. | usable-alpha | `vault_skill_sync_status` and `vault_skill_sync_manifest` are available in review/maintenance/full profiles. `vault_skill_push` and `vault_skill_mark_synced` are available in maintenance/full only, require explicit permission flags, and never write runtime Skill files. Content export is opt-in and privacy-gated. | Skill MCP and DB helper tests pass. |
 
 ## Public Boundary Notes
 
@@ -51,14 +52,14 @@ Recent release and README cleanup verification used:
 ```bash
 python scripts/readme_command_smoke.py
 python scripts/public_pr_gate.py
-python scripts/check_release_parity.py --tag v0.7.17
+python scripts/check_release_parity.py --tag v0.7.18
 python -m pytest tests/test_session_capture.py tests/test_agent_setup.py tests/test_automation.py tests/test_cli_project_dir.py tests/test_release_parity.py -q
 ```
 
-For release v0.7.17, clean Python 3.11 PyPI install closeout should verify:
+For release v0.7.18, clean Python 3.11 PyPI install closeout should verify:
 
-- `vault-for-llm[mcp]==0.7.17` installs from PyPI.
-- `vault --version` returns `vault-for-llm 0.7.17`.
+- `vault-for-llm[mcp]==0.7.18` installs from PyPI.
+- `vault --version` returns `vault-for-llm 0.7.18`.
 - `vault add "Title" --content "..."` is the documented active-memory add shape.
 - `vault map read <knowledge_id> --lines START-END` is the documented bounded-read CLI shape.
 - `vault capture discover` lists likely transcript exports without reading transcript content.
@@ -77,6 +78,8 @@ For release v0.7.17, clean Python 3.11 PyPI install closeout should verify:
 - MCP `vault_capture_discover` is available in review/maintenance profiles, hidden from the core profile, and returns a `capture_path` that can feed MCP `vault_capture_session`.
 - MCP `vault_capture_session` is available in review/maintenance profiles, hidden from the core profile, previews by default, and writes candidates only when `write_candidates=true`.
 - MCP `vault_memory_pipeline`, `vault_memory_temporal_status`, and `vault_memory_reflection` are available in review/maintenance/full profiles and hidden from the core profile.
+- MCP `vault_skill_sync_status` and `vault_skill_sync_manifest` are available in review/maintenance/full profiles and hidden from the core profile.
+- MCP `vault_skill_push` and `vault_skill_mark_synced` are available in maintenance/full profiles, hidden from core/review, require explicit permission flags, and never write runtime Skill files.
 - `vault automation brief --pretty` returns a compact read-only intelligence view.
 - `vault automation review-summary --write-summary` writes the shortest read-only human approval cards without raw candidate content.
 - `vault automation review-feedback --kind memory_importance --card-id <id> --decision accept --reason "Correct card" --write-learning-policy` records feedback-only card outcomes and refreshes bounded learning hints without applying the recommended action.

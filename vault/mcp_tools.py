@@ -8,7 +8,12 @@ from vault.mcp_memory import (
     MCP_MEMORY_LOOP_TOOLS,
 )
 from vault.mcp_search import MCP_SEARCH_MAX_LIMIT, MCP_SEARCH_MAX_OFFSET
-from vault.mcp_skill import MCP_SKILL_TOOL_NAMES, MCP_SKILL_TOOLS
+from vault.mcp_skill import (
+    MCP_SKILL_READ_TOOL_NAMES,
+    MCP_SKILL_SYNC_TOOL_NAMES,
+    MCP_SKILL_TOOLS,
+    MCP_SKILL_WRITE_TOOL_NAMES,
+)
 from vault.mcp_task import MCP_TASK_TOOL_NAMES, MCP_TASK_TOOLS
 
 
@@ -859,7 +864,8 @@ TOOL_PROFILES = {
         "vault_memory_review",
         "vault_memory_candidates",
         *MCP_TASK_TOOL_NAMES,
-        *MCP_SKILL_TOOL_NAMES,
+        *MCP_SKILL_READ_TOOL_NAMES,
+        *MCP_SKILL_SYNC_TOOL_NAMES,
         "vault_capture_discover",
         "vault_capture_session",
         "vault_automation_inbox",
@@ -892,7 +898,9 @@ TOOL_PROFILES = {
         "vault_memory_review",
         "vault_memory_candidates",
         *MCP_TASK_TOOL_NAMES,
-        *MCP_SKILL_TOOL_NAMES,
+        *MCP_SKILL_READ_TOOL_NAMES,
+        *MCP_SKILL_SYNC_TOOL_NAMES,
+        *MCP_SKILL_WRITE_TOOL_NAMES,
         "vault_capture_discover",
         "vault_capture_session",
         "vault_automation_inbox",

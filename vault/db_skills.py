@@ -315,7 +315,7 @@ def list_skills(
     where = " AND ".join(conditions)
     rows = conn.execute(
         "SELECT id, name, version, agent_source, category, capabilities, "
-        "dependencies, trust, description, updated_at FROM skills "
+        "dependencies, trust, content_hash, description, created_at, updated_at, last_synced FROM skills "
         f"WHERE {where} ORDER BY trust DESC, updated_at DESC LIMIT ?",
         params + [limit],
     ).fetchall()

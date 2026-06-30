@@ -148,15 +148,19 @@ Memory automation templates can opt into transcript ingestion with
 `--automation-capture-transcripts`; use it together with `--automation-apply`
 only when scheduled jobs are allowed to read discovered transcript files and
 write review candidates.
-Supabase sync templates are opt-in with `--supabase-sync cron|launchagent|n8n|all`
+Supabase sync templates are opt-in with `--supabase-sync cron|launchagent|n8n|realtime|all`
 and use `python -m scripts.sync_to_supabase --db <project>/vault.db`.
+Use `realtime` only when the local machine is trusted to hold a service-role
+key; it runs `python -m scripts.watch_supabase_sync` and pushes local changes
+after a short debounce.
 Supabase remote reader templates are opt-in with
 `--remote-reader shell|n8n|coze|all`; validate credentials with
 `vault remote smoke --agent-id <agent> --json`.
 Before live validation, run `vault remote status --json` from the project vault.
 It does not contact Supabase. It tells agents that the local SQLite vault is the
-source of truth, Supabase is a read-only copy, sync is not real-time
-bidirectional, and remote freshness is unknown unless a local sync report exists.
+source of truth, Supabase is a read-only copy, near-realtime sync is still
+one-way local-to-Supabase push, and remote freshness is unknown unless a local
+sync report exists.
 Multi-agent roster templates are opt-in with `--agent-roster`; each entry uses
 `agent_id:role[:scope[:max_sensitivity]]`, for example
 `profile-agent:profile,work-agent:work,remote-agent:remote,n8n:automation`.

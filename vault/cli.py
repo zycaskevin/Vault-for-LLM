@@ -561,8 +561,8 @@ def main(argv: list[str] | None = None):
                         default="none", help="產生後續自動同步模板")
         ap.add_argument("--sync-interval-minutes", type=int, default=15,
                         help="同步模板排程間隔分鐘數")
-        ap.add_argument("--supabase-sync", choices=["none", "cron", "launchagent", "n8n", "all"],
-                        default="none", help="產生每日 Supabase sync 模板")
+        ap.add_argument("--supabase-sync", choices=["none", "cron", "launchagent", "n8n", "realtime", "all"],
+                        default="none", help="產生 Supabase sync 模板；realtime 為本地近即時推送")
         ap.add_argument("--supabase-setup", choices=["none", "simple", "advanced"],
                         default=None, help="產生 Supabase 連線導覽文件；非互動模式預設 simple")
         ap.add_argument("--supabase-sync-interval-minutes", type=int, default=1440,

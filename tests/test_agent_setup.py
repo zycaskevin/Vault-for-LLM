@@ -175,7 +175,7 @@ def test_run_agent_setup_writes_supabase_sync_templates(tmp_path):
             features=["core", "mcp", "supabase"],
             language="zh-Hant",
             supabase_setup_mode="advanced",
-            supabase_sync_targets="all",
+            supabase_sync_targets="all,realtime",
             template_dir=tmp_path / "templates",
         )
     )
@@ -183,7 +183,7 @@ def test_run_agent_setup_writes_supabase_sync_templates(tmp_path):
     assert result["language"] == "zh-Hant"
     assert result["supabase_setup"]["mode"] == "advanced"
     assert "read_policy_sql" in result["supabase_setup"]
-    assert {"cron", "launchagent", "n8n", "readme"}.issubset(result["supabase_sync_templates"])
+    assert {"cron", "launchagent", "n8n", "realtime", "readme"}.issubset(result["supabase_sync_templates"])
 
     guide = (tmp_path / "templates" / "README-supabase-setup.md").read_text(encoding="utf-8")
     policy = (tmp_path / "templates" / "supabase-read-policy.sql").read_text(encoding="utf-8")
@@ -192,6 +192,7 @@ def test_run_agent_setup_writes_supabase_sync_templates(tmp_path):
         encoding="utf-8"
     )
     workflow = json.loads((tmp_path / "templates" / "n8n-supabase-sync.workflow.json").read_text(encoding="utf-8"))
+    realtime = (tmp_path / "templates" / "supabase-realtime-sync.sh").read_text(encoding="utf-8")
 
     assert "Supabase 是可選功能" in guide
     assert "進階 Multi-Agent / RLS" in guide
@@ -215,6 +216,9 @@ def test_run_agent_setup_writes_supabase_sync_templates(tmp_path):
     assert "supabase-sync.err.log" in plist
     assert "obsidian-sync.log" not in plist
     assert "scripts.sync_to_supabase" in workflow["nodes"][1]["parameters"]["command"]
+    assert "scripts.watch_supabase_sync" in realtime
+    assert "--sync-on-start" in realtime
+    assert "--document-map" in realtime
 
 
 def test_run_agent_setup_writes_remote_reader_templates(tmp_path):
@@ -1155,6 +1159,7 @@ def test_setup_agent_help_exposes_supabase_sync_options(capsys):
     assert "--supabase-sync" in captured.out
     assert "--supabase-setup" in captured.out
     assert "--supabase-sync-interval-minutes" in captured.out
+    assert "realtime" in captured.out
     assert "--remote-reader" in captured.out
     assert "--agent-preset" in captured.out
     assert "--max-sensitivity" in captured.out

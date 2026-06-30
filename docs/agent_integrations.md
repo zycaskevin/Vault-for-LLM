@@ -106,6 +106,7 @@ Supabase follow-up:
 export SUPABASE_URL=...
 export SUPABASE_SERVICE_ROLE_KEY=...
 python -m scripts.sync_to_supabase --db /path/to/project/vault.db --document-map --health
+python -m scripts.watch_supabase_sync --db /path/to/project/vault.db --sync-on-start
 
 # after applying docs/supabase_read_policy.sql, non-MCP automation can read remotely
 vault remote smoke --agent-id remote-agent --query "deployment SOP" --json
@@ -127,6 +128,9 @@ vault setup-agent \
   --validation-pack all \
   --json
 ```
+
+Use the watcher only on a trusted local sync host. It is near-realtime
+local-to-Supabase push, not bidirectional sync.
 
 `--remote-reader all` writes:
 

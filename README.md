@@ -681,6 +681,17 @@ vault remote status --project-dir ~/Vaults/my-project
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```
 
+For faster cross-device freshness on a trusted local machine, generate a
+near-realtime push template:
+
+```bash
+vault setup-agent --features core,mcp,supabase --supabase-sync realtime --project ~/Vaults/my-project
+```
+
+This watches local `vault.db` changes and pushes them to Supabase after a short
+debounce. It is not bidirectional sync: Supabase remains a read copy unless you
+build a separate reviewed merge workflow.
+
 `vault remote status` does not contact Supabase. It tells agents that the local
 SQLite vault is still the source of truth, Supabase is a read-only copy, and
 remote freshness is unknown unless a sync report exists.

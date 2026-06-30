@@ -32,6 +32,26 @@ For most users, start here.
 python -m scripts.sync_to_supabase --db /path/to/project/vault.db --document-map --health
 ```
 
+For near-realtime freshness on a trusted local machine:
+
+```bash
+vault setup-agent \
+  --features core,mcp,supabase \
+  --supabase-sync realtime \
+  --agent-project-dir /path/to/project
+
+/path/to/project/agent-install/supabase-realtime-sync.sh
+```
+
+The realtime template watches local `vault.db`, waits for a short quiet period,
+then runs the same local-to-Supabase sync. It writes
+`reports/supabase-sync-latest.json` so `vault remote status` and Agent
+dashboards can tell whether the remote copy is fresh.
+
+This is not bidirectional sync. Supabase remains a read copy. Keep
+`SUPABASE_SERVICE_ROLE_KEY` only on the trusted sync host, never inside Coze,
+browser clients, mobile clients, or public workflow endpoints.
+
 Default sync does not upload full `content_raw`. Add `--include-content` only
 when the user intentionally wants full local content copied to Supabase.
 

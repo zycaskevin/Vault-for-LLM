@@ -11,7 +11,7 @@ from vault import __version__
 from vault.agent_setup_supabase import _normalize_setup_language
 
 
-VALID_SYNC_TARGETS = {"none", "cron", "launchagent", "n8n", "all"}
+VALID_SYNC_TARGETS = {"none", "cron", "launchagent", "n8n", "realtime", "all"}
 VALID_REMOTE_READER_TARGETS = {"none", "shell", "n8n", "coze", "all"}
 VALID_AUTOMATION_MODES = {"conservative", "balanced", "autonomous"}
 VALID_AUTOMATION_COMMANDS = {"run", "cycle"}
@@ -26,7 +26,10 @@ def _normalize_sync_targets(targets: str | list[str]) -> set[str]:
     if not selected or "none" in selected:
         return set()
     if "all" in selected:
-        return {"cron", "launchagent", "n8n"}
+        expanded = {"cron", "launchagent", "n8n"}
+        if "realtime" in selected:
+            expanded.add("realtime")
+        return expanded
     unknown = selected - VALID_SYNC_TARGETS
     if unknown:
         raise ValueError(f"unknown sync target(s): {', '.join(sorted(unknown))}")
@@ -357,6 +360,29 @@ def supabase_sync_command(
     return command
 
 
+def supabase_realtime_sync_command(
+    *,
+    project_dir: str | Path,
+    python_executable: str | Path | None = None,
+    interval_seconds: int = 5,
+    debounce_seconds: int = 10,
+) -> list[str]:
+    return [
+        str(python_executable or sys.executable),
+        "-m",
+        "scripts.watch_supabase_sync",
+        "--db",
+        str(Path(project_dir).expanduser() / "vault.db"),
+        "--interval-seconds",
+        str(max(1, int(interval_seconds))),
+        "--debounce-seconds",
+        str(max(0, int(debounce_seconds))),
+        "--sync-on-start",
+        "--document-map",
+        "--health",
+    ]
+
+
 def write_supabase_sync_templates(
     *,
     output_dir: str | Path,
@@ -371,6 +397,12 @@ def write_supabase_sync_templates(
     command = supabase_sync_command(
         project_dir=project_dir,
         python_executable=python_executable,
+    )
+    realtime_command = supabase_realtime_sync_command(
+        project_dir=project_dir,
+        python_executable=python_executable,
+        interval_seconds=max(5, min(int(interval_minutes or 5), 60)),
+        debounce_seconds=10,
     )
 
     written: dict[str, str] = {}
@@ -394,6 +426,27 @@ def write_supabase_sync_templates(
         path = out / "n8n-supabase-sync.workflow.json"
         path.write_text(render_n8n_workflow(command=command, interval_minutes=interval_minutes), encoding="utf-8")
         written["n8n"] = str(path)
+    if "realtime" in selected:
+        path = out / "supabase-realtime-sync.sh"
+        path.write_text(
+            "\n".join(
+                [
+                    "#!/usr/bin/env sh",
+                    "set -eu",
+                    "",
+                    "# Near-realtime push sync. Local vault.db remains the source of truth.",
+                    "# Requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on this trusted machine.",
+                    shell_join(realtime_command),
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        try:
+            path.chmod(0o755)
+        except OSError:
+            pass
+        written["realtime"] = str(path)
 
     readme = out / "README-supabase-sync.md"
     readme.write_text(
@@ -407,6 +460,8 @@ def write_supabase_sync_templates(
                 "",
                 "Review `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` before enabling any scheduled job.",
                 "The local SQLite database remains the source of truth.",
+                "Use `supabase-realtime-sync.sh` for near-realtime local-to-Supabase push sync.",
+                "This is not bidirectional sync: Supabase remains a read copy unless you build a separate reviewed merge workflow.",
                 "",
             ]
         ),

@@ -22,6 +22,7 @@ SYNC_TEMPLATE_FILES = {
     "cron": "supabase-sync.cron",
     "launchagent": "com.zycaskevin.vault-for-llm.supabase-sync.plist",
     "n8n": "n8n-supabase-sync.workflow.json",
+    "realtime": "supabase-realtime-sync.sh",
     "readme": "README-supabase-sync.md",
 }
 SETUP_FILES = {
@@ -67,6 +68,7 @@ def build_remote_status(
         or any(sync_templates["targets"].values())
         or any(setup["targets"].values())
     )
+    near_realtime = bool(sync_templates["targets"].get("realtime"))
     warnings = _warnings(
         local=local,
         env=env,
@@ -93,8 +95,9 @@ def build_remote_status(
             "mode": "supabase_readonly_copy",
             "direction": "local_to_supabase",
             "bidirectional": False,
-            "realtime": False,
-            "message": "Local vault.db remains the source of truth; Supabase is a shared read copy unless a separate sync job refreshes it.",
+            "realtime": near_realtime,
+            "realtime_kind": "near_realtime_push" if near_realtime else "scheduled_or_manual",
+            "message": "Local vault.db remains the source of truth; Supabase is a shared read copy refreshed by manual, scheduled, or near-realtime local push sync.",
         },
         "local": local,
         "supabase": env,

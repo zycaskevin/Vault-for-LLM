@@ -23,6 +23,7 @@ def test_remote_status_reports_local_source_of_truth(tmp_path, capsys, monkeypat
     assert payload["source_of_truth"] == "local_sqlite"
     assert payload["remote_model"]["bidirectional"] is False
     assert payload["remote_model"]["realtime"] is False
+    assert payload["remote_model"]["realtime_kind"] == "scheduled_or_manual"
     assert payload["local"]["db_exists"] is True
     assert payload["remote_reader"]["targets"]["shell"] is False
     assert any("setup-agent" in item for item in payload["next_actions"])
@@ -44,6 +45,7 @@ def test_remote_status_detects_templates_roster_and_sync_report(tmp_path, monkey
     install.mkdir()
     (install / "remote-reader-smoke.sh").write_text("#!/usr/bin/env sh\n", encoding="utf-8")
     (install / "supabase-sync.cron").write_text("* * * * * vault sync\n", encoding="utf-8")
+    (install / "supabase-realtime-sync.sh").write_text("#!/usr/bin/env sh\n", encoding="utf-8")
     (install / "agent-roster.json").write_text(
         json.dumps(
             {
@@ -79,6 +81,9 @@ def test_remote_status_detects_templates_roster_and_sync_report(tmp_path, monkey
     assert payload["supabase"]["anon_key_configured"] is True
     assert payload["remote_reader"]["targets"]["shell"] is True
     assert payload["sync"]["templates"]["targets"]["cron"] is True
+    assert payload["sync"]["templates"]["targets"]["realtime"] is True
+    assert payload["remote_model"]["realtime"] is True
+    assert payload["remote_model"]["realtime_kind"] == "near_realtime_push"
     assert payload["sync"]["last_report"]["exists"] is True
     assert payload["sync"]["last_report"]["stale"] is False
     assert payload["agent_access"]["remote_readers"] == ["coze"]

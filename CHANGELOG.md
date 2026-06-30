@@ -1,5 +1,38 @@
 # CHANGELOG
 
+## [0.7.20] - 2026-07-01
+
+### Added
+
+- Added manifest-backed incremental Obsidian import so changed notes update
+  Vault without re-importing unchanged notes, while missing source notes stay
+  safe unless `--prune-missing` is explicitly requested.
+- Added a read-only multi-Agent GUI dashboard showing connected agents, recent
+  sync state, recent memory candidates, and the small human-review queue.
+- Added minimal MCP install configs for Codex, Claude Code, Hermes Agent,
+  OpenClaw, Coze, and n8n so agents can connect to one shared Vault with the
+  shortest working setup.
+- Added near-realtime Supabase push sync templates through
+  `--supabase-sync realtime` plus `scripts.watch_supabase_sync`.
+
+### Safety
+
+- Kept Supabase near-realtime sync one-way: local `vault.db` remains the source
+  of truth and Supabase remains a shared read copy.
+- Kept Coze/n8n on remote-reader templates by default and documented that
+  service-role keys belong only on trusted sync hosts.
+- Kept the multi-Agent dashboard read-only; it does not write active memory,
+  candidates, or raw private content.
+
+### Validation
+
+- Verified local full tests: `2308 passed, 10 skipped`.
+- Built and checked both wheel and sdist with `twine check`.
+- Ran a clean wheel-install smoke for `vault-for-llm[mcp,supabase]`, covering
+  `vault`, `vault-mcp`, `init`, `doctor`, `add`, `compile --no-embed`,
+  `search --json`, Obsidian incremental import, `setup-agent`, Supabase watcher
+  dry-run, `remote status`, GUI API, and MCP tool profiles.
+
 ## [0.7.19] - 2026-06-30
 
 ### Changed

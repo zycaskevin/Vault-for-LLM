@@ -38,12 +38,50 @@ choose projectDir -> choose optional features -> install vault -> configure CLI 
 Use runtime-specific adapters only for convenience. The durable contract is:
 
 - `projectDir`: controls whether agents share or isolate one `vault.db`.
+- `vault gateway serve`: one small HTTP door for agents that should not learn
+  the full CLI or MCP schema surface.
 - `vault` CLI: works for shell-capable agents and automation.
 - `vault-mcp`: works for MCP-capable agents such as Hermes Agent, Codex,
   OpenCode, Claude Code, and generic MCP hosts.
 - Candidate-first memory: shared vaults should propose memory before promotion.
 - MCP tool profiles: use `--tool-profile core` for daily agent sessions to
   reduce tool-schema tokens.
+
+## Vault Gateway
+
+Use Gateway when several local runtimes, scripts, or hosted-tool bridges should
+share one governed entrypoint:
+
+```bash
+export VAULT_GATEWAY_TOKEN="choose-a-local-secret"
+vault gateway serve --project-dir ~/Vaults/my-project
+```
+
+Agents then call the same small HTTP contract:
+
+```bash
+curl -s http://127.0.0.1:8789/search \
+  -H "Authorization: Bearer $VAULT_GATEWAY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id":"codex","query":"deployment SOP","limit":5}'
+```
+
+Gateway v0 exposes only:
+
+- `GET /health`
+- `POST /search`
+- `POST /read-range`
+- `POST /submit-candidate`
+
+It is conservative by design. Reads require `agent_id`; private memory is hidden
+unless explicitly requested and allowed by policy; raw content is not returned
+by search; writes become `memory_candidates`, not active knowledge. This makes
+Gateway a stable adapter boundary for Codex, Claude Code, OpenClaw, Hermes
+Agent, n8n, Coze bridges, and future devices without forcing each integration
+to carry the whole CLI/MCP surface.
+
+Do not use `--no-auth` except for local throwaway tests. It is rejected for
+non-localhost binds.
 
 `vault setup-agent` writes adapter-specific startup files for common runtimes:
 `agent-install/README-agent-adapters.md`, `codex-startup.md`,

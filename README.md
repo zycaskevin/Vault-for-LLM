@@ -655,6 +655,7 @@ Governance details: [docs/memory_governance.md](docs/memory_governance.md).
 
 | System | Path |
 |---|---|
+| Any agent or local workflow | `vault gateway serve` unified HTTP entrypoint |
 | Claude Code / Codex / OpenCode | CLI or local stdio MCP |
 | Hermes Agent / OpenClaw | CLI, MCP, generated agent install files |
 | n8n | generated Supabase sync and remote-reader workflow templates |
@@ -664,6 +665,18 @@ Governance details: [docs/memory_governance.md](docs/memory_governance.md).
 
 Start here: [docs/agent_integrations.md](docs/agent_integrations.md).
 Agent-first usage guide: [docs/agent_first_usage.md](docs/agent_first_usage.md).
+
+For many agents on one machine, or for runtimes that prefer HTTP over stdio
+MCP, start a small Gateway:
+
+```bash
+vault gateway serve --project-dir ~/Vaults/my-project
+```
+
+Gateway is deliberately conservative: agents must identify themselves, reads
+hide private memory by default, and writes go into `memory_candidates` for
+review instead of directly changing active knowledge. It is the stable door;
+CLI, MCP, Supabase, and future hosted backends remain replaceable adapters.
 
 ## Optional Supabase Sharing
 

@@ -69,6 +69,40 @@ def test_mcp_task_ledger_lifecycle(tmp_path):
     assert "Task Handoff: MCP Task Ledger" in handoff["markdown"]
     assert "keep task tools outside core profile" in handoff["markdown"]
 
+    sent = _payload(handle_tool_call(
+        "vault_task_send_handoff",
+        {
+            "task_id": "task-mcp",
+            "handoff_id": "handoff-mcp",
+            "from_agent": "codex",
+            "to_agent": "hermes",
+            "message": "Continue from the bounded handoff.",
+        },
+    ))
+    assert sent["handoff"]["id"] == "handoff-mcp"
+    assert sent["handoff"]["status"] == "pending"
+    assert "Task Snapshot" in sent["handoff"]["markdown"]
+
+    inbox = _payload(handle_tool_call(
+        "vault_task_handoff_inbox",
+        {"agent_id": "hermes", "status": "pending"},
+    ))
+    assert [item["id"] for item in inbox["handoffs"]] == ["handoff-mcp"]
+
+    denied_claim = _payload(handle_tool_call(
+        "vault_task_claim_handoff",
+        {"handoff_id": "handoff-mcp", "agent_id": "other"},
+    ))
+    assert denied_claim["ok"] is False
+    assert "access_denied" in denied_claim["error"]
+
+    claimed = _payload(handle_tool_call(
+        "vault_task_claim_handoff",
+        {"handoff_id": "handoff-mcp", "agent_id": "hermes", "note": "Taking over."},
+    ))
+    assert claimed["handoff"]["status"] == "claimed"
+    assert claimed["handoff"]["claimed_by"] == "hermes"
+
     completed = _payload(handle_tool_call(
         "vault_task_complete",
         {"task_id": "task-mcp", "summary": "MCP tools ready", "agent_id": "codex"},

@@ -323,6 +323,7 @@ def _auto_promote_low_risk_candidates(
     project: Path,
     policy: dict[str, Any],
     apply: bool,
+    candidate_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """Preview or apply policy-gated promotion for the lowest-risk candidates."""
     enabled = bool(policy.get("auto_promote_low_risk_candidates", False))
@@ -352,6 +353,9 @@ def _auto_promote_low_risk_candidates(
 
     learning_policy = _load_automation_learning_policy(project)
     rows = db.list_memory_candidates(status="candidate", limit=1000)
+    if candidate_ids is not None:
+        allowed_candidate_ids = {str(candidate_id) for candidate_id in candidate_ids if str(candidate_id)}
+        rows = [row for row in rows if str(row.get("id") or "") in allowed_candidate_ids]
     eligible: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     for row in rows:

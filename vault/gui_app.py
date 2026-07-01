@@ -97,6 +97,20 @@ APP_HTML = r"""<!doctype html>
     button.warn { background: var(--warn); border-color: var(--warn); }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
     .mini-action { margin-top: 10px; padding: 7px 9px; font-size: 13px; }
+    .mini-list { display: grid; gap: 6px; margin-top: 10px; }
+    .mini-row {
+      display: grid;
+      gap: 2px;
+      width: 100%;
+      padding: 8px;
+      border-color: var(--line);
+      background: #fff;
+      color: var(--ink);
+      text-align: left;
+    }
+    .mini-row:hover { border-color: var(--accent); }
+    .mini-row span { font-size: 13px; }
+    .mini-row small { color: var(--muted); font-size: 12px; }
     .filter-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
     .filter-grid input, .filter-grid select { width: 100%; padding: 8px 9px; font-size: 13px; }
     textarea {
@@ -281,32 +295,13 @@ APP_HTML = r"""<!doctype html>
     const esc = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const UI_TEXT = {
       "zh-Hant": {
-        title: "Vault 記憶",
-        pageTitle: "Vault 記憶控制台",
-        daily: "每日報告",
-        status: "狀態",
-        tasks: "進行中任務",
-        review: "審核佇列",
-        documents: "文件",
-        knowledge: "知識",
-        candidates: "候選",
-        vectors: "向量",
-        dbMb: "DB MB",
-        agentDashboard: "多 Agent Dashboard",
-        connectedAgents: "已連接 Agent",
-        recentSync: "最近同步",
-        recentCandidates: "最近候選",
-        humanReviewFivePercent: "需要人看的 5%",
-        noAgents: "尚未連接 Agent",
-        noSync: "還沒有同步紀錄",
-        lastSeen: "最近出現",
-        anyLayer: "任何層級",
-        anyCategory: "任何分類",
-        anySensitivity: "任何敏感度",
-        searchPlaceholder: "搜尋專案記憶",
-        search: "搜尋",
-        apply: "套用",
-        clear: "清除",
+        title: "Vault 記憶", pageTitle: "Vault 記憶控制台", daily: "每日報告", status: "狀態", tasks: "進行中任務",
+        review: "審核佇列", documents: "文件", knowledge: "知識", candidates: "候選", vectors: "向量", dbMb: "DB MB",
+        agentDashboard: "多 Agent Dashboard", connectedAgents: "已連接 Agent", recentSync: "最近同步", syncHealth: "同步健康",
+        openConflicts: "待處理衝突", revisions: "修訂紀錄", auditEvents: "稽核事件", recentCandidates: "最近候選",
+        humanReviewFivePercent: "需要人看的 5%", noAgents: "尚未連接 Agent", noSync: "還沒有同步紀錄", lastSeen: "最近出現",
+        anyLayer: "任何層級", anyCategory: "任何分類", anySensitivity: "任何敏感度", searchPlaceholder: "搜尋專案記憶",
+        search: "搜尋", apply: "套用", clear: "清除",
         noDaily: "還沒有每日報告",
         noDecision: "今天不需要你決定",
         noTasks: "沒有進行中任務",
@@ -364,28 +359,12 @@ APP_HTML = r"""<!doctype html>
         reviewCompleted: "審核已完成",
       },
       "zh-CN": {
-        title: "Vault 记忆",
-        pageTitle: "Vault 记忆控制台",
-        daily: "每日报告",
-        status: "状态",
-        tasks: "进行中任务",
-        review: "审核队列",
-        documents: "文件",
-        knowledge: "知识",
-        candidates: "候选",
-        vectors: "向量",
-        dbMb: "DB MB",
-        agentDashboard: "多 Agent Dashboard",
-        connectedAgents: "已连接 Agent",
-        recentSync: "最近同步",
-        recentCandidates: "最近候选",
-        humanReviewFivePercent: "需要人看的 5%",
-        noAgents: "尚未连接 Agent",
-        noSync: "还没有同步记录",
-        lastSeen: "最近出现",
-        anyLayer: "任何层级",
-        anyCategory: "任何分类",
-        anySensitivity: "任何敏感度",
+        title: "Vault 记忆", pageTitle: "Vault 记忆控制台", daily: "每日报告", status: "状态", tasks: "进行中任务",
+        review: "审核队列", documents: "文件", knowledge: "知识", candidates: "候选", vectors: "向量", dbMb: "DB MB",
+        agentDashboard: "多 Agent Dashboard", connectedAgents: "已连接 Agent", recentSync: "最近同步", syncHealth: "同步健康",
+        openConflicts: "待处理冲突", revisions: "修订记录", auditEvents: "审计事件", recentCandidates: "最近候选",
+        humanReviewFivePercent: "需要人看的 5%", noAgents: "尚未连接 Agent", noSync: "还没有同步记录", lastSeen: "最近出现",
+        anyLayer: "任何层级", anyCategory: "任何分类", anySensitivity: "任何敏感度",
         searchPlaceholder: "搜索项目记忆",
         search: "搜索",
         apply: "应用",
@@ -447,21 +426,10 @@ APP_HTML = r"""<!doctype html>
         reviewCompleted: "审核已完成",
       },
       en: {
-        title: "Vault Memory",
-        pageTitle: "Vault Memory Control Center",
-        daily: "Daily Report",
-        status: "Status",
-        tasks: "Active Tasks",
-        review: "Review Inbox",
-        documents: "Documents",
-        knowledge: "Knowledge",
-        candidates: "Candidates",
-        vectors: "Vectors",
-        dbMb: "DB MB",
-        agentDashboard: "Multi-Agent Dashboard",
-        connectedAgents: "Connected agents",
-        recentSync: "Recent sync",
-        recentCandidates: "Recent candidates",
+        title: "Vault Memory", pageTitle: "Vault Memory Control Center", daily: "Daily Report", status: "Status", tasks: "Active Tasks",
+        review: "Review Inbox", documents: "Documents", knowledge: "Knowledge", candidates: "Candidates", vectors: "Vectors", dbMb: "DB MB",
+        agentDashboard: "Multi-Agent Dashboard", connectedAgents: "Connected agents", recentSync: "Recent sync", syncHealth: "Sync health",
+        openConflicts: "Open conflicts", revisions: "Revisions", auditEvents: "Audit events", recentCandidates: "Recent candidates",
         humanReviewFivePercent: "Human 5%",
         noAgents: "No connected agents yet",
         noSync: "No sync record yet",
@@ -619,6 +587,9 @@ APP_HTML = r"""<!doctype html>
       }
       const agents = dashboard.agents?.items || [];
       const sync = dashboard.recent_sync || [];
+      const syncHealth = dashboard.sync_health || {};
+      const syncCounts = syncHealth.counts || {};
+      const openConflicts = syncHealth.open_conflicts || [];
       const candidates = dashboard.recent_candidates || [];
       const reviewItems = dashboard.human_review?.items || dashboard.human_review?.human_review_5_percent?.items || [];
       const agentHtml = agents.length ? agents.slice(0, 4).map(agent => `
@@ -643,18 +614,47 @@ APP_HTML = r"""<!doctype html>
           </div>
         </div>
       `).join("") : `<div class="empty">${esc(text.noSync)}</div>`;
+      const conflictClass = Number(syncCounts.open_conflicts || 0) ? "warn" : "good";
+      const conflictHtml = openConflicts.length ? `
+        <div class="mini-list">
+          ${openConflicts.slice(0, 3).map(conflict => `
+            <button class="mini-row sync-conflict" data-candidate-id="${esc(conflict.candidate_id || "")}" type="button">
+              <span>${esc(conflict.conflict_type || "conflict")}</span>
+              <small>#${esc(conflict.id || "")} · ${esc(conflict.candidate_id || "candidate")} · knowledge ${esc(conflict.knowledge_id || "")}</small>
+            </button>
+          `).join("")}
+        </div>
+      ` : "";
+      const syncHealthHtml = `
+        <div class="item">
+          <h3>${esc(text.syncHealth)}</h3>
+          <div class="subtle">${esc(syncHealth.next_action || text.noSync)}</div>
+          <div class="meta">
+            ${pill(syncHealth.status || "idle", conflictClass)}
+            ${pill(`${syncCounts.open_conflicts || 0} ${text.openConflicts}`, conflictClass)}
+            ${pill(`${syncCounts.revisions || 0} ${text.revisions}`)}
+            ${pill(`${syncCounts.audit_events || 0} ${text.auditEvents}`)}
+          </div>
+          ${conflictHtml}
+        </div>
+      `;
       node.innerHTML = `
         <div class="metric-grid">
           <div class="metric"><strong>${esc(dashboard.agents?.connected_count ?? 0)}</strong><span>${esc(text.connectedAgents)}</span></div>
           <div class="metric"><strong>${esc(reviewItems.length || 0)}</strong><span>${esc(text.humanReviewFivePercent)}</span></div>
           <div class="metric"><strong>${esc(candidates.length || 0)}</strong><span>${esc(text.recentCandidates)}</span></div>
-          <div class="metric"><strong>${esc(sync.length || 0)}</strong><span>${esc(text.recentSync)}</span></div>
+          <div class="metric"><strong>${esc(syncCounts.open_conflicts || 0)}</strong><span>${esc(text.openConflicts)}</span></div>
         </div>
         <div class="dashboard-subhead">${esc(text.connectedAgents)}</div>
         ${agentHtml}
+        <div class="dashboard-subhead">${esc(text.syncHealth)}</div>
+        ${syncHealthHtml}
         <div class="dashboard-subhead">${esc(text.recentSync)}</div>
         ${syncHtml}
       `;
+      node.querySelectorAll(".sync-conflict[data-candidate-id]").forEach(el => {
+        if (el.dataset.candidateId) el.addEventListener("click", () => loadCandidate(el.dataset.candidateId));
+      });
     }
 
     function renderTaskList(items) {

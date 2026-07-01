@@ -24,6 +24,7 @@ from .gui_api import (
     gui_read_range,
     gui_review_candidate,
     gui_search,
+    gui_sync_status,
     gui_task,
     gui_tasks,
 )
@@ -111,6 +112,14 @@ def make_gui_handler(project_dir: Path, *, auth_token: str = "", language: str =
                         project,
                         limit=_int_arg(query, "limit", 5),
                         language=_str_arg(query, "lang", "en"),
+                    )
+                )
+                return
+            if path == "/api/sync-status":
+                self._send_json(
+                    gui_sync_status(
+                        project,
+                        limit=_int_arg(query, "limit", 5),
                     )
                 )
                 return

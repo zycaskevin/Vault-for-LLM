@@ -175,9 +175,15 @@ agent session can check the loop without opening full reports.
 
 `automation fleet-health` is the shared multi-Agent panel above learning-health.
 It combines local Agent registry metadata, learning-health status, and
-update-distribution health. With `--write-health`, it writes
+update-distribution health. It also includes the same read-only multi-host sync
+status shown by the GUI Sync Health card: open conflict count, revision count,
+and audit event count. With `--write-health`, it writes
 `reports/automation/fleet-health-latest.json` plus `.md`. It is read-only and
 does not read private memory, raw candidate content, or raw feedback reasons.
+When remote candidate sync has open conflicts, fleet-health becomes
+`needs_review` and adds a `sync_conflicts` card. This is a review signal only:
+active knowledge is still changed only through candidate review or explicitly
+allowed low-risk local promotion.
 
 When that brief recommends `summarize_then_cold_store`, run a dry-run first:
 
@@ -356,6 +362,11 @@ selected handoff in `content` and receive these prefaces separately as
 `learning_health_content`, so existing cycle/inbox handoff readers remain
 stable.
 
+Because fleet-health now includes multi-host sync health, new Agent sessions can
+see open remote-candidate conflicts during startup without memorizing
+`vault sync conflicts`. The Agent should treat those cards as "review before
+merge" signals, not as permission to overwrite active memory.
+
 `--include-transcripts` is discovery-only: it lists likely session transcript
 paths without reading their contents. To close the ingestion loop, add
 `--capture-transcripts --apply`. That opt-in step reads the selected transcript
@@ -488,7 +499,8 @@ important review fields are:
 - `automation learning-health`: read-only health cards for the learning loop,
   including cold-start, healthy, watch, or needs-review status.
 - `automation fleet-health`: read-only multi-Agent health panel combining local
-  registry metadata, learning-health status, and update-distribution health.
+  registry metadata, learning-health status, update-distribution health, and
+  read-only multi-host sync conflict/revision/audit counts.
 - `automation inbox`: the shortest daily review surface. It starts with
   `review_digest` cards from the latest report's `human_review.items`, then
   shows the candidate queue. This lets humans review policy-level decisions

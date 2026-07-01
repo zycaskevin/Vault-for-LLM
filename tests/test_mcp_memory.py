@@ -3,7 +3,9 @@ import json
 import pytest
 
 from vault.db import VaultDB
+from vault.memory import create_candidate
 from vault.mcp import TOOLS, _set_project_dir, handle_tool_call
+from vault.multi_host import detect_candidate_conflicts, record_memory_revision
 
 
 def _payload(result):
@@ -32,7 +34,11 @@ def test_mcp_memory_tools_are_advertised():
         "vault_task_status",
         "vault_task_update",
         "vault_task_handoff",
+        "vault_task_send_handoff",
+        "vault_task_handoff_inbox",
+        "vault_task_claim_handoff",
         "vault_task_complete",
+        "vault_sync_status",
         "vault_update_status",
         "vault_dream_run",
     }.issubset(names)
@@ -78,6 +84,10 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
     assert "vault_task_status" in review_names
     assert "vault_task_update" in review_names
     assert "vault_task_handoff" in review_names
+    assert "vault_task_send_handoff" in review_names
+    assert "vault_task_handoff_inbox" in review_names
+    assert "vault_task_claim_handoff" in review_names
+    assert "vault_sync_status" in review_names
     assert "vault_capture_discover" not in core_names
     assert "vault_capture_session" not in core_names
     assert "vault_automation_inbox" not in core_names
@@ -86,10 +96,12 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
     assert "vault_memory_temporal_status" not in core_names
     assert "vault_memory_reflection" not in core_names
     assert "vault_task_status" not in core_names
+    assert "vault_sync_status" not in core_names
     assert "vault_memory_review" not in core_names
 
     maintenance_names = {tool["name"] for tool in select_tools("maintenance")}
     assert "vault_cold_store_expired" in maintenance_names
+    assert "vault_sync_status" in maintenance_names
     assert "vault_memory_pipeline" in maintenance_names
     assert "vault_memory_temporal_status" in maintenance_names
     assert "vault_memory_reflection" in maintenance_names
@@ -110,7 +122,11 @@ def test_mcp_tool_profiles_reduce_visible_tool_schemas():
     assert "vault_task_status" in full_names
     assert "vault_task_update" in full_names
     assert "vault_task_handoff" in full_names
+    assert "vault_task_send_handoff" in full_names
+    assert "vault_task_handoff_inbox" in full_names
+    assert "vault_task_claim_handoff" in full_names
     assert "vault_task_complete" in full_names
+    assert "vault_sync_status" in full_names
     assert "vault_remote_read_range" in full_names
     assert len(full_names) > len(core_names)
 
@@ -127,6 +143,51 @@ def test_mcp_custom_tool_allowlist_rejects_unknown_tool():
 
     with pytest.raises(ValueError, match="Unknown MCP tool"):
         select_tools("full", "vault_search,vault_nope")
+
+
+def test_mcp_sync_status_reports_conflicts_without_raw_content(tmp_path):
+    _set_project_dir(str(tmp_path))
+    with VaultDB(tmp_path / "vault.db") as db:
+        db.add_knowledge(
+            title="MCP Sync Rule",
+            content_raw="Reviewed local content should stay authoritative.",
+            category="decision",
+        )
+        candidate = create_candidate(
+            db,
+            title="MCP Sync Rule",
+            content="Remote conflicting content should remain reviewable.",
+            reason="remote conflict",
+            source="remote_write_request",
+            source_ref="remote_write_request:req-mcp",
+            trust=0.8,
+            scope="shared",
+            sensitivity="low",
+            memory_type="remote_candidate",
+        )
+        revision = record_memory_revision(
+            db,
+            title="MCP Sync Rule",
+            content="Remote conflicting content should remain reviewable.",
+            operation="remote_candidate_imported",
+            status="candidate",
+            candidate_id=candidate["candidate_id"],
+            remote_request_id="req-mcp",
+            source_agent="remote-agent",
+        )
+        detect_candidate_conflicts(
+            db,
+            candidate_id=candidate["candidate_id"],
+            revision_id=revision["revision_id"],
+        )
+
+    payload = _payload(handle_tool_call("vault_sync_status", {"limit": 3}))
+
+    assert payload["status"] == "needs_review"
+    assert payload["counts"]["open_conflicts"] == 1
+    assert payload["safety"]["read_only"] is True
+    assert payload["safety"]["multi_master_active_sync"] is False
+    assert "Remote conflicting content" not in json.dumps(payload, ensure_ascii=False)
 
 
 def test_mcp_update_status_reports_agent_registry(tmp_path, monkeypatch):

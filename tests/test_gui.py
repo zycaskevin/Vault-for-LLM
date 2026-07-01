@@ -22,11 +22,13 @@ from vault.gui import (
     gui_read_range,
     gui_review_candidate,
     gui_search,
+    gui_sync_status,
     gui_task,
     gui_tasks,
     make_gui_handler,
 )
 from vault.task_ledger import start_task, update_task
+from vault.multi_host import detect_candidate_conflicts, record_memory_revision
 
 
 def _make_project(tmp_path):
@@ -161,6 +163,9 @@ def test_gui_app_exposes_document_map_panel():
     assert "Daily Report" in APP_HTML
     assert "dailyReport" in APP_HTML
     assert "agentDashboard" in APP_HTML
+    assert "syncHealth" in APP_HTML
+    assert "openConflicts" in APP_HTML
+    assert "sync-conflict" in APP_HTML
     assert "dashboard-subhead" in APP_HTML
     assert "Multi-Agent Dashboard" in APP_HTML
     assert "多 Agent Dashboard" in APP_HTML
@@ -204,7 +209,50 @@ def test_gui_agent_dashboard_lists_agents_sync_and_review(tmp_path, monkeypatch)
     obsidian = next(item for item in dashboard["recent_sync"] if item["kind"] == "obsidian")
     assert obsidian["summary"]["active_notes"] == 1
     assert obsidian["summary"]["missing_notes"] == 1
+    assert dashboard["sync_health"]["status"] == "idle"
+    assert dashboard["sync_health"]["safety"]["read_only"] is True
     assert dashboard["human_review"]["items"]
+
+
+def test_gui_sync_status_shows_open_conflicts_without_content(tmp_path):
+    project, _kid = _make_project(tmp_path)
+    with VaultDB(project / "vault.db") as db:
+        result = create_candidate(
+            db,
+            title="GUI Console Runbook",
+            content="Remote content differs from the reviewed local runbook.",
+            reason="remote sync conflict",
+            source="remote_write_request",
+            source_ref="remote_write_request:req-gui",
+            trust=0.8,
+            scope="shared",
+            sensitivity="low",
+            memory_type="remote_candidate",
+        )
+        revision = record_memory_revision(
+            db,
+            title="GUI Console Runbook",
+            content="Remote content differs from the reviewed local runbook.",
+            operation="remote_candidate_imported",
+            status="candidate",
+            candidate_id=result["candidate_id"],
+            remote_request_id="req-gui",
+            source_agent="remote-agent",
+        )
+        detect_candidate_conflicts(
+            db,
+            candidate_id=result["candidate_id"],
+            revision_id=revision["revision_id"],
+        )
+
+    payload = gui_sync_status(project)
+    dashboard = gui_agent_dashboard(project, limit=5)
+
+    assert payload["status"] == "needs_review"
+    assert payload["counts"]["open_conflicts"] == 1
+    assert payload["open_conflicts"][0]["conflict_type"] == "same_title_content_mismatch"
+    assert "Remote content differs" not in str(payload)
+    assert dashboard["sync_health"]["counts"]["open_conflicts"] == 1
 
 
 def test_gui_app_exposes_graph_visual_panel():

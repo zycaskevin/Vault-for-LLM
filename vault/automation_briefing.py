@@ -100,6 +100,69 @@ def _brief_summary(
     }
 
 
+def _sync_summary(sync_health: dict[str, Any]) -> dict[str, Any]:
+    if not sync_health:
+        return {
+            "sync_status": "unavailable",
+            "open_sync_conflicts": 0,
+            "sync_revisions": 0,
+            "sync_audit_events": 0,
+        }
+    counts = sync_health.get("counts") or {}
+    return {
+        "sync_status": sync_health.get("status", "idle"),
+        "open_sync_conflicts": int(counts.get("open_conflicts") or 0),
+        "sync_revisions": int(counts.get("revisions") or 0),
+        "sync_audit_events": int(counts.get("audit_events") or 0),
+    }
+
+
+def _sync_review_items(sync_health: dict[str, Any], *, limit: int = 5) -> list[dict[str, Any]]:
+    """Turn sync conflicts into compact human-review cards without exposing content."""
+    counts = sync_health.get("counts") or {}
+    open_count = int(counts.get("open_conflicts") or 0)
+    if not sync_health or open_count <= 0:
+        return []
+    max_items = max(1, min(int(limit or 5), 20))
+    items = []
+    for conflict in (sync_health.get("open_conflicts") or [])[:max_items]:
+        conflict_id = str(conflict.get("id") or "")
+        remote_candidate_id = str(conflict.get("remote_candidate_id") or conflict.get("candidate_id") or "")
+        local_knowledge_id = conflict.get("local_knowledge_id")
+        items.append(
+            {
+                "kind": "sync_conflict_review",
+                "id": conflict_id,
+                "title": "Remote memory candidate conflicts with local knowledge",
+                "priority": 92,
+                "reason": (
+                    f"Remote candidate {remote_candidate_id or '(unknown)'} conflicts with "
+                    f"local knowledge #{local_knowledge_id or '(unknown)'}."
+                ),
+                "recommended_action": "review_remote_conflict",
+                "safe_action": (
+                    "Use `vault sync conflicts` and resolve only after checking bounded evidence; "
+                    "active memory is not changed automatically."
+                ),
+                "remote_candidate_id": remote_candidate_id,
+                "local_knowledge_id": local_knowledge_id,
+            }
+        )
+    if not items:
+        items.append(
+            {
+                "kind": "sync_conflict_review",
+                "id": "open-conflicts",
+                "title": "Remote memory conflicts need review",
+                "priority": 92,
+                "reason": f"{open_count} open remote sync conflicts need a local decision.",
+                "recommended_action": "review_remote_conflict",
+                "safe_action": "Run `vault sync conflicts` before accepting any remote candidate into active memory.",
+            }
+        )
+    return items
+
+
 def _brief_learning(evaluation: dict[str, Any], *, limit: int = 5) -> dict[str, Any]:
     policy = evaluation.get("learning_policy") or {}
     rules = []
@@ -297,9 +360,12 @@ def _fleet_health_status(
     project_agent_count: int,
     update_ok: bool,
     update_status_exists: bool,
+    open_sync_conflicts: int = 0,
 ) -> str:
     if learning_status == "blocked":
         return "blocked"
+    if open_sync_conflicts > 0:
+        return "needs_review"
     if agent_count <= 0 or project_agent_count <= 0:
         return "needs_review"
     if learning_status == "needs_review":
@@ -316,11 +382,25 @@ def _fleet_health_cards(
     learning: dict[str, Any],
     agent_health: dict[str, Any],
     update_health: dict[str, Any],
+    sync_health: dict[str, Any] | None = None,
     project_agent_count: int,
     limit: int = 5,
 ) -> list[dict[str, Any]]:
     cards: list[dict[str, Any]] = []
     agent_count = int(agent_health.get("agent_count") or 0)
+    sync = sync_health or {}
+    counts = sync.get("counts") or {}
+    open_sync_conflicts = int(counts.get("open_conflicts") or 0)
+    if open_sync_conflicts > 0:
+        cards.append(
+            {
+                "kind": "sync_conflicts",
+                "priority": 92,
+                "title": "Remote memory sync has open conflicts",
+                "reason": f"{open_sync_conflicts} remote candidate conflict(s) need review before they can affect active memory.",
+                "safe_action": "Run `vault sync conflicts` or check the GUI Sync Health card; keep active knowledge local until resolved.",
+            }
+        )
     if agent_count <= 0:
         cards.append(
             {

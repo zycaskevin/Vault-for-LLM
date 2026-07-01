@@ -4,7 +4,16 @@ import sys
 from pathlib import Path
 
 from vault.db import VaultDB
-from vault.task_ledger import complete_task, list_tasks, start_task, task_handoff, update_task
+from vault.task_ledger import (
+    claim_task_handoff,
+    complete_task,
+    create_task_handoff,
+    list_task_handoffs,
+    list_tasks,
+    start_task,
+    task_handoff,
+    update_task,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -91,6 +100,45 @@ def test_task_ledger_lists_by_priority_then_due_date(tmp_path):
     assert [row["id"] for row in rows] == ["task-critical", "task-important", "task-normal"]
 
 
+def test_task_handoff_inbox_lifecycle(tmp_path):
+    db_path = tmp_path / "vault.db"
+    with VaultDB(db_path) as db:
+        start_task(
+            db,
+            "Continue multi-agent handoff work",
+            task_id="task-handoff",
+            title="Agent handoff",
+            next_actions=["receiver claims handoff"],
+            scope="shared",
+            owner_agent="codex",
+            allowed_agents="codex,hermes",
+        )
+        sent = create_task_handoff(
+            db,
+            "task-handoff",
+            handoff_id="handoff-test",
+            from_agent="codex",
+            to_agent="hermes",
+            message="Please continue from the Task Ledger snapshot.",
+            source_ref="session:test",
+        )
+        handoff = sent["handoff"]
+        assert handoff["id"] == "handoff-test"
+        assert handoff["status"] == "pending"
+        assert handoff["to_agent"] == "hermes"
+        assert "Task Snapshot" in handoff["markdown"]
+
+        inbox = list_task_handoffs(db, agent_id="hermes")
+        assert [item["id"] for item in inbox] == ["handoff-test"]
+
+        claimed = claim_task_handoff(db, "handoff-test", agent_id="hermes", note="Taking over.")
+        assert claimed["handoff"]["status"] == "claimed"
+        assert claimed["handoff"]["claimed_by"] == "hermes"
+
+        claimed_inbox = list_task_handoffs(db, agent_id="hermes", status="claimed")
+        assert [item["id"] for item in claimed_inbox] == ["handoff-test"]
+
+
 def test_task_cli_start_update_handoff_complete(tmp_path):
     project = tmp_path / "project"
     project.mkdir()
@@ -175,6 +223,74 @@ def test_task_cli_start_update_handoff_complete(tmp_path):
     assert "Task Ledger is not L2" in handoff.stdout
     assert "- priority: P0" in handoff.stdout
     assert "Use handoff before switching agents." in handoff.stdout
+
+    sent = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "vault.cli",
+            "--project-dir",
+            str(project),
+            "task",
+            "send-handoff",
+            "task-cli",
+            "--handoff-id",
+            "handoff-cli",
+            "--from-agent",
+            "codex",
+            "--to-agent",
+            "hermes",
+            "--message",
+            "Please continue the CLI slice.",
+            "--json",
+        ],
+        cwd=str(REPO_ROOT),
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert json.loads(sent.stdout)["handoff"]["id"] == "handoff-cli"
+
+    inbox = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "vault.cli",
+            "--project-dir",
+            str(project),
+            "task",
+            "inbox",
+            "--agent-id",
+            "hermes",
+            "--json",
+        ],
+        cwd=str(REPO_ROOT),
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert json.loads(inbox.stdout)["handoffs"][0]["id"] == "handoff-cli"
+
+    claimed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "vault.cli",
+            "--project-dir",
+            str(project),
+            "task",
+            "claim-handoff",
+            "handoff-cli",
+            "--agent-id",
+            "hermes",
+            "--json",
+        ],
+        cwd=str(REPO_ROOT),
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert json.loads(claimed.stdout)["handoff"]["status"] == "claimed"
 
     complete = subprocess.run(
         [

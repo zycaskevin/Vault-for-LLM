@@ -108,8 +108,9 @@ public-safe coordination file for future Agents.
 When Supabase or hosted readers are enabled, Agents should start with
 `vault remote status --json` before live remote calls. This offline check tells
 them whether they are using the local source-of-truth vault, whether Supabase is
-only a read-only copy, whether a sync schedule/report exists, and which roster
-entries are remote readers or shared writers. It is intentionally separate from
+only a reviewed read copy plus candidate request inbox, whether a sync
+schedule/report exists, and which roster entries are remote readers or shared
+writers. It is intentionally separate from
 `vault remote smoke` and `vault remote doctor`, which require configured remote
 credentials.
 `setup-agent` also writes `agent-install/README-agent-adapters.md` plus Codex,

@@ -21,7 +21,9 @@ def test_remote_status_reports_local_source_of_truth(tmp_path, capsys, monkeypat
 
     assert payload["ok"] is True
     assert payload["source_of_truth"] == "local_sqlite"
+    assert payload["remote_model"]["mode"] == "supabase_reviewed_read_copy_with_candidate_inbox"
     assert payload["remote_model"]["bidirectional"] is False
+    assert payload["remote_model"]["candidate_requests"] is True
     assert payload["remote_model"]["realtime"] is False
     assert payload["remote_model"]["realtime_kind"] == "scheduled_or_manual"
     assert payload["local"]["db_exists"] is True
@@ -104,4 +106,4 @@ def test_remote_status_human_output(tmp_path, capsys, monkeypatch):
 
     assert "Vault remote status" in output
     assert "Source of truth: local vault.db" in output
-    assert "Supabase read-only copy" in output
+    assert "candidate request inbox" in output

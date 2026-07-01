@@ -18,6 +18,7 @@ from .db import VaultDB, normalize_governance_metadata
 
 VALID_TASK_STATUSES = {"active", "blocked", "completed", "archived"}
 VALID_TASK_PRIORITIES = {"P0", "P1", "P2", "P3"}
+VALID_HANDOFF_STATUSES = {"pending", "claimed", "closed", "archived"}
 LIST_FIELDS = {
     "current_plan": "current_plan_json",
     "completed": "completed_json",
@@ -40,6 +41,11 @@ def _slug(text: str) -> str:
 def _new_task_id(goal: str) -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     return f"task_{stamp}_{_slug(goal)[:36]}_{uuid.uuid4().hex[:8]}"
+
+
+def _new_handoff_id(task_id: str) -> str:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return f"handoff_{stamp}_{_slug(task_id)[:32]}_{uuid.uuid4().hex[:8]}"
 
 
 def _json_list(value: Any = None) -> str:
@@ -117,6 +123,15 @@ def _task_evidence_refs(db: VaultDB, task_id: str) -> list[dict[str, Any]]:
             ref["metadata"] = {}
         refs.append(ref)
     return refs
+
+
+def _row_to_handoff(row: Any) -> dict[str, Any]:
+    handoff = dict(row)
+    try:
+        handoff["metadata"] = json.loads(handoff.pop("metadata_json") or "{}")
+    except json.JSONDecodeError:
+        handoff["metadata"] = {}
+    return handoff
 
 
 def get_task(db: VaultDB, task_id: str, *, include_events: bool = True) -> dict[str, Any] | None:
@@ -437,3 +452,166 @@ def task_handoff(db: VaultDB, task_id: str) -> dict[str, Any]:
         lines.extend(["## Continuation Note", task["continuation_note"], ""])
     markdown = "\n".join(lines).rstrip() + "\n"
     return {"ok": True, "action": "handoff", "task": task, "markdown": markdown}
+
+
+def create_task_handoff(
+    db: VaultDB,
+    task_id: str,
+    *,
+    handoff_id: str = "",
+    from_agent: str = "",
+    to_agent: str = "",
+    message: str = "",
+    source_ref: str = "",
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create a directed handoff packet for another agent.
+
+    This is task-runtime state. It does not promote content into L0-L3 memory.
+    """
+    task = get_task(db, task_id, include_events=False)
+    if not task:
+        raise KeyError(f"task not found: {task_id}")
+    target = str(to_agent or "").strip()
+    if not target:
+        raise ValueError("to_agent is required")
+    source = str(from_agent or "").strip()
+    handoff_id = str(handoff_id or "").strip() or _new_handoff_id(task_id)
+    base = task_handoff(db, task_id)["markdown"]
+    note = str(message or "").strip()
+    lines = [
+        f"# Agent Handoff Packet: {task.get('title') or task.get('id')}",
+        "",
+        f"- handoff_id: {handoff_id}",
+        f"- task_id: {task_id}",
+        f"- from_agent: {source}",
+        f"- to_agent: {target}",
+        f"- status: pending",
+        "",
+    ]
+    if note:
+        lines.extend(["## Sender Note", note, ""])
+    lines.extend(["## Task Snapshot", base.rstrip(), ""])
+    markdown = "\n".join(lines).rstrip() + "\n"
+    allowed = [agent for agent in [target, source, task.get("owner_agent", "")] if str(agent or "").strip()]
+    governance = normalize_governance_metadata(
+        scope=task.get("scope") or "project",
+        sensitivity=task.get("sensitivity") or "low",
+        owner_agent=source or task.get("owner_agent") or "",
+        allowed_agents=allowed,
+    )
+    now = _now()
+    db.conn.execute(
+        """INSERT INTO task_handoffs(
+               id, task_id, created_at, updated_at, status, from_agent, to_agent,
+               message, markdown, source_ref, scope, sensitivity, owner_agent,
+               allowed_agents, metadata_json
+           ) VALUES(?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            handoff_id,
+            task_id,
+            now,
+            now,
+            source,
+            target,
+            note,
+            markdown,
+            str(source_ref or "").strip(),
+            governance["scope"],
+            governance["sensitivity"],
+            governance["owner_agent"],
+            governance["allowed_agents"],
+            json.dumps(metadata or {}, ensure_ascii=False, sort_keys=True),
+        ),
+    )
+    _insert_event(
+        db,
+        task_id,
+        "handoff_sent",
+        note,
+        agent_id=source,
+        source_ref=source_ref,
+        payload={"handoff_id": handoff_id, "to_agent": target},
+    )
+    db.conn.commit()
+    return {"ok": True, "action": "send_handoff", "handoff": get_task_handoff(db, handoff_id)}
+
+
+def get_task_handoff(db: VaultDB, handoff_id: str) -> dict[str, Any] | None:
+    row = db.conn.execute(
+        """SELECT id, task_id, created_at, updated_at, claimed_at, status,
+                  from_agent, to_agent, claimed_by, message, markdown, source_ref,
+                  scope, sensitivity, owner_agent, allowed_agents, metadata_json
+           FROM task_handoffs
+           WHERE id=?""",
+        (handoff_id,),
+    ).fetchone()
+    return _row_to_handoff(row) if row else None
+
+
+def list_task_handoffs(
+    db: VaultDB,
+    *,
+    agent_id: str = "",
+    status: str = "pending",
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    norm_status = str(status or "pending").strip().lower()
+    if norm_status != "all" and norm_status not in VALID_HANDOFF_STATUSES:
+        raise ValueError(f"invalid handoff status: {status}")
+    params: list[Any] = []
+    where: list[str] = []
+    if norm_status != "all":
+        where.append("status=?")
+        params.append(norm_status)
+    agent = str(agent_id or "").strip()
+    if agent:
+        where.append("(to_agent=? OR from_agent=? OR owner_agent=? OR allowed_agents LIKE ?)")
+        params.extend([agent, agent, agent, f"%{agent}%"])
+    sql_where = f"WHERE {' AND '.join(where)}" if where else ""
+    params.append(max(1, min(int(limit), 100)))
+    rows = db.conn.execute(
+        f"""SELECT id, task_id, created_at, updated_at, claimed_at, status,
+                  from_agent, to_agent, claimed_by, message, markdown, source_ref,
+                  scope, sensitivity, owner_agent, allowed_agents, metadata_json
+           FROM task_handoffs
+           {sql_where}
+           ORDER BY updated_at DESC, created_at DESC
+           LIMIT ?""",
+        params,
+    ).fetchall()
+    return [_row_to_handoff(row) for row in rows]
+
+
+def claim_task_handoff(
+    db: VaultDB,
+    handoff_id: str,
+    *,
+    agent_id: str,
+    note: str = "",
+) -> dict[str, Any]:
+    handoff = get_task_handoff(db, handoff_id)
+    if not handoff:
+        raise KeyError(f"handoff not found: {handoff_id}")
+    agent = str(agent_id or "").strip()
+    if not agent:
+        raise ValueError("agent_id is required")
+    if handoff.get("to_agent") and handoff.get("to_agent") != agent:
+        raise PermissionError("handoff is addressed to another agent")
+    now = _now()
+    db.conn.execute(
+        """UPDATE task_handoffs
+           SET status='claimed', claimed_by=?, claimed_at=?, updated_at=?
+           WHERE id=?""",
+        (agent, now, now, handoff_id),
+    )
+    _insert_event(
+        db,
+        handoff["task_id"],
+        "handoff_claimed",
+        str(note or "").strip(),
+        agent_id=agent,
+        payload={"handoff_id": handoff_id, "from_agent": handoff.get("from_agent", "")},
+    )
+    db.conn.commit()
+    return {"ok": True, "action": "claim_handoff", "handoff": get_task_handoff(db, handoff_id)}

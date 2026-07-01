@@ -36,6 +36,7 @@ def _labels(language: str) -> dict[str, str]:
             "needs_confirmation": "需要你確認",
             "learning_rules": "學習規則",
             "expired_active": "過期活躍記憶",
+            "open_sync_conflicts": "待處理同步衝突",
             "needs_decision": "需要你決定",
             "none": "無",
             "suggested": "建議",
@@ -78,6 +79,7 @@ def _labels(language: str) -> dict[str, str]:
             "needs_confirmation": "需要你确认",
             "learning_rules": "学习规则",
             "expired_active": "过期活跃记忆",
+            "open_sync_conflicts": "待处理同步冲突",
             "needs_decision": "需要你决定",
             "none": "无",
             "suggested": "建议",
@@ -119,6 +121,7 @@ def _labels(language: str) -> dict[str, str]:
         "needs_confirmation": "needs your confirmation",
         "learning_rules": "learning rules",
         "expired_active": "expired active memory",
+        "open_sync_conflicts": "open sync conflicts",
         "needs_decision": "Needs Your Decision",
         "none": "none",
         "suggested": "suggested",
@@ -202,6 +205,8 @@ def build_daily_report(
             "expired_active": int(brief_summary.get("expired_active") or 0),
             "cold_store_preview": int(brief_summary.get("cold_store_preview") or 0),
             "cold_store_applied": int(brief_summary.get("cold_store_applied") or 0),
+            "open_sync_conflicts": int(brief_summary.get("open_sync_conflicts") or 0),
+            "sync_status": brief_summary.get("sync_status", "idle"),
             "registered_agents": int((brief.get("agent_health") or {}).get("agent_count") or 0),
         },
         "quiet_actions": quiet_actions,
@@ -245,6 +250,7 @@ def render_daily_report_text(payload: dict[str, Any]) -> str:
         f"  {labels['needs_confirmation']}: {summary.get('needs_confirmation', 0)}",
         f"  {labels['learning_rules']}: {summary.get('learning_rules', 0)}",
         f"  {labels['expired_active']}: {summary.get('expired_active', 0)}",
+        f"  {labels['open_sync_conflicts']}: {summary.get('open_sync_conflicts', 0)}",
     ]
     cards = payload.get("review_cards") or []
     lines += ["", f"{labels['needs_decision']}:"]
@@ -380,6 +386,7 @@ def _render_daily_markdown(payload: dict[str, Any]) -> str:
         f"- {labels['needs_confirmation']}: `{int(summary.get('needs_confirmation') or 0)}`",
         f"- {labels['learning_rules']}: `{int(summary.get('learning_rules') or 0)}`",
         f"- {labels['expired_active']}: `{int(summary.get('expired_active') or 0)}`",
+        f"- {labels['open_sync_conflicts']}: `{int(summary.get('open_sync_conflicts') or 0)}`",
         "",
         f"## {labels['needs_decision']}",
         "",

@@ -12,7 +12,7 @@ the model context and fewer ways for an agent to choose the wrong action.
 | Profile | Tools | Best For |
 |---|---|---|
 | `core` | `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats`, `vault_update_status`, `vault_automation_activity`, `vault_automation_brief`, `vault_automation_handoff` | Daily agent work: start from status/activity/brief/handoff, find memory, read bounded evidence, propose new memory. |
-| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_capture_discover`, `vault_capture_session`, `vault_automation_inbox`, `vault_task_start/status/update/handoff/complete`, Skill read/sync-inspection tools, `vault_dream_run` | A reviewer agent or operator session that discovers/captures, approves/rejects candidates, inspects Skill versions, or maintains a resumable task working set. |
+| `review` | Core plus `vault_memory_candidates`, `vault_memory_promote`, `vault_memory_review`, `vault_capture_discover`, `vault_capture_session`, `vault_automation_inbox`, `vault_task_start/status/update/handoff/complete`, `vault_sync_status`, Skill read/sync-inspection tools, `vault_dream_run` | A reviewer agent or operator session that discovers/captures, approves/rejects candidates, checks sync conflicts, inspects Skill versions, or maintains a resumable task working set. |
 | `remote` | Core plus `vault_remote_search`, `vault_remote_map_show`, `vault_remote_read_range` | Hosted or cross-host agents reading a Supabase-synced vault. |
 | `maintenance` | Review plus Skill registry writes, Skill sync marking, cold-store lifecycle, Obsidian import, freshness, convergence, and curation tools | Scheduled maintenance or explicit operator-led cleanup. |
 | `full` | Every MCP tool, including low-level compatibility tools | Trusted local operators and backwards compatibility. |
@@ -293,6 +293,47 @@ Render a compact Markdown handoff for the next session.
 Agent rule: call this before switching agents or ending a long task. The
 returned `markdown` can be pasted into a handoff, but it is not automatically
 promoted into long-term memory.
+
+### `vault_task_send_handoff`
+
+Create a directed handoff packet for another agent. This writes to the Task
+Ledger handoff inbox only; it does not expose private agent memory and does not
+promote anything into L0-L3 knowledge.
+
+```json
+{
+  "task_id": "task-release-hardening",
+  "from_agent": "codex",
+  "to_agent": "hermes",
+  "message": "Continue from the release smoke tests.",
+  "source_ref": "session:codex"
+}
+```
+
+### `vault_task_handoff_inbox`
+
+List handoff packets for a receiving agent.
+
+```json
+{
+  "agent_id": "hermes",
+  "status": "pending",
+  "limit": 10
+}
+```
+
+### `vault_task_claim_handoff`
+
+Mark a directed handoff as claimed by the receiving agent. Claiming leaves a task
+event so future agents can see who took over.
+
+```json
+{
+  "handoff_id": "handoff_20260701_task-release_abcd1234",
+  "agent_id": "hermes",
+  "note": "Taking over the release checklist."
+}
+```
 
 ### `vault_task_complete`
 
@@ -701,6 +742,41 @@ Agent rule: call this before reading full automation reports. It is read-only by
 default and hides candidate content unless `include_content` is explicitly set.
 Set `include_transcripts=true` when the agent also needs metadata-only hints for
 session exports that have not yet been captured.
+
+### `vault_sync_status`
+
+Read local multi-host sync health. This is the MCP version of the GUI Sync
+Health card. It is read-only and does not resolve conflicts or mutate memory.
+
+```json
+{
+  "limit": 5
+}
+```
+
+Typical result fields:
+
+```json
+{
+  "status": "needs_review",
+  "counts": {
+    "revisions": 2,
+    "open_conflicts": 1,
+    "resolved_conflicts": 0,
+    "audit_events": 3
+  },
+  "safety": {
+    "read_only": true,
+    "writes_active_memory": false,
+    "multi_master_active_sync": false,
+    "candidate_first": true
+  }
+}
+```
+
+Agent rule: use this before resolving remote candidate conflicts. It tells you
+whether there are open sync conflicts, but it does not read raw private memory
+or approve remote writes.
 
 ## Remote Supabase Tools
 

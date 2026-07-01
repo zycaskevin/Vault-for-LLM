@@ -11,6 +11,9 @@ MCP_TASK_TOOL_NAMES = [
     "vault_task_status",
     "vault_task_update",
     "vault_task_handoff",
+    "vault_task_send_handoff",
+    "vault_task_handoff_inbox",
+    "vault_task_claim_handoff",
     "vault_task_complete",
 ]
 
@@ -103,6 +106,54 @@ MCP_TASK_TOOLS = [
                 "max_sensitivity": {"type": "string", "enum": ["low", "medium", "high", "restricted"], "default": "medium"},
             },
             "required": ["task_id"],
+        },
+    },
+    {
+        "name": "vault_task_send_handoff",
+        "description": "Create a directed Task Ledger handoff packet for another local agent. Does not expose private agent memory.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string"},
+                "handoff_id": {"type": "string", "default": ""},
+                "from_agent": {"type": "string", "default": ""},
+                "to_agent": {"type": "string"},
+                "message": {"type": "string", "default": ""},
+                "source_ref": {"type": "string", "default": ""},
+                "agent_id": {"type": "string", "default": ""},
+                "allow_shared": {"type": "boolean", "default": False},
+                "allow_private": {"type": "boolean", "default": False},
+                "allow_high_sensitivity": {"type": "boolean", "default": False},
+                "allow_restricted": {"type": "boolean", "default": False},
+            },
+            "required": ["task_id", "to_agent"],
+        },
+    },
+    {
+        "name": "vault_task_handoff_inbox",
+        "description": "List directed Task Ledger handoff packets for an agent.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent_id": {"type": "string", "default": ""},
+                "status": {"type": "string", "enum": ["pending", "claimed", "closed", "archived", "all"], "default": "pending"},
+                "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100},
+                "include_private": {"type": "boolean", "default": False},
+                "max_sensitivity": {"type": "string", "enum": ["low", "medium", "high", "restricted"], "default": "medium"},
+            },
+        },
+    },
+    {
+        "name": "vault_task_claim_handoff",
+        "description": "Mark a directed Task Ledger handoff as claimed by the receiving agent.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "handoff_id": {"type": "string"},
+                "agent_id": {"type": "string"},
+                "note": {"type": "string", "default": ""},
+            },
+            "required": ["handoff_id", "agent_id"],
         },
     },
     {
@@ -216,7 +267,17 @@ def handle_task_tool_call(name: str, arguments: dict[str, Any], *, db_path: str)
         return None
 
     from vault.db import VaultDB
-    from vault.task_ledger import complete_task, get_task, list_tasks, start_task, task_handoff, update_task
+    from vault.task_ledger import (
+        claim_task_handoff,
+        complete_task,
+        create_task_handoff,
+        get_task,
+        list_task_handoffs,
+        list_tasks,
+        start_task,
+        task_handoff,
+        update_task,
+    )
 
     arguments = arguments or {}
     try:
@@ -336,6 +397,59 @@ def handle_task_tool_call(name: str, arguments: dict[str, Any], *, db_path: str)
                 if not _can_read_task(task, arguments):
                     return _json_result(_error_payload("access_denied: task is not readable for this agent"))
                 return _json_result(task_handoff(db, task_id))
+
+            if name == "vault_task_send_handoff":
+                task_id = str(arguments.get("task_id") or "").strip()
+                if not task_id:
+                    return _json_result(_error_payload("task_id is required"))
+                existing = get_task(db, task_id, include_events=False)
+                if not existing:
+                    return _json_result(
+                        _error_payload(
+                            f"task not found: {task_id}",
+                            next_action=_task_lookup_next_action(arguments),
+                        )
+                    )
+                denied = _write_denied(existing, arguments)
+                if denied is not None:
+                    return _json_result(denied)
+                return _json_result(
+                    create_task_handoff(
+                        db,
+                        task_id,
+                        handoff_id=str(arguments.get("handoff_id") or ""),
+                        from_agent=str(arguments.get("from_agent") or arguments.get("agent_id") or ""),
+                        to_agent=str(arguments.get("to_agent") or ""),
+                        message=str(arguments.get("message") or ""),
+                        source_ref=str(arguments.get("source_ref") or ""),
+                    )
+                )
+
+            if name == "vault_task_handoff_inbox":
+                handoffs = [
+                    handoff
+                    for handoff in list_task_handoffs(
+                        db,
+                        agent_id=str(arguments.get("agent_id") or ""),
+                        status=str(arguments.get("status") or "pending"),
+                        limit=_clamp_int(arguments.get("limit"), default=20, minimum=1, maximum=100),
+                    )
+                    if _can_read_task(handoff, arguments)
+                ]
+                return _json_result({"ok": True, "action": "handoff_inbox", "handoffs": handoffs})
+
+            if name == "vault_task_claim_handoff":
+                try:
+                    return _json_result(
+                        claim_task_handoff(
+                            db,
+                            str(arguments.get("handoff_id") or ""),
+                            agent_id=str(arguments.get("agent_id") or ""),
+                            note=str(arguments.get("note") or ""),
+                        )
+                    )
+                except PermissionError as exc:
+                    return _json_result(_error_payload(f"access_denied: {exc}"))
 
             if name == "vault_task_complete":
                 task_id = str(arguments.get("task_id") or "").strip()

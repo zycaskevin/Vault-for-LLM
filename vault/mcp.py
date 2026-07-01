@@ -21,6 +21,7 @@ from vault.mcp_memory import handle_memory_tool_call
 from vault.mcp_automation import handle_automation_tool_call
 from vault.mcp_task import handle_task_tool_call
 from vault.mcp_skill import handle_skill_tool_call
+from vault.mcp_sync import handle_sync_tool_call
 from vault.mcp_security import (
     check_agent_signature as _check_agent_signature,
     check_mcp_rate_limit as _check_mcp_rate_limit,
@@ -245,6 +246,10 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
         skill_payload = handle_skill_tool_call(name, arguments, db_path=DB_PATH)
         if skill_payload is not None:
             return skill_payload
+
+        sync_payload = handle_sync_tool_call(name, arguments, db_path=DB_PATH)
+        if sync_payload is not None:
+            return sync_payload
 
         if name == "vault_obsidian_import":
             from vault.agent_setup import compile_project

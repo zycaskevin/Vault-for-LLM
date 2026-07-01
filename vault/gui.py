@@ -13,6 +13,7 @@ from .gui_api import (
     gui_read_range,
     gui_review_candidate,
     gui_search,
+    gui_sync_status,
     gui_task,
     gui_tasks,
 )
@@ -48,6 +49,7 @@ __all__ = [
     "gui_read_range",
     "gui_review_candidate",
     "gui_search",
+    "gui_sync_status",
     "gui_task",
     "gui_tasks",
 ]

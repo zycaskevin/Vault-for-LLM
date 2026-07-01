@@ -14,6 +14,7 @@ from .daily_report import build_daily_report
 from .db import VaultDB
 from .db_knowledge import escape_like_pattern
 from .memory import promote_candidate, review_candidate
+from .multi_host import sync_status
 from .search import VaultSearch
 from .search_utils import normalize_search_limit
 from .gui_format import (
@@ -192,6 +193,9 @@ def gui_agent_dashboard(
         precomputed_brief=brief,
     )
 
+    with VaultDB(db_path) as db:
+        sync_health = sync_status(db, limit=limit_i)
+
     sync_items = [
         {
             "kind": "agent_registry",
@@ -224,6 +228,7 @@ def gui_agent_dashboard(
             "all_items": all_agents,
         },
         "recent_sync": sync_items,
+        "sync_health": sync_health,
         "recent_candidates": recent_candidates,
         "human_review": {
             "summary": (review.get("summary") or {}),
@@ -238,6 +243,24 @@ def gui_agent_dashboard(
             "includes_raw_candidate_content": False,
         },
     }
+
+
+def gui_sync_status(project_dir: str | Path, *, limit: int = 5) -> dict[str, Any]:
+    """Return the read-only multi-host sync health payload for the GUI."""
+    project = Path(project_dir)
+    db_path = project / "vault.db"
+    if not db_path.exists():
+        return {
+            "ok": False,
+            "status": "blocked",
+            "reason": "vault.db missing",
+            "counts": {},
+            "recent_revisions": [],
+            "open_conflicts": [],
+            "audit_events": [],
+        }
+    with VaultDB(db_path) as db:
+        return sync_status(db, limit=limit)
 
 
 def gui_overview(project_dir: str | Path, *, limit: int = 5, language: str = "en") -> dict[str, Any]:

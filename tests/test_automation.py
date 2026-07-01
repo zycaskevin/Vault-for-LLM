@@ -23,6 +23,7 @@ from vault.automation import (
 )
 from vault.db import VaultDB
 from vault.memory import create_candidate
+from vault.multi_host import detect_candidate_conflicts, record_memory_revision
 from vault.task_ledger import start_task
 
 
@@ -76,6 +77,50 @@ def _create_low_risk_session_candidate(db: VaultDB, *, title: str = "Reusable se
         "quality": "pass",
     }
     return result["candidate_id"]
+
+
+def _create_remote_sync_conflict(db: VaultDB) -> tuple[int, str]:
+    knowledge_id = db.add_knowledge(
+        "Shared deployment policy",
+        "Deployments use the local source of truth after human review.",
+        category="workflow",
+        tags="deployment,sync",
+    )
+    record_memory_revision(
+        db,
+        title="Shared deployment policy",
+        content="Local reviewed deployment policy.",
+        operation="local_knowledge_snapshot",
+        status="active",
+        knowledge_id=knowledge_id,
+        source_agent="local-agent",
+    )
+    candidate = create_candidate(
+        db,
+        title="Shared deployment policy",
+        content="Remote agent proposes replacing deployment policy without local evidence.",
+        reason="Remote sync candidate with conflicting title.",
+        source="remote_candidate_sync",
+        source_ref="supabase:vault_memory_write_requests#remote-conflict",
+        memory_type="session_lesson",
+        category="workflow",
+        tags="deployment,sync",
+        trust=0.72,
+        scope="shared",
+        sensitivity="low",
+    )
+    revision = record_memory_revision(
+        db,
+        title="Shared deployment policy",
+        content="Remote agent proposes replacing deployment policy without local evidence.",
+        operation="remote_candidate_imported",
+        status="candidate_created",
+        candidate_id=candidate["candidate_id"],
+        remote_request_id="remote-conflict",
+        source_agent="remote-agent",
+    )
+    detect_candidate_conflicts(db, candidate_id=candidate["candidate_id"], revision_id=revision["revision_id"])
+    return knowledge_id, candidate["candidate_id"]
 
 
 def test_automation_plan_writes_default_policy(tmp_path):
@@ -677,6 +722,28 @@ def test_automation_brief_combines_learning_weights_forgetting_and_review(tmp_pa
     assert written["brief_markdown_path"] == "reports/automation/brief-latest.md"
 
 
+def test_automation_brief_surfaces_sync_conflicts_without_raw_content(tmp_path):
+    project = _init_project(tmp_path)
+    with VaultDB(project / "vault.db") as db:
+        _knowledge_id, candidate_id = _create_remote_sync_conflict(db)
+
+    payload = automation_brief(project, limit=5, review_limit=5, min_events=1, write_brief=True)
+
+    assert payload["summary"]["sync_status"] == "needs_review"
+    assert payload["summary"]["open_sync_conflicts"] == 1
+    assert payload["sync_health"]["counts"]["open_conflicts"] == 1
+    conflict_cards = [
+        item for item in payload["human_review_5_percent"]["items"]
+        if item["kind"] == "sync_conflict_review"
+    ]
+    assert conflict_cards
+    assert conflict_cards[0]["recommended_action"] == "review_remote_conflict"
+    assert conflict_cards[0]["remote_candidate_id"] == candidate_id
+    assert "Remote agent proposes replacing" not in json.dumps(payload, ensure_ascii=False)
+    markdown = (project / payload["brief_markdown_path"]).read_text(encoding="utf-8")
+    assert "open sync conflicts" in markdown
+
+
 def test_automation_brief_memory_importance_explains_components(tmp_path):
     project = _init_project(tmp_path)
     expired = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
@@ -1154,6 +1221,38 @@ def test_automation_fleet_health_writes_multi_agent_dashboard(tmp_path, monkeypa
     markdown = (project / payload["fleet_health_markdown_path"]).read_text(encoding="utf-8")
     assert "# Vault Automation Fleet Health" in markdown
     assert "registry metadata only" in markdown
+
+
+def test_automation_fleet_health_surfaces_sync_conflicts(tmp_path, monkeypatch):
+    from vault.agent_registry import build_update_status, register_agent, write_update_status
+
+    monkeypatch.setenv("VAULT_AGENT_REGISTRY_DIR", str(tmp_path / "registry"))
+    project = _init_project(tmp_path)
+    register_agent(agent="codex", project_dir=project, scope="shared", features=["core", "mcp"])
+    write_update_status(build_update_status())
+    with VaultDB(project / "vault.db") as db:
+        for idx in range(3):
+            db.record_memory_feedback(
+                {
+                    "candidate_id": f"fleet_sync_good_{idx}",
+                    "source": "review-summary",
+                    "memory_type": "memory_importance",
+                    "category": "refresh_or_cold_store_before_forgetting",
+                    "outcome": "accepted",
+                    "score": 1.0,
+                }
+            )
+        _create_remote_sync_conflict(db)
+
+    payload = automation_fleet_health(project, limit=5, min_events=3, write_health=True)
+
+    assert payload["status"] == "needs_review"
+    assert payload["summary"]["open_sync_conflicts"] == 1
+    assert payload["sync_health"]["status"] == "needs_review"
+    assert any(card["kind"] == "sync_conflicts" for card in payload["cards"])
+    assert payload["safety"]["read_only"] is True
+    markdown = (project / payload["fleet_health_markdown_path"]).read_text(encoding="utf-8")
+    assert "open sync conflicts" in markdown
 
 
 def test_automation_fleet_health_warns_when_agents_are_missing(tmp_path, monkeypatch):

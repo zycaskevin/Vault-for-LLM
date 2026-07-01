@@ -4,14 +4,15 @@
 
 Vault-for-LLM is moving toward one shared memory base that can be used by Codex,
 Claude Code, OpenClaw, Hermes, Coze, n8n, and other agents. Supabase remote
-readers are useful for hosted or cross-host agents, but the current supported
-model is not real-time bidirectional sync.
+readers are useful for hosted or cross-host agents, and remote agents may submit
+candidate requests, but the current supported model is not active-knowledge
+multi-master sync.
 
 The product needs a clear status surface so agents and users can see whether
 they are using:
 
 - a local SQLite vault as the source of truth,
-- a Supabase read-only copy,
+- a Supabase reviewed read copy plus candidate request inbox,
 - generated sync and remote-reader templates,
 - a recent local sync report,
 - reviewed multi-agent access policy files.
@@ -32,9 +33,9 @@ only local state:
 The command must explicitly say that:
 
 - local `vault.db` is the source of truth,
-- Supabase is a read-only copy,
+- Supabase is a reviewed read copy plus candidate request inbox,
 - the default sync direction is local-to-Supabase,
-- sync is not real-time bidirectional,
+- active memory sync is not real-time bidirectional,
 - remote freshness is unknown unless a local sync report exists.
 
 `vault remote smoke` and `vault remote doctor` remain the live remote checks.

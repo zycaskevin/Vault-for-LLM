@@ -55,12 +55,19 @@ scheduled jobs, or explicit maintenance sessions.
 | `vault map read <id> --lines 10-30` | Read a bounded source range for citation |
 | `vault gui` | Start the local read-only Vault Console |
 | `vault security doctor` | Check local GUI/MCP security posture, including GUI token and MCP HMAC settings |
-| `vault remote status --json` | Offline check for local source-of-truth, Supabase read-copy setup, sync freshness hints, and Agent sharing policy files |
+| `vault remote status --json` | Offline check for local source-of-truth, Supabase read-copy/candidate-inbox setup, sync freshness hints, and Agent sharing policy files |
 | `vault remote smoke --agent-id remote-agent --query "deployment SOP" --json` | Verify Supabase remote reader credentials and the `vault_search_readable` RPC |
 | `vault remote doctor --agent-id remote-agent --query "deployment SOP" --json` | Diagnose the full Supabase remote reader path: search, readable-entry RPCs, Document Map, claims, content, map, and bounded read |
 | `vault remote search "query" --agent-id remote-agent --json` | Search the Supabase read-only memory view through `vault_search_readable` |
 | `vault remote map <id> --compact --json` | Inspect remote synced Document Map rows |
 | `vault remote read <id> --node-uid <node> --json` | Read remote bounded evidence from synced content/claims |
+| `vault remote submit-candidate --from-agent remote-agent --title "..." --content "..." --trust 0.8 --json` | Submit a remote candidate request through Supabase; does not write active knowledge |
+| `vault remote pull-candidates --apply --json` | Trusted sync host pulls submitted remote requests into local `memory_candidates` |
+| `vault remote pull-candidates --apply --auto-promote-low-risk --json` | Trusted sync host pulls remote requests and promotes only this pull's candidates that match `automation_policy.yaml` low-risk rules |
+| `vault sync revisions --json` | Inspect the local revision graph created by remote candidate imports and promotions |
+| `vault sync conflicts --json` | List open local sync conflicts, such as same-title remote candidates that differ from active reviewed knowledge |
+| `vault sync audit --json` | Inspect local sync audit events without reading private memory content |
+| `vault sync resolve-conflict <conflict_id> --resolution keep_local --agent-id work-agent` | Mark a conflict as reviewed; does not overwrite active knowledge |
 | `vault remove <id> --confirm` | Remove a knowledge entry after reviewing its ID |
 
 ## Knowledge Ingestion
@@ -158,9 +165,22 @@ Supabase remote reader templates are opt-in with
 `vault remote smoke --agent-id <agent> --json`.
 Before live validation, run `vault remote status --json` from the project vault.
 It does not contact Supabase. It tells agents that the local SQLite vault is the
-source of truth, Supabase is a read-only copy, near-realtime sync is still
-one-way local-to-Supabase push, and remote freshness is unknown unless a local
-sync report exists.
+source of truth, Supabase is a reviewed read copy plus candidate request inbox,
+near-realtime active-memory sync is still one-way local-to-Supabase push, and
+remote freshness is unknown unless a local sync report exists.
+Remote candidate sync is intentionally candidate-first: hosted agents use
+`vault remote submit-candidate` with anon/publishable credentials, while a
+trusted local host uses `vault remote pull-candidates --apply` with the service
+role key to write local `memory_candidates`, not active `knowledge`.
+`--auto-promote-low-risk` is available only with `--apply`; it still requires
+`automation_policy.yaml`, passing gates, allowed source/type/scope/sensitivity,
+trust above threshold, and a source reference.
+`vault sync revisions/conflicts/audit` is the local safety surface for the next
+multi-host phase. It records what arrived, what was promoted, what conflicted,
+and who marked a conflict resolved. It is not multi-master active-knowledge
+sync: conflict resolution currently records the decision and audit trail, while
+active knowledge still changes through candidate review or allowed low-risk
+promotion.
 Multi-agent roster templates are opt-in with `--agent-roster`; each entry uses
 `agent_id:role[:scope[:max_sensitivity]]`, for example
 `profile-agent:profile,work-agent:work,remote-agent:remote,n8n:automation`.
@@ -231,6 +251,9 @@ history into the context window.
 | `vault task status --status active` | List active task ledgers |
 | `vault task resume <task_id>` | Alias for reading one task with resume semantics |
 | `vault task handoff <task_id>` | Print compact Markdown for the next agent/session |
+| `vault task send-handoff <task_id> --from-agent codex --to-agent hermes --message "continue from tests"` | Create a directed handoff packet in the shared task inbox |
+| `vault task inbox --agent-id hermes` | List pending handoff packets addressed to an agent |
+| `vault task claim-handoff <handoff_id> --agent-id hermes` | Mark a handoff as claimed by the receiving agent |
 | `vault task complete <task_id> --summary "..."` | Mark the task completed without promoting task events |
 
 At task phase end, extract only reusable lessons with the normal candidate-first
@@ -240,6 +263,12 @@ not `knowledge` rows.
 Task lists sort by priority first (`P0` to `P3`), then by due date, then by
 recent updates. Use `P0` for active incidents, `P1` for urgent release/blocking
 work, `P2` for normal planned work, and `P3` for backlog or optional follow-up.
+
+Directed handoff packets are the local multi-Agent handoff protocol. They are
+task-runtime inbox items, not private memory sharing. A sender can address a
+handoff to another agent, the receiver can claim it, and the task event log keeps
+the audit trail. The packet contains the task snapshot and sender note; it should
+reference shared evidence instead of copying another agent's private memory.
 
 ## Skill Registry
 

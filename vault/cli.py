@@ -641,8 +641,8 @@ def main(argv: list[str] | None = None):
     add_agent_setup_args(p)
 
     # import
-    p = sub.add_parser("import", help="匯入長文件、OKF bundle，或從 Obsidian 同步 notes")
-    p.add_argument("file", help="檔案路徑 (.md, .txt)，或使用 obsidian 搭配 --vault，或 okf 搭配 --bundle")
+    p = sub.add_parser("import", help="匯入長文件、OKF bundle、外部記憶，或從 Obsidian 同步 notes")
+    p.add_argument("file", help="檔案路徑 (.md, .txt)，或使用 obsidian/okf/memory 搭配對應參數")
     p.add_argument("--title", "-t", help="文件標題（預設用檔名）")
     p.add_argument("--strategy", "-s", choices=["chapter", "semantic", "summary-guided", "sliding", "proposition"], default="chapter", help="分塊策略（預設: chapter，proposition 需要 Ollama）")
     p.add_argument("--layer", choices=["L0", "L1", "L2", "L3"], default="L3")
@@ -659,6 +659,13 @@ def main(argv: list[str] | None = None):
     p.add_argument("--reason", default="", help="OKF 匯入候選的審核理由；僅用於 `vault import okf`")
     p.add_argument("--limit", type=int, default=None, help="OKF 匯入候選數上限；僅用於 `vault import okf`")
     p.add_argument("--max-file-bytes", type=int, default=2_000_000, help="OKF 每個 Markdown 檔案大小上限")
+    p.add_argument("--source", help="外部記憶來源路徑；僅用於 `vault import memory`")
+    p.add_argument("--format", choices=["auto", "markdown", "json", "csv", "okf", "transcript"],
+                   default="auto", help="外部記憶格式；僅用於 `vault import memory`")
+    p.add_argument("--write-candidates", action="store_true",
+                   help="外部記憶匯入時寫入 memory_candidates；預設只 preview")
+    p.add_argument("--only", default="",
+                   help="外部記憶篩選，例如 summaries,decisions,preferences,project-knowledge")
     p.add_argument("--vault", help="Obsidian vault 目錄；僅用於 `vault import obsidian`")
     p.add_argument("--obsidian-raw-subdir", default="obsidian", help="Obsidian notes 寫入 raw/ 下的子目錄")
     p.add_argument("--exclude", action="append", default=[], help="Obsidian 匯入時額外忽略的目錄或檔名，可重複")

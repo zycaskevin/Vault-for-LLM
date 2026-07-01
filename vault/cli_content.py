@@ -163,6 +163,71 @@ def cmd_import(args):
     project_dir = find_project_dir()
     db_path = project_dir / "vault.db"
 
+    if args.file == "memory":
+        from vault.db import VaultDB
+        from vault.memory_migration import migrate_memory_source
+
+        source = getattr(args, "source", None)
+        if not source:
+            print("❌ vault import memory 需要 --source /path/to/export")
+            raise SystemExit(2)
+        try:
+            with VaultDB(db_path) as db:
+                payload = migrate_memory_source(
+                    db,
+                    source,
+                    source_format=getattr(args, "format", "auto"),
+                    dry_run=getattr(args, "dry_run", False) or not getattr(args, "write_candidates", False),
+                    layer=args.layer,
+                    category=args.category if args.category != "general" else "",
+                    tags=args.tags,
+                    trust=args.trust,
+                    reason=getattr(args, "reason", ""),
+                    scope=_arg_value(args, "scope", "project"),
+                    sensitivity=_arg_value(args, "sensitivity", "low"),
+                    owner_agent=_arg_value(args, "owner_agent", ""),
+                    allowed_agents=_arg_value(args, "allowed_agents", ""),
+                    memory_type=_arg_value(args, "memory_type", ""),
+                    expires_at=_arg_value(args, "expires_at", ""),
+                    valid_from=_arg_value(args, "valid_from", ""),
+                    valid_until=_arg_value(args, "valid_until", ""),
+                    supersedes_id=_arg_value(args, "supersedes_id", None),
+                    only=getattr(args, "only", ""),
+                    limit=getattr(args, "limit", None),
+                    max_file_bytes=getattr(args, "max_file_bytes", 2_000_000),
+                )
+        except Exception as e:
+            print(f"❌ 外部記憶匯入失敗: {e}")
+            raise SystemExit(2) from e
+
+        if getattr(args, "json", False) or getattr(args, "pretty", False):
+            _json_print(payload, pretty=getattr(args, "pretty", False))
+        else:
+            print("🧳 外部記憶搬家結果:")
+            print(f"  來源: {payload['source']}")
+            print(f"  格式: {payload['format']}")
+            print(f"  模式: {'dry-run preview' if payload['dry_run'] else 'write candidates'}")
+            print(f"  項目: {payload['item_count']}")
+            print(f"  候選: {payload['candidate_count']}")
+            print(f"  已建立: {payload['created_count']}")
+            print(f"  已拒絕: {payload['rejected_count']}")
+            print(f"  隱私阻擋: {payload['privacy_fail']}")
+            print(f"  重複提醒: {payload['duplicate_warn']}")
+            if payload.get("errors"):
+                print(f"  錯誤: {payload['error_count']}")
+                for error in payload["errors"][:5]:
+                    print(f"    - {error.get('path', '')}: {error.get('message', '')}")
+            for item in payload.get("candidates", [])[:10]:
+                ident = item.get("candidate_id") or item.get("external_id") or item.get("source_ref")
+                print(f"    - {item.get('status')}: {item.get('title')} ({ident})")
+            if payload["dry_run"]:
+                print("下一步：確認 preview 後，加 --write-candidates 寫入候選記憶。")
+            elif payload["created_count"]:
+                print("下一步：執行 vault candidates，審查後再 vault promote <candidate_id> --confirm。")
+        if payload["status"] == "error":
+            raise SystemExit(1)
+        return
+
     if args.file == "okf":
         from vault.db import VaultDB
         from vault.okf import import_okf_bundle

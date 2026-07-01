@@ -239,6 +239,32 @@
         <div id="dailyReport"></div>
         <h2 id="statusHeading">Status</h2>
         <div class="metric-grid" id="metrics"></div>
+        <h2 id="migrationHeading">Memory Migration</h2>
+        <div class="panel">
+          <div class="subtle" id="migrationHelp">Preview external memory before it enters Vault.</div>
+          <div class="filter-grid" style="margin-top:10px">
+            <input id="migrationSource" placeholder="Path to export file or folder">
+            <select id="migrationFormat">
+              <option value="auto">auto</option>
+              <option value="markdown">markdown</option>
+              <option value="json">json</option>
+              <option value="csv">csv</option>
+              <option value="transcript">transcript</option>
+              <option value="okf">okf</option>
+            </select>
+            <select id="migrationScope">
+              <option value="project">project</option>
+              <option value="shared">shared</option>
+              <option value="private">private</option>
+            </select>
+            <input id="migrationOnly" placeholder="summaries,decisions,preferences">
+          </div>
+          <div class="actions">
+            <button id="previewMigration" class="secondary" type="button">Preview</button>
+            <button id="importMigration" type="button">Import as candidates</button>
+          </div>
+          <div id="migrationPreview"></div>
+        </div>
         <h2 id="agentDashboardHeading">Agent Dashboard</h2>
         <div id="agentDashboard"></div>
         <h2 id="tasksHeading">Active Tasks</h2>
@@ -327,6 +353,19 @@
         keepMemory: "保留為正式記憶",
         rejectMemory: "不收錄",
         blockMemory: "封鎖類似內容",
+        migration: "外部記憶匯入",
+        migrationHelp: "先檢查 Chatbox、ChatGPT、Claude、Markdown 或 OKF 匯出的記憶；確認後只會進候選區，不會直接變正式記憶。",
+        migrationSourcePlaceholder: "匯出檔或資料夾路徑",
+        migrationOnlyPlaceholder: "只匯入：摘要、決策、偏好...",
+        migrationPreview: "先預覽",
+        migrationImport: "匯入候選",
+        migrationPreviewOnly: "目前只是預覽，正式記憶沒有被改動。",
+        migrationImported: "已放入候選區，請到審核佇列確認。",
+        migrationFailed: "匯入失敗",
+        migrationItems: "項目",
+        migrationCreated: "新增候選",
+        migrationBlocked: "隱私阻擋",
+        migrationDuplicate: "重複提醒",
         conflictReview: "同步衝突審核", localMemory: "本地正式記憶", remoteSuggestion: "遠端候選建議",
         keepLocal: "保留本地", acceptRemote: "接受遠端", manualResolution: "已手動處理",
         conflictResolved: "同步衝突已處理", conflictDecisionNote: "接受遠端會先收進正式記憶，並把本地舊記憶移到歸檔，不會直接覆蓋。",
@@ -397,6 +436,19 @@
         keepMemory: "保留为正式记忆",
         rejectMemory: "不收录",
         blockMemory: "封锁类似内容",
+        migration: "外部记忆导入",
+        migrationHelp: "先检查 Chatbox、ChatGPT、Claude、Markdown 或 OKF 导出的记忆；确认后只会进候选区，不会直接变正式记忆。",
+        migrationSourcePlaceholder: "导出文件或文件夹路径",
+        migrationOnlyPlaceholder: "只导入：摘要、决策、偏好...",
+        migrationPreview: "先预览",
+        migrationImport: "导入候选",
+        migrationPreviewOnly: "目前只是预览，正式记忆没有被改动。",
+        migrationImported: "已放入候选区，请到审核队列确认。",
+        migrationFailed: "导入失败",
+        migrationItems: "项目",
+        migrationCreated: "新增候选",
+        migrationBlocked: "隐私阻挡",
+        migrationDuplicate: "重复提醒",
         conflictReview: "同步冲突审核", localMemory: "本地正式记忆", remoteSuggestion: "远端候选建议",
         keepLocal: "保留本地", acceptRemote: "接受远端", manualResolution: "已手动处理",
         conflictResolved: "同步冲突已处理", conflictDecisionNote: "接受远端会先收进正式记忆，并把本地旧记忆移到归档，不会直接覆盖。",
@@ -472,6 +524,19 @@
         keepMemory: "Save to official memory",
         rejectMemory: "Do not save",
         blockMemory: "Block similar items",
+        migration: "External Memory Import",
+        migrationHelp: "Preview Chatbox, ChatGPT, Claude, Markdown, or OKF exports first. Import writes review candidates only, never official memory.",
+        migrationSourcePlaceholder: "Path to export file or folder",
+        migrationOnlyPlaceholder: "Only: summaries,decisions,preferences",
+        migrationPreview: "Preview first",
+        migrationImport: "Import candidates",
+        migrationPreviewOnly: "Preview only. Official memory was not changed.",
+        migrationImported: "Imported to the review queue.",
+        migrationFailed: "Import failed",
+        migrationItems: "items",
+        migrationCreated: "new candidates",
+        migrationBlocked: "privacy blocked",
+        migrationDuplicate: "duplicate warnings",
         conflictReview: "Sync conflict review", localMemory: "Local official memory", remoteSuggestion: "Remote candidate suggestion",
         keepLocal: "Keep local", acceptRemote: "Accept remote", manualResolution: "Handled manually",
         conflictResolved: "Sync conflict resolved", conflictDecisionNote: "Accept remote promotes the candidate and archives the old local memory; it does not overwrite silently.",
@@ -528,6 +593,12 @@
       $("appTitle").textContent = text.title;
       $("dailyHeading").textContent = text.daily;
       $("statusHeading").textContent = text.status;
+      $("migrationHeading").textContent = text.migration;
+      $("migrationHelp").textContent = text.migrationHelp;
+      $("migrationSource").placeholder = text.migrationSourcePlaceholder;
+      $("migrationOnly").placeholder = text.migrationOnlyPlaceholder;
+      $("previewMigration").textContent = text.migrationPreview;
+      $("importMigration").textContent = text.migrationImport;
       $("agentDashboardHeading").textContent = text.agentDashboard;
       $("tasksHeading").textContent = text.tasks;
       $("reviewHeading").textContent = text.review;
@@ -1135,6 +1206,73 @@
       `;
     }
 
+    function migrationRequestPayload() {
+      return {
+        source: $("migrationSource").value.trim(),
+        format: $("migrationFormat").value || "auto",
+        scope: $("migrationScope").value || "project",
+        sensitivity: "low",
+        only: $("migrationOnly").value.trim(),
+        limit: 20
+      };
+    }
+
+    function renderMigrationPreview(payload) {
+      const node = $("migrationPreview");
+      const text = ui();
+      if (!payload) {
+        node.innerHTML = "";
+        return;
+      }
+      if (payload.status === "error" || payload.status === "blocked") {
+        node.innerHTML = `<div class="empty">${esc(text.migrationFailed)}: ${esc(payload.reason || payload.error || "")}</div>`;
+        return;
+      }
+      const candidates = payload.candidates || [];
+      const rows = candidates.length ? candidates.slice(0, 5).map(item => `
+        <div class="mini-row">
+          <span>${esc(item.title || item.source_ref || "Untitled")}</span>
+          <small>${esc(item.content_preview || item.reason || item.source_ref || "")}</small>
+          <div class="meta">
+            ${pill(item.status || "preview", item.status === "rejected" ? "warn" : "")}
+            ${pill(item.memory_type || "memory")}
+            ${pill((item.gates || {}).privacy ? `privacy:${(item.gates || {}).privacy}` : "")}
+            ${pill((item.gates || {}).duplicate ? `duplicate:${(item.gates || {}).duplicate}` : "")}
+          </div>
+        </div>
+      `).join("") : `<div class="empty">${esc(payload.errors?.[0]?.message || text.noMemory)}</div>`;
+      const note = payload.dry_run ? text.migrationPreviewOnly : text.migrationImported;
+      node.innerHTML = `
+        <div class="panel" style="margin-top:10px">
+          <div class="meta">
+            ${pill(`${payload.item_count || 0} ${text.migrationItems}`)}
+            ${pill(`${payload.created_count || 0} ${text.migrationCreated}`, payload.created_count ? "good" : "")}
+            ${pill(`${payload.privacy_fail || 0} ${text.migrationBlocked}`, payload.privacy_fail ? "warn" : "good")}
+            ${pill(`${payload.duplicate_warn || 0} ${text.migrationDuplicate}`, payload.duplicate_warn ? "warn" : "")}
+          </div>
+          <div class="subtle" style="margin-top:8px">${esc(note)}</div>
+        </div>
+        <div class="mini-list">${rows}</div>
+      `;
+    }
+
+    async function runMigration(writeCandidates) {
+      const payload = migrationRequestPayload();
+      if (!payload.source) {
+        renderMigrationPreview({status: "error", error: "source_required", reason: ui().migrationSourcePlaceholder});
+        return;
+      }
+      let result;
+      if (writeCandidates) {
+        result = await postApi("/api/migration/import", {...payload, write_candidates: true});
+        await boot();
+      } else {
+        const params = new URLSearchParams(payload);
+        result = await api(`/api/migration?${params.toString()}`);
+      }
+      renderMigrationPreview(result);
+    }
+
     async function boot() {
       applyLanguage();
       const overview = await api("/api/overview");
@@ -1179,6 +1317,14 @@
       $("docCategory").value = "";
       $("docSensitivity").value = "";
       loadDocuments();
+    });
+    $("previewMigration").addEventListener("click", () => runMigration(false));
+    $("importMigration").addEventListener("click", () => runMigration(true));
+    $("migrationSource").addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        runMigration(false);
+      }
     });
     $("docQuery").addEventListener("keydown", event => {
       if (event.key === "Enter") {

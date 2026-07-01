@@ -21,6 +21,7 @@ from .gui_api import (
     gui_daily_report,
     gui_documents,
     gui_entry,
+    gui_memory_migration,
     gui_overview,
     gui_read_range,
     gui_review_candidate,
@@ -167,6 +168,21 @@ def make_gui_handler(project_dir: Path, *, auth_token: str = "", language: str =
                     )
                 )
                 return
+            if path == "/api/migration":
+                self._send_json(
+                    gui_memory_migration(
+                        project,
+                        source=_str_arg(query, "source", ""),
+                        source_format=_str_arg(query, "format", "auto"),
+                        write_candidates=False,
+                        scope=_str_arg(query, "scope", "project"),
+                        sensitivity=_str_arg(query, "sensitivity", "low"),
+                        owner_agent=_str_arg(query, "owner_agent", ""),
+                        only=_str_arg(query, "only", ""),
+                        limit=_int_arg(query, "limit", 20),
+                    )
+                )
+                return
             if path.startswith("/api/entry/"):
                 self._send_json(gui_entry(project, _path_int(path, "/api/entry/")))
                 return
@@ -235,6 +251,22 @@ def make_gui_handler(project_dir: Path, *, auth_token: str = "", language: str =
                     note=str(body.get("note", "")),
                     confirm=str(body.get("confirm", "")),
                 ))
+                return
+            if path == "/api/migration/import":
+                body = self._read_json_body()
+                self._send_json(
+                    gui_memory_migration(
+                        project,
+                        source=str(body.get("source", "")),
+                        source_format=str(body.get("format", "auto")),
+                        write_candidates=bool(body.get("write_candidates", True)),
+                        scope=str(body.get("scope", "project")),
+                        sensitivity=str(body.get("sensitivity", "low")),
+                        owner_agent=str(body.get("owner_agent", "")),
+                        only=str(body.get("only", "")),
+                        limit=int(body.get("limit", 20) or 20),
+                    )
+                )
                 return
             self._send_json({"status": "error", "error": "not_found"}, status=HTTPStatus.NOT_FOUND)
 

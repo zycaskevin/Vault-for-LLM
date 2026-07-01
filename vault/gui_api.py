@@ -14,6 +14,7 @@ from .daily_report import build_daily_report
 from .db import VaultDB
 from .db_knowledge import escape_like_pattern
 from .memory import promote_candidate, review_candidate
+from .memory_migration import migrate_memory_source
 from .multi_host import resolve_conflict, sync_status
 from .search import VaultSearch
 from .search_utils import normalize_search_limit
@@ -390,6 +391,60 @@ def gui_sync_status(project_dir: str | Path, *, limit: int = 5) -> dict[str, Any
         }
     with VaultDB(db_path) as db:
         return sync_status(db, limit=limit)
+
+
+def gui_memory_migration(
+    project_dir: str | Path,
+    *,
+    source: str,
+    source_format: str = "auto",
+    write_candidates: bool = False,
+    scope: str = "project",
+    sensitivity: str = "low",
+    owner_agent: str = "",
+    only: str = "",
+    limit: int = 20,
+) -> dict[str, Any]:
+    """Preview or import external memory into candidates from the GUI."""
+    project = Path(project_dir)
+    db_path = project / "vault.db"
+    source_i = str(source or "").strip()
+    if not db_path.exists():
+        return {"status": "blocked", "reason": "vault.db missing"}
+    if not source_i:
+        return {"status": "error", "error": "source_required"}
+    try:
+        with VaultDB(db_path) as db:
+            payload = migrate_memory_source(
+                db,
+                source_i,
+                source_format=source_format,
+                dry_run=not bool(write_candidates),
+                scope=scope,
+                sensitivity=sensitivity,
+                owner_agent=owner_agent,
+                only=only,
+                limit=max(1, min(int(limit or 20), 50)),
+                reason="Imported through GUI Memory Migration; review before promotion.",
+            )
+    except Exception as exc:  # Keep local GUI errors user-facing and non-fatal.
+        return {
+            "status": "error",
+            "error": "migration_failed",
+            "reason": str(exc),
+            "source": source_i,
+            "format": source_format,
+        }
+    payload["gui"] = {
+        "write_candidates": bool(write_candidates),
+        "content_hidden_by_default": True,
+        "next_action": (
+            "Open Review Inbox and promote only the memories you trust."
+            if write_candidates
+            else "Preview looks safe; import as candidates when ready."
+        ),
+    }
+    return payload
 
 
 def _compact_sync_conflict(db: VaultDB, row: dict[str, Any]) -> dict[str, Any]:

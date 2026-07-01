@@ -1181,6 +1181,7 @@ def test_setup_agent_help_exposes_supabase_sync_options(capsys):
 
 
 def test_cli_version_flag(capsys):
+    from vault import __version__
     from vault.cli import main
 
     try:
@@ -1189,7 +1190,7 @@ def test_cli_version_flag(capsys):
         assert exc.code == 0
 
     captured = capsys.readouterr()
-    assert "vault-for-llm 0.7.21" in captured.out
+    assert f"vault-for-llm {__version__}" in captured.out
 
 
 def test_setup_agent_headroom_is_optional_next_step(tmp_path):
@@ -1358,7 +1359,9 @@ def test_run_agent_setup_writes_stable_venv_template(tmp_path):
     assert readme.exists()
     body = script.read_text(encoding="utf-8")
     assert "python3 -m venv \"$VENV\"" in body
-    assert "vault-for-llm[mcp,supabase]==0.7.21" in body
+    from vault import __version__
+
+    assert f"vault-for-llm[mcp,supabase]=={__version__}" in body
     assert "headroom-ai" in body
     assert "--agent-preset work-agent" in body
     assert "--agent-project-dir" in body

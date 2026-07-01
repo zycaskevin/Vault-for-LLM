@@ -1,5 +1,45 @@
 # CHANGELOG
 
+## [0.7.22] - 2026-07-01
+
+### Added
+
+- Added `vault gateway serve`, a token-protected HTTP Gateway for agents and
+  local workflows that need one small memory entrypoint instead of the full CLI
+  or MCP schema surface.
+- Added Gateway endpoints for `/health`, `/search`, `/read-range`, and
+  `/submit-candidate`, with read-policy defaults, bounded reads, candidate-only
+  writes, and compact audit logs.
+- Added candidate-first memory migration through `vault import memory`, so
+  Chatbox/chat exports, Markdown folders, JSON, CSV, transcript, and OKF-like
+  bundles can be previewed and imported into `memory_candidates` without
+  writing active knowledge directly.
+
+### Changed
+
+- Documented Gateway as the stable adapter boundary for Codex, Claude Code,
+  OpenClaw, Hermes Agent, n8n, Coze bridges, and future devices.
+- Updated README, CLI reference, agent integration docs, and decision records
+  to keep Gateway and external-memory migration explicit and reviewable.
+
+### Safety
+
+- Gateway requires `agent_id` for read/write calls, hides private memory by
+  default, caps default read sensitivity at `low`, and never returns raw
+  content from search.
+- Gateway candidate submission never writes active knowledge. Shared, private,
+  high-sensitivity, and restricted candidates require explicit server launch
+  flags.
+- Gateway `--no-auth` is rejected for non-localhost binds.
+- External memory migration defaults to dry-run preview and can write only
+  review candidates when explicitly requested.
+
+### Validation
+
+- Verified Gateway, memory migration, project-dir, access-policy, and MCP
+  security tests locally after merging.
+- Verified full post-merge test suite locally: 2338 passed, 10 skipped.
+
 ## [0.7.21] - 2026-07-01
 
 ### Added

@@ -246,6 +246,7 @@ For per-tool MCP examples, see `docs/mcp_tool_reference.md`.
 | `vault map build` | Build/backfill Document Map rows |
 | `vault map show <id>` | Show a knowledge entry's section map |
 | `vault map read <id> --lines 10-30` | Read a bounded source range |
+| `vault map build/show/read/query ... --json` | Return machine-readable Document Map status, nodes, bounded lines, or claim matches |
 | `vault list` | List knowledge entries |
 | `vault remove <id> --confirm` / `vault delete <id> --confirm` | Delete a knowledge entry by ID |
 | `vault stats` | Show vault statistics |
@@ -371,9 +372,11 @@ content drift.
 | Command | Purpose |
 |---|---|
 | `vault doctor` | Check local environment and optional dependencies |
+| `vault doctor --json` | Return machine-readable environment checks with top-level `ok`, `status`, and `next_action` |
 | `vault db status` / `vault db migrate` | Inspect or update local SQLite schema |
 | `vault db backup` / `vault db verify-backup` / `vault db restore` | Create, verify, and restore local SQLite backups |
 | `vault graph build` / `vault graph show` | Build or inspect the inferred knowledge graph |
+| `vault graph build/show --json` | Return machine-readable graph build results or graph summary |
 
 ## Optional Semantic Workflow
 

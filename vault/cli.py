@@ -237,6 +237,7 @@ def main(argv: list[str] | None = None):
     p.add_argument("--source", default="cli")
     p.add_argument("--source-ref", default="")
     add_governance_args(p)
+    p.add_argument("--json", action="store_true", help="輸出 JSON")
     p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     p = sub.add_parser("promote", help="將記憶候選提升為 active knowledge")
@@ -274,6 +275,7 @@ def main(argv: list[str] | None = None):
     p.add_argument("--limit", "-n", type=int, default=50)
     p.add_argument("--include-content", action="store_true", help="包含完整候選內容")
     p.add_argument("--include-gates", action="store_true", help="包含完整 gate payload")
+    p.add_argument("--json", action="store_true", help="輸出 JSON")
     p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     # capture — agent/session artifacts into candidate memory
@@ -359,6 +361,8 @@ def main(argv: list[str] | None = None):
 
     # doctor
     p = sub.add_parser("doctor", help="環境診斷")
+    p.add_argument("--json", action="store_true", help="輸出 JSON")
+    p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     # stats
     p = sub.add_parser("stats", help="統計")
@@ -758,17 +762,25 @@ def main(argv: list[str] | None = None):
 
     mp = map_sub.add_parser("build", help="建立/回填 Document Map")
     mp.add_argument("knowledge_id", nargs="?", type=int, help="知識 ID；省略時回填全部")
+    mp.add_argument("--json", action="store_true", help="輸出 JSON")
+    mp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     mp = map_sub.add_parser("show", help="顯示知識條目的章節地圖")
     mp.add_argument("knowledge_id", type=int, help="知識 ID")
+    mp.add_argument("--json", action="store_true", help="輸出 JSON")
+    mp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     mp = map_sub.add_parser("read", help="讀取知識條目的指定行號範圍")
     mp.add_argument("knowledge_id", type=int, help="知識 ID")
     mp.add_argument("--lines", required=True, help="行號範圍，例如 1-40")
+    mp.add_argument("--json", action="store_true", help="輸出 JSON")
+    mp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     mp = map_sub.add_parser("query", help="搜尋 Document Map claims")
     mp.add_argument("query", help="查詢文字")
     mp.add_argument("--limit", "-n", type=_positive_int, default=10)
+    mp.add_argument("--json", action="store_true", help="輸出 JSON")
+    mp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     # remote — optional Supabase read navigation and candidate request sync
     p = sub.add_parser("remote", help="Supabase 遠端讀取與候選同步")
@@ -897,7 +909,6 @@ def main(argv: list[str] | None = None):
     # skill — 本機跨 Agent 技能登錄（實驗性）
     p = sub.add_parser("skill", help="本機技能登錄（實驗性）")
     skill_sub = p.add_subparsers(dest="skill_action", help="技能子命令")
-
     sp = skill_sub.add_parser("push", help="註冊技能到本機登錄")
     sp.add_argument("--file", "-f", help="SKILL.md 路徑（預設讀 stdin）")
     sp.add_argument("--name", help="技能名稱（預設從 frontmatter 讀取）")
@@ -909,7 +920,6 @@ def main(argv: list[str] | None = None):
     sp.add_argument("--trust", type=float, default=0.5, help="信任分數")
     sp.add_argument("--description", default="", help="簡短描述")
     sp.add_argument("--force", action="store_true", help="同名技能時強制覆蓋")
-
     sp = skill_sub.add_parser("search", help="搜尋本機登錄技能")
     sp.add_argument("query", nargs="?", default="", help="搜尋關鍵字")
     sp.add_argument("--capabilities", help="依能力過濾")
@@ -917,68 +927,56 @@ def main(argv: list[str] | None = None):
     sp.add_argument("--agent", help="依來源 Agent 過濾")
     sp.add_argument("--min-trust", type=float, default=0.0)
     sp.add_argument("--limit", "-n", type=int, default=20)
-
     sp = skill_sub.add_parser("pull", help="從本機登錄下載技能")
     sp.add_argument("name", help="技能名稱")
-
     sp = skill_sub.add_parser("list", help="列出本機登錄技能")
     sp.add_argument("--agent", help="依來源過濾")
     sp.add_argument("--category", help="依分類過濾")
     sp.add_argument("--min-trust", type=float, default=0.0)
     sp.add_argument("--limit", "-n", type=int, default=100)
-
     sp = skill_sub.add_parser("stats", help="本機技能登錄統計")
-
     sp = skill_sub.add_parser("versions", help="列出技能版本歷史")
     sp.add_argument("name", help="技能名稱")
     sp.add_argument("--json", action="store_true", help="輸出 JSON")
     sp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
-
     sp = skill_sub.add_parser("diff", help="比較兩個技能版本")
     sp.add_argument("name", help="技能名稱")
     sp.add_argument("--from-version", required=True, help="舊版本")
     sp.add_argument("--to-version", required=True, help="新版本")
     sp.add_argument("--json", action="store_true", help="輸出 JSON")
     sp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
-
     sp = skill_sub.add_parser("upgrade-plan", help="列出技能升級計畫")
     sp.add_argument("--installed", default="", help="已安裝版本 JSON，例如 '{\"review-helper\":\"1.0.0\"}'")
     sp.add_argument("--installed-file", default="", help="已安裝 Skill manifest JSON 檔；支援 version/content_hash")
     sp.add_argument("--outdated-only", action="store_true", help="只顯示需要處理的已安裝 Skill")
     sp.add_argument("--json", action="store_true", help="輸出 JSON")
     sp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
-
     # graph
     p = sub.add_parser("graph", help="圖譜操作")
     graph_sub = p.add_subparsers(dest="graph_action", help="圖譜子命令")
-
     g = graph_sub.add_parser("build", help="自動推斷圖譜")
     g.add_argument("--clear", action="store_true", help="先清除舊的自動推斷")
-
+    g.add_argument("--json", action="store_true", help="輸出 JSON")
+    g.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
     g = graph_sub.add_parser("show", help="顯示圖譜摘要")
-
+    g.add_argument("--json", action="store_true", help="輸出 JSON")
+    g.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
     g = graph_sub.add_parser("export", help="匯出圖譜")
     g.add_argument("--format", "-f", choices=["mermaid", "dot"], default="mermaid")
     g.add_argument("--node-id", "-n", type=int, help="指定起點節點（預設全部）")
     g.add_argument("--depth", "-d", type=int, default=2, help="擴展深度")
     g.add_argument("--output", "-o", help="輸出檔案路徑")
-
     g = graph_sub.add_parser("link", help="手動建立關聯")
     g.add_argument("source_id", type=int, help="來源知識 ID")
     g.add_argument("target_id", type=int, help="目標知識 ID")
     g.add_argument("--relation", "-r", default="related_to", help="關係類型")
     g.add_argument("--weight", "-w", type=float, default=1.0, help="權重")
-
     g = graph_sub.add_parser("unlink", help="刪除關聯")
     g.add_argument("edge_id", type=int, help="邊 ID")
-
     g = graph_sub.add_parser("clear", help="清除自動推斷的邊")
-
     g = graph_sub.add_parser("expand", help="從節點擴展")
     g.add_argument("node_id", type=int, help="起始節點 ID")
     g.add_argument("--depth", "-d", type=int, default=2, help="擴展深度")
-
-
     # converge — self-questioning convergence check
     p = sub.add_parser("converge", help="收斂檢查 — 自問知識是否充足")
     p.add_argument("--apply", action="store_true", help="實際更新資料庫（預設為預覽模式）")

@@ -95,6 +95,7 @@ explicit candidate review endpoint, which is separated as a `POST` action:
 | `/api/sync-status` | Read-only local revision/conflict/audit summary for multi-host candidate sync |
 | `/api/tasks?status=active` | Compact Task Ledger list |
 | `/api/task/<id>` | One Task Ledger item with handoff Markdown |
+| `POST /api/task-handoff/<id>/claim` | Claim a directed Task Ledger handoff with explicit confirmation |
 | `/api/candidates` | Candidate queue without full content |
 | `/api/candidate/<id>` | Candidate metadata, gate details, and content for review |
 | `POST /api/candidate/<id>/review` | Promote, reject, or block with explicit confirmation |
@@ -111,7 +112,7 @@ explicit candidate review endpoint, which is separated as a `POST` action:
   `vault_gui_token` cookie set after opening the tokenized URL.
 - Active memory edits, archive, and policy edits remain CLI/MCP operations.
 - Task Ledger updates remain CLI/MCP operations; the GUI displays task state
-  but does not mutate it.
+  but does not mutate it, except for explicitly claiming a directed handoff.
 - Candidate review actions are `POST`-only and require a confirmation token:
   `<candidate_id>:<action>`.
 - Candidate promotion uses the existing `promote_candidate(confirm=True)` flow

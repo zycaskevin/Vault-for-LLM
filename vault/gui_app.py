@@ -940,26 +940,21 @@ APP_HTML = r"""<!doctype html>
 
     async function loadTask(id) {
       const payload = await api(`/api/task/${encodeURIComponent(id)}`);
-      if (payload.status !== "ok") {
-        $("results").innerHTML = `<div class="empty">${esc(payload.error || payload.reason || "Unable to load task")}</div>`;
-        return;
-      }
+      if (payload.status !== "ok") { $("results").innerHTML = `<div class="empty">${esc(payload.error || payload.reason || "Unable to load task")}</div>`; return; }
       currentEntry = null;
       currentTask = payload;
       $("evidence").hidden = true;
-      const task = payload.task || {};
-      $("results").innerHTML = renderTaskMain(task, payload.markdown || "");
+      $("results").innerHTML = renderTaskMain(payload.task || {}, payload.markdown || "", payload.pending_handoffs || []);
+      document.querySelectorAll("[data-claim-handoff]").forEach(el => el.addEventListener("click", () => claimTaskHandoff(el.dataset.claimHandoff)));
       renderSidePanel();
     }
 
-    function renderTaskMain(task, markdown) {
-      const section = (title, items) => {
-        if (!items || !items.length) return "";
-        return `<div class="panel"><h3>${esc(title)}</h3>${items.map(item => `<div class="subtle">• ${esc(item)}</div>`).join("")}</div>`;
-      };
+    function renderTaskMain(task, markdown, handoffs=[]) {
+      const section = (title, items) => (!items || !items.length) ? "" : `<div class="panel"><h3>${esc(title)}</h3>${items.map(item => `<div class="subtle">• ${esc(item)}</div>`).join("")}</div>`;
+      const handoffActions = handoffs.length ? `<div class="panel"><h3>Pending handoffs</h3>${handoffs.map(item => `<div class="item"><h3>${esc(item.from_agent || "agent")} → ${esc(item.to_agent || "agent")}</h3><div class="subtle">${esc(item.message || "")}</div><button type="button" data-claim-handoff="${esc(item.id || "")}">Claim handoff</button></div>`).join("")}</div>` : "";
       return `<article class="result"><h3>${esc(task.title || task.id)}</h3><div class="subtle">${esc(task.goal || "")}</div><div class="meta">${pill(task.id || "")}${pill(task.status || "")}${pill(task.scope || "project")}${pill(task.sensitivity || "low", task.sensitivity === "low" ? "good" : "warn")}</div></article>
         ${section(ui().currentPlan, task.current_plan)}${section(ui().completed, task.completed)}${section(ui().hardDecisions, task.hard_decisions)}${section(ui().blockers, task.blockers)}${section(ui().nextActions, task.next_actions)}
-        <div class="panel"><h3>${esc(ui().handoffMarkdown)}</h3><pre>${esc(markdown || "")}</pre></div>`;
+        ${handoffActions}<div class="panel"><h3>${esc(ui().handoffMarkdown)}</h3><pre>${esc(markdown || "")}</pre></div>`;
     }
 
     function renderCandidateSide(row) {
@@ -988,6 +983,14 @@ APP_HTML = r"""<!doctype html>
       if (payload.status !== "ok") { window.alert(payload.error || payload.reason || ui().reviewFailed); return; }
       window.alert(`${ui().conflictResolved}: ${resolution}`);
       await boot();
+    }
+
+    async function claimTaskHandoff(id) {
+      const token = `${id}:claim`;
+      if (!window.confirm(`${ui().confirmAction}\\n\\n${ui().confirmToken}: ${token}`)) return;
+      const payload = await postApi(`/api/task-handoff/${encodeURIComponent(id)}/claim`, {agent_id: "gui-reviewer", confirm: token});
+      if (payload.status !== "ok") { window.alert(payload.error || payload.reason || ui().reviewFailed); return; }
+      window.alert(`${ui().reviewCompleted}: ${payload.handoff?.status || "claimed"}`); await boot(); if (payload.handoff?.task_id) await loadTask(payload.handoff.task_id);
     }
 
     function renderSidePanel() {

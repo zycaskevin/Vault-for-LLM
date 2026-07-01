@@ -15,6 +15,7 @@ from vault.gui import (
     gui_agent_dashboard,
     gui_candidate,
     gui_candidates,
+    gui_claim_task_handoff,
     gui_daily_report,
     gui_documents,
     gui_entry,
@@ -142,6 +143,15 @@ def test_gui_overview_search_entry_and_read(tmp_path):
     assert task["status"] == "ok"
     assert "Task Handoff: GUI Task Panel" in task["markdown"]
     assert task["task"]["hard_decisions"] == ["read-only GUI first"]
+    assert task["pending_handoffs"][0]["id"] == "handoff-gui"
+    assert "Task Snapshot" not in str(task["pending_handoffs"])
+
+    blocked_claim = gui_claim_task_handoff(project, "handoff-gui", confirm="")
+    assert blocked_claim["error"] == "confirmation_required"
+
+    claimed = gui_claim_task_handoff(project, "handoff-gui", confirm="handoff-gui:claim")
+    assert claimed["status"] == "ok"
+    assert claimed["handoff"]["status"] == "claimed"
 
     search = gui_search(project, "console", limit=5)
     assert search["status"] == "ok"
@@ -184,6 +194,8 @@ def test_gui_app_exposes_document_map_panel():
     assert "dashboard-subhead" in APP_HTML
     assert "review_inbox" in APP_HTML
     assert "task_handoff" in APP_HTML
+    assert "data-claim-handoff" in APP_HTML
+    assert "Claim handoff" in APP_HTML
     assert "Multi-Agent Dashboard" in APP_HTML
     assert "多 Agent Dashboard" in APP_HTML
     assert "languageSelect" in APP_HTML

@@ -30,7 +30,7 @@ from .gui_format import (
     timeline_for,
     usage_for,
 )
-from .task_ledger import get_task, list_task_handoffs, list_tasks, task_handoff
+from .task_ledger import claim_task_handoff, get_task, get_task_handoff, list_task_handoffs, list_tasks, task_handoff
 
 
 def _clean_filter(value: str | None) -> str:
@@ -170,6 +170,22 @@ def _review_item(
         "target_kind": target_kind or kind,
         "sensitivity": sensitivity or "low",
         "source": source,
+    }
+
+
+def _compact_handoff(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": row.get("id", ""),
+        "task_id": row.get("task_id", ""),
+        "status": row.get("status", ""),
+        "from_agent": row.get("from_agent", ""),
+        "to_agent": row.get("to_agent", ""),
+        "message": row.get("message", ""),
+        "source_ref": row.get("source_ref", ""),
+        "scope": row.get("scope", "project"),
+        "sensitivity": row.get("sensitivity", "low"),
+        "updated_at": row.get("updated_at", ""),
+        "confirmation": {"claim": confirmation_token(str(row.get("id") or ""), "claim")},
     }
 
 
@@ -548,11 +564,48 @@ def gui_task(project_dir: str | Path, task_id: str) -> dict[str, Any]:
         if not task:
             return {"status": "error", "error": "not_found", "task_id": tid}
         handoff = task_handoff(db, tid)
+        pending_handoffs = [
+            _compact_handoff(row)
+            for row in list_task_handoffs(db, status="pending", limit=20)
+            if str(row.get("task_id") or "") == tid
+        ]
     return {
         "status": "ok",
         "task": compact_task(task),
         "markdown": handoff.get("markdown", ""),
+        "pending_handoffs": pending_handoffs,
     }
+
+
+def gui_claim_task_handoff(
+    project_dir: str | Path,
+    handoff_id: str,
+    *,
+    agent_id: str = "gui-reviewer",
+    note: str = "",
+    confirm: str = "",
+) -> dict[str, Any]:
+    """Claim one directed Task Ledger handoff from the GUI."""
+    project = Path(project_dir)
+    db_path = project / "vault.db"
+    hid = str(handoff_id or "").strip()
+    if not db_path.exists():
+        return {"status": "blocked", "reason": "vault.db missing"}
+    if not hid:
+        return {"status": "error", "error": "invalid_handoff_id"}
+    required = confirmation_token(hid, "claim")
+    if str(confirm or "") != required:
+        return {"status": "error", "error": "confirmation_required", "confirmation": required}
+    try:
+        with VaultDB(db_path) as db:
+            handoff = get_task_handoff(db, hid) or {}
+            agent = str(agent_id or "").strip()
+            if not agent or agent == "gui-reviewer":
+                agent = str(handoff.get("to_agent") or handoff.get("owner_agent") or "gui-reviewer")
+            result = claim_task_handoff(db, hid, agent_id=agent, note=note)
+    except (KeyError, PermissionError, ValueError) as exc:
+        return {"status": "error", "error": str(exc)}
+    return {"status": "ok", "handoff": _compact_handoff(result.get("handoff") or {})}
 
 
 def gui_documents(

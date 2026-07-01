@@ -17,6 +17,7 @@ from .gui_api import (
     gui_agent_dashboard,
     gui_candidate,
     gui_candidates,
+    gui_claim_task_handoff,
     gui_daily_report,
     gui_documents,
     gui_entry,
@@ -223,6 +224,17 @@ def make_gui_handler(project_dir: Path, *, auth_token: str = "", language: str =
                         confirm=str(body.get("confirm", "")),
                     )
                 )
+                return
+            if path.startswith("/api/task-handoff/") and path.endswith("/claim"):
+                handoff_id = path[len("/api/task-handoff/") : -len("/claim")].strip("/")
+                body = self._read_json_body()
+                self._send_json(gui_claim_task_handoff(
+                    project,
+                    handoff_id,
+                    agent_id=str(body.get("agent_id", "gui-reviewer")),
+                    note=str(body.get("note", "")),
+                    confirm=str(body.get("confirm", "")),
+                ))
                 return
             self._send_json({"status": "error", "error": "not_found"}, status=HTTPStatus.NOT_FOUND)
 

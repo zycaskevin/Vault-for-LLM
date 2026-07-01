@@ -56,6 +56,8 @@ def cmd_add(args):
     from vault.db import VaultDB, normalize_governance_metadata
 
     project_dir = find_project_dir()
+    json_output = _arg_value(args, "json", False) is True
+    pretty_output = _arg_value(args, "pretty", False) is True
 
     # 如果指定 --file，讀取檔案內容。省略 --content 才讀 stdin；
     # 明確傳入 --content "" 時要快速失敗，避免 n8n/agent subprocess 卡住。
@@ -64,11 +66,16 @@ def cmd_add(args):
     if file_arg:
         content = Path(file_arg).read_text(encoding="utf-8")
     elif content is None:
-        print(f"標題: {args.title}")
-        print("請輸入內容（Ctrl+D 結束）:")
+        if not json_output:
+            print(f"標題: {args.title}")
+            print("請輸入內容（Ctrl+D 結束）:")
         content = sys.stdin.read()
     if content == "":
-        print("error: content is empty; pass non-empty --content, --file, or stdin input", file=sys.stderr)
+        message = "content is empty; pass non-empty --content, --file, or stdin input"
+        if json_output:
+            _json_print({"ok": False, "status": "error", "error": message}, pretty=pretty_output)
+        else:
+            print(f"error: {message}", file=sys.stderr)
         raise SystemExit(2)
 
     _enforce_cli_privacy(
@@ -102,7 +109,8 @@ def cmd_add(args):
             source=source,
             **governance,
         )
-        print(f"✅ 新增知識 ID={kid}")
+        if not json_output:
+            print(f"✅ 新增知識 ID={kid}")
 
     # 也寫到 raw/
     raw_file = project_dir / "raw" / _safe_raw_filename(args.title)
@@ -120,9 +128,35 @@ def cmd_add(args):
             encoding="utf-8",
         )
     except OSError as exc:
-        print(f"warning: active knowledge was added, but raw sync failed: {exc}", file=sys.stderr)
+        raw_synced = False
+        raw_error = str(exc)
+        if not json_output:
+            print(f"warning: active knowledge was added, but raw sync failed: {exc}", file=sys.stderr)
     else:
-        print(f"✅ 同步寫入 raw/{raw_file.name}")
+        raw_synced = True
+        raw_error = ""
+        if not json_output:
+            print(f"✅ 同步寫入 raw/{raw_file.name}")
+
+    if json_output:
+        _json_print(
+            {
+                "ok": True,
+                "status": "ok",
+                "id": kid,
+                "title": args.title,
+                "layer": args.layer or "L3",
+                "category": args.category or "general",
+                "tags": args.tags or "",
+                "trust": args.trust or 0.5,
+                "source": source,
+                "raw_path": str(raw_file),
+                "raw_synced": raw_synced,
+                "raw_error": raw_error,
+                **governance,
+            },
+            pretty=pretty_output,
+        )
 
 
 def _safe_raw_filename(title: object, *, max_stem_chars: int = 80) -> str:

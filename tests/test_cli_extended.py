@@ -841,6 +841,31 @@ class TestCmdAdd:
         captured = capsys.readouterr()
         assert "✅" in captured.out or "新增" in captured.out or "ID=" in captured.out
 
+    def test_cmd_add_json_output(self, temp_vault_project, capsys, monkeypatch):
+        """Test adding knowledge with machine-readable JSON output."""
+        from vault.cli import cmd_add
+        monkeypatch.chdir(temp_vault_project)
+
+        args = MagicMock()
+        args.content = "This is a JSON contract smoke document."
+        args.title = "CLI JSON Add Doc"
+        args.category = "tech"
+        args.tags = "test,cli,json"
+        args.layer = "L3"
+        args.trust = 0.7
+        args.file = None
+        args.json = True
+        args.pretty = False
+
+        cmd_add(args)
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+        assert payload["ok"] is True
+        assert payload["status"] == "ok"
+        assert payload["id"] > 0
+        assert payload["title"] == "CLI JSON Add Doc"
+        assert payload["raw_synced"] is True
+
 
 class TestCmdFreshness:
     def test_cmd_freshness_basic(self, temp_vault_project, capsys, monkeypatch):

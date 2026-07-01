@@ -290,7 +290,7 @@ def resolve_conflict(
     actor_agent: str = "",
     apply_memory_change: bool = False,
     project_dir: str | Path | None = None,
-    compile: bool = True,
+    compile: bool = False,
     build_map: bool = True,
 ) -> dict[str, Any]:
     if resolution not in {"keep_local", "accept_remote", "manual"}:
@@ -345,7 +345,7 @@ def _apply_conflict_resolution(
     actor_agent: str = "",
     apply_memory_change: bool = False,
     project_dir: str | Path | None = None,
-    compile: bool = True,
+    compile: bool = False,
     build_map: bool = True,
 ) -> list[dict[str, Any]]:
     """Apply the memory-side effects for a reviewed conflict resolution.

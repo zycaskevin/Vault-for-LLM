@@ -112,6 +112,10 @@ explicit candidate review endpoint, which is separated as a `POST` action:
   and reruns gates before writing active knowledge.
 - Candidate rejection/blocking uses the existing review workflow and records
   feedback for automation learning.
+- Sync conflict review is shown as a side-by-side local memory vs remote
+  candidate decision. `keep_local`, `accept_remote`, and `manual` are separate
+  buttons; accepting remote promotes the candidate and archives the old local
+  row instead of silently overwriting it.
 - Private or restricted data should not be exposed by binding the GUI to a
   public network interface. If a broader bind is needed, keep token auth enabled
   and put the GUI behind a trusted local tunnel or reverse proxy.

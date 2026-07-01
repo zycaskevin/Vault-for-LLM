@@ -14,7 +14,7 @@ from .daily_report import build_daily_report
 from .db import VaultDB
 from .db_knowledge import escape_like_pattern
 from .memory import promote_candidate, review_candidate
-from .multi_host import sync_status
+from .multi_host import resolve_conflict, sync_status
 from .search import VaultSearch
 from .search_utils import normalize_search_limit
 from .gui_format import (
@@ -261,6 +261,81 @@ def gui_sync_status(project_dir: str | Path, *, limit: int = 5) -> dict[str, Any
         }
     with VaultDB(db_path) as db:
         return sync_status(db, limit=limit)
+
+
+def _compact_sync_conflict(db: VaultDB, row: dict[str, Any]) -> dict[str, Any]:
+    candidate = db.get_memory_candidate(str(row.get("candidate_id") or "")) if row.get("candidate_id") else None
+    knowledge = db.get_knowledge(int(row["knowledge_id"])) if row.get("knowledge_id") is not None else None
+    knowledge_item = compact_knowledge(knowledge) if knowledge else None
+    if knowledge_item is not None:
+        knowledge_item["content"] = str((knowledge or {}).get("content_raw") or "")
+    return {
+        "id": row.get("id", ""),
+        "status": row.get("status", ""),
+        "conflict_type": row.get("conflict_type", ""),
+        "reason": row.get("reason", ""),
+        "knowledge": knowledge_item,
+        "candidate": compact_candidate(candidate, include_content=True, include_gates=True) if candidate else None,
+        "confirmation": {
+            "keep_local": confirmation_token(str(row.get("id") or ""), "keep_local"),
+            "accept_remote": confirmation_token(str(row.get("id") or ""), "accept_remote"),
+            "manual": confirmation_token(str(row.get("id") or ""), "manual"),
+        },
+        "safety": {
+            "candidate_first": True,
+            "accept_remote_archives_local": True,
+            "requires_confirmation": True,
+        },
+    }
+
+
+def gui_sync_conflict(project_dir: str | Path, conflict_id: str) -> dict[str, Any]:
+    """Return one sync conflict with enough context for a human decision."""
+    project = Path(project_dir)
+    db_path = project / "vault.db"
+    cid = str(conflict_id or "").strip()
+    if not db_path.exists():
+        return {"status": "blocked", "reason": "vault.db missing"}
+    if not cid:
+        return {"status": "error", "error": "invalid_conflict_id"}
+    with VaultDB(db_path) as db:
+        row = db.conn.execute("SELECT * FROM memory_conflicts WHERE id=?", (cid,)).fetchone()
+        if not row:
+            return {"status": "error", "error": "not_found", "conflict_id": cid}
+        return {"status": "ok", "conflict": _compact_sync_conflict(db, dict(row))}
+
+
+def gui_resolve_sync_conflict(
+    project_dir: str | Path,
+    conflict_id: str,
+    *,
+    resolution: str,
+    reason: str = "",
+    agent_id: str = "gui-reviewer",
+    confirm: str = "",
+) -> dict[str, Any]:
+    """Resolve a sync conflict from the local GUI with explicit confirmation."""
+    project = Path(project_dir)
+    db_path = project / "vault.db"
+    cid = str(conflict_id or "").strip()
+    resolution_i = str(resolution or "").strip().lower()
+    if not db_path.exists():
+        return {"status": "blocked", "reason": "vault.db missing"}
+    if resolution_i not in {"keep_local", "accept_remote", "manual"}:
+        return {"status": "error", "error": "invalid_resolution"}
+    if not cid or str(confirm or "") != confirmation_token(cid, resolution_i):
+        return {"status": "error", "error": "confirmation_required"}
+    with VaultDB(db_path) as db:
+        row = resolve_conflict(
+            db,
+            cid,
+            resolution=resolution_i,
+            reason=reason,
+            actor_agent=agent_id,
+            apply_memory_change=resolution_i == "accept_remote",
+            project_dir=project,
+        )
+    return {"status": "ok", "resolution": resolution_i, "conflict": dict(row)}
 
 
 def gui_overview(project_dir: str | Path, *, limit: int = 5, language: str = "en") -> dict[str, Any]:

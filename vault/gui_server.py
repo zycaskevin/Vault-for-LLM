@@ -24,6 +24,8 @@ from .gui_api import (
     gui_read_range,
     gui_review_candidate,
     gui_search,
+    gui_resolve_sync_conflict,
+    gui_sync_conflict,
     gui_sync_status,
     gui_task,
     gui_tasks,
@@ -170,6 +172,9 @@ def make_gui_handler(project_dir: Path, *, auth_token: str = "", language: str =
             if path.startswith("/api/candidate/"):
                 self._send_json(gui_candidate(project, _path_str(path, "/api/candidate/")))
                 return
+            if path.startswith("/api/sync-conflict/"):
+                self._send_json(gui_sync_conflict(project, _path_str(path, "/api/sync-conflict/")))
+                return
             if path.startswith("/api/task/"):
                 self._send_json(gui_task(project, _path_str(path, "/api/task/")))
                 return
@@ -201,6 +206,20 @@ def make_gui_handler(project_dir: Path, *, auth_token: str = "", language: str =
                         candidate_id,
                         action=str(body.get("action", "")),
                         reason=str(body.get("reason", "")),
+                        confirm=str(body.get("confirm", "")),
+                    )
+                )
+                return
+            if path.startswith("/api/sync-conflict/") and path.endswith("/resolve"):
+                conflict_id = path[len("/api/sync-conflict/") : -len("/resolve")].strip("/")
+                body = self._read_json_body()
+                self._send_json(
+                    gui_resolve_sync_conflict(
+                        project,
+                        conflict_id,
+                        resolution=str(body.get("resolution", "")),
+                        reason=str(body.get("reason", "")),
+                        agent_id=str(body.get("agent_id", "gui-reviewer")),
                         confirm=str(body.get("confirm", "")),
                     )
                 )

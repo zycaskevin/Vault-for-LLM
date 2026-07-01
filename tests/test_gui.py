@@ -21,7 +21,9 @@ from vault.gui import (
     gui_overview,
     gui_read_range,
     gui_review_candidate,
+    gui_resolve_sync_conflict,
     gui_search,
+    gui_sync_conflict,
     gui_sync_status,
     gui_task,
     gui_tasks,
@@ -178,6 +180,10 @@ def test_gui_app_exposes_document_map_panel():
     assert "candidateDecisionQuestion" in APP_HTML
     assert "keepMemory" in APP_HTML
     assert "rejectMemory" in APP_HTML
+    assert "conflictReview" in APP_HTML
+    assert "keepLocalConflict" in APP_HTML
+    assert "acceptRemoteConflict" in APP_HTML
+    assert "manualConflict" in APP_HTML
     assert "是否收進正式記憶" in APP_HTML
     assert "選項會在詳情頁分開操作" not in APP_HTML
 
@@ -253,6 +259,57 @@ def test_gui_sync_status_shows_open_conflicts_without_content(tmp_path):
     assert payload["open_conflicts"][0]["conflict_type"] == "same_title_content_mismatch"
     assert "Remote content differs" not in str(payload)
     assert dashboard["sync_health"]["counts"]["open_conflicts"] == 1
+
+
+def test_gui_sync_conflict_detail_and_resolution(tmp_path):
+    project, knowledge_id = _make_project(tmp_path)
+    with VaultDB(project / "vault.db") as db:
+        result = create_candidate(
+            db,
+            title="GUI Console Runbook",
+            content="Remote content differs from the reviewed local runbook.",
+            reason="remote sync conflict",
+            source="remote_write_request",
+            source_ref="remote_write_request:req-gui-resolve",
+            trust=0.8,
+            scope="shared",
+            sensitivity="low",
+            memory_type="remote_candidate",
+        )
+        revision = record_memory_revision(
+            db,
+            title="GUI Console Runbook",
+            content="Remote content differs from the reviewed local runbook.",
+            operation="remote_candidate_imported",
+            status="candidate",
+            candidate_id=result["candidate_id"],
+            remote_request_id="req-gui-resolve",
+            source_agent="remote-agent",
+        )
+        conflict = detect_candidate_conflicts(db, candidate_id=result["candidate_id"], revision_id=revision["revision_id"])[0]
+
+    detail = gui_sync_conflict(project, conflict["id"])
+
+    assert detail["status"] == "ok"
+    assert detail["conflict"]["candidate"]["content"].startswith("Remote content differs")
+    assert detail["conflict"]["knowledge"]["content"].startswith("# GUI Console Runbook")
+    assert detail["conflict"]["confirmation"]["accept_remote"] == f"{conflict['id']}:accept_remote"
+
+    blocked = gui_resolve_sync_conflict(project, conflict["id"], resolution="accept_remote", confirm="")
+    assert blocked["error"] == "confirmation_required"
+
+    resolved = gui_resolve_sync_conflict(
+        project,
+        conflict["id"],
+        resolution="accept_remote",
+        reason="GUI accepted remote candidate.",
+        confirm=f"{conflict['id']}:accept_remote",
+    )
+    assert resolved["status"] == "ok"
+    with VaultDB(project / "vault.db") as db:
+        assert db.get_knowledge(knowledge_id)["status"] == "archived"
+        promoted_id = db.get_memory_candidate(result["candidate_id"])["promoted_knowledge_id"]
+        assert db.get_knowledge(promoted_id)["status"] == "active"
 
 
 def test_gui_app_exposes_graph_visual_panel():

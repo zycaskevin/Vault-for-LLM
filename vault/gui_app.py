@@ -44,6 +44,7 @@ APP_HTML = r"""<!doctype html>
     .subtle { color: var(--muted); font-size: 13px; line-height: 1.45; }
     .section { padding: 0 18px 18px; }
     .metric-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .compare-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .metric, .item, .result, .panel {
       background: var(--panel);
       border: 1px solid var(--line);
@@ -219,6 +220,7 @@ APP_HTML = r"""<!doctype html>
       .app { display: block; }
       .left, .right { border: 0; border-bottom: 1px solid var(--line); }
       .choice-row { grid-template-columns: 1fr; }
+      .compare-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -329,6 +331,9 @@ APP_HTML = r"""<!doctype html>
         keepMemory: "保留為正式記憶",
         rejectMemory: "不收錄",
         blockMemory: "封鎖類似內容",
+        conflictReview: "同步衝突審核", localMemory: "本地正式記憶", remoteSuggestion: "遠端候選建議",
+        keepLocal: "保留本地", acceptRemote: "接受遠端", manualResolution: "已手動處理",
+        conflictResolved: "同步衝突已處理", conflictDecisionNote: "接受遠端會先收進正式記憶，並把本地舊記憶移到歸檔，不會直接覆蓋。",
         actionAuditNote: "按下前會再次確認，並記錄這次選擇。",
         readOnly: "唯讀報告",
         tokenProtected: "GUI token 保護",
@@ -396,6 +401,9 @@ APP_HTML = r"""<!doctype html>
         keepMemory: "保留为正式记忆",
         rejectMemory: "不收录",
         blockMemory: "封锁类似内容",
+        conflictReview: "同步冲突审核", localMemory: "本地正式记忆", remoteSuggestion: "远端候选建议",
+        keepLocal: "保留本地", acceptRemote: "接受远端", manualResolution: "已手动处理",
+        conflictResolved: "同步冲突已处理", conflictDecisionNote: "接受远端会先收进正式记忆，并把本地旧记忆移到归档，不会直接覆盖。",
         actionAuditNote: "按下前会再次确认，并记录这次选择。",
         readOnly: "只读报告",
         tokenProtected: "GUI token 保护",
@@ -468,6 +476,9 @@ APP_HTML = r"""<!doctype html>
         keepMemory: "Save to official memory",
         rejectMemory: "Do not save",
         blockMemory: "Block similar items",
+        conflictReview: "Sync conflict review", localMemory: "Local official memory", remoteSuggestion: "Remote candidate suggestion",
+        keepLocal: "Keep local", acceptRemote: "Accept remote", manualResolution: "Handled manually",
+        conflictResolved: "Sync conflict resolved", conflictDecisionNote: "Accept remote promotes the candidate and archives the old local memory; it does not overwrite silently.",
         actionAuditNote: "You will confirm before it runs, and this choice will be recorded.",
         readOnly: "read-only report",
         tokenProtected: "GUI token protected",
@@ -618,7 +629,7 @@ APP_HTML = r"""<!doctype html>
       const conflictHtml = openConflicts.length ? `
         <div class="mini-list">
           ${openConflicts.slice(0, 3).map(conflict => `
-            <button class="mini-row sync-conflict" data-candidate-id="${esc(conflict.candidate_id || "")}" type="button">
+            <button class="mini-row sync-conflict" data-conflict-id="${esc(conflict.id || "")}" type="button">
               <span>${esc(conflict.conflict_type || "conflict")}</span>
               <small>#${esc(conflict.id || "")} · ${esc(conflict.candidate_id || "candidate")} · knowledge ${esc(conflict.knowledge_id || "")}</small>
             </button>
@@ -652,8 +663,8 @@ APP_HTML = r"""<!doctype html>
         <div class="dashboard-subhead">${esc(text.recentSync)}</div>
         ${syncHtml}
       `;
-      node.querySelectorAll(".sync-conflict[data-candidate-id]").forEach(el => {
-        if (el.dataset.candidateId) el.addEventListener("click", () => loadCandidate(el.dataset.candidateId));
+      node.querySelectorAll(".sync-conflict[data-conflict-id]").forEach(el => {
+        if (el.dataset.conflictId) el.addEventListener("click", () => loadSyncConflict(el.dataset.conflictId));
       });
     }
 
@@ -899,6 +910,35 @@ APP_HTML = r"""<!doctype html>
       $("blockCandidate").addEventListener("click", () => reviewCandidate(row.id, "block"));
     }
 
+    async function loadSyncConflict(id) {
+      const payload = await api(`/api/sync-conflict/${encodeURIComponent(id)}`);
+      if (payload.status !== "ok") {
+        $("results").innerHTML = `<div class="empty">${esc(payload.error || payload.reason || "Unable to load conflict")}</div>`;
+        return;
+      }
+      const conflict = payload.conflict || {};
+      const local = conflict.knowledge || {};
+      const remote = conflict.candidate || {};
+      currentTask = null;
+      currentEntry = null;
+      $("evidence").hidden = true;
+      const memoryPanel = (title, item, body) => `<div class="panel"><h3>${esc(title)}</h3><div class="subtle">#${esc(item.id || "")} ${esc(item.title || item.reason || item.source_ref || "")}</div><pre>${esc(body || "")}</pre></div>`;
+      $("results").innerHTML = `
+        <article class="result"><h3>${esc(ui().conflictReview)}</h3><div class="subtle">${esc(conflict.reason || conflict.conflict_type || "")}</div><div class="meta">${pill(conflict.id)}${pill(conflict.status, "warn")}${pill(conflict.conflict_type || "conflict")}</div></article>
+        <div class="compare-grid">
+          ${memoryPanel(ui().localMemory, local, local.content || local.summary)}
+          ${memoryPanel(ui().remoteSuggestion, remote, remote.content)}
+        </div>
+        <div class="panel"><h3>${esc(ui().reviewReason)}</h3><div class="subtle">${esc(ui().conflictDecisionNote)}</div><textarea id="conflictReason" placeholder="${esc(ui().optionalReason)}"></textarea><div class="actions">
+          <button id="keepLocalConflict" type="button">${esc(ui().keepLocal)}</button><button id="acceptRemoteConflict" class="warn" type="button">${esc(ui().acceptRemote)}</button><button id="manualConflict" class="secondary" type="button">${esc(ui().manualResolution)}</button>
+        </div><div class="subtle">${esc(ui().actionAuditNote)}</div></div>
+      `;
+      $("sidePanel").innerHTML = `<div class="panel"><h3>${esc(ui().syncHealth)}</h3><div class="subtle">${esc(ui().conflictReview)}</div></div><div class="kv"><span>conflict</span><strong>${esc(conflict.id || "")}</strong></div><div class="kv"><span>candidate</span><strong>${esc(remote.id || "")}</strong></div><div class="kv"><span>knowledge</span><strong>${esc(local.id || "")}</strong></div>`;
+      $("keepLocalConflict").addEventListener("click", () => resolveSyncConflict(conflict.id, "keep_local"));
+      $("acceptRemoteConflict").addEventListener("click", () => resolveSyncConflict(conflict.id, "accept_remote"));
+      $("manualConflict").addEventListener("click", () => resolveSyncConflict(conflict.id, "manual"));
+    }
+
     async function loadTask(id) {
       const payload = await api(`/api/task/${encodeURIComponent(id)}`);
       if (payload.status !== "ok") {
@@ -918,27 +958,9 @@ APP_HTML = r"""<!doctype html>
         if (!items || !items.length) return "";
         return `<div class="panel"><h3>${esc(title)}</h3>${items.map(item => `<div class="subtle">• ${esc(item)}</div>`).join("")}</div>`;
       };
-      return `
-        <article class="result">
-          <h3>${esc(task.title || task.id)}</h3>
-          <div class="subtle">${esc(task.goal || "")}</div>
-          <div class="meta">
-            ${pill(task.id || "")}
-            ${pill(task.status || "")}
-            ${pill(task.scope || "project")}
-            ${pill(task.sensitivity || "low", task.sensitivity === "low" ? "good" : "warn")}
-          </div>
-        </article>
-        ${section(ui().currentPlan, task.current_plan)}
-        ${section(ui().completed, task.completed)}
-        ${section(ui().hardDecisions, task.hard_decisions)}
-        ${section(ui().blockers, task.blockers)}
-        ${section(ui().nextActions, task.next_actions)}
-        <div class="panel">
-          <h3>${esc(ui().handoffMarkdown)}</h3>
-          <pre>${esc(markdown || "")}</pre>
-        </div>
-      `;
+      return `<article class="result"><h3>${esc(task.title || task.id)}</h3><div class="subtle">${esc(task.goal || "")}</div><div class="meta">${pill(task.id || "")}${pill(task.status || "")}${pill(task.scope || "project")}${pill(task.sensitivity || "low", task.sensitivity === "low" ? "good" : "warn")}</div></article>
+        ${section(ui().currentPlan, task.current_plan)}${section(ui().completed, task.completed)}${section(ui().hardDecisions, task.hard_decisions)}${section(ui().blockers, task.blockers)}${section(ui().nextActions, task.next_actions)}
+        <div class="panel"><h3>${esc(ui().handoffMarkdown)}</h3><pre>${esc(markdown || "")}</pre></div>`;
     }
 
     function renderCandidateSide(row) {
@@ -952,20 +974,21 @@ APP_HTML = r"""<!doctype html>
       const token = `${id}:${action}`;
       if (!window.confirm(`${ui().confirmAction}\\n\\n${ui().confirmToken}: ${token}`)) return;
       const reason = $("reviewReason")?.value || "";
-      const payload = await postApi(`/api/candidate/${encodeURIComponent(id)}/review`, {
-        action,
-        reason,
-        confirm: token
-      });
-      if (payload.status !== "ok") {
-        window.alert(payload.error || payload.reason || ui().reviewFailed);
-        return;
-      }
+      const payload = await postApi(`/api/candidate/${encodeURIComponent(id)}/review`, {action, reason, confirm: token});
+      if (payload.status !== "ok") { window.alert(payload.error || payload.reason || ui().reviewFailed); return; }
       window.alert(`${ui().reviewCompleted}: ${payload.result?.status || action}`);
       await boot();
-      if (payload.result?.knowledge_id) {
-        await loadEntry(payload.result.knowledge_id);
-      }
+      if (payload.result?.knowledge_id) await loadEntry(payload.result.knowledge_id);
+    }
+
+    async function resolveSyncConflict(id, resolution) {
+      const token = `${id}:${resolution}`;
+      if (!window.confirm(`${ui().confirmAction}\\n\\n${ui().confirmToken}: ${token}`)) return;
+      const reason = $("conflictReason")?.value || "";
+      const payload = await postApi(`/api/sync-conflict/${encodeURIComponent(id)}/resolve`, {resolution, reason, agent_id: "gui-reviewer", confirm: token});
+      if (payload.status !== "ok") { window.alert(payload.error || payload.reason || ui().reviewFailed); return; }
+      window.alert(`${ui().conflictResolved}: ${resolution}`);
+      await boot();
     }
 
     function renderSidePanel() {

@@ -106,6 +106,19 @@ candidate queue first.
 They are meant for review and copy/paste deployment. Setup does not start the
 remote server automatically.
 
+The same install pack also writes remote client examples:
+
+- `README-remote-clients.md`
+- `vault-remote-client-config.json`
+- `AGENT_REMOTE_GATEWAY_SNIPPETS.md`
+- `coze-vault-remote-openapi.json`
+- `n8n-vault-remote-client.workflow.json`
+
+Use those when Codex, Claude Code, Hermes, OpenClaw, Coze, or n8n should connect
+to one self-hosted Remote Server instead of a local `vault-mcp` process. The
+client contract stays intentionally small: send `agent_id`, search compact
+memory, bounded-read before citing, and submit new lessons as candidates.
+
 Gateway v0 exposes only:
 
 - `GET /health`

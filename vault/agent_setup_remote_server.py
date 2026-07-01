@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from vault.agent_setup_templates import shell_join
+from vault.gateway import gateway_openapi
 
 
 def write_remote_server_deploy_templates(
@@ -136,6 +138,7 @@ def write_remote_server_deploy_templates(
                 f"- macOS LaunchAgent example: `{launchagent_path.name}`",
                 f"- systemd service example: `{systemd_path.name}`",
                 f"- Docker Compose example: `{compose_path.name}`",
+                "- remote client examples: `README-remote-clients.md`",
                 "",
                 "Network guidance:",
                 "",
@@ -147,6 +150,7 @@ def write_remote_server_deploy_templates(
         ),
         encoding="utf-8",
     )
+    remote_client_templates = _write_remote_client_templates(out)
     return {
         "readme": str(readme_path),
         "health_command": shell_join(health_command),
@@ -155,7 +159,236 @@ def write_remote_server_deploy_templates(
         "launchagent": str(launchagent_path),
         "systemd": str(systemd_path),
         "docker_compose": str(compose_path),
+        "remote_clients": remote_client_templates,
     }
+
+
+def _write_remote_client_templates(out: Path) -> dict[str, str]:
+    gateway_url = "https://vault.example.internal:8789"
+    openapi = gateway_openapi(title="Vault Remote Server")
+    openapi["servers"] = [{"url": gateway_url}]
+    openapi.setdefault("x-vault-client-template", {})
+    openapi["x-vault-client-template"] = {
+        "gateway_url_env": "VAULT_REMOTE_URL",
+        "token_env": "VAULT_GATEWAY_TOKEN",
+        "agent_id_header": False,
+        "remote_writes": "candidate_first",
+        "active_multi_master_sync": False,
+    }
+
+    coze_openapi_path = out / "coze-vault-remote-openapi.json"
+    coze_openapi_path.write_text(
+        json.dumps(openapi, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    client_config = {
+        "version": 1,
+        "mode": "remote_gateway_client",
+        "gateway_url_env": "VAULT_REMOTE_URL",
+        "token_env": "VAULT_GATEWAY_TOKEN",
+        "default_gateway_url": gateway_url,
+        "auth_headers": {
+            "Authorization": "Bearer ${VAULT_GATEWAY_TOKEN}",
+            "X-Vault-Gateway-Token": "${VAULT_GATEWAY_TOKEN}",
+        },
+        "required_request_fields": ["agent_id"],
+        "safe_first_requests": [
+            {"method": "GET", "path": "/health"},
+            {"method": "GET", "path": "/openapi.json"},
+            {
+                "method": "POST",
+                "path": "/search",
+                "body": {"agent_id": "<agent-id>", "query": "<task keyword>", "limit": 5},
+            },
+            {
+                "method": "POST",
+                "path": "/read-range",
+                "body": {"agent_id": "<agent-id>", "knowledge_id": "<id>", "line_start": 1, "line_end": 40},
+            },
+            {
+                "method": "POST",
+                "path": "/submit-candidate",
+                "body": {
+                    "agent_id": "<agent-id>",
+                    "title": "<memory proposal>",
+                    "content": "<reviewable memory>",
+                    "reason": "<why remember>",
+                },
+            },
+        ],
+        "clients": {
+            "codex": {
+                "target": "Project AGENTS.md or MCP/Gateway adapter note",
+                "env": {"VAULT_REMOTE_URL": gateway_url, "VAULT_GATEWAY_TOKEN": "replace-with-stable-secret"},
+                "startup_note": "Use the remote Gateway only when the local project vault is not available.",
+            },
+            "claude_code": {
+                "target": "Project CLAUDE.md adapter note",
+                "env": {"VAULT_REMOTE_URL": gateway_url, "VAULT_GATEWAY_TOKEN": "replace-with-stable-secret"},
+                "startup_note": "Search remote memory first, then bounded read before citing.",
+            },
+            "hermes": {
+                "target": "Hermes profile AGENTS.md or runtime bootstrap",
+                "env": {"VAULT_REMOTE_URL": gateway_url, "VAULT_GATEWAY_TOKEN": "replace-with-stable-secret"},
+                "startup_note": "Keep profile identity private; use remote shared memory for project knowledge.",
+            },
+            "openclaw": {
+                "target": "OpenClaw workspace bootstrap or gateway plugin config",
+                "env": {"VAULT_REMOTE_URL": gateway_url, "VAULT_GATEWAY_TOKEN": "replace-with-stable-secret"},
+                "startup_note": "Read local latest-context first when present; use remote Gateway for shared Vault memory.",
+            },
+            "coze": {
+                "target": coze_openapi_path.name,
+                "mode": "openapi_connector",
+                "warning": "Use a scoped Gateway token; never use Supabase service-role keys here.",
+            },
+            "n8n": {
+                "target": "n8n-vault-remote-client.workflow.json",
+                "mode": "http_request_workflow",
+                "warning": "Store token in n8n credentials or environment variables, not inside workflow JSON.",
+            },
+        },
+        "safety": {
+            "candidate_first_writes": True,
+            "search_returns_raw_content": False,
+            "bounded_read_before_citation": True,
+            "active_multi_master_sync": False,
+        },
+    }
+    client_config_path = out / "vault-remote-client-config.json"
+    client_config_path.write_text(
+        json.dumps(client_config, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    n8n_path = out / "n8n-vault-remote-client.workflow.json"
+    n8n_path.write_text(
+        json.dumps(_remote_n8n_workflow(), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    snippets_path = out / "AGENT_REMOTE_GATEWAY_SNIPPETS.md"
+    snippets_path.write_text(_render_remote_gateway_snippets(gateway_url), encoding="utf-8")
+
+    readme_path = out / "README-remote-clients.md"
+    readme_path.write_text(
+        "\n".join(
+            [
+                "# Vault Remote Client Templates",
+                "",
+                "Use these templates when an Agent connects to a self-hosted Vault Remote Server.",
+                "",
+                "Set the same two variables in each client runtime:",
+                "",
+                "```bash",
+                f"export VAULT_REMOTE_URL=\"{gateway_url}\"",
+                "export VAULT_GATEWAY_TOKEN=\"replace-with-stable-secret\"",
+                "```",
+                "",
+                "Client files:",
+                "",
+                f"- `{client_config_path.name}`: machine-readable Codex, Claude Code, Hermes, OpenClaw, Coze, and n8n hints",
+                f"- `{snippets_path.name}`: short human/agent setup snippets",
+                f"- `{coze_openapi_path.name}`: OpenAPI connector template for Coze or similar hosted tools",
+                f"- `{n8n_path.name}`: n8n HTTP Request workflow template",
+                "",
+                "Safety boundary:",
+                "",
+                "- every request must send `agent_id`;",
+                "- remote search returns compact results, not raw full content;",
+                "- remote reads should use `/read-range` after search;",
+                "- remote writes go to `/submit-candidate`, not active knowledge;",
+                "- this is not offline active multi-master sync.",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return {
+        "readme": str(readme_path),
+        "client_config": str(client_config_path),
+        "agent_snippets": str(snippets_path),
+        "coze_openapi": str(coze_openapi_path),
+        "n8n_workflow": str(n8n_path),
+    }
+
+
+def _remote_n8n_workflow() -> dict[str, object]:
+    return {
+        "name": "Vault Remote Server Search",
+        "nodes": [
+            {
+                "id": "vault-search",
+                "name": "Vault Remote Search",
+                "type": "n8n-nodes-base.httpRequest",
+                "typeVersion": 4,
+                "position": [320, 240],
+                "parameters": {
+                    "method": "POST",
+                    "url": "={{$env.VAULT_REMOTE_URL}}/search",
+                    "sendHeaders": True,
+                    "headerParameters": {
+                        "parameters": [
+                            {"name": "Authorization", "value": "=Bearer {{$env.VAULT_GATEWAY_TOKEN}}"},
+                            {"name": "Content-Type", "value": "application/json"},
+                        ]
+                    },
+                    "sendBody": True,
+                    "jsonBody": {
+                        "agent_id": "n8n",
+                        "query": "={{$json.query || $json.text || ''}}",
+                        "limit": 5,
+                    },
+                },
+            }
+        ],
+        "connections": {},
+        "settings": {"executionOrder": "v1"},
+        "vault_notes": {
+            "token_storage": "Store VAULT_GATEWAY_TOKEN in environment variables or n8n credentials.",
+            "writes": "Use /submit-candidate for proposed memory; do not bypass candidate review.",
+        },
+    }
+
+
+def _render_remote_gateway_snippets(gateway_url: str) -> str:
+    return "\n".join(
+        [
+            "# Agent Remote Gateway Snippets",
+            "",
+            "Use these snippets when the local runtime should read shared memory from a self-hosted Vault Remote Server.",
+            "",
+            "## Shared Environment",
+            "",
+            "```bash",
+            f"export VAULT_REMOTE_URL=\"{gateway_url}\"",
+            "export VAULT_GATEWAY_TOKEN=\"replace-with-stable-secret\"",
+            "```",
+            "",
+            "## Minimal Search",
+            "",
+            "```bash",
+            "curl -s \"$VAULT_REMOTE_URL/search\" \\",
+            "  -H \"Authorization: Bearer $VAULT_GATEWAY_TOKEN\" \\",
+            "  -H \"Content-Type: application/json\" \\",
+            "  -d '{\"agent_id\":\"codex\",\"query\":\"deployment SOP\",\"limit\":5}'",
+            "```",
+            "",
+            "## Codex / Claude Code",
+            "",
+            "Add a short project instruction: use `VAULT_REMOTE_URL` only when local `vault-mcp` is unavailable; search first, then bounded read before citing.",
+            "",
+            "## Hermes / OpenClaw",
+            "",
+            "Keep identity/personality memory in the runtime profile. Use the remote Gateway for shared project knowledge and candidate-first lessons.",
+            "",
+            "## Coze / n8n",
+            "",
+            "Use the generated OpenAPI or workflow template. Store the token in platform credentials or environment variables, not in public prompts.",
+            "",
+        ]
+    )
 
 
 def _render_remote_server_launchagent(command: list[str]) -> str:

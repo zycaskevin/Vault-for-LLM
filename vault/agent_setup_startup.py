@@ -394,7 +394,6 @@ def write_update_status_templates(
         "rollout_readme": str(rollout_path),
     }
 
-
 def write_agent_adapter_startup_templates(
     *,
     output_dir: str | Path,

@@ -477,6 +477,22 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert minimal_configs["remote_server"]["safety"]["stable_token_required"] is True
     assert minimal_configs["remote_server"]["safety"]["candidate_first_writes"] is True
     assert minimal_configs["remote_server"]["safety"]["active_multi_master_sync"] is False
+    remote_server_readme = tmp_path / "templates" / "README-remote-server.md"
+    remote_server_launchagent = tmp_path / "templates" / "vault-remote-server.launchagent.plist"
+    remote_server_systemd = tmp_path / "templates" / "vault-remote-server.service"
+    remote_server_compose = tmp_path / "templates" / "vault-remote-server.compose.yaml"
+    assert remote_server_readme.exists()
+    assert remote_server_launchagent.exists()
+    assert remote_server_systemd.exists()
+    assert remote_server_compose.exists()
+    remote_readme_text = remote_server_readme.read_text(encoding="utf-8")
+    assert "set a stable token" in remote_readme_text
+    assert "no offline active multi-master sync yet" in remote_readme_text
+    remote_launchagent_text = remote_server_launchagent.read_text(encoding="utf-8")
+    assert "KeepAlive" in remote_launchagent_text
+    assert "VAULT_GATEWAY_TOKEN" in remote_launchagent_text
+    assert "VAULT_GATEWAY_TOKEN" in remote_server_systemd.read_text(encoding="utf-8")
+    assert "vault remote-server serve" in remote_server_compose.read_text(encoding="utf-8")
     assert minimal_configs["local_stdio_mcp_clients"]["codex"]["server_config"]["mcpServers"]["vault"]["command"] == "vault-mcp"
     assert minimal_configs["hosted_or_workflow_readers"]["coze"]["mode"] == "remote_read_only"
     assert minimal_configs["hosted_or_workflow_readers"]["n8n"]["mode"] == "workflow_bridge"

@@ -96,6 +96,16 @@ Supabase. Keep using Supabase when hosted tools need a managed cloud adapter.
 Neither path is active offline multi-master sync; remote writes still enter the
 candidate queue first.
 
+`vault setup-agent` writes inert deployment examples under `agent-install/`:
+
+- `README-remote-server.md`
+- `vault-remote-server.launchagent.plist`
+- `vault-remote-server.service`
+- `vault-remote-server.compose.yaml`
+
+They are meant for review and copy/paste deployment. Setup does not start the
+remote server automatically.
+
 Gateway v0 exposes only:
 
 - `GET /health`

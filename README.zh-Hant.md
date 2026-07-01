@@ -500,6 +500,11 @@ vault remote-server serve --project-dir ~/Vaults/my-project --host 0.0.0.0
 離線寫入、上線後自動合併，仍需要下一階段的 revision/conflict merge
 層。
 
+`vault setup-agent` 也會在 `agent-install/` 產生不會自動啟動的部署範本：
+`README-remote-server.md`、`vault-remote-server.launchagent.plist`、
+`vault-remote-server.service`、`vault-remote-server.compose.yaml`。這些是
+給 agent 或操作人員審查後使用的模板，不會在安裝時偷偷開遠端服務。
+
 ## 可選：Supabase 共享
 
 SQLite 仍然是 source of truth。Supabase 是可選的共享層。

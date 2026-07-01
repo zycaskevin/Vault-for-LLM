@@ -702,6 +702,12 @@ centralized sharing, not offline multi-master sync. Laptops, phones, or robots
 that need to write while offline still need the future revision/conflict merge
 layer.
 
+`vault setup-agent` also writes inert deployment templates under
+`agent-install/`: `README-remote-server.md`,
+`vault-remote-server.launchagent.plist`, `vault-remote-server.service`, and
+`vault-remote-server.compose.yaml`. They are examples for agents/operators to
+review; setup does not start a remote server automatically.
+
 ## Memory Migration
 
 Vault can absorb memory from other tools without trusting it blindly. Start with

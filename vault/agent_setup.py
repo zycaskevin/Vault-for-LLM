@@ -61,6 +61,7 @@ from vault.agent_setup_startup import (
     write_mcp_startup_guide,
     write_update_status_templates,
 )
+from vault.agent_setup_remote_server import write_remote_server_deploy_templates
 from vault.agent_setup_runtime import (
     EXPECTED_HANDOFF_READ_ORDER,
     STARTUP_DOCTOR_JSON_FILES,
@@ -491,6 +492,11 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
     result["next_steps"].append(
         f"Review runtime update playbook: {result['agent_adapter_startup']['runtime_playbook_readme']}"
     )
+    result["remote_server_templates"] = write_remote_server_deploy_templates(
+        output_dir=template_dir,
+        project_dir=project_path,
+    )
+    result["next_steps"].append(f"Review self-hosted Remote Server guide: {result['remote_server_templates']['readme']}")
     result["local_smoke"] = write_local_smoke_template(
         output_dir=template_dir,
         project_dir=project_path,

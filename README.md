@@ -821,6 +821,8 @@ advanced integrations are powerful, but should be enabled deliberately.
 
 ## Development
 
+Use the pip workflow when you want the most common Python path:
+
 ```bash
 git clone https://github.com/zycaskevin/Vault-for-LLM.git
 cd Vault-for-LLM
@@ -829,6 +831,20 @@ source .venv/bin/activate
 pip install -e ".[dev,mcp]"
 pytest -q
 ```
+
+For a reproducible Agent/developer environment, use the checked-in `uv.lock`:
+
+```bash
+git clone https://github.com/zycaskevin/Vault-for-LLM.git
+cd Vault-for-LLM
+uv sync --extra dev --extra mcp
+uv run pytest -q
+```
+
+`pip install vault-for-llm` remains the public user install path. The uv workflow
+is for source development, CI smoke checks, and agents that need to rebuild the
+same local environment reliably. When `pyproject.toml` dependencies change,
+update `uv.lock` in the same PR with `uv lock`.
 
 ## License
 

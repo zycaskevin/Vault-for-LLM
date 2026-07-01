@@ -9,9 +9,11 @@ on:
       - 'v*'
     paths:
       - 'README.md'
+      - 'CONTRIBUTING.md'
       - 'CHANGELOG.md'
       - 'LICENSE'
       - 'pyproject.toml'
+      - 'uv.lock'
       - '.gitignore'
       - '.github/workflows/**'
       - 'docs/**'
@@ -23,9 +25,11 @@ on:
   pull_request:
     paths:
       - 'README.md'
+      - 'CONTRIBUTING.md'
       - 'CHANGELOG.md'
       - 'LICENSE'
       - 'pyproject.toml'
+      - 'uv.lock'
       - '.gitignore'
       - '.github/workflows/**'
       - 'docs/**'
@@ -93,6 +97,36 @@ jobs:
 
       - name: Run README documented command smoke
         run: python scripts/readme_command_smoke.py
+
+  uv-dev-smoke:
+    name: uv dev workflow smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install uv
+        run: python -m pip install --upgrade pip uv
+
+      - name: Check uv lockfile
+        run: uv lock --check
+
+      - name: Sync developer environment
+        run: uv sync --frozen --python 3.12 --extra dev --extra mcp
+
+      - name: Smoke test uv-managed tools
+        run: |
+          uv run --python 3.12 vault --version
+          uv run --python 3.12 python -m pytest -q tests/test_lite.py tests/test_cli_project_dir.py
 
   search-qa-regression:
     name: Search QA regression gate

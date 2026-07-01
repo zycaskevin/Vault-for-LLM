@@ -97,7 +97,8 @@ The same install pack writes `README-runtime-update-playbook.md` and
 post-upgrade, and stale-notice behavior.
 Run `vault agent startup-doctor --template-dir <project>/agent-install --json`
 when you need to verify whether an older install pack is missing the current
-startup-preface handoff contract.
+startup-preface handoff contract or the minimal Codex, Claude Code, Hermes,
+OpenClaw, Coze, and n8n setup contracts.
 Use `vault agent install-runtime-template --runtime <name> --target <file>` to
 preview a safe marked-block install into `AGENTS.md`, `CLAUDE.md`, or another
 runtime instruction file; add `--apply` only after the preview looks right.

@@ -114,7 +114,10 @@ STARTUP_DOCTOR_JSON_FILES = {
     "mcp_startup": "mcp-startup.json",
     "adapter_contract": "adapter-startup-contract.json",
     "runtime_playbook": "runtime-update-playbook.json",
+    "minimal_configs": "mcp-minimal-configs.json",
 }
+EXPECTED_LOCAL_MCP_CLIENTS = {"claude_code", "codex", "hermes", "openclaw"}
+EXPECTED_REMOTE_READERS = {"coze", "n8n"}
 STARTUP_DOCTOR_TEMPLATE_FILES = {
     "codex": "codex-startup.md",
     "claude_code": "claude-code-startup.md",
@@ -164,6 +167,80 @@ def _has_remote_status_command(value: object) -> bool:
     return "remote" in text and "status" in text and "--json" in text
 
 
+def _minimal_local_stdio_clients_ok(minimal: dict[str, Any]) -> bool:
+    clients = minimal.get("local_stdio_mcp_clients")
+    if not isinstance(clients, dict) or set(clients) != EXPECTED_LOCAL_MCP_CLIENTS:
+        return False
+    for config in clients.values():
+        if not isinstance(config, dict):
+            return False
+        vault_config = (
+            ((config.get("server_config") or {}).get("mcpServers") or {}).get("vault") or {}
+        )
+        args = vault_config.get("args")
+        if vault_config.get("command") != "vault-mcp":
+            return False
+        if not isinstance(args, list) or "--project-dir" not in args or "--tool-profile" not in args:
+            return False
+    return True
+
+
+def _minimal_remote_readers_ok(minimal: dict[str, Any]) -> bool:
+    readers = minimal.get("hosted_or_workflow_readers")
+    if not isinstance(readers, dict) or set(readers) != EXPECTED_REMOTE_READERS:
+        return False
+    coze = readers.get("coze") if isinstance(readers.get("coze"), dict) else {}
+    n8n = readers.get("n8n") if isinstance(readers.get("n8n"), dict) else {}
+    coze_warning = str(coze.get("warning") or "").lower()
+    n8n_warning = str(n8n.get("warning") or "").lower()
+    coze_warns_service_role = "service-role" in coze_warning or "service_role" in coze_warning
+    n8n_warns_service_role = "service-role" in n8n_warning or "service_role" in n8n_warning
+    return (
+        coze.get("mode") == "remote_read_only"
+        and coze.get("config_file") == "coze-supabase-vault-openapi.json"
+        and coze_warns_service_role
+        and n8n.get("mode") == "workflow_bridge"
+        and n8n.get("workflow_file") == "n8n-remote-reader.workflow.json"
+        and n8n_warns_service_role
+    )
+
+
+def _minimal_mcp_security_ok(minimal: dict[str, Any]) -> bool:
+    server = minimal.get("mcp_server") if isinstance(minimal.get("mcp_server"), dict) else {}
+    env = server.get("env") if isinstance(server.get("env"), dict) else {}
+    safety = minimal.get("safety") if isinstance(minimal.get("safety"), dict) else {}
+    return (
+        server.get("command") == "vault-mcp"
+        and env.get("VAULT_MCP_REQUIRE_AGENT_SIGNATURE") == "1"
+        and safety.get("hmac_recommended") is True
+        and safety.get("candidate_first_memory") is True
+        and safety.get("bounded_reads_before_citation") is True
+    )
+
+
+def _minimal_gateway_ok(minimal: dict[str, Any]) -> bool:
+    gateway = minimal.get("gateway") if isinstance(minimal.get("gateway"), dict) else {}
+    safety = gateway.get("safety") if isinstance(gateway.get("safety"), dict) else {}
+    return (
+        gateway.get("mode") == "local_http_adapter"
+        and "vault gateway health" in str(gateway.get("health_command") or "")
+        and "vault gateway serve" in str(gateway.get("serve_command") or "")
+        and safety.get("token_required_by_default") is True
+        and safety.get("agent_id_required") is True
+        and safety.get("candidate_first_writes") is True
+        and safety.get("private_hidden_by_default") is True
+    )
+
+
+def _minimal_remote_safety_ok(minimal: dict[str, Any]) -> bool:
+    safety = minimal.get("safety") if isinstance(minimal.get("safety"), dict) else {}
+    return (
+        safety.get("coze_and_n8n_are_remote_readers_by_default") is True
+        and safety.get("supabase_bidirectional_sync_default") is False
+        and safety.get("tool_profile_is_not_auth") is True
+    )
+
+
 def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
     """Check whether setup-agent startup files use the current fleet-aware contract."""
     root = Path(template_dir).expanduser().resolve()
@@ -172,9 +249,11 @@ def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
     mcp_path = root / STARTUP_DOCTOR_JSON_FILES["mcp_startup"]
     adapter_path = root / STARTUP_DOCTOR_JSON_FILES["adapter_contract"]
     playbook_path = root / STARTUP_DOCTOR_JSON_FILES["runtime_playbook"]
+    minimal_path = root / STARTUP_DOCTOR_JSON_FILES["minimal_configs"]
     mcp = _startup_doctor_json(mcp_path, checks, name="mcp_startup_json")
     adapter = _startup_doctor_json(adapter_path, checks, name="adapter_startup_contract_json")
     playbook = _startup_doctor_json(playbook_path, checks, name="runtime_update_playbook_json")
+    minimal = _startup_doctor_json(minimal_path, checks, name="mcp_minimal_configs_json")
 
     sequence = mcp.get("startup_sequence") if isinstance(mcp.get("startup_sequence"), list) else []
     tools = [step.get("tool") for step in sequence[:2] if isinstance(step, dict)]
@@ -295,6 +374,67 @@ def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
             "runtime playbook includes CLI remote-status preflight"
             if _has_remote_status_command(playbook_cli.get("remote_status"))
             else "runtime playbook is missing remote-status startup guidance"
+        ),
+    )
+
+    minimal_local_ok = _minimal_local_stdio_clients_ok(minimal)
+    _startup_doctor_check(
+        checks,
+        name="minimal_local_stdio_clients",
+        status="pass" if minimal_local_ok else "fail",
+        path=minimal_path,
+        detail=(
+            "Codex, Claude Code, Hermes, and OpenClaw use vault-mcp with project-dir and tool-profile"
+            if minimal_local_ok
+            else "expected local stdio clients: Codex, Claude Code, Hermes, OpenClaw with vault-mcp config"
+        ),
+    )
+    minimal_remote_ok = _minimal_remote_readers_ok(minimal)
+    _startup_doctor_check(
+        checks,
+        name="minimal_hosted_workflow_readers",
+        status="pass" if minimal_remote_ok else "fail",
+        path=minimal_path,
+        detail=(
+            "Coze and n8n are generated as remote-reader or workflow bridge configs"
+            if minimal_remote_ok
+            else "expected Coze remote read-only and n8n workflow bridge templates with service-role warnings"
+        ),
+    )
+    minimal_mcp_ok = _minimal_mcp_security_ok(minimal)
+    _startup_doctor_check(
+        checks,
+        name="minimal_mcp_hmac_boundary",
+        status="pass" if minimal_mcp_ok else "fail",
+        path=minimal_path,
+        detail=(
+            "minimal MCP config recommends HMAC and candidate-first bounded reads"
+            if minimal_mcp_ok
+            else "minimal MCP config must require agent signatures and keep candidate-first bounded-read guidance"
+        ),
+    )
+    minimal_gateway_ok = _minimal_gateway_ok(minimal)
+    _startup_doctor_check(
+        checks,
+        name="minimal_gateway_adapter",
+        status="pass" if minimal_gateway_ok else "fail",
+        path=minimal_path,
+        detail=(
+            "Gateway adapter includes health/serve commands and safe write defaults"
+            if minimal_gateway_ok
+            else "minimal Gateway config must include health/serve commands and safe adapter defaults"
+        ),
+    )
+    minimal_remote_safety_ok = _minimal_remote_safety_ok(minimal)
+    _startup_doctor_check(
+        checks,
+        name="minimal_remote_reader_safety",
+        status="pass" if minimal_remote_safety_ok else "fail",
+        path=minimal_path,
+        detail=(
+            "hosted readers default to read-only, and bidirectional Supabase sync is explicit opt-in"
+            if minimal_remote_safety_ok
+            else "remote reader safety must mark hosted readers read-only and keep bidirectional sync opt-in"
         ),
     )
 

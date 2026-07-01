@@ -1081,6 +1081,11 @@ def test_agent_startup_doctor_passes_current_setup_pack(tmp_path, capsys):
     assert any(check["name"] == "adapter_handoff_contract" for check in payload["checks"])
     assert any(check["name"] == "adapter_remote_status_step" and check["status"] == "pass" for check in payload["checks"])
     assert any(check["name"] == "runtime_playbook_remote_status" and check["status"] == "pass" for check in payload["checks"])
+    assert any(check["name"] == "minimal_local_stdio_clients" and check["status"] == "pass" for check in payload["checks"])
+    assert any(check["name"] == "minimal_hosted_workflow_readers" and check["status"] == "pass" for check in payload["checks"])
+    assert any(check["name"] == "minimal_mcp_hmac_boundary" and check["status"] == "pass" for check in payload["checks"])
+    assert any(check["name"] == "minimal_gateway_adapter" and check["status"] == "pass" for check in payload["checks"])
+    assert any(check["name"] == "minimal_remote_reader_safety" and check["status"] == "pass" for check in payload["checks"])
 
 
 def test_agent_startup_doctor_fails_old_handoff_contract(tmp_path, capsys):
@@ -1134,6 +1139,55 @@ def test_agent_startup_doctor_fails_old_handoff_contract(tmp_path, capsys):
     assert any(check["name"] == "mcp_handoff_result_contract" and check["status"] == "fail" for check in payload["checks"])
     assert any(check["name"] == "codex_startup_template" and check["status"] == "fail" for check in payload["checks"])
     assert any("setup-agent" in action for action in payload["recommended_actions"])
+
+
+def test_agent_startup_doctor_fails_broken_minimal_configs(tmp_path, capsys):
+    from vault.cli import main
+
+    project = tmp_path / "agent-project"
+    main(
+        [
+            "setup-agent",
+            "--non-interactive",
+            "--agent",
+            "codex",
+            "--scope",
+            "shared",
+            "--agent-project-dir",
+            str(project),
+            "--features",
+            "core,mcp",
+            "--json",
+        ]
+    )
+    capsys.readouterr()
+    install_dir = project / "agent-install"
+    minimal_path = install_dir / "mcp-minimal-configs.json"
+    minimal_json = json.loads(minimal_path.read_text(encoding="utf-8"))
+    minimal_json["local_stdio_mcp_clients"].pop("openclaw")
+    minimal_json["hosted_or_workflow_readers"]["coze"]["warning"] = "Use any key."
+    minimal_json["mcp_server"]["env"]["VAULT_MCP_REQUIRE_AGENT_SIGNATURE"] = "0"
+    minimal_json["gateway"]["safety"]["candidate_first_writes"] = False
+    minimal_json["safety"]["supabase_bidirectional_sync_default"] = True
+    minimal_path.write_text(json.dumps(minimal_json), encoding="utf-8")
+
+    main(
+        [
+            "agent",
+            "startup-doctor",
+            "--template-dir",
+            str(install_dir),
+            "--json",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["status"] == "fail"
+    assert any(check["name"] == "minimal_local_stdio_clients" and check["status"] == "fail" for check in payload["checks"])
+    assert any(check["name"] == "minimal_hosted_workflow_readers" and check["status"] == "fail" for check in payload["checks"])
+    assert any(check["name"] == "minimal_mcp_hmac_boundary" and check["status"] == "fail" for check in payload["checks"])
+    assert any(check["name"] == "minimal_gateway_adapter" and check["status"] == "fail" for check in payload["checks"])
+    assert any(check["name"] == "minimal_remote_reader_safety" and check["status"] == "fail" for check in payload["checks"])
 
 
 def test_setup_agent_accepts_global_project_dir_for_missing_directory(tmp_path, capsys):

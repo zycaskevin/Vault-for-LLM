@@ -121,7 +121,8 @@ It also writes `agent-install/README-runtime-update-playbook.md` and
 startup, after one runtime upgrades Vault, and when the shared notice is stale.
 Use `vault agent startup-doctor --template-dir <project>/agent-install --json`
 to verify that an existing install pack still has the current fleet-aware
-handoff contract.
+handoff contract and the shortest safe configs for Codex, Claude Code, Hermes,
+OpenClaw, Coze, and n8n.
 To safely paste one generated startup template into a runtime instruction file,
 preview first and then apply:
 

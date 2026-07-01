@@ -142,7 +142,7 @@ changed notes without duplicating unchanged ones.
 | `vault agent list` | List Agents registered on this machine |
 | `vault agent status --latest-version 0.7.21` | Show the same registry/update status without contacting the network |
 | `vault agent doctor --json` | Run the same shared update-distribution health check through the Agent registry namespace |
-| `vault agent startup-doctor --template-dir ./agent-install --json` | Check whether generated startup contracts include the current fleet-aware handoff order |
+| `vault agent startup-doctor --template-dir ./agent-install --json` | Check generated startup contracts plus minimal Codex/Claude/Hermes/OpenClaw/Coze/n8n configs |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md` | Preview applying the generated Codex startup template into a runtime instruction file |
 | `vault agent install-runtime-template --runtime codex --target ./AGENTS.md --apply` | Apply the marked startup block and create a backup before changing an existing file |
 

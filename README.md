@@ -710,9 +710,10 @@ review; setup does not start a remote server automatically.
 The same pack also writes remote client templates:
 `README-remote-clients.md`, `vault-remote-client-config.json`,
 `AGENT_REMOTE_GATEWAY_SNIPPETS.md`, `coze-vault-remote-openapi.json`, and
-`n8n-vault-remote-client.workflow.json`. These show Codex, Claude Code, Hermes,
-OpenClaw, Coze, and n8n how to connect through the same token-protected Gateway
-contract without learning the full CLI or MCP surface.
+`n8n-vault-remote-client.workflow.json`, plus
+`validate-vault-remote-client.py` for smoke testing. These show Codex, Claude
+Code, Hermes, OpenClaw, Coze, and n8n how to connect through the same
+token-protected Gateway contract without learning the full CLI or MCP surface.
 
 ## Memory Migration
 

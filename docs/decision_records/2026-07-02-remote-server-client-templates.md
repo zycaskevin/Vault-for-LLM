@@ -19,6 +19,7 @@ The durable product boundary is the small Gateway HTTP contract.
 - `AGENT_REMOTE_GATEWAY_SNIPPETS.md`
 - `coze-vault-remote-openapi.json`
 - `n8n-vault-remote-client.workflow.json`
+- `validate-vault-remote-client.py`
 
 The templates all point to the same contract:
 
@@ -28,6 +29,10 @@ The templates all point to the same contract:
 - read evidence through bounded `/read-range`;
 - write new lessons through `/submit-candidate`;
 - do not treat this as offline active multi-master sync.
+
+The validation script is read-only by default. It checks `/health`,
+`/openapi.json`, and `/search`; `--submit-candidate` must be explicit when an
+operator wants to verify candidate-first remote writes.
 
 ## Consequences
 

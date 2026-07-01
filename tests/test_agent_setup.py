@@ -486,6 +486,7 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     remote_client_openapi = tmp_path / "templates" / "coze-vault-remote-openapi.json"
     remote_client_n8n = tmp_path / "templates" / "n8n-vault-remote-client.workflow.json"
     remote_client_snippets = tmp_path / "templates" / "AGENT_REMOTE_GATEWAY_SNIPPETS.md"
+    remote_client_validation = tmp_path / "templates" / "validate-vault-remote-client.py"
     assert remote_server_readme.exists()
     assert remote_server_launchagent.exists()
     assert remote_server_systemd.exists()
@@ -495,6 +496,8 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert remote_client_openapi.exists()
     assert remote_client_n8n.exists()
     assert remote_client_snippets.exists()
+    assert remote_client_validation.exists()
+    assert os.access(remote_client_validation, os.X_OK)
     remote_readme_text = remote_server_readme.read_text(encoding="utf-8")
     assert "set a stable token" in remote_readme_text
     assert "no offline active multi-master sync yet" in remote_readme_text
@@ -510,9 +513,14 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     remote_client_openapi_payload = json.loads(remote_client_openapi.read_text(encoding="utf-8"))
     assert "/submit-candidate" in remote_client_openapi_payload["paths"]
     assert remote_client_openapi_payload["x-vault-client-template"]["token_env"] == "VAULT_GATEWAY_TOKEN"
-    assert "Vault Remote Client Templates" in remote_client_readme.read_text(encoding="utf-8")
+    remote_client_readme_text = remote_client_readme.read_text(encoding="utf-8")
+    assert "Vault Remote Client Templates" in remote_client_readme_text
+    assert "--submit-candidate" in remote_client_readme_text
     assert "Vault Remote Server Search" in remote_client_n8n.read_text(encoding="utf-8")
     assert "Codex / Claude Code" in remote_client_snippets.read_text(encoding="utf-8")
+    validation_text = remote_client_validation.read_text(encoding="utf-8")
+    assert "VAULT_REMOTE_URL" in validation_text
+    assert "submitted_candidate" in validation_text
     assert minimal_configs["local_stdio_mcp_clients"]["codex"]["server_config"]["mcpServers"]["vault"]["command"] == "vault-mcp"
     assert minimal_configs["hosted_or_workflow_readers"]["coze"]["mode"] == "remote_read_only"
     assert minimal_configs["hosted_or_workflow_readers"]["n8n"]["mode"] == "workflow_bridge"

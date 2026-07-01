@@ -168,6 +168,14 @@ Obsidian can act as:
 - a place to edit or correct summaries
 - a way to see what agents think they know
 
+Vault's built-in GUI should stay focused on the memory control plane:
+
+- connected agents and their permissions
+- sync health for Obsidian, Supabase, and Gateway
+- conflicts and daily review queues
+- automation health and safe actions
+- security settings such as local GUI auth and agent identity checks
+
 Vault provides:
 
 - structured compile/import/export
@@ -178,6 +186,13 @@ Vault provides:
 - backup/restore and sync paths
 
 Together, they let memory become interactive instead of hidden.
+
+The practical split is simple: Obsidian is where humans write, link, and browse
+knowledge; Vault is where agents retrieve, govern, audit, and share memory.
+Obsidian folders can map to `scope` and `sensitivity`, and Obsidian wikilinks
+can become Vault graph edges. Generated Vault notes should live in a clearly
+generated folder such as `00-Vault-Knowledge/` so agent output does not silently
+overwrite user-authored notes.
 
 ## Sync Without Surrender
 

@@ -8,6 +8,7 @@ import workflows do not feed generated notes back into the source vault.
 from __future__ import annotations
 
 import hashlib
+import fnmatch
 import json
 import re
 from dataclasses import dataclass, field
@@ -27,6 +28,10 @@ DEFAULT_OBSIDIAN_EXCLUDES = {
     ".trash",
     "00-Vault-Knowledge",
 }
+
+_SCOPE_RANK = {"public": 0, "shared": 1, "project": 2, "private": 3}
+_SENSITIVITY_RANK = {"low": 0, "medium": 1, "high": 2, "restricted": 3}
+_WIKILINK_RE = re.compile(r"(?<!!)\[\[([^\]\n]+)\]\]")
 
 
 @dataclass
@@ -112,6 +117,96 @@ def _normalize_tags(value: Any) -> list[str]:
     return tags
 
 
+def _normalize_rule_list(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, dict):
+        payload = payload.get("rules") or payload.get("folder_rules") or payload.get("folders") or []
+    if not isinstance(payload, list):
+        return []
+
+    rules: list[dict[str, Any]] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        pattern = str(item.get("pattern") or item.get("path") or "").strip()
+        if not pattern:
+            continue
+        rule = dict(item)
+        rule["pattern"] = pattern
+        rules.append(rule)
+    return rules
+
+
+def load_obsidian_folder_rules(project_dir: str | Path, rules_path: str | Path | None = None) -> list[dict[str, Any]]:
+    """Load optional folder-to-governance rules for Obsidian imports."""
+    path = Path(rules_path).expanduser() if rules_path else Path(project_dir) / ".vault" / "obsidian-folder-rules.yaml"
+    if not path.exists():
+        return []
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return []
+    return _normalize_rule_list(payload)
+
+
+def _matches_rule(relative_text: str, pattern: str) -> bool:
+    pattern = pattern.strip().lstrip("/")
+    if not pattern:
+        return False
+    if fnmatch.fnmatch(relative_text, pattern):
+        return True
+    if pattern.endswith("/"):
+        return relative_text.startswith(pattern)
+    if not any(ch in pattern for ch in "*?[]"):
+        return relative_text.startswith(pattern.rstrip("/") + "/")
+    return False
+
+
+def _folder_policy_for(relative_text: str, rules: list[dict[str, Any]] | None) -> dict[str, Any]:
+    policy: dict[str, Any] = {}
+    for rule in rules or []:
+        pattern = str(rule.get("pattern") or "").strip()
+        if not _matches_rule(relative_text, pattern):
+            continue
+        policy.update({k: v for k, v in rule.items() if k != "pattern"})
+        policy["pattern"] = pattern
+    return policy
+
+
+def _most_restrictive(value_a: Any, value_b: Any, rank: dict[str, int], default: str) -> str:
+    a = str(value_a or "").strip().lower()
+    b = str(value_b or "").strip().lower()
+    if not a and not b:
+        return default
+    if not a:
+        return b if b in rank else default
+    if not b:
+        return a if a in rank else default
+    if a not in rank:
+        a = default
+    if b not in rank:
+        b = default
+    return a if rank[a] >= rank[b] else b
+
+
+def _as_float(value: Any, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def extract_obsidian_wikilinks(text: str) -> list[str]:
+    """Return de-duplicated Obsidian wikilink targets from Markdown text."""
+    links: list[str] = []
+    seen: set[str] = set()
+    for match in _WIKILINK_RE.finditer(text or ""):
+        target = match.group(1).split("|", 1)[0].strip()
+        if target and target not in seen:
+            seen.add(target)
+            links.append(target)
+    return links
+
+
 def _extract_title(path: Path, metadata: dict[str, Any], body: str) -> str:
     title = metadata.get("title")
     if isinstance(title, str) and title.strip():
@@ -165,25 +260,40 @@ def render_vault_raw_note(
     layer: str,
     trust: float,
     imported_at: str,
+    folder_rules: list[dict[str, Any]] | None = None,
 ) -> tuple[str, str]:
     """Render a Vault raw Markdown note and return ``(content, source_hash)``."""
     original = source_path.read_text(encoding="utf-8")
     metadata, body = extract_frontmatter(original)
     source_hash = _content_hash(original)
     relative = source_path.relative_to(obsidian_root).as_posix()
+    folder_policy = _folder_policy_for(relative, folder_rules)
 
     obsidian_tags = _normalize_tags(metadata.get("tags"))
+    folder_tags = _normalize_tags(folder_policy.get("tags"))
     merged_tags = []
-    for tag in [*tags, *obsidian_tags, "obsidian"]:
+    for tag in [*tags, *folder_tags, *obsidian_tags, "obsidian"]:
         if tag and tag not in merged_tags:
             merged_tags.append(tag)
 
+    category_value = metadata.get("category") or folder_policy.get("category") or category
+    layer_value = metadata.get("layer") or folder_policy.get("layer") or layer
+    trust_value = _as_float(metadata.get("trust", folder_policy.get("trust", trust)), trust)
+    scope_value = _most_restrictive(folder_policy.get("scope"), metadata.get("scope"), _SCOPE_RANK, "project")
+    sensitivity_value = _most_restrictive(
+        folder_policy.get("sensitivity"),
+        metadata.get("sensitivity"),
+        _SENSITIVITY_RANK,
+        "low",
+    )
+    wikilinks = extract_obsidian_wikilinks(body)
+
     frontmatter: dict[str, Any] = {
         "title": _extract_title(source_path, metadata, body),
-        "layer": layer,
-        "category": category,
+        "layer": layer_value,
+        "category": category_value,
         "tags": merged_tags,
-        "trust": trust,
+        "trust": trust_value,
         "source": f"obsidian:{relative}",
         "imported_from": "obsidian",
         "obsidian_source_path": relative,
@@ -191,18 +301,22 @@ def render_vault_raw_note(
         "imported_at": imported_at,
     }
     governance = normalize_governance_metadata(
-        scope=metadata.get("scope", "project"),
-        sensitivity=metadata.get("sensitivity", "low"),
-        owner_agent=metadata.get("owner_agent", ""),
-        allowed_agents=metadata.get("allowed_agents", ""),
-        memory_type=metadata.get("memory_type", "knowledge"),
-        expires_at=metadata.get("expires_at", ""),
+        scope=scope_value,
+        sensitivity=sensitivity_value,
+        owner_agent=metadata.get("owner_agent", folder_policy.get("owner_agent", "")),
+        allowed_agents=metadata.get("allowed_agents", folder_policy.get("allowed_agents", "")),
+        memory_type=metadata.get("memory_type", folder_policy.get("memory_type", "knowledge")),
+        expires_at=metadata.get("expires_at", folder_policy.get("expires_at", "")),
     )
     governance["allowed_agents"] = json.loads(governance["allowed_agents"])
     frontmatter.update(governance)
     aliases = metadata.get("aliases")
     if aliases:
         frontmatter["obsidian_aliases"] = aliases
+    if wikilinks:
+        frontmatter["obsidian_links"] = wikilinks
+    if folder_policy.get("pattern"):
+        frontmatter["obsidian_folder_rule"] = folder_policy["pattern"]
 
     rendered_frontmatter = yaml.safe_dump(
         frontmatter,
@@ -226,6 +340,7 @@ def sync_obsidian_vault(
     dry_run: bool = False,
     allow_private: bool = False,
     prune_missing: bool = False,
+    folder_rules_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Sync Obsidian Markdown notes into ``raw/<raw_subdir>/``.
 
@@ -245,6 +360,7 @@ def sync_obsidian_vault(
     manifest = _load_manifest(project_path)
     previous_notes = dict(manifest.get("notes") or {})
     current_notes: dict[str, dict[str, Any]] = {}
+    folder_rules = load_obsidian_folder_rules(project_path, folder_rules_path)
 
     active_excludes = set(excludes or [])
     notes = iter_obsidian_markdown(obsidian_root, active_excludes)
@@ -265,6 +381,7 @@ def sync_obsidian_vault(
                 layer=layer,
                 trust=trust,
                 imported_at=imported_at,
+                folder_rules=folder_rules,
             )
             if not allow_private:
                 from vault.privacy import scan_privacy
@@ -294,6 +411,7 @@ def sync_obsidian_vault(
                     "raw_path": str(destination.relative_to(project_path)),
                     "last_seen_at": imported_at,
                     "status": "active",
+                    "folder_rule": _folder_policy_for(relative_text, folder_rules).get("pattern", ""),
                 }
                 continue
 
@@ -308,6 +426,7 @@ def sync_obsidian_vault(
                 "raw_path": str(destination.relative_to(project_path)),
                 "last_seen_at": imported_at,
                 "status": "active",
+                "folder_rule": _folder_policy_for(relative_text, folder_rules).get("pattern", ""),
             }
             if dry_run:
                 continue
@@ -353,6 +472,8 @@ def sync_obsidian_vault(
                 "vault_dir": str(obsidian_root),
                 "raw_subdir": safe_path_segment(raw_subdir, default="obsidian"),
                 "updated_at": imported_at,
+                "folder_rules_path": str(Path(folder_rules_path).expanduser()) if folder_rules_path else "",
+                "folder_rules_count": len(folder_rules),
                 "notes": manifest_notes,
             }
         )

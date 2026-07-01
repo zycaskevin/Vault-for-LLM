@@ -18,6 +18,8 @@ from typing import Optional
 from .db import VaultDB
 from .log import log
 
+_OBSIDIAN_WIKILINK_RE = re.compile(r"(?<!!)\[\[([^\]\n]+)\]\]")
+
 # ── 預設規則（YAML 不存在時的 fallback）────────────────────
 _DEFAULT_ENTITY_RULES = {
     "tool": ["ollama", "sqlite", "sqlite-vec", "onnx", "onnxruntime", "python",
@@ -117,13 +119,92 @@ class VaultGraph:
 
         # 批次推斷邊：共用實體的知識條目自動連邊
         edges_created = self._infer_all_edges_batch()
+        obsidian_edges_created = self._infer_obsidian_wikilink_edges()
 
         total_knowledge = len(rows)
         return {
             "entities_created": entities_created,
-            "edges_created": edges_created,
+            "edges_created": edges_created + obsidian_edges_created,
+            "obsidian_edges_created": obsidian_edges_created,
             "total_knowledge": total_knowledge,
         }
+
+    def _infer_obsidian_wikilink_edges(self) -> int:
+        """Infer graph edges from Obsidian-style wikilinks in imported notes."""
+        rows = self.db.conn.execute(
+            "SELECT id, title, source, content_raw FROM knowledge"
+        ).fetchall()
+        if not rows:
+            return 0
+
+        def keys_for(row) -> set[str]:
+            keys: set[str] = set()
+            title = str(row["title"] or "").strip()
+            source = str(row["source"] or "").strip()
+            for value in (title, source):
+                if value:
+                    keys.add(value.lower())
+            if source:
+                normalized = source.replace("\\", "/")
+                keys.add(normalized.lower())
+                if normalized.startswith("obsidian/"):
+                    without_prefix = normalized[len("obsidian/"):]
+                    keys.add(without_prefix.lower())
+                    keys.add(Path(without_prefix).with_suffix("").as_posix().lower())
+                keys.add(Path(normalized).stem.lower())
+                keys.add(Path(normalized).with_suffix("").as_posix().lower())
+            return {key for key in keys if key}
+
+        index: dict[str, int] = {}
+        for row in rows:
+            for key in keys_for(row):
+                index.setdefault(key, row["id"])
+
+        now = datetime.now(timezone.utc).isoformat()
+        existing_edges = {
+            (row["source_id"], row["target_id"], row["relation"])
+            for row in self.db.conn.execute(
+                "SELECT source_id, target_id, relation FROM edges WHERE relation = ?",
+                ("obsidian_link",),
+            ).fetchall()
+        }
+        pending_edges: set[tuple[int, int, str]] = set()
+        edges_to_add: list[tuple[int, int, str, float, int, str]] = []
+        for row in rows:
+            source_id = row["id"]
+            content = str(row["content_raw"] or "")
+            for match in _OBSIDIAN_WIKILINK_RE.finditer(content):
+                target = match.group(1).split("|", 1)[0].strip()
+                if not target:
+                    continue
+                candidates = [
+                    target,
+                    f"{target}.md",
+                    Path(target).stem,
+                    Path(target).with_suffix("").as_posix(),
+                ]
+                target_id = None
+                for candidate in candidates:
+                    target_id = index.get(candidate.replace("\\", "/").lower())
+                    if target_id:
+                        break
+                if not target_id or target_id == source_id:
+                    continue
+                edge_key = (source_id, target_id, "obsidian_link")
+                if edge_key in existing_edges or edge_key in pending_edges:
+                    continue
+                pending_edges.add(edge_key)
+                edges_to_add.append((source_id, target_id, "obsidian_link", 0.8, 1, now))
+
+        if not edges_to_add:
+            return 0
+        self.db.conn.executemany(
+            "INSERT OR IGNORE INTO edges(source_id, target_id, relation, weight, auto_inferred, created_at) "
+            "VALUES(?,?,?,?,?,?)",
+            edges_to_add,
+        )
+        self.db.conn.commit()
+        return len(edges_to_add)
 
     def _infer_all_edges_batch(self) -> int:
         """批次推斷所有共用實體的邊，用 INSERT 批次寫入。"""

@@ -682,6 +682,7 @@ def main(argv: list[str] | None = None):
                    help="外部記憶篩選，例如 summaries,decisions,preferences,project-knowledge")
     p.add_argument("--vault", help="Obsidian vault 目錄；僅用於 `vault import obsidian`")
     p.add_argument("--obsidian-raw-subdir", default="obsidian", help="Obsidian notes 寫入 raw/ 下的子目錄")
+    p.add_argument("--obsidian-rules", help="Obsidian folder rules YAML；預設讀取 .vault/obsidian-folder-rules.yaml")
     p.add_argument("--exclude", action="append", default=[], help="Obsidian 匯入時額外忽略的目錄或檔名，可重複")
     p.add_argument("--prune-missing", action="store_true", help="Obsidian 增量匯入時刪除已不在來源 vault 的 raw copy")
     p.add_argument("--dry-run", action="store_true", help="Obsidian 匯入時只列出新增/更新，不寫入")
@@ -703,6 +704,7 @@ def main(argv: list[str] | None = None):
     ep.add_argument("--min-trust", type=float, default=0.0, help="最低 trust 門檻")
     ep.add_argument("--source", choices=["db", "raw", "compiled"], default="db", help="來源（MVP 支援 db）")
     ep.add_argument("--dry-run", action="store_true", help="只列出將寫入的檔案，不建立檔案")
+    ep.add_argument("--include-review-inbox", action="store_true", help="同時輸出 Daily Report、候選記憶與同步狀態到 Obsidian _Inbox")
 
     ep = export_sub.add_parser("okf", help="匯出 OKF-style Markdown knowledge bundle")
     ep.add_argument("--bundle", required=True, help="OKF bundle 輸出目錄")

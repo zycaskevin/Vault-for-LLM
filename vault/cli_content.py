@@ -302,6 +302,7 @@ def cmd_import(args):
                 dry_run=args.dry_run,
                 allow_private=getattr(args, "allow_private", False),
                 prune_missing=getattr(args, "prune_missing", False),
+                folder_rules_path=getattr(args, "obsidian_rules", None),
             )
         except Exception as e:
             print(f"❌ Obsidian 匯入失敗: {e}")

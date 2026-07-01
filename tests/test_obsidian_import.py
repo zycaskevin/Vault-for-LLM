@@ -108,6 +108,59 @@ def test_sync_obsidian_vault_marks_and_prunes_missing_notes(tmp_path):
     assert "DeletedLater.md" not in manifest["notes"]
 
 
+def test_sync_obsidian_vault_applies_folder_rules_and_wikilinks(tmp_path):
+    from vault.import_obsidian import sync_obsidian_vault
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / ".vault").mkdir()
+    (project_dir / ".vault" / "obsidian-folder-rules.yaml").write_text(
+        "rules:\n"
+        "  - pattern: 'Personal/**'\n"
+        "    scope: private\n"
+        "    sensitivity: high\n"
+        "    category: profile\n"
+        "    tags: [personal, profile]\n"
+        "  - pattern: 'Public/**'\n"
+        "    scope: public\n"
+        "    sensitivity: low\n",
+        encoding="utf-8",
+    )
+
+    obsidian = tmp_path / "ObsidianVault"
+    (obsidian / "Personal").mkdir(parents=True)
+    (obsidian / "Personal" / "Arthur.md").write_text(
+        "---\n"
+        "scope: public\n"
+        "sensitivity: low\n"
+        "---\n"
+        "# Arthur\n\n"
+        "Connect this profile to [[Daily Report]] and [[Projects/Vault|Vault]].\n"
+        "![[Ignored Embed]]\n",
+        encoding="utf-8",
+    )
+
+    result = sync_obsidian_vault(project_dir=project_dir, vault_dir=obsidian)
+    assert result["added"] == 1
+
+    imported = project_dir / "raw" / "obsidian" / "Personal" / "Arthur.md"
+    content = imported.read_text(encoding="utf-8")
+    assert "scope: private" in content
+    assert "sensitivity: high" in content
+    assert "category: profile" in content
+    assert "- personal" in content
+    assert "- profile" in content
+    assert "obsidian_folder_rule: Personal/**" in content
+    assert "obsidian_links:" in content
+    assert "- Daily Report" in content
+    assert "- Projects/Vault" in content
+    assert "Ignored Embed" not in content.split("obsidian_links:", 1)[1].split("---", 1)[0]
+
+    manifest = json.loads((project_dir / ".vault" / "obsidian-import-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["folder_rules_count"] == 2
+    assert manifest["notes"]["Personal/Arthur.md"]["folder_rule"] == "Personal/**"
+
+
 def test_cmd_import_obsidian_compile_writes_vault_db(tmp_path, monkeypatch, capsys):
     from vault.cli import cmd_import
     from vault.db import VaultDB
@@ -156,6 +209,46 @@ def test_cmd_import_obsidian_compile_writes_vault_db(tmp_path, monkeypatch, caps
     assert row["category"] == "runbook"
     assert row["tags"] == "ops,obsidian"
     assert row["source"] == "obsidian/Runbook.md"
+
+
+def test_obsidian_wikilinks_build_graph_edges(tmp_path):
+    from vault.compiler import VaultCompiler
+    from vault.db import VaultDB
+    from vault.graph import VaultGraph
+    from vault.import_obsidian import sync_obsidian_vault
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    obsidian = tmp_path / "ObsidianVault"
+    obsidian.mkdir()
+    (obsidian / "Daily Report.md").write_text(
+        "# Daily Report\n\nReview candidate memories.\n",
+        encoding="utf-8",
+    )
+    (obsidian / "Project Plan.md").write_text(
+        "# Project Plan\n\nSee [[Daily Report]] before promoting candidates.\n",
+        encoding="utf-8",
+    )
+
+    sync_obsidian_vault(project_dir=project_dir, vault_dir=obsidian)
+    with VaultDB(str(project_dir / "vault.db")) as db:
+        compiler = VaultCompiler(project_dir, db=db, embed_provider=None)
+        compiler.compile()
+        result = VaultGraph(db).infer_all()
+
+        assert result["obsidian_edges_created"] == 1
+        edge = db.conn.execute(
+            "SELECT e.relation, s.title AS source_title, t.title AS target_title "
+            "FROM edges e "
+            "JOIN knowledge s ON s.id = e.source_id "
+            "JOIN knowledge t ON t.id = e.target_id "
+            "WHERE e.relation = ?",
+            ("obsidian_link",),
+        ).fetchone()
+
+    assert edge is not None
+    assert edge["source_title"] == "Project Plan"
+    assert edge["target_title"] == "Daily Report"
 
 
 def test_cmd_import_obsidian_json_output_is_machine_readable(tmp_path, monkeypatch, capsys):

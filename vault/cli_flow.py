@@ -607,6 +607,7 @@ def cmd_export(args):
             min_trust=args.min_trust,
             source=args.source,
             dry_run=args.dry_run,
+            include_review_inbox=getattr(args, "include_review_inbox", False),
         )
     except (FileNotFoundError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)

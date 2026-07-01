@@ -256,6 +256,63 @@ These jobs are incremental: Vault records Obsidian source hashes in
 missing source notes. Missing notes are not pruned from `raw/` unless the command
 explicitly uses `--prune-missing`.
 
+Obsidian folder rules can map human folder structure into Vault governance
+metadata. Create `.vault/obsidian-folder-rules.yaml` in the Vault project:
+
+```yaml
+rules:
+  - pattern: "Personal/**"
+    scope: private
+    sensitivity: high
+    category: personal
+    tags: [personal]
+  - pattern: "Projects/**"
+    scope: shared
+    sensitivity: medium
+    category: project
+    tags: [project]
+  - pattern: "Public/**"
+    scope: public
+    sensitivity: low
+    category: public
+    tags: [public]
+```
+
+Then import normally, or pass an explicit rules file:
+
+```bash
+vault import obsidian \
+  --vault /path/to/ObsidianVault \
+  --obsidian-rules ~/Vaults/project-memory/.vault/obsidian-folder-rules.yaml \
+  --compile
+```
+
+Folder rules are conservative: a private/high folder can make a note more
+restricted, but a single note frontmatter value should not accidentally make
+that folder less protected. Obsidian `[[wikilinks]]` are also preserved during
+import and become `obsidian_link` graph edges after `vault graph build`.
+
+To make Obsidian act as a human review surface, export the generated review
+inbox:
+
+```bash
+vault export obsidian \
+  --vault /path/to/ObsidianVault \
+  --include-review-inbox
+```
+
+This writes generated notes under `00-Vault-Knowledge/_Inbox/`:
+
+- `Daily Memory Report.md`
+- `Memory Candidates.md`
+- `Sync Status.md`
+
+These notes are review surfaces only. They do not promote candidates, prune
+missing notes, or write back into user-authored Obsidian notes. `Sync Status.md`
+also lists open remote candidate sync conflicts by conflict id, candidate id,
+knowledge id, and conflict type, but it does not include raw conflicting memory
+content.
+
 ### Headroom Context Compression
 
 Headroom is useful when the selected context is still too large after Vault

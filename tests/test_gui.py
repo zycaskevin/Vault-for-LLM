@@ -19,6 +19,7 @@ from vault.gui import (
     gui_daily_report,
     gui_documents,
     gui_entry,
+    gui_memory_migration,
     gui_overview,
     gui_read_range,
     gui_review_candidate,
@@ -441,6 +442,44 @@ def test_gui_search_rejects_non_positive_limit(tmp_path):
     assert gui_search(project, "console", limit=-10)["results"] == []
     assert gui_documents(project, limit=0)["documents"] == []
     assert gui_documents(project, limit=-10)["documents"] == []
+
+
+def test_gui_memory_migration_previews_and_imports_candidates(tmp_path):
+    project, _kid = _make_project(tmp_path)
+    source = tmp_path / "chatbox.json"
+    source.write_text(
+        '{"memories":[{"title":"Use candidate-first import","content":"Decision: external memory should enter candidates because imported archives may include stale or private facts.","source_system":"chatbox"}]}',
+        encoding="utf-8",
+    )
+
+    preview = gui_memory_migration(project, source=str(source), source_format="auto", write_candidates=False)
+
+    assert preview["status"] == "preview"
+    assert preview["candidate_count"] == 1
+    assert preview["created_count"] == 0
+    assert preview["safety"]["writes_active_knowledge"] is False
+    with VaultDB(project / "vault.db") as db:
+        assert db.list_memory_candidates(status=None) == []
+
+    imported = gui_memory_migration(project, source=str(source), source_format="auto", write_candidates=True)
+
+    assert imported["status"] == "ok"
+    assert imported["created_count"] == 1
+    assert imported["gui"]["write_candidates"] is True
+    with VaultDB(project / "vault.db") as db:
+        candidates = db.list_memory_candidates(status=None)
+    assert len(candidates) == 1
+    assert candidates[0]["source"] == "migration:chatbox"
+
+
+def test_gui_memory_migration_reports_missing_source(tmp_path):
+    project, _kid = _make_project(tmp_path)
+
+    payload = gui_memory_migration(project, source=str(tmp_path / "missing.json"))
+
+    assert payload["status"] == "error"
+    assert payload["error_count"] == 1
+    assert payload["errors"][0]["code"] == "source_missing"
 
 
 def test_gui_missing_or_invalid_project(tmp_path):

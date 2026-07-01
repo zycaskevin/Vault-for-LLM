@@ -660,10 +660,30 @@ Governance details: [docs/memory_governance.md](docs/memory_governance.md).
 | n8n | generated Supabase sync and remote-reader workflow templates |
 | Coze or hosted agents | Supabase read-only RPC and OpenAPI template |
 | Obsidian | import existing notes, export compiled Vault knowledge |
+| Other memory tools / chat exports | candidate-first migration from Markdown, JSON, CSV, transcript, or OKF |
 | Headroom | optional compression after Vault has narrowed context |
 
 Start here: [docs/agent_integrations.md](docs/agent_integrations.md).
 Agent-first usage guide: [docs/agent_first_usage.md](docs/agent_first_usage.md).
+
+## Memory Migration
+
+Vault can absorb memory from other tools without trusting it blindly. Start with
+a preview:
+
+```bash
+vault import memory --source ~/Downloads/chatbox-export.json --format auto --dry-run
+```
+
+When the preview looks right, import it as review candidates:
+
+```bash
+vault import memory --source ~/Downloads/chatbox-export.json --write-candidates --only summaries,decisions,preferences
+```
+
+This does not write active memory. The imported items enter the same candidate
+queue as agent-proposed memories, pass privacy / duplicate / metadata / quality
+gates, and still need review before promotion.
 
 ## Optional Supabase Sharing
 

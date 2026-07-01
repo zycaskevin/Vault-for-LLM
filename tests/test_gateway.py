@@ -3,7 +3,13 @@ from __future__ import annotations
 import http.client
 from http.server import ThreadingHTTPServer
 import json
+import os
+from pathlib import Path
+import socket
+import subprocess
+import sys
 import threading
+import time
 
 import pytest
 
@@ -18,6 +24,7 @@ from vault.gateway import (
     make_gateway_handler,
     run_gateway,
 )
+from vault.agent_setup_remote_server import write_remote_server_deploy_templates
 
 
 def _project(tmp_path):
@@ -58,6 +65,30 @@ def _post_json(host, port, path, payload, *, token="secret"):
     body = response.read()
     conn.close()
     return response.status, json.loads(body.decode("utf-8"))
+
+
+def _free_local_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def _wait_for_remote_server(url: str, token: str, *, timeout: float = 10.0) -> None:
+    deadline = time.time() + timeout
+    last_error: Exception | None = None
+    while time.time() < deadline:
+        try:
+            conn = http.client.HTTPConnection(url.replace("http://", ""), timeout=1)
+            conn.request("GET", "/health", headers={"Authorization": f"Bearer {token}"})
+            response = conn.getresponse()
+            response.read()
+            conn.close()
+            if response.status == 200:
+                return
+        except Exception as exc:
+            last_error = exc
+        time.sleep(0.1)
+    raise AssertionError(f"remote server did not become ready: {last_error}")
 
 
 def test_gateway_http_requires_token_and_serves_health(tmp_path):
@@ -258,6 +289,94 @@ def test_gateway_http_tolerates_bad_numeric_fields(tmp_path):
 def test_gateway_no_auth_requires_localhost(tmp_path):
     with pytest.raises(ValueError):
         run_gateway(tmp_path, host="0.0.0.0", no_auth=True)
+
+
+def test_remote_server_cli_and_generated_validation_script_end_to_end(tmp_path):
+    project, _public_id, _private_id = _project(tmp_path)
+    templates = write_remote_server_deploy_templates(output_dir=tmp_path / "templates", project_dir=project)
+    validation_script = Path(templates["remote_clients"]["validation_script"])
+    port = _free_local_port()
+    url = f"http://127.0.0.1:{port}"
+    token = "stable-test-token"
+    env = os.environ.copy()
+    env["VAULT_GATEWAY_TOKEN"] = token
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "vault.cli",
+            "remote-server",
+            "serve",
+            "--project-dir",
+            str(project),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+    try:
+        _wait_for_remote_server(url, token)
+        read_only = subprocess.run(
+            [
+                sys.executable,
+                str(validation_script),
+                "--agent-id",
+                "codex",
+                "--query",
+                "runbook",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env={**env, "VAULT_REMOTE_URL": url},
+        )
+        read_payload = json.loads(read_only.stdout)
+        assert read_payload["ok"] is True
+        assert read_payload["submitted_candidate"] is False
+        assert [item["name"] for item in read_payload["checks"]] == ["health", "openapi", "search"]
+
+        write_smoke = subprocess.run(
+            [
+                sys.executable,
+                str(validation_script),
+                "--agent-id",
+                "codex",
+                "--query",
+                "runbook",
+                "--submit-candidate",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env={**env, "VAULT_REMOTE_URL": url},
+        )
+        write_payload = json.loads(write_smoke.stdout)
+        assert write_payload["ok"] is True
+        assert write_payload["submitted_candidate"] is True
+        assert [item["name"] for item in write_payload["checks"]] == [
+            "health",
+            "openapi",
+            "search",
+            "submit_candidate",
+        ]
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+    with VaultDB(project / "vault.db") as db:
+        candidates = db.list_memory_candidates(status=None)
+        active_count = db.conn.execute("SELECT count(*) AS count FROM knowledge").fetchone()["count"]
+    assert len(candidates) == 1
+    assert candidates[0]["source"] == "gateway:codex"
+    assert active_count == 2
 
 
 def test_remote_server_serve_requires_stable_token(tmp_path, capsys, monkeypatch):

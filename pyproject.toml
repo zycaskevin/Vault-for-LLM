@@ -56,6 +56,9 @@ vault-mcp = "vault.mcp:main"
 [tool.setuptools.packages.find]
 include = ["vault*", "scripts*"]
 
+[tool.setuptools.package-data]
+vault = ["assets/*.html"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"

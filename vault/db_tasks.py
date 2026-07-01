@@ -74,6 +74,34 @@ def init_task_tables(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_task_evidence_task_id ON task_evidence_refs(task_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_task_evidence_ref_type ON task_evidence_refs(ref_type)")
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS task_handoffs (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            claimed_at TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'pending',
+            from_agent TEXT NOT NULL DEFAULT '',
+            to_agent TEXT NOT NULL DEFAULT '',
+            claimed_by TEXT NOT NULL DEFAULT '',
+            message TEXT NOT NULL DEFAULT '',
+            markdown TEXT NOT NULL DEFAULT '',
+            source_ref TEXT NOT NULL DEFAULT '',
+            scope TEXT NOT NULL DEFAULT 'project',
+            sensitivity TEXT NOT NULL DEFAULT 'low',
+            owner_agent TEXT NOT NULL DEFAULT '',
+            allowed_agents TEXT NOT NULL DEFAULT '[]',
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            FOREIGN KEY (task_id) REFERENCES task_ledger(id)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_task_handoffs_task_id ON task_handoffs(task_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_task_handoffs_status ON task_handoffs(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_task_handoffs_to_agent ON task_handoffs(to_agent)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_task_handoffs_from_agent ON task_handoffs(from_agent)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_task_handoffs_updated_at ON task_handoffs(updated_at)")
+
 
 def _ensure_task_column(conn: sqlite3.Connection, name: str, definition: str) -> None:
     columns = {row[1] for row in conn.execute("PRAGMA table_info(task_ledger)").fetchall()}

@@ -461,7 +461,7 @@ def write_supabase_sync_templates(
                 "Review `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` before enabling any scheduled job.",
                 "The local SQLite database remains the source of truth.",
                 "Use `supabase-realtime-sync.sh` for near-realtime local-to-Supabase push sync.",
-                "This is not bidirectional sync: Supabase remains a read copy unless you build a separate reviewed merge workflow.",
+                "This is not active-knowledge multi-master sync: Supabase is a reviewed read copy plus optional candidate request inbox.",
                 "",
             ]
         ),

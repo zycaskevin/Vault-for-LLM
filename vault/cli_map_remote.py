@@ -166,6 +166,79 @@ def cmd_remote(args):
         _print_remote_status(payload)
         return
 
+    if args.remote_action in {"submit-candidate", "pull-candidates"}:
+        from vault.remote_candidates import (
+            pull_remote_candidate_requests,
+            submit_remote_candidate_request,
+        )
+
+        project_dir = find_project_dir()
+        action = args.remote_action
+        if action == "submit-candidate":
+            payload = submit_remote_candidate_request(
+                title=args.title,
+                content=args.content,
+                reason=args.reason or "",
+                from_agent=args.from_agent or "",
+                category=args.category or "general",
+                tags=args.tags or "",
+                trust=args.trust,
+                scope=args.scope or "project",
+                sensitivity=args.sensitivity or "low",
+                owner_agent=args.owner_agent or "",
+                allowed_agents=args.allowed_agents or "",
+                memory_type=args.memory_type or "remote_candidate",
+                source_ref=args.source_ref or "",
+                idempotency_key=args.idempotency_key or "",
+            )
+        else:
+            if args.auto_promote_low_risk and not args.apply:
+                payload = {
+                    "ok": False,
+                    "error": "apply_required",
+                    "message": "--auto-promote-low-risk requires --apply because it can write active knowledge.",
+                }
+                if args.json or args.pretty:
+                    print(json.dumps(payload, ensure_ascii=False, indent=2 if args.pretty else None))
+                    return
+                print(f"error: {payload['error']}: {payload['message']}", file=sys.stderr)
+                raise SystemExit(2)
+            payload = pull_remote_candidate_requests(
+                project_dir,
+                agent_id=args.agent_id or "",
+                limit=args.limit,
+                apply=bool(args.apply),
+                auto_promote_low_risk=bool(args.auto_promote_low_risk),
+            )
+
+        if args.json or args.pretty:
+            print(json.dumps(payload, ensure_ascii=False, indent=2 if args.pretty else None))
+            return
+        if payload.get("error"):
+            print(f"error: {payload['error']}: {payload.get('message', '')}", file=sys.stderr)
+            raise SystemExit(2)
+        if action == "submit-candidate":
+            print(f"remote candidate submitted: {payload.get('id', '')} ({payload.get('status', 'submitted')})")
+        else:
+            mode = "applied" if payload.get("apply") else "preview"
+            print(
+                f"remote candidate pull: {mode}, "
+                f"{payload.get('count', 0)} request(s), "
+                f"imported={payload.get('imported_count', 0)}, "
+                f"skipped={payload.get('skipped_count', 0)}"
+            )
+            auto_promote = payload.get("auto_promote") or {}
+            if auto_promote.get("enabled"):
+                print(
+                    "  auto-promote: "
+                    f"{auto_promote.get('status', 'not_run')}, "
+                    f"promoted={auto_promote.get('promoted_count', 0)}, "
+                    f"eligible={auto_promote.get('would_promote_count', 0)}"
+                )
+            for item in payload.get("requests", []):
+                print(f"  - {item.get('id', '')} {item.get('title', '')} [{item.get('status', '')}]")
+        return
+
     from vault.mcp import (
         _vault_remote_doctor_payload,
         _vault_remote_map_show_payload,
@@ -239,7 +312,7 @@ def cmd_remote(args):
             limit=args.limit,
         )
     else:
-        print("用法: vault remote {search|map|read|smoke|doctor}")
+        print("用法: vault remote {search|map|read|smoke|doctor|submit-candidate|pull-candidates}")
         return
 
     if args.json or args.pretty:
@@ -301,7 +374,7 @@ def _print_remote_status(payload: dict) -> None:
     print("Vault remote status")
     print(f"- Project: {payload.get('project_dir', '')}")
     print("- Source of truth: local vault.db")
-    print("- Remote model: Supabase read-only copy, not real-time bidirectional sync")
+    print("- Remote model: Supabase reviewed read copy plus candidate request inbox; active memory is not multi-master sync")
     print(f"- Local DB: {'ok' if local.get('db_exists') else 'missing'} ({local.get('knowledge_count', 0)} knowledge item(s))")
     print(
         "- Supabase env: "

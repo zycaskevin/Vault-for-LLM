@@ -80,6 +80,8 @@ from .automation_briefing import (
     _fleet_health_status,
     _ledger_activity_event,
     _review_summary_cards,
+    _sync_review_items,
+    _sync_summary,
 )
 from .automation_lifecycle import (
     automation_doctor,
@@ -591,8 +593,11 @@ def automation_brief(
     policy = load_policy(project)
     usage: dict[str, Any] = {}
     forgetting_strategy: dict[str, Any] = _empty_forgetting_strategy()
+    sync_health: dict[str, Any] = {}
     db_path = project / "vault.db"
     if db_path.exists():
+        from .multi_host import sync_status
+
         with VaultDB(db_path) as db:
             usage = db.usage_stats(limit=max(1, min(int(limit or 5), 50)))
             archive_preview = db.archive_expired_knowledge(
@@ -602,19 +607,35 @@ def automation_brief(
                 protected_scopes=_policy_list(policy, "protected_scopes"),
                 protected_sensitivities=_policy_list(policy, "protected_sensitivities"),
             )
+            sync_health = sync_status(db, limit=review_limit)
         forgetting_strategy = _brief_forgetting_strategy(usage, archive_preview)
+    summary = _brief_summary(activity, inbox, evaluation, usage, forgetting_strategy)
+    summary.update(_sync_summary(sync_health))
+    human_review = _brief_human_review(inbox, activity, limit=review_limit)
+    sync_items = _sync_review_items(sync_health, limit=review_limit)
+    if sync_items:
+        merged_items = [*sync_items, *(human_review.get("items") or [])]
+        human_review = {
+            **human_review,
+            "items": merged_items[: max(1, min(int(review_limit or 5), 20))],
+            "principle": (
+                "Show remote sync conflicts and the smallest set of memory decisions a human should inspect; "
+                "keep everything else agent-handled."
+            ),
+        }
 
     payload = {
         "action": "brief",
         "generated_at": generated_at,
         "project_dir": str(project),
         "status": "completed" if db_path.exists() else "blocked",
-        "summary": _brief_summary(activity, inbox, evaluation, usage, forgetting_strategy),
+        "summary": summary,
         "learning": _brief_learning(evaluation, limit=limit),
         "memory_weights": _brief_memory_weights(usage, limit=limit),
         "forgetting_strategy": forgetting_strategy,
+        "sync_health": sync_health,
         "agent_health": _brief_agent_health(project),
-        "human_review_5_percent": _brief_human_review(inbox, activity, limit=review_limit),
+        "human_review_5_percent": human_review,
         "activity": {
             "totals": activity.get("totals", {}),
             "events": (activity.get("events") or [])[: max(1, min(int(review_limit or 5), 20))],
@@ -1068,6 +1089,13 @@ def automation_fleet_health(
         write_health=False,
     )
     agent_health = _brief_agent_health(project)
+    sync_health: dict[str, Any] = {}
+    db_path = project / "vault.db"
+    if db_path.exists():
+        from .multi_host import sync_status
+
+        with VaultDB(db_path) as db:
+            sync_health = sync_status(db, limit=limit)
     update_health = _automation_update_distribution_health(
         max_status_age_minutes=max_status_age_minutes,
     )
@@ -1079,7 +1107,9 @@ def automation_fleet_health(
         project_agent_count=len(project_agents),
         update_ok=bool(update_health.get("ok", False)),
         update_status_exists=bool(update_health.get("status_exists", False)),
+        open_sync_conflicts=int((sync_health.get("counts") or {}).get("open_conflicts") or 0),
     )
+    sync_counts = sync_health.get("counts") or {}
     payload = {
         "action": "fleet-health",
         "generated_at": generated_at,
@@ -1096,6 +1126,10 @@ def automation_fleet_health(
             "update_distribution_ok": bool(update_health.get("ok", False)),
             "agents_needing_attention": len(update_health.get("agents_needing_attention") or []),
             "agents_missing_from_status": len(update_health.get("agents_missing_from_status") or []),
+            "sync_status": sync_health.get("status", "idle"),
+            "open_sync_conflicts": int(sync_counts.get("open_conflicts") or 0),
+            "sync_revisions": int(sync_counts.get("revisions") or 0),
+            "sync_audit_events": int(sync_counts.get("audit_events") or 0),
         },
         "agents": project_agents[: max(1, min(int(limit or 5), 50))],
         "learning_health": {
@@ -1113,10 +1147,12 @@ def automation_fleet_health(
             "agents_missing_from_status": update_health.get("agents_missing_from_status") or [],
             "recommended_actions": (update_health.get("recommended_actions") or [])[: max(1, min(int(limit or 5), 20))],
         },
+        "sync_health": sync_health,
         "cards": _fleet_health_cards(
             learning=learning,
             agent_health=agent_health,
             update_health=update_health,
+            sync_health=sync_health,
             project_agent_count=len(project_agents),
             limit=limit,
         ),

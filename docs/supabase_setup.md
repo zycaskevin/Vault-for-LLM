@@ -7,6 +7,8 @@ Add Supabase when the memory needs to cross a machine or runtime boundary:
 
 - different agents run on different computers
 - Coze, n8n, or another hosted workflow needs remote reads
+- remote agents need to submit reviewable memory candidates back to the local
+  vault owner
 - a team wants a synced copy of reviewed project memory
 - a mobile, home, robot, or other future interface should read the same
   approved memory layer
@@ -48,15 +50,55 @@ then runs the same local-to-Supabase sync. It writes
 `reports/supabase-sync-latest.json` so `vault remote status` and Agent
 dashboards can tell whether the remote copy is fresh.
 
-This is not bidirectional sync. Supabase remains a read copy. Keep
+This is not bidirectional active-knowledge sync. Supabase remains a reviewed
+memory read copy, plus an optional candidate request inbox. Keep
 `SUPABASE_SERVICE_ROLE_KEY` only on the trusted sync host, never inside Coze,
 browser clients, mobile clients, or public workflow endpoints.
+
+When remote hosts need to contribute memory, use candidate sync instead of
+direct active-memory writes:
+
+```bash
+vault remote submit-candidate \
+  --from-agent hosted-agent \
+  --title "Deployment lesson" \
+  --content "..." \
+  --trust 0.8
+
+vault remote pull-candidates --apply --json
+vault sync conflicts --json
+vault sync audit --json
+```
+
+This creates a local audit trail and can detect simple conflicts before a
+reviewed candidate becomes active knowledge. It is the safe bidirectional path:
+remote machines can suggest memory, while the trusted local vault remains the
+source of truth.
 
 Default sync does not upload full `content_raw`. Add `--include-content` only
 when the user intentionally wants full local content copied to Supabase.
 
 Privacy gate failures are expected. Clean the source note and recompile instead
 of bypassing the gate.
+
+## Multi-Host Roadmap Boundary
+
+Vault currently supports three separate sharing modes:
+
+| Mode | Status | What it means |
+|---|---|---|
+| Local shared vault | usable | Agents on the same machine can point to the same `vault.db` and use local governance filters. |
+| Supabase read copy | usable | Reviewed local knowledge can be pushed to Supabase for remote read-only access. |
+| Remote candidate inbox | usable-alpha | Remote hosts can submit candidate requests; a trusted host pulls them into local review. |
+
+The first multi-host safety surface is local revision/conflict/audit tracking.
+`vault sync revisions`, `vault sync conflicts`, and `vault sync audit` show what
+remote candidates arrived, what changed locally, and what needs a human or
+trusted agent decision.
+
+True multi-master active-knowledge writing is not enabled yet. That future
+phase needs a stronger revision graph, conflict resolver, rollback plan, and
+audit policy before multiple machines can safely overwrite reviewed knowledge.
 
 ## Agent-Guided Setup
 
@@ -239,14 +281,82 @@ vault remote doctor --agent-id remote-agent --query "deployment SOP" --json
 ```
 
 `vault remote status` is an offline safety check. It confirms that the local
-SQLite vault remains the source of truth, Supabase is a read-only copy, sync is
-not real-time bidirectional, and remote freshness is unknown unless a local sync
-report exists. `vault remote smoke` checks the basic search RPC. `vault remote
-doctor` checks the full remote-reader path: search, readable-entry RPCs,
+SQLite vault remains the source of truth, Supabase is a reviewed read copy plus
+candidate request inbox, active memory sync is not real-time bidirectional, and
+remote freshness is unknown unless a local sync report exists. `vault remote
+smoke` checks the basic search RPC. `vault remote doctor` checks the full
+remote-reader path: search, readable-entry RPCs,
 Document Map nodes, claims, content access, map, and bounded read. It returns
 status checks and next actions without printing raw synced content.
 
 Remote readers must not receive `SUPABASE_SERVICE_ROLE_KEY`.
+
+## Safe Candidate Requests
+
+Phase 1 bidirectional sync is candidate-first. A remote host can propose memory,
+but it cannot directly write active knowledge.
+
+Remote or hosted agent:
+
+```bash
+export SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+export SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+vault remote submit-candidate \
+  --from-agent remote-agent \
+  --title "Deployment lesson" \
+  --content "The deploy workflow should run smoke tests before publishing." \
+  --reason "Observed during the remote deploy session" \
+  --trust 0.75 \
+  --scope shared \
+  --sensitivity low \
+  --json
+```
+
+Trusted local sync host:
+
+```bash
+export SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+export SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
+vault remote pull-candidates --limit 20 --json
+vault remote pull-candidates --limit 20 --apply --json
+```
+
+`pull-candidates --apply` writes to local `memory_candidates`, not
+`knowledge`. The normal candidate gates decide whether the item is clean enough
+to review, and `vault promote <candidate_id> --confirm` is still the step that
+turns reviewed memory into active knowledge.
+
+If the local trusted host has explicitly enabled low-risk auto-promotion in
+`automation_policy.yaml`, it can merge only this pull's low-risk candidates:
+
+```yaml
+auto_promote_low_risk_candidates: true
+auto_promote_allowed_sources:
+  - remote_write_request
+auto_promote_allowed_memory_types:
+  - remote_candidate
+auto_promote_allowed_scopes:
+  - shared
+auto_promote_allowed_sensitivities:
+  - low
+auto_promote_min_trust: 0.8
+auto_promote_requires_source_ref: true
+```
+
+Then run:
+
+```bash
+vault remote pull-candidates --apply --auto-promote-low-risk --json
+```
+
+This still runs the local privacy, duplicate, metadata, and quality gates. It
+only promotes candidates imported by that pull, and leaves low-trust,
+conflicting, sensitive, or weak candidates in the review queue.
+
+The SQL in `docs/supabase_read_policy.sql` creates
+`vault_memory_write_requests` and the guarded `vault_submit_memory_request`
+RPC. Hosted agents can execute the RPC with anon/authenticated credentials but
+cannot read or update the request table directly.
 
 ## Advanced RLS
 

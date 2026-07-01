@@ -487,6 +487,13 @@ def cmd_automation(
             f"protected={forgetting.get('protected_expired_count', 0)}"
         )
         print(
+            "  sync: "
+            f"status={summary.get('sync_status', 'idle')} "
+            f"open_conflicts={summary.get('open_sync_conflicts', 0)} "
+            f"revisions={summary.get('sync_revisions', 0)} "
+            f"audit_events={summary.get('sync_audit_events', 0)}"
+        )
+        print(
             "  cold-store: "
             f"preview={summary.get('cold_store_preview', 0)} "
             f"applied={summary.get('cold_store_applied', 0)}"
@@ -636,6 +643,13 @@ def cmd_automation(
             f"ok={summary.get('update_distribution_ok', False)} "
             f"attention={summary.get('agents_needing_attention', 0)} "
             f"missing={summary.get('agents_missing_from_status', 0)}"
+        )
+        print(
+            "  sync: "
+            f"status={summary.get('sync_status', 'idle')} "
+            f"open_conflicts={summary.get('open_sync_conflicts', 0)} "
+            f"revisions={summary.get('sync_revisions', 0)} "
+            f"audit_events={summary.get('sync_audit_events', 0)}"
         )
         if payload.get("fleet_health_path"):
             print(f"  fleet health: {payload.get('fleet_health_path')}")

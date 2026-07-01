@@ -37,7 +37,7 @@ vault gui --project-dir ~/Vaults/my-project --no-auth --no-open
 
 | Area | Purpose |
 |---|---|
-| Left | Daily report, project status, active Task Ledger items, candidate review queue, filterable document list |
+| Left | Daily report, project status, multi-Agent sync health, active Task Ledger items, candidate review queue, filterable document list |
 | Center | Memory Control Center by default, then search results, task handoff, candidate review, and bounded evidence reader |
 | Right | Task details, or Document Map, graph, timeline, governance, and usage metadata for the selected memory |
 
@@ -63,6 +63,11 @@ memory. Selecting a task shows plan, completed work, decisions, blockers, next
 actions, evidence refs, recent task events, and compact handoff Markdown. It is
 read-only in the GUI; use CLI/MCP to update task state.
 
+The Multi-Agent Dashboard includes a read-only Sync Health card. It shows open
+conflict count, revision count, and audit event count for remote candidate sync.
+It does not show raw candidate content or private memory. Use CLI/MCP to resolve
+conflicts after reviewing the relevant candidate and source evidence.
+
 The Map tab is the first structured-reading slice. It shows Document Map
 sections and visible claims for the selected memory. Clicking a section opens
 that exact line range in the bounded evidence reader instead of loading the
@@ -80,6 +85,8 @@ explicit candidate review endpoint, which is separated as a `POST` action:
 | Endpoint | Purpose |
 |---|---|
 | `/api/overview` | Stats, automation brief, review inbox, recent memory |
+| `/api/agent-dashboard` | Connected Agents, recent sync artifacts, review cards, and Sync Health |
+| `/api/sync-status` | Read-only local revision/conflict/audit summary for multi-host candidate sync |
 | `/api/tasks?status=active` | Compact Task Ledger list |
 | `/api/task/<id>` | One Task Ledger item with handoff Markdown |
 | `/api/candidates` | Candidate queue without full content |

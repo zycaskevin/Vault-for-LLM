@@ -14,6 +14,7 @@ from vault.mcp_skill import (
     MCP_SKILL_TOOLS,
     MCP_SKILL_WRITE_TOOL_NAMES,
 )
+from vault.mcp_sync import MCP_SYNC_TOOL_NAMES, MCP_SYNC_TOOLS
 from vault.mcp_task import MCP_TASK_TOOL_NAMES, MCP_TASK_TOOLS
 
 
@@ -491,6 +492,7 @@ TOOLS = [
             },
         }
     },
+    *MCP_SYNC_TOOLS,
     *MCP_MEMORY_LOOP_TOOLS,
     *MCP_TASK_TOOLS,
     *MCP_SKILL_TOOLS,
@@ -868,6 +870,7 @@ TOOL_PROFILES = {
         "vault_memory_promote",
         "vault_memory_review",
         "vault_memory_candidates",
+        *MCP_SYNC_TOOL_NAMES,
         *MCP_TASK_TOOL_NAMES,
         *MCP_SKILL_READ_TOOL_NAMES,
         *MCP_SKILL_SYNC_TOOL_NAMES,
@@ -902,6 +905,7 @@ TOOL_PROFILES = {
         "vault_memory_promote",
         "vault_memory_review",
         "vault_memory_candidates",
+        *MCP_SYNC_TOOL_NAMES,
         *MCP_TASK_TOOL_NAMES,
         *MCP_SKILL_READ_TOOL_NAMES,
         *MCP_SKILL_SYNC_TOOL_NAMES,

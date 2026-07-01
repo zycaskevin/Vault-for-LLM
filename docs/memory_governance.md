@@ -50,6 +50,12 @@ Document Map nodes. It should not copy raw private content into shared task
 state. When a task phase ends, extract only reusable lessons into Vault
 candidates; promotion into `L0` through `L3` still requires the normal gates.
 
+Directed handoffs are part of Task Ledger, not a new memory layer. They let one
+agent address a compact task snapshot to another agent and let the receiver
+claim it. The handoff packet should contain task state, a sender note, and
+shared evidence references. It must not copy another agent's private identity,
+style notes, or raw private conversation memory into the shared task inbox.
+
 Recommended task-runtime shape:
 
 ```yaml
@@ -120,6 +126,38 @@ Without an explicit policy, legacy local reads remain unchanged. With a policy:
   `allowed_agents`.
 - `max_sensitivity` is a hard cap; for example `medium` excludes `high` and
   `restricted` entries.
+
+## Multi-Host Candidate Sync
+
+For multiple machines, treat remote writes as suggestions first. A hosted or
+remote agent should submit a candidate request, not overwrite reviewed active
+knowledge:
+
+```bash
+vault remote submit-candidate --from-agent remote-agent --title "..." --content "..."
+```
+
+A trusted local sync host then pulls those requests into the normal candidate
+queue:
+
+```bash
+vault remote pull-candidates --apply
+vault sync conflicts
+vault sync audit
+```
+
+This keeps the same safety boundary as local agent work:
+
+- remote agents can contribute reusable lessons;
+- local gates still scan privacy, duplication, metadata, and quality;
+- low-risk auto-merge is policy-gated and optional;
+- conflicts are visible before they become active memory;
+- audit events show what arrived, what was promoted, and who marked a conflict
+  resolved.
+
+Do not use Supabase service-role keys in hosted agents, mobile clients, browser
+clients, or public workflow endpoints. Those clients should use the guarded RPC
+for candidate submission or read-only memory access.
 
 ## User Profile Guidance
 

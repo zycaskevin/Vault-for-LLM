@@ -92,6 +92,7 @@ from .cli_quality import (
     cmd_freshness,
     cmd_search_qa,
 )
+from .cli_sync import cmd_sync
 from .gui import DEFAULT_HOST, DEFAULT_PORT, cmd_gui
 
 
@@ -430,6 +431,27 @@ def main(argv: list[str] | None = None):
     tp.add_argument("task_id", help="task id")
     add_task_output_args(tp)
 
+    tp = task_sub.add_parser("send-handoff", help="送出指定 Agent 可接手的 handoff packet")
+    tp.add_argument("task_id", help="task id")
+    tp.add_argument("--handoff-id", default="", help="自訂 handoff id；省略時自動產生")
+    tp.add_argument("--from-agent", default="", help="交接來源 Agent")
+    tp.add_argument("--to-agent", required=True, help="接手 Agent")
+    tp.add_argument("--message", default="", help="給接手 Agent 的短訊息")
+    tp.add_argument("--source-ref", default="", help="交接來源，例如 session、PR、commit")
+    add_task_output_args(tp)
+
+    tp = task_sub.add_parser("inbox", help="列出指定 Agent 的 handoff inbox")
+    tp.add_argument("--agent-id", default="", help="接手 Agent；省略時列出所有可見 handoff")
+    tp.add_argument("--status", choices=["pending", "claimed", "closed", "archived", "all"], default="pending")
+    tp.add_argument("--limit", "-n", type=_positive_int, default=20)
+    add_task_output_args(tp)
+
+    tp = task_sub.add_parser("claim-handoff", help="標記 handoff 已由 Agent 接手")
+    tp.add_argument("handoff_id", help="handoff id")
+    tp.add_argument("--agent-id", required=True, help="接手 Agent id")
+    tp.add_argument("--note", default="", help="接手備註")
+    add_task_output_args(tp)
+
     tp = task_sub.add_parser("complete", help="完成 Task Ledger working set")
     tp.add_argument("task_id", help="task id")
     tp.add_argument("--summary", default="", help="完成摘要")
@@ -725,8 +747,8 @@ def main(argv: list[str] | None = None):
     mp.add_argument("query", help="查詢文字")
     mp.add_argument("--limit", "-n", type=_positive_int, default=10)
 
-    # remote — optional Supabase read-only navigation
-    p = sub.add_parser("remote", help="Supabase 遠端唯讀搜尋與 bounded read")
+    # remote — optional Supabase read navigation and candidate request sync
+    p = sub.add_parser("remote", help="Supabase 遠端讀取與候選同步")
     remote_sub = p.add_subparsers(dest="remote_action", help="Remote 子命令")
 
     def add_remote_output_args(rp):
@@ -781,6 +803,68 @@ def main(argv: list[str] | None = None):
     rp.add_argument("--max-sensitivity", choices=["low", "medium", "high", "restricted"], default="medium")
     rp.add_argument("--limit", "-n", type=_positive_int, default=3)
     add_remote_output_args(rp)
+
+    rp = remote_sub.add_parser(
+        "submit-candidate",
+        help="送出遠端記憶候選請求；不會直接寫入正式知識",
+    )
+    rp.add_argument("--title", required=True, help="候選記憶標題")
+    rp.add_argument("--content", required=True, help="候選記憶內容")
+    rp.add_argument("--reason", default="", help="為什麼值得記住")
+    rp.add_argument("--from-agent", default="", help="提交此候選的 Agent ID")
+    rp.add_argument("--category", default="general", help="分類")
+    rp.add_argument("--tags", default="", help="標籤，逗號分隔")
+    rp.add_argument("--trust", type=float, default=0.5, help="遠端候選信任分數 0.0-1.0")
+    rp.add_argument("--scope", choices=["project", "shared", "public"], default="project")
+    rp.add_argument("--sensitivity", choices=["low", "medium"], default="low")
+    rp.add_argument("--owner-agent", default="", help="建議 owner Agent")
+    rp.add_argument("--allowed-agents", default="", help="授權 Agent，逗號分隔")
+    rp.add_argument("--memory-type", default="remote_candidate", help="候選記憶類型")
+    rp.add_argument("--source-ref", default="", help="外部來源引用")
+    rp.add_argument("--idempotency-key", default="", help="避免重複提交的穩定鍵")
+    add_remote_output_args(rp)
+
+    rp = remote_sub.add_parser(
+        "pull-candidates",
+        help="從 Supabase 拉回遠端候選請求；預設只預覽，--apply 才寫入本機候選池",
+    )
+    rp.add_argument("--agent-id", default="", help="執行拉取的本機/授權 Agent ID")
+    rp.add_argument("--limit", "-n", type=_positive_int, default=20)
+    rp.add_argument("--apply", action="store_true", help="寫入本機 memory_candidates")
+    rp.add_argument(
+        "--auto-promote-low-risk",
+        action="store_true",
+        help="拉回後依 automation_policy.yaml 只自動 promote 低風險候選；需搭配 --apply",
+    )
+    add_remote_output_args(rp)
+
+    # sync — local revision/conflict/audit safety surfaces
+    p = sub.add_parser("sync", help="多主機同步安全狀態：revision、conflict、audit")
+    sync_sub = p.add_subparsers(dest="sync_action", help="Sync 子命令")
+
+    def add_sync_output_args(sp):
+        sp.add_argument("--json", action="store_true", help="輸出 JSON")
+        sp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+
+    sp = sync_sub.add_parser("revisions", help="列出本機 revision graph 事件")
+    sp.add_argument("--limit", "-n", type=_positive_int, default=20)
+    add_sync_output_args(sp)
+
+    sp = sync_sub.add_parser("conflicts", help="列出待處理或已處理的同步衝突")
+    sp.add_argument("--status", choices=["open", "resolved", ""], default="open")
+    sp.add_argument("--limit", "-n", type=_positive_int, default=20)
+    add_sync_output_args(sp)
+
+    sp = sync_sub.add_parser("audit", help="列出同步/合併 audit log")
+    sp.add_argument("--limit", "-n", type=_positive_int, default=20)
+    add_sync_output_args(sp)
+
+    sp = sync_sub.add_parser("resolve-conflict", help="標記同步衝突已被人工處理")
+    sp.add_argument("conflict_id", help="conflict id")
+    sp.add_argument("--resolution", choices=["keep_local", "accept_remote", "manual"], required=True)
+    sp.add_argument("--reason", default="", help="解決原因")
+    sp.add_argument("--agent-id", default="", help="處理此衝突的 Agent ID")
+    add_sync_output_args(sp)
 
     # skill — 本機跨 Agent 技能登錄（實驗性）
     p = sub.add_parser("skill", help="本機技能登錄（實驗性）")
@@ -1059,6 +1143,7 @@ def main(argv: list[str] | None = None):
         "db": cmd_db,
         "map": cmd_map,
         "remote": cmd_remote,
+        "sync": cmd_sync,
         "graph": cmd_graph,
         "skill": cmd_skill,
         "converge": cmd_converge,

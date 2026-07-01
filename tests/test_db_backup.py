@@ -226,6 +226,10 @@ def test_verify_rejects_fake_vault_table_names_with_invalid_columns(tmp_path):
         "task_ledger",
         "task_events",
         "task_evidence_refs",
+        "task_handoffs",
+        "memory_revisions",
+        "memory_conflicts",
+        "memory_audit_log",
         "content_log",
         "skills",
         "lint_cache",
@@ -296,10 +300,14 @@ def test_verify_rejects_malformed_migration_metadata_without_crashing(tmp_path):
         "memory_candidates",
         "memory_feedback_events",
         "task_ledger",
-        "task_events",
-        "task_evidence_refs",
-    ]:
-        conn.execute(f"CREATE TABLE {table}(id INTEGER)")
+            "task_events",
+            "task_evidence_refs",
+            "task_handoffs",
+            "memory_revisions",
+            "memory_conflicts",
+            "memory_audit_log",
+        ]:
+            conn.execute(f"CREATE TABLE {table}(id INTEGER)")
     conn.execute("PRAGMA user_version=5")
     conn.commit()
     conn.close()
@@ -366,10 +374,14 @@ def test_verify_rejects_malformed_auxiliary_vault_tables(tmp_path):
         "memory_candidates",
         "memory_feedback_events",
         "task_ledger",
-        "task_events",
-        "task_evidence_refs",
-    ]:
-        conn.execute(f"CREATE TABLE {table}(id INTEGER)")
+            "task_events",
+            "task_evidence_refs",
+            "task_handoffs",
+            "memory_revisions",
+            "memory_conflicts",
+            "memory_audit_log",
+        ]:
+            conn.execute(f"CREATE TABLE {table}(id INTEGER)")
     conn.execute(f"PRAGMA user_version={VaultDB.SCHEMA_VERSION}")
     conn.commit()
     conn.close()

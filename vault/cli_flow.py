@@ -245,8 +245,11 @@ def cmd_task(args):
     """Task Ledger runtime working-set workflows."""
     from vault.db import VaultDB
     from vault.task_ledger import (
+        claim_task_handoff,
         complete_task,
+        create_task_handoff,
         get_task,
+        list_task_handoffs,
         list_tasks,
         start_task,
         task_handoff,
@@ -254,8 +257,21 @@ def cmd_task(args):
     )
 
     action = getattr(args, "task_action", "")
-    if action not in {"start", "update", "status", "resume", "handoff", "complete"}:
-        print("error: task requires action: start, update, status, resume, handoff, or complete", file=sys.stderr)
+    if action not in {
+        "start",
+        "update",
+        "status",
+        "resume",
+        "handoff",
+        "send-handoff",
+        "inbox",
+        "claim-handoff",
+        "complete",
+    }:
+        print(
+            "error: task requires action: start, update, status, resume, handoff, send-handoff, inbox, claim-handoff, or complete",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
 
     try:
@@ -311,6 +327,36 @@ def cmd_task(args):
                     }
             elif action == "handoff":
                 payload = task_handoff(db, args.task_id)
+            elif action == "send-handoff":
+                payload = create_task_handoff(
+                    db,
+                    args.task_id,
+                    handoff_id=args.handoff_id,
+                    from_agent=args.from_agent,
+                    to_agent=args.to_agent,
+                    message=args.message,
+                    source_ref=args.source_ref,
+                )
+            elif action == "inbox":
+                payload = {
+                    "ok": True,
+                    "action": "inbox",
+                    "agent_id": args.agent_id,
+                    "status": args.status,
+                    "handoffs": list_task_handoffs(
+                        db,
+                        agent_id=args.agent_id,
+                        status=args.status,
+                        limit=args.limit,
+                    ),
+                }
+            elif action == "claim-handoff":
+                payload = claim_task_handoff(
+                    db,
+                    args.handoff_id,
+                    agent_id=args.agent_id,
+                    note=args.note,
+                )
             else:
                 payload = complete_task(
                     db,
@@ -319,7 +365,7 @@ def cmd_task(args):
                     next_actions=args.next_action,
                     agent_id=args.agent_id,
                 )
-    except (KeyError, ValueError) as exc:
+    except (KeyError, ValueError, PermissionError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
 
@@ -329,6 +375,25 @@ def cmd_task(args):
 
     if action == "handoff":
         print(payload["markdown"], end="")
+    elif action == "send-handoff":
+        handoff = payload["handoff"]
+        print(f"Handoff sent: {handoff.get('id')}")
+        print(f"  task_id: {handoff.get('task_id')}")
+        print(f"  from_agent: {handoff.get('from_agent')}")
+        print(f"  to_agent: {handoff.get('to_agent')}")
+    elif action == "inbox":
+        handoffs = payload.get("handoffs", [])
+        print(f"Handoff inbox ({payload.get('status')}): {len(handoffs)}")
+        for handoff in handoffs:
+            print(
+                f"  {handoff.get('id')} [{handoff.get('status')}]"
+                f" task={handoff.get('task_id')} from={handoff.get('from_agent')} to={handoff.get('to_agent')}"
+            )
+    elif action == "claim-handoff":
+        handoff = payload["handoff"]
+        print(f"Handoff claimed: {handoff.get('id')}")
+        print(f"  claimed_by: {handoff.get('claimed_by')}")
+        print(f"  task_id: {handoff.get('task_id')}")
     elif payload.get("task"):
         _print_task_summary(payload["task"])
     else:

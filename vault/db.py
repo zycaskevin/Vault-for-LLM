@@ -68,6 +68,7 @@ from .db_migrations import record_migrations_through as db_migrations_record_mig
 from .db_migrations import schema_status as db_migrations_schema_status
 from .db_migrations import table_columns as db_migrations_table_columns
 from .db_migrations import table_names as db_migrations_table_names
+from .db_multihost import init_multi_host_tables as db_multihost_init_multi_host_tables
 from .db_runtime import connect_sqlite
 from .db_schema import (
     KNOWLEDGE_UPDATE_COLUMNS as DB_KNOWLEDGE_UPDATE_COLUMNS,
@@ -484,6 +485,7 @@ class VaultDB:
         c.execute("CREATE INDEX IF NOT EXISTS idx_memory_feedback_category ON memory_feedback_events(category)")
 
         db_tasks_init_task_tables(c)
+        db_multihost_init_multi_host_tables(c)
 
         c.commit()
 

@@ -6,6 +6,7 @@ from vault.cli import main
 from vault.daily_report import build_daily_report, render_daily_report_text
 from vault.db import VaultDB
 from vault.memory import create_candidate
+from vault.multi_host import detect_candidate_conflicts, record_memory_revision
 
 
 def _project_with_candidate(tmp_path):
@@ -57,6 +58,58 @@ def test_render_daily_report_text_is_short_and_human_first(tmp_path):
     assert "Needs Your Decision" in text
     assert "choices:" in text
     assert "raw candidate" not in text.lower()
+
+
+def test_daily_report_surfaces_sync_conflicts_as_review_cards(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    with VaultDB(project / "vault.db") as db:
+        knowledge_id = db.add_knowledge(
+            "Shared schedule policy",
+            "The local schedule policy is the reviewed source of truth.",
+            category="workflow",
+        )
+        record_memory_revision(
+            db,
+            title="Shared schedule policy",
+            content="Local reviewed schedule policy.",
+            operation="local_knowledge_snapshot",
+            status="active",
+            knowledge_id=knowledge_id,
+            source_agent="local-agent",
+        )
+        candidate = create_candidate(
+            db,
+            title="Shared schedule policy",
+            content="Remote agent proposes changing the schedule policy without evidence.",
+            reason="Remote sync candidate for daily report.",
+            source="remote_candidate_sync",
+            source_ref="supabase:vault_memory_write_requests#daily-conflict",
+            memory_type="session_lesson",
+            category="workflow",
+            trust=0.72,
+            scope="shared",
+            sensitivity="low",
+        )
+        revision = record_memory_revision(
+            db,
+            title="Shared schedule policy",
+            content="Remote agent proposes changing the schedule policy without evidence.",
+            operation="remote_candidate_imported",
+            status="candidate_created",
+            candidate_id=candidate["candidate_id"],
+            remote_request_id="daily-conflict",
+            source_agent="remote-agent",
+        )
+        detect_candidate_conflicts(db, candidate_id=candidate["candidate_id"], revision_id=revision["revision_id"])
+
+    payload = build_daily_report(project, limit=5, language="zh-Hant")
+    text = render_daily_report_text(payload)
+
+    assert payload["summary"]["open_sync_conflicts"] == 1
+    assert any(card["kind"] == "sync_conflict_review" for card in payload["review_cards"])
+    assert "待處理同步衝突: 1" in text
+    assert "Remote agent proposes changing" not in json.dumps(payload, ensure_ascii=False)
 
 
 def test_daily_report_supports_traditional_and_simplified_chinese(tmp_path):

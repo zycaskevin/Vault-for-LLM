@@ -475,8 +475,15 @@ candidate-only 或 report-only。
 
 ```bash
 vault gateway health --project-dir ~/Vaults/my-project --json
+vault gateway openapi --project-dir ~/Vaults/my-project --json
 vault gateway serve --project-dir ~/Vaults/my-project
 ```
+
+`vault gateway openapi --json` 和 `GET /openapi.json` 會輸出同一份小型
+HTTP contract，讓 Coze、n8n、OpenClaw、Codex、Claude Code、Hermes Agent
+或未來自架的 Vault Remote server 可以用同一個規格接入。Gateway 的邊界
+很明確：搜尋不回傳全文、寫入只進候選記憶、不做 active multi-master
+同步；真正進正式記憶庫仍要走 Vault 的審核與治理流程。
 
 ## 可選：Supabase 共享
 

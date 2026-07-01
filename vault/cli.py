@@ -197,6 +197,9 @@ def main(argv: list[str] | None = None):
     gp = gateway_sub.add_parser("health", help="輸出 Gateway readiness JSON，不啟動 server")
     gp.add_argument("--json", action="store_true", help="輸出 JSON")
     gp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+    gp = gateway_sub.add_parser("openapi", help="輸出 Gateway HTTP contract JSON，不啟動 server")
+    gp.add_argument("--json", action="store_true", help="輸出 JSON")
+    gp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     # init
     p = sub.add_parser("init", help="初始化專案")

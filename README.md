@@ -672,6 +672,7 @@ MCP, start a small Gateway:
 
 ```bash
 vault gateway health --project-dir ~/Vaults/my-project --json
+vault gateway openapi --project-dir ~/Vaults/my-project --json
 vault gateway serve --project-dir ~/Vaults/my-project
 ```
 
@@ -679,6 +680,11 @@ Gateway is deliberately conservative: agents must identify themselves, reads
 hide private memory by default, and writes go into `memory_candidates` for
 review instead of directly changing active knowledge. It is the stable door;
 CLI, MCP, Supabase, and future hosted backends remain replaceable adapters.
+`vault gateway openapi --json` and `GET /openapi.json` expose the same small
+contract for Coze, n8n, OpenClaw, Codex, Claude Code, Hermes Agent, or a future
+self-hosted Vault Remote server. The contract says what the endpoint can do and
+what it intentionally cannot do: no raw-content search responses, no direct
+active-memory writes, and no active multi-master sync.
 
 ## Memory Migration
 

@@ -108,6 +108,13 @@ def test_gateway_and_obsidian_export_json_contracts_are_parseable(tmp_path, caps
     assert gateway["ok"] is True
     assert gateway["status"] == "ok"
     assert gateway["gateway"]["candidate_first_writes"] is True
+    assert "/openapi.json" in gateway["gateway"]["endpoints"]
+
+    main(["gateway", "openapi", "--project-dir", str(project), "--json"])
+    gateway_contract = _read_json(capsys)
+    assert gateway_contract["ok"] is True
+    assert gateway_contract["info"]["title"] == "Vault Gateway"
+    assert gateway_contract["x-vault-safety"]["writes_active_knowledge"] is False
 
     obsidian = tmp_path / "ObsidianVault"
     main(

@@ -66,9 +66,24 @@ curl -s http://127.0.0.1:8789/search \
   -d '{"agent_id":"codex","query":"deployment SOP","limit":5}'
 ```
 
+Adapters can discover that contract without scraping docs:
+
+```bash
+vault gateway openapi --project-dir ~/Vaults/my-project --json
+curl -s http://127.0.0.1:8789/openapi.json \
+  -H "Authorization: Bearer $VAULT_GATEWAY_TOKEN"
+```
+
+Use this for Coze/n8n OpenAPI-style connectors, OpenClaw gateway plugins, or a
+future self-hosted Vault Remote service. The OpenAPI payload deliberately
+documents the safety boundary: search hides raw content, `submit-candidate`
+does not write active knowledge, and active multi-master sync is not part of
+Gateway v0.
+
 Gateway v0 exposes only:
 
 - `GET /health`
+- `GET /openapi.json`
 - `POST /search`
 - `POST /read-range`
 - `POST /submit-candidate`

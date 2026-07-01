@@ -24,6 +24,8 @@ from .search_utils import normalize_search_limit
 DEFAULT_GATEWAY_HOST = "127.0.0.1"
 DEFAULT_GATEWAY_PORT = 8789
 LOCALHOSTS = {"127.0.0.1", "localhost", "::1"}
+GATEWAY_CONTRACT_VERSION = "2026-07-02"
+GATEWAY_ENDPOINTS = ["/health", "/openapi.json", "/search", "/read-range", "/submit-candidate"]
 
 
 def gateway_health(project_dir: str | Path) -> dict[str, Any]:
@@ -43,12 +45,160 @@ def gateway_health(project_dir: str | Path) -> dict[str, Any]:
         "db_exists": db_path.exists(),
         "stats": stats,
         "gateway": {
+            "contract_version": GATEWAY_CONTRACT_VERSION,
             "role": "unified_agent_memory_entrypoint",
+            "transport": "http_json",
+            "source_of_truth": "local_sqlite_vault",
+            "adapter_boundary": True,
             "writes_active_knowledge": False,
             "candidate_first_writes": True,
             "default_read_max_sensitivity": "low",
             "default_include_private": False,
-            "endpoints": ["/health", "/search", "/read-range", "/submit-candidate"],
+            "openapi": "/openapi.json",
+            "endpoints": GATEWAY_ENDPOINTS,
+            "remote_ready": {
+                "same_machine_agents": True,
+                "cross_host_agents": "supported_when_bound_to_a_network_host_with_token_auth",
+                "supabase_adapter": "optional_separate_adapter",
+                "active_multi_master_sync": False,
+            },
+        },
+    }
+
+
+def gateway_openapi() -> dict[str, Any]:
+    """Return the stable Gateway HTTP contract for adapters and hosted tools."""
+    return {
+        "openapi": "3.1.0",
+        "info": {
+            "title": "Vault Gateway",
+            "version": GATEWAY_CONTRACT_VERSION,
+            "description": (
+                "A conservative HTTP adapter for governed agent memory: search, bounded read, "
+                "and candidate-first memory proposals."
+            ),
+        },
+        "servers": [{"url": f"http://{DEFAULT_GATEWAY_HOST}:{DEFAULT_GATEWAY_PORT}"}],
+        "security": [{"bearerAuth": []}, {"gatewayToken": []}],
+        "paths": {
+            "/health": {
+                "get": {
+                    "summary": "Check Gateway readiness and safety defaults.",
+                    "responses": {"200": {"description": "Gateway readiness payload"}},
+                }
+            },
+            "/openapi.json": {
+                "get": {
+                    "summary": "Return this machine-readable Gateway contract.",
+                    "responses": {"200": {"description": "OpenAPI contract"}},
+                }
+            },
+            "/search": {
+                "post": {
+                    "summary": "Search readable active memory without returning raw content.",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {"schema": {"$ref": "#/components/schemas/SearchRequest"}}
+                        }
+                    },
+                    "responses": {"200": {"description": "Compact search results"}},
+                }
+            },
+            "/read-range": {
+                "post": {
+                    "summary": "Read a bounded source range after search/map selection.",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {"schema": {"$ref": "#/components/schemas/ReadRangeRequest"}}
+                        }
+                    },
+                    "responses": {"200": {"description": "Bounded source evidence or access denial"}},
+                }
+            },
+            "/submit-candidate": {
+                "post": {
+                    "summary": "Submit a memory candidate; never writes active knowledge directly.",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/SubmitCandidateRequest"}
+                            }
+                        }
+                    },
+                    "responses": {"200": {"description": "Candidate creation or gate rejection"}},
+                }
+            },
+        },
+        "components": {
+            "securitySchemes": {
+                "bearerAuth": {"type": "http", "scheme": "bearer"},
+                "gatewayToken": {
+                    "type": "apiKey",
+                    "in": "header",
+                    "name": "X-Vault-Gateway-Token",
+                },
+            },
+            "schemas": {
+                "SearchRequest": {
+                    "type": "object",
+                    "required": ["agent_id", "query"],
+                    "properties": {
+                        "agent_id": {"type": "string"},
+                        "query": {"type": "string"},
+                        "mode": {
+                            "type": "string",
+                            "enum": ["auto", "keyword", "semantic", "hybrid", "vector"],
+                            "default": "keyword",
+                        },
+                        "limit": {"type": "integer", "default": 10, "minimum": 0, "maximum": 50},
+                        "include_private": {"type": "boolean", "default": False},
+                        "max_sensitivity": {"type": "string", "default": "low"},
+                    },
+                },
+                "ReadRangeRequest": {
+                    "type": "object",
+                    "required": ["agent_id", "knowledge_id"],
+                    "properties": {
+                        "agent_id": {"type": "string"},
+                        "knowledge_id": {"type": "integer"},
+                        "node_uid": {"type": "string"},
+                        "line_start": {"type": "integer", "default": 1, "minimum": 1},
+                        "line_end": {"type": "integer", "default": 40, "minimum": 1},
+                        "max_lines": {"type": "integer", "default": 80, "minimum": 1, "maximum": 200},
+                        "include_private": {"type": "boolean", "default": False},
+                        "max_sensitivity": {"type": "string", "default": "low"},
+                    },
+                },
+                "SubmitCandidateRequest": {
+                    "type": "object",
+                    "required": ["agent_id", "title", "content"],
+                    "properties": {
+                        "agent_id": {"type": "string"},
+                        "title": {"type": "string"},
+                        "content": {"type": "string"},
+                        "reason": {"type": "string"},
+                        "layer": {"type": "string", "default": "L3"},
+                        "category": {"type": "string", "default": "general"},
+                        "tags": {"type": "string"},
+                        "trust": {"type": "number", "default": 0.5, "minimum": 0, "maximum": 1},
+                        "scope": {"type": "string", "default": "project"},
+                        "sensitivity": {"type": "string", "default": "low"},
+                        "owner_agent": {"type": "string"},
+                        "allowed_agents": {"type": "string"},
+                        "memory_type": {"type": "string", "default": "knowledge"},
+                        "source_ref": {"type": "string"},
+                    },
+                },
+            },
+        },
+        "x-vault-safety": {
+            "agent_id_required_for_reads": True,
+            "private_hidden_by_default": True,
+            "default_max_sensitivity": "low",
+            "search_returns_raw_content": False,
+            "writes_active_knowledge": False,
+            "candidate_first_writes": True,
+            "audit_path": "reports/gateway/audit.jsonl",
         },
     }
 
@@ -267,6 +417,11 @@ def make_gateway_handler(
                 _append_audit(project, "health", _request_agent({}, parsed), payload.get("status", "ok"))
                 self._send_json(payload)
                 return
+            if parsed.path == "/openapi.json":
+                payload = gateway_openapi()
+                _append_audit(project, "openapi", _request_agent({}, parsed), "ok")
+                self._send_json(payload)
+                return
             self._send_json(_error("not_found", "unknown endpoint"), status=HTTPStatus.NOT_FOUND)
 
         def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
@@ -430,8 +585,13 @@ def cmd_gateway(args: Any) -> None:
         payload.setdefault("ok", payload.get("status") == "ok")
         _json_print(payload, pretty=_arg_value(args, "pretty", False) is True)
         return
+    if action == "openapi":
+        payload = gateway_openapi()
+        payload.setdefault("ok", True)
+        _json_print(payload, pretty=_arg_value(args, "pretty", False) is True)
+        return
     if action != "serve":
-        print("用法: vault gateway {serve|health}")
+        print("用法: vault gateway {serve|health|openapi}")
         raise SystemExit(2)
     run_gateway(
         find_project_dir(),

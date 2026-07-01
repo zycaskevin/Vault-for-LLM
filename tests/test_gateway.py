@@ -11,6 +11,7 @@ from vault.db import VaultDB
 from vault.docmap import build_document_map_for_entry
 from vault.gateway import (
     gateway_read_range,
+    gateway_openapi,
     gateway_search,
     gateway_submit_candidate,
     make_gateway_handler,
@@ -80,6 +81,18 @@ def test_gateway_http_requires_token_and_serves_health(tmp_path):
         payload = json.loads(allowed.read().decode("utf-8"))
         assert payload["status"] == "ok"
         assert payload["gateway"]["candidate_first_writes"] is True
+        assert "/openapi.json" in payload["gateway"]["endpoints"]
+        assert payload["gateway"]["remote_ready"]["active_multi_master_sync"] is False
+        conn.close()
+
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("GET", "/openapi.json", headers={"X-Vault-Gateway-Token": "secret"})
+        contract_response = conn.getresponse()
+        assert contract_response.status == 200
+        contract = json.loads(contract_response.read().decode("utf-8"))
+        assert contract["info"]["title"] == "Vault Gateway"
+        assert contract["x-vault-safety"]["candidate_first_writes"] is True
+        assert contract["x-vault-safety"]["writes_active_knowledge"] is False
         conn.close()
     finally:
         server.shutdown()
@@ -151,6 +164,19 @@ def test_gateway_submit_candidate_is_candidate_first_and_policy_bound(tmp_path):
     assert candidates[0]["source"] == "gateway:work-agent"
     assert candidates[0]["status"] == "candidate"
     assert active_count == 2
+
+
+def test_gateway_openapi_contract_documents_safe_adapter_boundary():
+    contract = gateway_openapi()
+    assert contract["openapi"].startswith("3.")
+    assert {"/health", "/openapi.json", "/search", "/read-range", "/submit-candidate"} <= set(contract["paths"])
+    assert contract["components"]["securitySchemes"]["bearerAuth"]["scheme"] == "bearer"
+    safety = contract["x-vault-safety"]
+    assert safety["agent_id_required_for_reads"] is True
+    assert safety["private_hidden_by_default"] is True
+    assert safety["search_returns_raw_content"] is False
+    assert safety["writes_active_knowledge"] is False
+    assert safety["candidate_first_writes"] is True
 
 
 def test_gateway_http_search_submit_and_audit(tmp_path):

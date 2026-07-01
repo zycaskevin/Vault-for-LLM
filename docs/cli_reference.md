@@ -57,6 +57,7 @@ scheduled jobs, or explicit maintenance sessions.
 | `vault gui` | Start the local read-only Vault Console |
 | `vault gateway serve` | Start the token-protected HTTP Gateway for agent search, bounded read, and candidate-first memory submission |
 | `vault gateway health --json` | Return machine-readable Gateway readiness without starting the HTTP server |
+| `vault gateway openapi --json` | Return the stable Gateway HTTP contract for Coze, n8n, OpenClaw, and future remote adapters |
 | `vault gateway serve --auth-token "$VAULT_GATEWAY_TOKEN"` | Use a stable token instead of printing a generated token at startup |
 | `vault gateway serve --allow-shared-candidates` | Allow agents to submit shared-scope candidates; they still do not write active knowledge |
 | `vault security doctor` | Check local GUI/MCP security posture, including GUI token and MCP HMAC settings |
@@ -100,11 +101,13 @@ memory.
 
 Prefer `vault gateway serve` when many local agents or scripts need the same
 memory access pattern. Gateway keeps the public surface small:
-`/search`, `/read-range`, `/submit-candidate`, and `/health`. It requires
-`agent_id`, hides private memory by default, writes only candidates, and records
-compact audit rows in `reports/gateway/audit.jsonl`.
+`/search`, `/read-range`, `/submit-candidate`, `/health`, and `/openapi.json`.
+It requires `agent_id`, hides private memory by default, writes only
+candidates, and records compact audit rows in `reports/gateway/audit.jsonl`.
 Use `vault gateway health --json` in installers and CI when you only need to
 confirm the project vault is ready for Gateway clients.
+Use `vault gateway openapi --json` when an adapter needs the request/response
+shape without starting a server.
 
 Use `vault import memory` when moving memory from another product, an exported
 chat transcript, a JSON/CSV archive, or a folder of Markdown notes. The import

@@ -113,11 +113,15 @@ The same install pack also writes remote client examples:
 - `AGENT_REMOTE_GATEWAY_SNIPPETS.md`
 - `coze-vault-remote-openapi.json`
 - `n8n-vault-remote-client.workflow.json`
+- `validate-vault-remote-client.py`
 
 Use those when Codex, Claude Code, Hermes, OpenClaw, Coze, or n8n should connect
 to one self-hosted Remote Server instead of a local `vault-mcp` process. The
 client contract stays intentionally small: send `agent_id`, search compact
 memory, bounded-read before citing, and submit new lessons as candidates.
+Run the validation script from an Agent machine after setting
+`VAULT_REMOTE_URL` and `VAULT_GATEWAY_TOKEN`; add `--submit-candidate` only when
+you want to verify candidate-first remote writes.
 
 Gateway v0 exposes only:
 

@@ -507,9 +507,10 @@ vault remote-server serve --project-dir ~/Vaults/my-project --host 0.0.0.0
 同一組安裝包也會產生遠端 client 範本：
 `README-remote-clients.md`、`vault-remote-client-config.json`、
 `AGENT_REMOTE_GATEWAY_SNIPPETS.md`、`coze-vault-remote-openapi.json`、
-`n8n-vault-remote-client.workflow.json`。Codex、Claude Code、Hermes、
-OpenClaw、Coze、n8n 可以透過同一個 token-protected Gateway contract 連上
-共享記憶，不需要各自理解完整 CLI 或 MCP 表面。
+`n8n-vault-remote-client.workflow.json`，以及用來做 smoke test 的
+`validate-vault-remote-client.py`。Codex、Claude Code、Hermes、OpenClaw、
+Coze、n8n 可以透過同一個 token-protected Gateway contract 連上共享記憶，
+不需要各自理解完整 CLI 或 MCP 表面。
 
 ## 可選：Supabase 共享
 

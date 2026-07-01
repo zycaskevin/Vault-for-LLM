@@ -268,6 +268,10 @@ def _write_remote_client_templates(out: Path) -> dict[str, str]:
         encoding="utf-8",
     )
 
+    validation_path = out / "validate-vault-remote-client.py"
+    validation_path.write_text(_render_remote_client_validation_script(), encoding="utf-8")
+    validation_path.chmod(0o755)
+
     snippets_path = out / "AGENT_REMOTE_GATEWAY_SNIPPETS.md"
     snippets_path.write_text(_render_remote_gateway_snippets(gateway_url), encoding="utf-8")
 
@@ -292,6 +296,14 @@ def _write_remote_client_templates(out: Path) -> dict[str, str]:
                 f"- `{snippets_path.name}`: short human/agent setup snippets",
                 f"- `{coze_openapi_path.name}`: OpenAPI connector template for Coze or similar hosted tools",
                 f"- `{n8n_path.name}`: n8n HTTP Request workflow template",
+                f"- `{validation_path.name}`: smoke-test the remote endpoint from an Agent machine",
+                "",
+                "Validation:",
+                "",
+                "```bash",
+                f"python {validation_path.name} --agent-id codex --query \"deployment SOP\"",
+                f"python {validation_path.name} --agent-id codex --submit-candidate",
+                "```",
                 "",
                 "Safety boundary:",
                 "",
@@ -311,6 +323,7 @@ def _write_remote_client_templates(out: Path) -> dict[str, str]:
         "agent_snippets": str(snippets_path),
         "coze_openapi": str(coze_openapi_path),
         "n8n_workflow": str(n8n_path),
+        "validation_script": str(validation_path),
     }
 
 
@@ -389,6 +402,111 @@ def _render_remote_gateway_snippets(gateway_url: str) -> str:
             "",
         ]
     )
+
+
+def _render_remote_client_validation_script() -> str:
+    return r'''#!/usr/bin/env python3
+"""Smoke-test a Vault Remote Server client connection.
+
+Reads VAULT_REMOTE_URL and VAULT_GATEWAY_TOKEN from the environment. The default
+check is read-only: /health, /openapi.json, and /search. Pass
+--submit-candidate when you also want to verify candidate-first remote writes.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+
+
+def _request(base_url: str, token: str, method: str, path: str, body: dict | None = None) -> dict:
+    data = None
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Vault-Gateway-Token": token,
+        "Accept": "application/json",
+    }
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(
+        base_url.rstrip("/") + path,
+        data=data,
+        headers=headers,
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            payload = response.read().decode("utf-8")
+            return {"ok": True, "status_code": response.status, "payload": json.loads(payload or "{}")}
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        return {"ok": False, "status_code": exc.code, "error": detail[:500]}
+    except Exception as exc:
+        return {"ok": False, "status_code": 0, "error": str(exc)}
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Validate a Vault Remote Server client connection.")
+    parser.add_argument("--agent-id", default=os.environ.get("VAULT_AGENT_ID", "remote-smoke"))
+    parser.add_argument("--query", default="vault")
+    parser.add_argument("--submit-candidate", action="store_true")
+    args = parser.parse_args()
+
+    base_url = os.environ.get("VAULT_REMOTE_URL", "").strip()
+    token = os.environ.get("VAULT_GATEWAY_TOKEN", "").strip()
+    if not base_url or not token:
+        print(json.dumps({
+            "ok": False,
+            "error": "Set VAULT_REMOTE_URL and VAULT_GATEWAY_TOKEN before running validation.",
+        }, ensure_ascii=False, indent=2))
+        return 2
+
+    checks: list[dict] = []
+    checks.append({"name": "health", **_request(base_url, token, "GET", "/health")})
+    checks.append({"name": "openapi", **_request(base_url, token, "GET", "/openapi.json")})
+    checks.append({
+        "name": "search",
+        **_request(base_url, token, "POST", "/search", {
+            "agent_id": args.agent_id,
+            "query": args.query,
+            "limit": 5,
+        }),
+    })
+    if args.submit_candidate:
+        checks.append({
+            "name": "submit_candidate",
+            **_request(base_url, token, "POST", "/submit-candidate", {
+                "agent_id": args.agent_id,
+                "title": f"Remote client smoke {int(time.time())}",
+                "content": "Remote client validation candidate. Safe to reject after smoke testing.",
+                "reason": "Validate candidate-first remote writes.",
+                "scope": "project",
+                "sensitivity": "low",
+                "tags": "smoke,remote-client",
+                "source_ref": f"remote-client-smoke:{args.agent_id}",
+            }),
+        })
+
+    ok = all(item.get("ok") and int(item.get("status_code") or 0) < 400 for item in checks)
+    print(json.dumps({
+        "ok": ok,
+        "agent_id": args.agent_id,
+        "remote_url": base_url,
+        "submitted_candidate": bool(args.submit_candidate),
+        "checks": checks,
+    }, ensure_ascii=False, indent=2))
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+'''
 
 
 def _render_remote_server_launchagent(command: list[str]) -> str:

@@ -466,6 +466,10 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert sorted(minimal_configs["local_stdio_mcp_clients"]) == ["claude_code", "codex", "hermes", "openclaw"]
     assert sorted(minimal_configs["hosted_or_workflow_readers"]) == ["coze", "n8n"]
     assert minimal_configs["mcp_server"]["command"] == "vault-mcp"
+    assert minimal_configs["gateway"]["mode"] == "local_http_adapter"
+    assert "vault gateway health" in minimal_configs["gateway"]["health_command"]
+    assert "vault gateway serve" in minimal_configs["gateway"]["serve_command"]
+    assert minimal_configs["gateway"]["safety"]["candidate_first_writes"] is True
     assert minimal_configs["local_stdio_mcp_clients"]["codex"]["server_config"]["mcpServers"]["vault"]["command"] == "vault-mcp"
     assert minimal_configs["hosted_or_workflow_readers"]["coze"]["mode"] == "remote_read_only"
     assert minimal_configs["hosted_or_workflow_readers"]["n8n"]["mode"] == "workflow_bridge"
@@ -476,6 +480,7 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert "OpenClaw" in minimal_configs_readme
     assert "Coze" in minimal_configs_readme
     assert "n8n" in minimal_configs_readme
+    assert "Gateway readiness" in minimal_configs_readme
     assert "never service-role key" in minimal_configs_readme
     assert adapter_readme.count("vault guide") >= 1
     assert runtime_playbook["agent_first_entrypoints"]["human"] == "vault guide"

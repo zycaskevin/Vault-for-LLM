@@ -422,11 +422,16 @@ def run_gateway(
 
 
 def cmd_gateway(args: Any) -> None:
-    from .cli_context import find_project_dir
+    from .cli_context import _arg_value, _json_print, find_project_dir
 
     action = str(getattr(args, "gateway_action", "") or "")
+    if action == "health":
+        payload = gateway_health(find_project_dir())
+        payload.setdefault("ok", payload.get("status") == "ok")
+        _json_print(payload, pretty=_arg_value(args, "pretty", False) is True)
+        return
     if action != "serve":
-        print("用法: vault gateway serve [--host 127.0.0.1] [--port 8789]")
+        print("用法: vault gateway {serve|health}")
         raise SystemExit(2)
     run_gateway(
         find_project_dir(),

@@ -56,6 +56,7 @@ scheduled jobs, or explicit maintenance sessions.
 | `vault map read <id> --lines 10-30` | Read a bounded source range for citation |
 | `vault gui` | Start the local read-only Vault Console |
 | `vault gateway serve` | Start the token-protected HTTP Gateway for agent search, bounded read, and candidate-first memory submission |
+| `vault gateway health --json` | Return machine-readable Gateway readiness without starting the HTTP server |
 | `vault gateway serve --auth-token "$VAULT_GATEWAY_TOKEN"` | Use a stable token instead of printing a generated token at startup |
 | `vault gateway serve --allow-shared-candidates` | Allow agents to submit shared-scope candidates; they still do not write active knowledge |
 | `vault security doctor` | Check local GUI/MCP security posture, including GUI token and MCP HMAC settings |
@@ -88,7 +89,7 @@ scheduled jobs, or explicit maintenance sessions.
 | `vault import okf --bundle ./okf-bundle --scope shared --owner-agent work-agent` | Write OKF concepts into `memory_candidates` for review, not active knowledge |
 | `vault import obsidian --vault /path/to/ObsidianVault --dry-run` | Preview importing existing Obsidian notes into `raw/obsidian/` |
 | `vault import obsidian --vault /path/to/ObsidianVault --compile` | Import changed Obsidian notes and compile them into `vault.db` |
-| `vault export obsidian --vault /path/to/ObsidianVault --dry-run` | Export read-only Markdown notes for Obsidian browsing |
+| `vault export obsidian --vault /path/to/ObsidianVault --dry-run --json` | Preview read-only Markdown notes for Obsidian browsing with machine-readable output |
 | `vault okf validate ./okf-bundle --json --pretty` | Validate an OKF-style Markdown knowledge bundle before import, export, or publication |
 | `vault export okf --bundle ./okf-bundle --dry-run --json --pretty` | Preview a read-only OKF-style export; private and restricted memories are excluded by default |
 | `vault export okf --bundle ./okf-bundle --include-private --include-restricted` | Explicitly include protected memories when creating a private/internal bundle |
@@ -101,6 +102,8 @@ memory access pattern. Gateway keeps the public surface small:
 `/search`, `/read-range`, `/submit-candidate`, and `/health`. It requires
 `agent_id`, hides private memory by default, writes only candidates, and records
 compact audit rows in `reports/gateway/audit.jsonl`.
+Use `vault gateway health --json` in installers and CI when you only need to
+confirm the project vault is ready for Gateway clients.
 
 Use `vault import memory` when moving memory from another product, an exported
 chat transcript, a JSON/CSV archive, or a folder of Markdown notes. The import

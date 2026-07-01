@@ -96,15 +96,6 @@ from .cli_sync import cmd_sync
 from .gui import DEFAULT_HOST, DEFAULT_PORT, cmd_gui
 from .gateway import DEFAULT_GATEWAY_HOST, DEFAULT_GATEWAY_PORT, cmd_gateway
 
-
-# ── 專案偵測 ─────────────────────────────────────────────
-
-
-# ── 子命令 ──────────────────────────────────────────────
-
-
-# ── CLI 入口 ─────────────────────────────────────────────
-
 def cmd_skill(args):
     """Dispatch skill subcommands through vault.cli symbols for compatibility."""
     if args.skill_action == "push":
@@ -203,6 +194,9 @@ def main(argv: list[str] | None = None):
     gp.add_argument("--allow-private-candidates", action="store_true", help="允許 Gateway submit-candidate 寫入 private 候選")
     gp.add_argument("--allow-high-sensitivity-candidates", action="store_true", help="允許 Gateway submit-candidate 寫入 high 候選")
     gp.add_argument("--allow-restricted-candidates", action="store_true", help="允許 Gateway submit-candidate 寫入 restricted 候選")
+    gp = gateway_sub.add_parser("health", help="輸出 Gateway readiness JSON，不啟動 server")
+    gp.add_argument("--json", action="store_true", help="輸出 JSON")
+    gp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     # init
     p = sub.add_parser("init", help="初始化專案")
@@ -709,6 +703,8 @@ def main(argv: list[str] | None = None):
     ep.add_argument("--source", choices=["db", "raw", "compiled"], default="db", help="來源（MVP 支援 db）")
     ep.add_argument("--dry-run", action="store_true", help="只列出將寫入的檔案，不建立檔案")
     ep.add_argument("--include-review-inbox", action="store_true", help="同時輸出 Daily Report、候選記憶與同步狀態到 Obsidian _Inbox")
+    ep.add_argument("--json", action="store_true", help="輸出 JSON")
+    ep.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     ep = export_sub.add_parser("okf", help="匯出 OKF-style Markdown knowledge bundle")
     ep.add_argument("--bundle", required=True, help="OKF bundle 輸出目錄")

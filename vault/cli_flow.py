@@ -9,7 +9,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from .cli_context import _arg_value, _enforce_cli_privacy, _json_print, find_project_dir
+from .cli_context import _arg_value, _enforce_cli_privacy, _json_flags, _json_print, find_project_dir
 from .cli_search import temporal_search_kwargs
 
 def cmd_remember(args):
@@ -370,8 +370,9 @@ def cmd_task(args):
         print(f"error: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
 
-    if getattr(args, "json", False) or getattr(args, "pretty", False):
-        _json_print(payload, pretty=args.pretty)
+    json_output, pretty_output = _json_flags(args)
+    if json_output:
+        _json_print(payload, pretty=pretty_output)
         return
 
     if action == "handoff":
@@ -554,13 +555,12 @@ def cmd_db(args):
 
     _json_print(payload, pretty=args.pretty)
 
-
 def cmd_export(args):
     """One-way export commands for human-readable knowledge browsing."""
     if args.export_target not in {"obsidian", "okf"}:
         print("error: export requires target: obsidian or okf", file=sys.stderr)
         raise SystemExit(2)
-
+    json_output, pretty_output = _json_flags(args)
     if args.export_target == "okf":
         from vault.okf import export_okf_bundle
 
@@ -580,8 +580,8 @@ def cmd_export(args):
         except (FileNotFoundError, ValueError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             raise SystemExit(2) from exc
-        if getattr(args, "json", False) or getattr(args, "pretty", False):
-            _json_print(result, pretty=getattr(args, "pretty", False))
+        if json_output:
+            _json_print(result, pretty=pretty_output)
             return
         print(
             "OKF export: "
@@ -596,7 +596,6 @@ def cmd_export(args):
         return
 
     from vault.export_obsidian import export_obsidian_vault
-
     try:
         result = export_obsidian_vault(
             project_dir=find_project_dir(),
@@ -613,6 +612,9 @@ def cmd_export(args):
     except (FileNotFoundError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
+    if json_output:
+        _json_print({"ok": True, "status": "ok", **result}, pretty=pretty_output)
+        return
     print(
         "Obsidian export: "
         f"matched={result['matched']} written={result['written']} "
@@ -622,8 +624,6 @@ def cmd_export(args):
         print(f"  {path}")
     if len(result["paths"]) > 10:
         print(f"  ... {len(result['paths']) - 10} more")
-
-
 def cmd_setup_agent(args):
     """Interactive/non-interactive agent setup wizard."""
     from vault.agent_access import agent_access_preset

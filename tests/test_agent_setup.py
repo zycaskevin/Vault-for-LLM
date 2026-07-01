@@ -481,10 +481,20 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     remote_server_launchagent = tmp_path / "templates" / "vault-remote-server.launchagent.plist"
     remote_server_systemd = tmp_path / "templates" / "vault-remote-server.service"
     remote_server_compose = tmp_path / "templates" / "vault-remote-server.compose.yaml"
+    remote_client_readme = tmp_path / "templates" / "README-remote-clients.md"
+    remote_client_config = tmp_path / "templates" / "vault-remote-client-config.json"
+    remote_client_openapi = tmp_path / "templates" / "coze-vault-remote-openapi.json"
+    remote_client_n8n = tmp_path / "templates" / "n8n-vault-remote-client.workflow.json"
+    remote_client_snippets = tmp_path / "templates" / "AGENT_REMOTE_GATEWAY_SNIPPETS.md"
     assert remote_server_readme.exists()
     assert remote_server_launchagent.exists()
     assert remote_server_systemd.exists()
     assert remote_server_compose.exists()
+    assert remote_client_readme.exists()
+    assert remote_client_config.exists()
+    assert remote_client_openapi.exists()
+    assert remote_client_n8n.exists()
+    assert remote_client_snippets.exists()
     remote_readme_text = remote_server_readme.read_text(encoding="utf-8")
     assert "set a stable token" in remote_readme_text
     assert "no offline active multi-master sync yet" in remote_readme_text
@@ -493,6 +503,16 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert "VAULT_GATEWAY_TOKEN" in remote_launchagent_text
     assert "VAULT_GATEWAY_TOKEN" in remote_server_systemd.read_text(encoding="utf-8")
     assert "vault remote-server serve" in remote_server_compose.read_text(encoding="utf-8")
+    remote_client_payload = json.loads(remote_client_config.read_text(encoding="utf-8"))
+    assert sorted(remote_client_payload["clients"]) == ["claude_code", "codex", "coze", "hermes", "n8n", "openclaw"]
+    assert remote_client_payload["safety"]["candidate_first_writes"] is True
+    assert remote_client_payload["safety"]["active_multi_master_sync"] is False
+    remote_client_openapi_payload = json.loads(remote_client_openapi.read_text(encoding="utf-8"))
+    assert "/submit-candidate" in remote_client_openapi_payload["paths"]
+    assert remote_client_openapi_payload["x-vault-client-template"]["token_env"] == "VAULT_GATEWAY_TOKEN"
+    assert "Vault Remote Client Templates" in remote_client_readme.read_text(encoding="utf-8")
+    assert "Vault Remote Server Search" in remote_client_n8n.read_text(encoding="utf-8")
+    assert "Codex / Claude Code" in remote_client_snippets.read_text(encoding="utf-8")
     assert minimal_configs["local_stdio_mcp_clients"]["codex"]["server_config"]["mcpServers"]["vault"]["command"] == "vault-mcp"
     assert minimal_configs["hosted_or_workflow_readers"]["coze"]["mode"] == "remote_read_only"
     assert minimal_configs["hosted_or_workflow_readers"]["n8n"]["mode"] == "workflow_bridge"

@@ -255,6 +255,15 @@ def test_export_obsidian_review_inbox_writes_daily_candidates_and_sync_status(tm
                 "raw_subdir": "obsidian",
                 "folder_rules_count": 1,
                 "notes": {
+                    "Projects/Active.md": {
+                        "status": "active",
+                        "raw_path": "raw/obsidian/Projects/Active.md",
+                        "folder_rule": "Projects/**",
+                    },
+                    "Loose.md": {
+                        "status": "active",
+                        "raw_path": "raw/obsidian/Loose.md",
+                    },
                     "Missing.md": {
                         "status": "missing",
                         "raw_path": "raw/obsidian/Missing.md",
@@ -268,7 +277,7 @@ def test_export_obsidian_review_inbox_writes_daily_candidates_and_sync_status(tm
     vault_dir = tmp_path / "ObsidianVault"
     result = export_obsidian_review_inbox(project_dir=project_dir, vault_dir=vault_dir)
 
-    assert result["written"] == 3
+    assert result["written"] == 4
     assert result["candidate_count"] == 2
     assert result["missing_count"] == 1
     assert result["sync_status"] == "needs_review"
@@ -277,9 +286,11 @@ def test_export_obsidian_review_inbox_writes_daily_candidates_and_sync_status(tm
     daily = vault_dir / "00-Vault-Knowledge" / "_Inbox" / "Daily Memory Report.md"
     candidates = vault_dir / "00-Vault-Knowledge" / "_Inbox" / "Memory Candidates.md"
     sync = vault_dir / "00-Vault-Knowledge" / "_Inbox" / "Sync Status.md"
+    rules = vault_dir / "00-Vault-Knowledge" / "_Inbox" / "Folder Rules Preview.md"
     assert daily.exists()
     assert candidates.exists()
     assert sync.exists()
+    assert rules.exists()
     assert "Pending memory candidates: **2**" in daily.read_text(encoding="utf-8")
     assert "Open remote sync conflicts: **1**" in daily.read_text(encoding="utf-8")
     candidate_text = candidates.read_text(encoding="utf-8")
@@ -288,10 +299,16 @@ def test_export_obsidian_review_inbox_writes_daily_candidates_and_sync_status(tm
     sync_text = sync.read_text(encoding="utf-8")
     assert "`Missing.md`" in sync_text
     assert "Folder rules: **1**" in sync_text
+    assert "Folder-rule unmatched active notes: **1**" in sync_text
     assert "Remote Candidate Sync" in sync_text
     assert "Open conflicts: **1**" in sync_text
     assert "same_title_content_mismatch" in sync_text
     assert "Remote content should not appear" not in sync_text
+    rules_text = rules.read_text(encoding="utf-8")
+    assert "**Projects/**" in rules_text
+    assert "`Projects/Active.md`" in rules_text
+    assert "No folder rule matched" in rules_text
+    assert "`Loose.md`" in rules_text
 
 
 def test_export_obsidian_can_include_review_inbox(tmp_path):
@@ -309,7 +326,7 @@ def test_export_obsidian_can_include_review_inbox(tmp_path):
     )
 
     assert result["matched"] == 1
-    assert result["review_inbox"]["written"] == 3
+    assert result["review_inbox"]["written"] == 4
     assert (vault_dir / "00-Vault-Knowledge" / "technique" / "0001-Vault-Document-Map-Example.md").exists()
     assert (vault_dir / "00-Vault-Knowledge" / "_Inbox" / "Daily Memory Report.md").exists()
 

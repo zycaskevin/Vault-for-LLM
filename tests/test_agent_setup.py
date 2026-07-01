@@ -91,6 +91,7 @@ def test_run_agent_setup_obsidian_rules_and_review_inbox_schedule(tmp_path):
     assert rules_path.exists()
     assert result["obsidian"]["folder_rules"]["path"] == str(rules_path)
     assert result["obsidian"]["review_inbox"]["target_dir"].endswith("00-Vault-Knowledge/_Inbox")
+    assert result["obsidian_human_gui"]["guide"].endswith("README-obsidian-human-gui.md")
     assert result["obsidian"]["import"]["paths"][0].endswith("raw/obsidian/Personal/Journal.md")
 
     imported = (project / "raw" / "obsidian" / "Personal" / "Journal.md").read_text(encoding="utf-8")
@@ -104,6 +105,9 @@ def test_run_agent_setup_obsidian_rules_and_review_inbox_schedule(tmp_path):
     assert "vault export obsidian" in cron
     assert "--include-review-inbox" in cron
     assert "Review inbox export command" in readme
+    guide = (tmp_path / "templates" / "README-obsidian-human-gui.md").read_text(encoding="utf-8")
+    assert "Obsidian as the Human Vault GUI" in guide
+    assert "Folder Rules Preview.md" in guide
 
 
 def test_run_agent_setup_consumer_audience_writes_daily_report_guide_and_safe_schedule(tmp_path):
@@ -864,6 +868,7 @@ def test_setup_agent_cli_non_interactive(tmp_path, capsys):
     assert payload["obsidian"]["import"]["added"] == 1
     assert payload["obsidian"]["folder_rules"]["status"] == "created"
     assert payload["obsidian"]["review_inbox"]["enabled"] is True
+    assert payload["obsidian_human_gui"]["guide"].endswith("README-obsidian-human-gui.md")
     assert "cron" in payload["sync_templates"]
     assert (project / "raw" / "obsidian" / "Note.md").exists()
     cron = Path(payload["sync_templates"]["cron"]).read_text(encoding="utf-8")

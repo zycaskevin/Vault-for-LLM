@@ -108,6 +108,7 @@ from vault.agent_setup_memory import (
     write_local_smoke_template,
     write_memory_agents_guide,
 )
+from vault.agent_setup_obsidian import write_obsidian_human_gui_guide
 from vault.db import VaultDB
 from vault.import_obsidian import sync_obsidian_vault
 
@@ -416,6 +417,7 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         "local_smoke": {},
         "stable_venv": {},
         "memory_layout_files": {},
+        "obsidian_human_gui": {},
         "consumer_daily_report": {},
         "agent_access": {},
         "security_hardening": {},
@@ -593,6 +595,12 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
                 "target_dir": str(Path(config.obsidian_vault).expanduser() / "00-Vault-Knowledge" / "_Inbox"),
             }
         result["obsidian"] = obsidian_payload
+        result["obsidian_human_gui"] = write_obsidian_human_gui_guide(
+            output_dir=template_dir,
+            project_dir=project_path,
+            obsidian_vault=config.obsidian_vault,
+        )
+        result["next_steps"].append(f"Review Obsidian human GUI guide: {result['obsidian_human_gui']['guide']}")
 
         targets = _normalize_sync_targets(config.sync_targets)
         if targets:

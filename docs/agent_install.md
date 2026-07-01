@@ -266,6 +266,8 @@ For agent-led setup, prefer `--obsidian-write-default-rules` and
 - `--obsidian-review-inbox` makes generated sync templates export the Daily
   Report, Memory Candidates, and Sync Status back to
   `00-Vault-Knowledge/_Inbox/`.
+  It also includes a Folder Rules Preview so the user can see how Obsidian
+  folders map to Vault permissions.
 
 That means a normal user can keep using Obsidian as the human-facing notebook,
 while Agents keep using Vault as the governed memory core.
@@ -320,12 +322,16 @@ This writes generated notes under `00-Vault-Knowledge/_Inbox/`:
 - `Daily Memory Report.md`
 - `Memory Candidates.md`
 - `Sync Status.md`
+- `Folder Rules Preview.md`
 
 These notes are review surfaces only. They do not promote candidates, prune
 missing notes, or write back into user-authored Obsidian notes. `Sync Status.md`
 also lists open remote candidate sync conflicts by conflict id, candidate id,
 knowledge id, and conflict type, but it does not include raw conflicting memory
 content.
+`Folder Rules Preview.md` shows which active notes matched folder rules and
+which notes are still unmatched, so a user can tune `.vault/obsidian-folder-rules.yaml`
+without learning the full CLI.
 
 ### Headroom Context Compression
 

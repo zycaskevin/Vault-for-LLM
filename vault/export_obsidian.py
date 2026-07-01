@@ -229,6 +229,30 @@ def _render_candidate_row(row: dict[str, Any]) -> str:
     )
 
 
+def _folder_rule_preview(notes: dict[str, Any]) -> tuple[str, int]:
+    groups: dict[str, list[str]] = {}
+    unmatched: list[str] = []
+    for path, item in sorted(notes.items()):
+        if not isinstance(item, dict) or item.get("status") != "active":
+            continue
+        rule = str(item.get("folder_rule") or "").strip()
+        if rule:
+            groups.setdefault(rule, []).append(path)
+        else:
+            unmatched.append(path)
+
+    sections: list[str] = []
+    for rule, paths in sorted(groups.items()):
+        examples = "\n".join(f"  - `{path}`" for path in paths[:10])
+        more = f"\n  - ... {len(paths) - 10} more" if len(paths) > 10 else ""
+        sections.append(f"- **{rule}**: {len(paths)} active note(s)\n{examples}{more}")
+    if unmatched:
+        examples = "\n".join(f"  - `{path}`" for path in unmatched[:10])
+        more = f"\n  - ... {len(unmatched) - 10} more" if len(unmatched) > 10 else ""
+        sections.append(f"- **No folder rule matched**: {len(unmatched)} active note(s)\n{examples}{more}")
+    return "\n\n".join(sections) or "- No active Obsidian notes in the manifest.", len(unmatched)
+
+
 def _render_review_inbox(
     *,
     candidates: list[dict[str, Any]],
@@ -243,6 +267,7 @@ def _render_review_inbox(
         path for path, item in notes.items()
         if isinstance(item, dict) and item.get("status") == "missing"
     )
+    folder_preview, unmatched_count = _folder_rule_preview(notes)
 
     candidate_lines = "\n\n".join(_render_candidate_row(row) for row in candidates) or "No pending memory candidates."
     recent_lines = "\n".join(
@@ -317,6 +342,7 @@ generated_at: "{generated_at}"
 - Obsidian vault: `{manifest.get('vault_dir', '')}`
 - Raw subdir: `{manifest.get('raw_subdir', '')}`
 - Folder rules: **{manifest.get('folder_rules_count', 0)}**
+- Folder-rule unmatched active notes: **{unmatched_count}**
 
 ## Remote Candidate Sync
 
@@ -341,10 +367,34 @@ Missing notes are not pruned unless an operator explicitly runs import with
 `--prune-missing`. If both Obsidian and Vault have changed the same idea, keep
 the conflict in review instead of overwriting user-authored notes.
 """
+    folder_rules = f"""---
+title: "Vault Obsidian Folder Rules Preview"
+generated_by: "vault-for-llm"
+generated_at: "{generated_at}"
+---
+
+# Vault Obsidian Folder Rules Preview
+
+This is a preview of how Obsidian source notes are mapped into Vault memory
+governance. It is generated from the last import manifest, not from a fresh
+filesystem scan.
+
+## Rule Matches
+
+{folder_preview}
+
+## Human Check
+
+- Notes under sensitive folders should match a private/high or restricted rule.
+- Shared project notes should match a shared/project rule.
+- If many notes are unmatched, edit `.vault/obsidian-folder-rules.yaml` and run
+  the Obsidian import again.
+"""
     return {
         "_Inbox/Daily Memory Report.md": daily,
         "_Inbox/Memory Candidates.md": candidate_note,
         "_Inbox/Sync Status.md": sync_status,
+        "_Inbox/Folder Rules Preview.md": folder_rules,
     }
 
 

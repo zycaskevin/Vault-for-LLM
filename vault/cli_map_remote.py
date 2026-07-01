@@ -22,6 +22,8 @@ def cmd_map(args):
     project_dir = find_project_dir()
     db_path = project_dir / "vault.db"
     action = args.map_action
+    json_output = _arg_value(args, "json", False) is True or _arg_value(args, "pretty", False) is True
+    pretty_output = _arg_value(args, "pretty", False) is True
 
     if action == "build":
         db = VaultDB(str(db_path))
@@ -41,11 +43,35 @@ def cmd_map(args):
                 try:
                     result = build_document_map_for_entry(db.conn, knowledge_id)
                 except ValueError as exc:
+                    if json_output:
+                        _json_print(
+                            {
+                                "ok": False,
+                                "status": "error",
+                                "error": "knowledge_not_found",
+                                "message": str(exc),
+                                "knowledge_id": knowledge_id,
+                            },
+                            pretty=pretty_output,
+                        )
+                        return
                     print(str(exc))
                     return
                 total_nodes += result["nodes"]
                 total_claims += result["claims"]
 
+            payload = {
+                "ok": True,
+                "status": "ok",
+                "action": "build",
+                "knowledge_ids": knowledge_ids,
+                "entry_count": len(knowledge_ids),
+                "nodes": total_nodes,
+                "claims": total_claims,
+            }
+            if json_output:
+                _json_print(payload, pretty=pretty_output)
+                return
             print(
                 f"built {len(knowledge_ids)} entries: "
                 f"nodes={total_nodes} claims={total_claims}"
@@ -62,6 +88,17 @@ def cmd_map(args):
             if action == "show":
                 entry = _get_map_entry(conn, args.knowledge_id)
                 if not entry:
+                    if json_output:
+                        _json_print(
+                            {
+                                "ok": False,
+                                "status": "not_found",
+                                "error": "knowledge_not_found",
+                                "knowledge_id": args.knowledge_id,
+                            },
+                            pretty=pretty_output,
+                        )
+                        return
                     print(f"Knowledge id not found: {args.knowledge_id}")
                     return
 
@@ -73,6 +110,23 @@ def cmd_map(args):
                     (args.knowledge_id,),
                 ).fetchall()
 
+                payload = {
+                    "ok": True,
+                    "status": "ok",
+                    "action": "show",
+                    "knowledge_id": args.knowledge_id,
+                    "title": entry["title"],
+                    "node_count": len(rows),
+                    "nodes": [dict(row) for row in rows],
+                    "next_action": (
+                        f"vault map build {args.knowledge_id}"
+                        if not rows
+                        else "Use vault map read <knowledge_id> --lines START-END for bounded reads."
+                    ),
+                }
+                if json_output:
+                    _json_print(payload, pretty=pretty_output)
+                    return
                 print(f"#{args.knowledge_id} {entry['title']}")
                 if not rows:
                     print(
@@ -98,18 +152,62 @@ def cmd_map(args):
 
                 entry = _get_map_entry(conn, args.knowledge_id)
                 if not entry:
+                    if json_output:
+                        _json_print(
+                            {
+                                "ok": False,
+                                "status": "not_found",
+                                "error": "knowledge_not_found",
+                                "knowledge_id": args.knowledge_id,
+                            },
+                            pretty=pretty_output,
+                        )
+                        return
                     print(f"Knowledge id not found: {args.knowledge_id}")
                     return
 
                 lines = (entry["content_raw"] or "").splitlines()
                 total_lines = len(lines)
                 if total_lines == 0:
+                    if json_output:
+                        _json_print(
+                            {
+                                "ok": True,
+                                "status": "empty",
+                                "action": "read",
+                                "knowledge_id": args.knowledge_id,
+                                "title": entry["title"],
+                                "line_start": 0,
+                                "line_end": 0,
+                                "total_lines": 0,
+                                "lines": [],
+                            },
+                            pretty=pretty_output,
+                        )
+                        return
                     print(f"#{args.knowledge_id} {entry['title']} L0-L0")
                     return
 
                 clamped_start = min(max(1, start_line), total_lines)
                 clamped_end = min(max(clamped_start, end_line), total_lines)
 
+                payload = {
+                    "ok": True,
+                    "status": "ok",
+                    "action": "read",
+                    "knowledge_id": args.knowledge_id,
+                    "title": entry["title"],
+                    "line_start": clamped_start,
+                    "line_end": clamped_end,
+                    "total_lines": total_lines,
+                    "lines": [
+                        {"line_number": line_number, "text": lines[line_number - 1]}
+                        for line_number in range(clamped_start, clamped_end + 1)
+                    ],
+                }
+                if json_output:
+                    _json_print(payload, pretty=pretty_output)
+                    return
                 print(f"#{args.knowledge_id} {entry['title']} L{clamped_start}-L{clamped_end}")
                 for line_number in range(clamped_start, clamped_end + 1):
                     print(f"{line_number}|{lines[line_number - 1]}")
@@ -130,6 +228,17 @@ def cmd_map(args):
                     (pattern, pattern, pattern, args.limit),
                 ).fetchall()
 
+                payload = {
+                    "ok": True,
+                    "status": "ok",
+                    "action": "query",
+                    "query": args.query,
+                    "count": len(rows),
+                    "results": [dict(row) for row in rows],
+                }
+                if json_output:
+                    _json_print(payload, pretty=pretty_output)
+                    return
                 if not rows:
                     print("No matching document map claims")
                     return

@@ -12,7 +12,6 @@ from pathlib import Path
 from .cli_context import _arg_value, _enforce_cli_privacy, _json_print, find_project_dir
 from .cli_search import temporal_search_kwargs
 
-
 def cmd_remember(args):
     """Create a memory candidate or promote it immediately if gates allow."""
     from vault.db import VaultDB
@@ -55,6 +54,7 @@ def cmd_remember(args):
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
+    payload.setdefault("ok", True)
     _json_print(payload, pretty=args.pretty)
 
 
@@ -158,6 +158,7 @@ def cmd_candidates(args):
         raise SystemExit(2) from exc
 
     payload = {
+        "ok": True,
         "count": len(rows),
         "status": status or "all",
         "candidates": [
@@ -778,6 +779,8 @@ def cmd_setup_agent(args):
         config = interactive_setup(setup_values)
 
     payload = run_agent_setup(config)
+    payload.setdefault("ok", True)
+    payload.setdefault("status", "ok")
     if args.pretty or args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return

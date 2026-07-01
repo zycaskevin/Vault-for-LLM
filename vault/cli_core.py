@@ -461,8 +461,6 @@ def cmd_lint(args):
 
 def cmd_doctor(args):
     """環境診斷。"""
-    print("🏥 Vault-for-LLM 環境診斷\n")
-
     checks = []
 
     # Python 版本
@@ -528,12 +526,27 @@ def cmd_doctor(args):
     else:
         checks.append(("嵌入模型快取", "❌ 無 (vault install-embedding)", False))
 
-    # 輸出
-    all_ok = True
+    all_ok = all(bool(ok) for _name, _status, ok in checks)
+    payload = {
+        "ok": all_ok,
+        "status": "ok" if all_ok else "warning",
+        "checks": [
+            {"name": name, "status": status, "ok": bool(ok)}
+            for name, status, ok in checks
+        ],
+        "next_action": (
+            "Vault environment is ready."
+            if all_ok
+            else "Install optional semantic dependencies only if you need semantic search."
+        ),
+    }
+    if _arg_value(args, "json", False) is True or _arg_value(args, "pretty", False) is True:
+        _json_print(payload, pretty=_arg_value(args, "pretty", False) is True)
+        return
+
+    print("🏥 Vault-for-LLM 環境診斷\n")
     for name, status, ok in checks:
         print(f"  {name:25s} {status}")
-        if not ok:
-            all_ok = False
 
     print()
     if all_ok:

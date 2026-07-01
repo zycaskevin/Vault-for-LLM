@@ -32,11 +32,21 @@ def cmd_graph(args):
     graph = VaultGraph(db)
 
     action = args.graph_action
+    json_output = _arg_value(args, "json", False) is True or _arg_value(args, "pretty", False) is True
+    pretty_output = _arg_value(args, "pretty", False) is True
 
     if action == "build":
         """自動推斷實體和關聯。"""
-        print("🔄 掃描知識庫，推斷圖譜...")
+        if _arg_value(args, "clear", False) is True:
+            graph.clear_auto_inferred()
+        if not json_output:
+            print("🔄 掃描知識庫，推斷圖譜...")
         result = graph.infer_all()
+        payload = {"ok": True, "status": "ok", "action": "build", **result}
+        if json_output:
+            _json_print(payload, pretty=pretty_output)
+            db.close()
+            return
         print("\n✅ 圖譜建構完成！")
         print(f"   掃描條目: {result['total_knowledge']}")
         print(f"   新增實體: {result['entities_created']}")
@@ -48,6 +58,35 @@ def cmd_graph(args):
     elif action == "show":
         """顯示圖譜摘要。"""
         stats = graph.stats()
+        edges = db.get_edges()
+        entities = db.conn.execute("SELECT * FROM entities ORDER BY id DESC LIMIT 20").fetchall()
+        edge_items = []
+        for e in edges[:20]:
+            src = db.get_knowledge(e["source_id"])
+            tgt = db.get_knowledge(e["target_id"])
+            item = dict(e)
+            item["source_title"] = src["title"] if src else ""
+            item["target_title"] = tgt["title"] if tgt else ""
+            edge_items.append(item)
+        entity_items = []
+        for e in entities:
+            item = dict(e)
+            item["knowledge_count"] = db.conn.execute(
+                "SELECT COUNT(*) FROM entity_knowledge WHERE entity_id=?", (e["id"],)
+            ).fetchone()[0]
+            entity_items.append(item)
+        payload = {
+            "ok": True,
+            "status": "ok",
+            "action": "show",
+            "stats": stats,
+            "edges": edge_items,
+            "entities": entity_items,
+        }
+        if json_output:
+            _json_print(payload, pretty=pretty_output)
+            db.close()
+            return
         print("🕸️ Vault-for-LLM 圖譜\n")
         print(f"  邊（總計）: {stats['edges_total']}")
         print(f"    自動推斷: {stats['edges_auto']}")
@@ -56,7 +95,6 @@ def cmd_graph(args):
         print(f"  連通節點:   {stats['connected_nodes']}")
 
         # 列出邊
-        edges = db.get_edges()
         if edges:
             print(f"\n  最近 {min(len(edges), 20)} 條邊:")
             for e in edges[:20]:
@@ -69,7 +107,6 @@ def cmd_graph(args):
                 print(f"    {src_title} → [{rel}] → {tgt_title} ({auto})")
 
         # 列出實體
-        entities = db.conn.execute("SELECT * FROM entities ORDER BY id DESC LIMIT 20").fetchall()
         if entities:
             print(f"\n  最近 {min(len(entities), 20)} 個實體:")
             for e in entities:

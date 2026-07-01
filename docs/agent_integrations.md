@@ -80,6 +80,22 @@ documents the safety boundary: search hides raw content, `submit-candidate`
 does not write active knowledge, and active multi-master sync is not part of
 Gateway v0.
 
+For a self-hosted central memory server, use the first-class alias:
+
+```bash
+export VAULT_GATEWAY_TOKEN="choose-a-stable-secret"
+vault remote-server health --project-dir ~/Vaults/my-project --json
+vault remote-server openapi --project-dir ~/Vaults/my-project --json
+vault remote-server serve --project-dir ~/Vaults/my-project --host 0.0.0.0
+```
+
+`remote-server` reuses the Gateway contract but changes the deployment posture:
+it defaults to a network bind and refuses to start without a stable token. Use
+it when every runtime can reach one trusted machine and you do not want
+Supabase. Keep using Supabase when hosted tools need a managed cloud adapter.
+Neither path is active offline multi-master sync; remote writes still enter the
+candidate queue first.
+
 Gateway v0 exposes only:
 
 - `GET /health`

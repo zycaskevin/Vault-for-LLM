@@ -116,6 +116,18 @@ def test_gateway_and_obsidian_export_json_contracts_are_parseable(tmp_path, caps
     assert gateway_contract["info"]["title"] == "Vault Gateway"
     assert gateway_contract["x-vault-safety"]["writes_active_knowledge"] is False
 
+    main(["remote-server", "health", "--project-dir", str(project), "--json"])
+    remote_health = _read_json(capsys)
+    assert remote_health["ok"] is True
+    assert remote_health["gateway"]["role"] == "self_hosted_vault_remote_server"
+    assert remote_health["gateway"]["remote_server"]["stable_token_required"] is True
+
+    main(["remote-server", "openapi", "--project-dir", str(project), "--json"])
+    remote_contract = _read_json(capsys)
+    assert remote_contract["ok"] is True
+    assert remote_contract["info"]["title"] == "Vault Remote Server"
+    assert remote_contract["x-vault-remote-server"]["uses_gateway_contract"] is True
+
     obsidian = tmp_path / "ObsidianVault"
     main(
         [

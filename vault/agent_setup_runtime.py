@@ -232,6 +232,20 @@ def _minimal_gateway_ok(minimal: dict[str, Any]) -> bool:
     )
 
 
+def _minimal_remote_server_ok(minimal: dict[str, Any]) -> bool:
+    server = minimal.get("remote_server") if isinstance(minimal.get("remote_server"), dict) else {}
+    safety = server.get("safety") if isinstance(server.get("safety"), dict) else {}
+    return (
+        server.get("mode") == "self_hosted_gateway_contract"
+        and "vault remote-server health" in str(server.get("health_command") or "")
+        and "vault remote-server openapi" in str(server.get("openapi_command") or "")
+        and "vault remote-server serve" in str(server.get("serve_command") or "")
+        and safety.get("stable_token_required") is True
+        and safety.get("candidate_first_writes") is True
+        and safety.get("active_multi_master_sync") is False
+    )
+
+
 def _minimal_remote_safety_ok(minimal: dict[str, Any]) -> bool:
     safety = minimal.get("safety") if isinstance(minimal.get("safety"), dict) else {}
     return (
@@ -423,6 +437,18 @@ def startup_contract_doctor(template_dir: str | Path) -> dict[str, Any]:
             "Gateway adapter includes health/serve commands and safe write defaults"
             if minimal_gateway_ok
             else "minimal Gateway config must include health/serve commands and safe adapter defaults"
+        ),
+    )
+    minimal_remote_server_ok = _minimal_remote_server_ok(minimal)
+    _startup_doctor_check(
+        checks,
+        name="minimal_remote_server_adapter",
+        status="pass" if minimal_remote_server_ok else "fail",
+        path=minimal_path,
+        detail=(
+            "self-hosted remote-server config uses the Gateway contract and stable-token defaults"
+            if minimal_remote_server_ok
+            else "minimal remote-server config must use vault remote-server and require stable-token candidate-first defaults"
         ),
     )
     minimal_remote_safety_ok = _minimal_remote_safety_ok(minimal)

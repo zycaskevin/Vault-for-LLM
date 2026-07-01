@@ -686,6 +686,22 @@ self-hosted Vault Remote server. The contract says what the endpoint can do and
 what it intentionally cannot do: no raw-content search responses, no direct
 active-memory writes, and no active multi-master sync.
 
+For a self-hosted central memory host, use the same contract through
+`vault remote-server`. This can replace Supabase for many multi-platform
+setups where every agent can reach one trusted server:
+
+```bash
+export VAULT_GATEWAY_TOKEN="choose-a-stable-secret"
+vault remote-server health --project-dir ~/Vaults/my-project --json
+vault remote-server openapi --project-dir ~/Vaults/my-project --json
+vault remote-server serve --project-dir ~/Vaults/my-project --host 0.0.0.0
+```
+
+`remote-server` still writes remote contributions as review candidates. It is
+centralized sharing, not offline multi-master sync. Laptops, phones, or robots
+that need to write while offline still need the future revision/conflict merge
+layer.
+
 ## Memory Migration
 
 Vault can absorb memory from other tools without trusting it blindly. Start with

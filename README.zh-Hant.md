@@ -485,6 +485,21 @@ HTTP contract，讓 Coze、n8n、OpenClaw、Codex、Claude Code、Hermes Agent
 很明確：搜尋不回傳全文、寫入只進候選記憶、不做 active multi-master
 同步；真正進正式記憶庫仍要走 Vault 的審核與治理流程。
 
+如果你想自己架一台中央記憶主機，可以用 `vault remote-server`。它能
+取代 Supabase 在很多多平台場景中的角色：所有 Agent 連到同一台可信
+server，讀同一套分層記憶，寫入時先進候選記憶。
+
+```bash
+export VAULT_GATEWAY_TOKEN="choose-a-stable-secret"
+vault remote-server health --project-dir ~/Vaults/my-project --json
+vault remote-server openapi --project-dir ~/Vaults/my-project --json
+vault remote-server serve --project-dir ~/Vaults/my-project --host 0.0.0.0
+```
+
+這是集中式共享，不是離線多主機自動合併。若筆電、手機、機器人都要
+離線寫入、上線後自動合併，仍需要下一階段的 revision/conflict merge
+層。
+
 ## 可選：Supabase 共享
 
 SQLite 仍然是 source of truth。Supabase 是可選的共享層。

@@ -7,6 +7,7 @@ import threading
 
 import pytest
 
+from vault.cli import main
 from vault.db import VaultDB
 from vault.docmap import build_document_map_for_entry
 from vault.gateway import (
@@ -257,3 +258,13 @@ def test_gateway_http_tolerates_bad_numeric_fields(tmp_path):
 def test_gateway_no_auth_requires_localhost(tmp_path):
     with pytest.raises(ValueError):
         run_gateway(tmp_path, host="0.0.0.0", no_auth=True)
+
+
+def test_remote_server_serve_requires_stable_token(tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv("VAULT_GATEWAY_TOKEN", raising=False)
+    project, _public_id, _private_id = _project(tmp_path)
+    with pytest.raises(SystemExit) as exc:
+        main(["remote-server", "serve", "--project-dir", str(project)])
+    assert exc.value.code == 2
+    output = capsys.readouterr().out
+    assert "requires a stable token" in output

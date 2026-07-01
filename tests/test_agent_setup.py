@@ -470,6 +470,13 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert "vault gateway health" in minimal_configs["gateway"]["health_command"]
     assert "vault gateway serve" in minimal_configs["gateway"]["serve_command"]
     assert minimal_configs["gateway"]["safety"]["candidate_first_writes"] is True
+    assert minimal_configs["remote_server"]["mode"] == "self_hosted_gateway_contract"
+    assert "vault remote-server health" in minimal_configs["remote_server"]["health_command"]
+    assert "vault remote-server openapi" in minimal_configs["remote_server"]["openapi_command"]
+    assert "vault remote-server serve" in minimal_configs["remote_server"]["serve_command"]
+    assert minimal_configs["remote_server"]["safety"]["stable_token_required"] is True
+    assert minimal_configs["remote_server"]["safety"]["candidate_first_writes"] is True
+    assert minimal_configs["remote_server"]["safety"]["active_multi_master_sync"] is False
     assert minimal_configs["local_stdio_mcp_clients"]["codex"]["server_config"]["mcpServers"]["vault"]["command"] == "vault-mcp"
     assert minimal_configs["hosted_or_workflow_readers"]["coze"]["mode"] == "remote_read_only"
     assert minimal_configs["hosted_or_workflow_readers"]["n8n"]["mode"] == "workflow_bridge"
@@ -1168,6 +1175,7 @@ def test_agent_startup_doctor_fails_broken_minimal_configs(tmp_path, capsys):
     minimal_json["hosted_or_workflow_readers"]["coze"]["warning"] = "Use any key."
     minimal_json["mcp_server"]["env"]["VAULT_MCP_REQUIRE_AGENT_SIGNATURE"] = "0"
     minimal_json["gateway"]["safety"]["candidate_first_writes"] = False
+    minimal_json["remote_server"]["safety"]["stable_token_required"] = False
     minimal_json["safety"]["supabase_bidirectional_sync_default"] = True
     minimal_path.write_text(json.dumps(minimal_json), encoding="utf-8")
 
@@ -1187,6 +1195,7 @@ def test_agent_startup_doctor_fails_broken_minimal_configs(tmp_path, capsys):
     assert any(check["name"] == "minimal_hosted_workflow_readers" and check["status"] == "fail" for check in payload["checks"])
     assert any(check["name"] == "minimal_mcp_hmac_boundary" and check["status"] == "fail" for check in payload["checks"])
     assert any(check["name"] == "minimal_gateway_adapter" and check["status"] == "fail" for check in payload["checks"])
+    assert any(check["name"] == "minimal_remote_server_adapter" and check["status"] == "fail" for check in payload["checks"])
     assert any(check["name"] == "minimal_remote_reader_safety" and check["status"] == "fail" for check in payload["checks"])
 
 

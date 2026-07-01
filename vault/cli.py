@@ -82,6 +82,7 @@ from .cli_flow import (
 )
 from .cli_guide import cmd_guide as _cmd_guide_impl
 from .cli_daily_report import cmd_daily_report as _cmd_daily_report_impl
+from .cli_gateway import add_gateway_parsers
 from .cli_map_remote import cmd_map, cmd_remote, _parse_map_line_range, _positive_int
 from .cli_okf import add_okf_parser, cmd_okf
 from .cli_quality import (
@@ -94,7 +95,7 @@ from .cli_quality import (
 )
 from .cli_sync import cmd_sync
 from .gui import DEFAULT_HOST, DEFAULT_PORT, cmd_gui
-from .gateway import DEFAULT_GATEWAY_HOST, DEFAULT_GATEWAY_PORT, cmd_gateway
+from .gateway import cmd_gateway
 
 def cmd_skill(args):
     """Dispatch skill subcommands through vault.cli symbols for compatibility."""
@@ -182,24 +183,7 @@ def main(argv: list[str] | None = None):
     p.add_argument("--json", action="store_true", help="輸出 JSON")
     p.add_argument("--pretty", action="store_true", help="輸出 pretty JSON")
 
-    # gateway
-    p = sub.add_parser("gateway", help="啟動 Agent 統一記憶入口（HTTP Gateway）")
-    gateway_sub = p.add_subparsers(dest="gateway_action")
-    gp = gateway_sub.add_parser("serve", help="啟動薄 Gateway：search/read-range/submit-candidate/health")
-    gp.add_argument("--host", default=DEFAULT_GATEWAY_HOST, help="綁定 host；預設 127.0.0.1")
-    gp.add_argument("--port", type=int, default=DEFAULT_GATEWAY_PORT, help="綁定 port；預設 8789")
-    gp.add_argument("--auth-token", default=None, help="Gateway token；也可用 VAULT_GATEWAY_TOKEN")
-    gp.add_argument("--no-auth", action="store_true", help="只允許 localhost 綁定時關閉 token")
-    gp.add_argument("--allow-shared-candidates", action="store_true", help="允許 Gateway submit-candidate 寫入 shared/public 候選")
-    gp.add_argument("--allow-private-candidates", action="store_true", help="允許 Gateway submit-candidate 寫入 private 候選")
-    gp.add_argument("--allow-high-sensitivity-candidates", action="store_true", help="允許 Gateway submit-candidate 寫入 high 候選")
-    gp.add_argument("--allow-restricted-candidates", action="store_true", help="允許 Gateway submit-candidate 寫入 restricted 候選")
-    gp = gateway_sub.add_parser("health", help="輸出 Gateway readiness JSON，不啟動 server")
-    gp.add_argument("--json", action="store_true", help="輸出 JSON")
-    gp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
-    gp = gateway_sub.add_parser("openapi", help="輸出 Gateway HTTP contract JSON，不啟動 server")
-    gp.add_argument("--json", action="store_true", help="輸出 JSON")
-    gp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
+    add_gateway_parsers(sub)
 
     # init
     p = sub.add_parser("init", help="初始化專案")
@@ -1141,6 +1125,7 @@ def main(argv: list[str] | None = None):
         "guide": cmd_guide,
         "daily-report": cmd_daily_report,
         "gateway": cmd_gateway,
+        "remote-server": cmd_gateway,
         "add": cmd_add,
         "remember": cmd_remember,
         "promote": cmd_promote,

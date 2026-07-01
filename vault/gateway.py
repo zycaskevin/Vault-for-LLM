@@ -66,12 +66,12 @@ def gateway_health(project_dir: str | Path) -> dict[str, Any]:
     }
 
 
-def gateway_openapi() -> dict[str, Any]:
+def gateway_openapi(*, title: str = "Vault Gateway") -> dict[str, Any]:
     """Return the stable Gateway HTTP contract for adapters and hosted tools."""
     return {
         "openapi": "3.1.0",
         "info": {
-            "title": "Vault Gateway",
+            "title": title,
             "version": GATEWAY_CONTRACT_VERSION,
             "description": (
                 "A conservative HTTP adapter for governed agent memory: search, bounded read, "
@@ -543,6 +543,7 @@ def run_gateway(
     port: int = DEFAULT_GATEWAY_PORT,
     auth_token: str | None = None,
     no_auth: bool = False,
+    server_label: str = "Vault Gateway",
     allow_shared_candidates: bool = False,
     allow_private_candidates: bool = False,
     allow_high_sensitivity_candidates: bool = False,
@@ -562,7 +563,7 @@ def run_gateway(
         allow_restricted_candidates=allow_restricted_candidates,
     )
     server = ThreadingHTTPServer((host_text, int(port)), handler)
-    print(f"Vault Gateway: http://{host_text}:{int(port)}")
+    print(f"{server_label}: http://{host_text}:{int(port)}")
     print(f"Auth: {'enabled' if token else 'disabled'}")
     if token:
         print(f"Token: {token}")
@@ -580,18 +581,29 @@ def cmd_gateway(args: Any) -> None:
     from .cli_context import _arg_value, _json_print, find_project_dir
 
     action = str(getattr(args, "gateway_action", "") or "")
+    profile = str(getattr(args, "gateway_profile", "gateway") or "gateway")
     if action == "health":
         payload = gateway_health(find_project_dir())
+        if profile == "remote_server":
+            _mark_remote_server_payload(payload)
         payload.setdefault("ok", payload.get("status") == "ok")
         _json_print(payload, pretty=_arg_value(args, "pretty", False) is True)
         return
     if action == "openapi":
-        payload = gateway_openapi()
+        payload = gateway_openapi(title="Vault Remote Server" if profile == "remote_server" else "Vault Gateway")
+        if profile == "remote_server":
+            payload["x-vault-remote-server"] = _remote_server_metadata()
         payload.setdefault("ok", True)
         _json_print(payload, pretty=_arg_value(args, "pretty", False) is True)
         return
     if action != "serve":
-        print("用法: vault gateway {serve|health|openapi}")
+        print("用法: vault gateway {serve|health|openapi} 或 vault remote-server {serve|health|openapi}")
+        raise SystemExit(2)
+    if profile == "remote_server" and not _has_stable_gateway_token(args):
+        print(
+            "Vault Remote Server requires a stable token. Set VAULT_GATEWAY_TOKEN "
+            "or pass --auth-token before binding a remote server."
+        )
         raise SystemExit(2)
     run_gateway(
         find_project_dir(),
@@ -599,6 +611,7 @@ def cmd_gateway(args: Any) -> None:
         port=int(getattr(args, "port", DEFAULT_GATEWAY_PORT) or DEFAULT_GATEWAY_PORT),
         auth_token=getattr(args, "auth_token", None),
         no_auth=bool(getattr(args, "no_auth", False)),
+        server_label="Vault Remote Server" if profile == "remote_server" else "Vault Gateway",
         allow_shared_candidates=bool(getattr(args, "allow_shared_candidates", False)),
         allow_private_candidates=bool(getattr(args, "allow_private_candidates", False)),
         allow_high_sensitivity_candidates=bool(getattr(args, "allow_high_sensitivity_candidates", False)),
@@ -644,6 +657,35 @@ def _bool_value(value: Any, default: bool) -> bool:
 
 def _error(code: str, message: str, *, status: str = "error") -> dict[str, Any]:
     return {"status": status, "error": code, "message": message}
+
+
+def _has_stable_gateway_token(args: Any) -> bool:
+    if bool(getattr(args, "no_auth", False)):
+        return False
+    if str(getattr(args, "auth_token", "") or "").strip():
+        return True
+    return bool(os.environ.get("VAULT_GATEWAY_TOKEN", "").strip())
+
+
+def _remote_server_metadata() -> dict[str, Any]:
+    return {
+        "mode": "self_hosted_remote_memory_entrypoint",
+        "uses_gateway_contract": True,
+        "replaces_supabase_for": ["multi_platform_reads", "candidate_first_remote_writes"],
+        "does_not_replace_yet": ["offline_multi_master_merge", "active_memory_bidirectional_sync"],
+        "stable_token_required": True,
+        "source_of_truth": "server_side_local_sqlite_vault",
+    }
+
+
+def _mark_remote_server_payload(payload: dict[str, Any]) -> None:
+    gateway = payload.get("gateway") if isinstance(payload.get("gateway"), dict) else {}
+    remote_ready = gateway.get("remote_ready") if isinstance(gateway.get("remote_ready"), dict) else {}
+    gateway["remote_server"] = _remote_server_metadata()
+    gateway["role"] = "self_hosted_vault_remote_server"
+    remote_ready["stable_token_required"] = True
+    gateway["remote_ready"] = remote_ready
+    payload["gateway"] = gateway
 
 
 def _append_audit(project_dir: Path, event: str, agent_id: str, status: str, **extra: Any) -> None:

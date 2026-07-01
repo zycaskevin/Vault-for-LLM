@@ -22,6 +22,7 @@ See also: [`docs/agent_first_usage.md`](agent_first_usage.md).
 | See the small command map | `vault guide` |
 | Browse locally | `vault gui` |
 | Give agents one safe HTTP entrypoint | `vault gateway serve` |
+| Self-host a central memory server | `vault remote-server serve` |
 | Search memory | `vault search "query"` |
 | Propose memory safely | `vault remember "Title" --content "..." --reason "..."` |
 | Continue a task | `vault task start/update/handoff` |
@@ -60,6 +61,9 @@ scheduled jobs, or explicit maintenance sessions.
 | `vault gateway openapi --json` | Return the stable Gateway HTTP contract for Coze, n8n, OpenClaw, and future remote adapters |
 | `vault gateway serve --auth-token "$VAULT_GATEWAY_TOKEN"` | Use a stable token instead of printing a generated token at startup |
 | `vault gateway serve --allow-shared-candidates` | Allow agents to submit shared-scope candidates; they still do not write active knowledge |
+| `vault remote-server health --json` | Check self-hosted remote-server readiness without starting the server |
+| `vault remote-server openapi --json` | Return the same Gateway contract with self-hosted remote-server metadata |
+| `vault remote-server serve --host 0.0.0.0` | Start a self-hosted central memory entrypoint; requires `VAULT_GATEWAY_TOKEN` or `--auth-token` |
 | `vault security doctor` | Check local GUI/MCP security posture, including GUI token and MCP HMAC settings |
 | `vault remote status --json` | Offline check for local source-of-truth, Supabase read-copy/candidate-inbox setup, sync freshness hints, and Agent sharing policy files |
 | `vault remote smoke --agent-id remote-agent --query "deployment SOP" --json` | Verify Supabase remote reader credentials and the `vault_search_readable` RPC |
@@ -108,6 +112,10 @@ Use `vault gateway health --json` in installers and CI when you only need to
 confirm the project vault is ready for Gateway clients.
 Use `vault gateway openapi --json` when an adapter needs the request/response
 shape without starting a server.
+Use `vault remote-server serve` when the user wants a self-hosted central
+memory host instead of Supabase. It reuses the Gateway contract, requires a
+stable token, and still writes remote contributions as review candidates rather
+than active memory.
 
 Use `vault import memory` when moving memory from another product, an exported
 chat transcript, a JSON/CSV archive, or a folder of Markdown notes. The import

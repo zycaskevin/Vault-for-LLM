@@ -44,9 +44,10 @@ def obsidian_sync_command(
     *,
     project_dir: str | Path,
     obsidian_vault: str | Path,
+    folder_rules_path: str | Path | None = None,
     vault_executable: str = "vault",
 ) -> list[str]:
-    return [
+    command = [
         vault_executable,
         "import",
         "obsidian",
@@ -57,6 +58,31 @@ def obsidian_sync_command(
         "--compile",
         "--no-embed",
     ]
+    if folder_rules_path:
+        command.extend(["--obsidian-rules", str(Path(folder_rules_path).expanduser())])
+    return command
+
+
+def obsidian_review_inbox_command(
+    *,
+    project_dir: str | Path,
+    obsidian_vault: str | Path,
+    vault_executable: str = "vault",
+) -> list[str]:
+    return [
+        vault_executable,
+        "export",
+        "obsidian",
+        "--vault",
+        str(Path(obsidian_vault).expanduser()),
+        "--project-dir",
+        str(Path(project_dir).expanduser()),
+        "--include-review-inbox",
+    ]
+
+
+def chained_shell_command(commands: list[list[str]]) -> list[str]:
+    return ["/bin/sh", "-lc", " && ".join(shell_join(command) for command in commands)]
 
 
 def render_cron_template(*, command: list[str], interval_minutes: int = 15) -> str:
@@ -1072,16 +1098,25 @@ def write_sync_templates(
     obsidian_vault: str | Path,
     targets: str | list[str] = "all",
     interval_minutes: int = 15,
+    folder_rules_path: str | Path | None = None,
+    include_review_inbox: bool = False,
     vault_executable: str = "vault",
 ) -> dict[str, str]:
     out = Path(output_dir).expanduser().resolve()
     out.mkdir(parents=True, exist_ok=True)
     selected = _normalize_sync_targets(targets)
-    command = obsidian_sync_command(
+    import_command = obsidian_sync_command(
+        project_dir=project_dir,
+        obsidian_vault=obsidian_vault,
+        folder_rules_path=folder_rules_path,
+        vault_executable=vault_executable,
+    )
+    review_command = obsidian_review_inbox_command(
         project_dir=project_dir,
         obsidian_vault=obsidian_vault,
         vault_executable=vault_executable,
     )
+    command = chained_shell_command([import_command, review_command]) if include_review_inbox else import_command
 
     written: dict[str, str] = {}
     if "cron" in selected:
@@ -1110,8 +1145,23 @@ def write_sync_templates(
                 "",
                 f"```bash\n{shell_join(command)}\n```",
                 "",
+                "Import command:",
+                "",
+                f"```bash\n{shell_join(import_command)}\n```",
+                "",
+                *(
+                    [
+                        "Review inbox export command:",
+                        "",
+                        f"```bash\n{shell_join(review_command)}\n```",
+                        "",
+                    ]
+                    if include_review_inbox
+                    else []
+                ),
                 "Review paths before enabling any scheduled job.",
                 "The import is incremental: Vault tracks Obsidian source hashes in `.vault/obsidian-import-manifest.json`, updates changed notes, and reports missing source notes without pruning raw copies unless `--prune-missing` is used.",
+                "When review inbox export is enabled, Vault also writes human-facing notes to `00-Vault-Knowledge/_Inbox/` so the user can review daily memory cards inside Obsidian.",
                 "",
             ]
         ),

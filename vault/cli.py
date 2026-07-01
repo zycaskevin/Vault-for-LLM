@@ -591,12 +591,12 @@ def main(argv: list[str] | None = None):
         ap.add_argument("--install-embedding-model", choices=["zh", "en", "mix"],
                         help="semantic feature 啟用時，下載並設定本地 ONNX embedding model")
         ap.add_argument("--obsidian-vault", help="既有 Obsidian vault 路徑；提供後會先 dry-run")
-        ap.add_argument("--import-obsidian", action="store_true",
-                        help="dry-run 後執行第一次 Obsidian 匯入並 compile")
-        ap.add_argument("--obsidian-sync", choices=["none", "cron", "launchagent", "n8n", "all"],
-                        default="none", help="產生後續自動同步模板")
-        ap.add_argument("--sync-interval-minutes", type=int, default=15,
-                        help="同步模板排程間隔分鐘數")
+        ap.add_argument("--import-obsidian", action="store_true", help="dry-run 後執行第一次 Obsidian 匯入並 compile")
+        ap.add_argument("--obsidian-rules", help="Obsidian folder rules YAML；可搭配 --obsidian-write-default-rules")
+        ap.add_argument("--obsidian-write-default-rules", action="store_true", help="產生保守資料夾權限規則")
+        ap.add_argument("--obsidian-review-inbox", action="store_true", help="同步模板輸出 Obsidian _Inbox")
+        ap.add_argument("--obsidian-sync", choices=["none", "cron", "launchagent", "n8n", "all"], default="none", help="產生後續自動同步模板")
+        ap.add_argument("--sync-interval-minutes", type=int, default=15, help="同步模板排程間隔分鐘數")
         ap.add_argument("--supabase-sync", choices=["none", "cron", "launchagent", "n8n", "realtime", "all"],
                         default="none", help="產生 Supabase sync 模板；realtime 為本地近即時推送")
         ap.add_argument("--supabase-setup", choices=["none", "simple", "advanced"],

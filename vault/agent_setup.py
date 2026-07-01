@@ -40,6 +40,7 @@ from vault.agent_setup_templates import (
     automation_learning_health_command,
     automation_schedule_command,
     automation_schedule_with_inbox_command,
+    obsidian_review_inbox_command,
     obsidian_sync_command,
     render_coze_supabase_openapi_template,
     render_cron_template,
@@ -126,6 +127,31 @@ VALID_MEMORY_LAYOUTS = {"shared", "private", "hybrid"}
 VALID_RUNTIME_TEMPLATES = {"codex", "claude-code", "claude_code", "openclaw", "hermes"}
 PYPI_EXTRA_FEATURES = {"mcp", "semantic", "supabase", "dev"}
 VALID_EMBEDDING_MODELS = {"zh", "en", "mix"}
+DEFAULT_OBSIDIAN_FOLDER_RULES = {
+    "rules": [
+        {
+            "pattern": "Personal/**",
+            "scope": "private",
+            "sensitivity": "high",
+            "category": "personal",
+            "tags": ["personal"],
+        },
+        {
+            "pattern": "Projects/**",
+            "scope": "shared",
+            "sensitivity": "medium",
+            "category": "project",
+            "tags": ["project"],
+        },
+        {
+            "pattern": "Public/**",
+            "scope": "public",
+            "sensitivity": "low",
+            "category": "public",
+            "tags": ["public"],
+        },
+    ]
+}
 
 
 def current_vault_executable() -> str:
@@ -265,6 +291,22 @@ def _normalize_memory_layout(layout: str | None) -> str:
     return value
 
 
+def _write_default_obsidian_folder_rules(project_dir: str | Path) -> dict[str, str]:
+    path = Path(project_dir).expanduser().resolve() / ".vault" / "obsidian-folder-rules.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existed = path.exists()
+    if not existed:
+        path.write_text(
+            yaml.safe_dump(DEFAULT_OBSIDIAN_FOLDER_RULES, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+    return {
+        "path": str(path),
+        "status": "existing" if existed else "created",
+        "next_action": "Review folder rules before relying on Obsidian folders for memory permissions.",
+    }
+
+
 @dataclass
 class AgentSetupConfig:
     project_dir: Path
@@ -282,6 +324,9 @@ class AgentSetupConfig:
     obsidian_vault: Path | None = None
     import_obsidian: bool = False
     obsidian_dry_run_first: bool = True
+    obsidian_rules_path: Path | None = None
+    obsidian_write_default_rules: bool = False
+    obsidian_review_inbox: bool = False
     sync_targets: str | list[str] = "none"
     sync_interval_minutes: int = 15
     supabase_sync_targets: str | list[str] = "none"
@@ -509,13 +554,23 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
         )
 
     if config.obsidian_vault:
+        rules_path = config.obsidian_rules_path
         obsidian_payload: dict[str, Any] = {"vault": str(config.obsidian_vault)}
+        if config.obsidian_write_default_rules:
+            obsidian_payload["folder_rules"] = _write_default_obsidian_folder_rules(project_path)
+            rules_path = Path(obsidian_payload["folder_rules"]["path"])
+        elif rules_path:
+            obsidian_payload["folder_rules"] = {
+                "path": str(Path(rules_path).expanduser()),
+                "status": "provided",
+            }
         if config.obsidian_dry_run_first:
             obsidian_payload["dry_run"] = sync_obsidian_vault(
                 project_dir=project_path,
                 vault_dir=config.obsidian_vault,
                 dry_run=True,
                 allow_private=config.allow_private,
+                folder_rules_path=rules_path,
             )
         if config.import_obsidian:
             obsidian_payload["import"] = sync_obsidian_vault(
@@ -523,8 +578,20 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
                 vault_dir=config.obsidian_vault,
                 dry_run=False,
                 allow_private=config.allow_private,
+                folder_rules_path=rules_path,
             )
             obsidian_payload["compile"] = compile_project(project_path, allow_private=config.allow_private)
+        if config.obsidian_review_inbox:
+            obsidian_payload["review_inbox"] = {
+                "enabled": True,
+                "command": shell_join(
+                    obsidian_review_inbox_command(
+                        project_dir=project_path,
+                        obsidian_vault=config.obsidian_vault,
+                    )
+                ),
+                "target_dir": str(Path(config.obsidian_vault).expanduser() / "00-Vault-Knowledge" / "_Inbox"),
+            }
         result["obsidian"] = obsidian_payload
 
         targets = _normalize_sync_targets(config.sync_targets)
@@ -535,6 +602,8 @@ def run_agent_setup(config: AgentSetupConfig) -> dict[str, Any]:
                 obsidian_vault=config.obsidian_vault,
                 targets=sorted(targets),
                 interval_minutes=config.sync_interval_minutes,
+                folder_rules_path=rules_path,
+                include_review_inbox=config.obsidian_review_inbox,
             )
 
     if "supabase" in features:
@@ -837,10 +906,25 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
         obsidian_vault = _ask("Existing Obsidian vault path (blank to skip)", "")
 
     import_obsidian = bool(argv_config.get("import_obsidian", False))
+    obsidian_rules_path = argv_config.get("obsidian_rules_path")
+    obsidian_write_default_rules = bool(argv_config.get("obsidian_write_default_rules", False))
+    obsidian_review_inbox = bool(argv_config.get("obsidian_review_inbox", False))
     sync_targets = argv_config.get("sync_targets", "none")
     if obsidian_vault:
         if "import_obsidian" not in argv_config:
             import_obsidian = _ask_yes_no("Run first Obsidian import after dry-run?", False)
+        if "obsidian_write_default_rules" not in argv_config and not obsidian_rules_path:
+            obsidian_write_default_rules = _ask_yes_no(
+                "Create default Obsidian folder permission rules?",
+                True,
+            )
+        if obsidian_rules_path is None and not obsidian_write_default_rules:
+            obsidian_rules_path = _ask("Existing Obsidian folder rules path (blank to skip)", "")
+        if "obsidian_review_inbox" not in argv_config:
+            obsidian_review_inbox = _ask_yes_no(
+                "Export daily memory review inbox back to Obsidian?",
+                True,
+            )
         if not argv_config.get("sync_targets"):
             sync_targets = _ask("Automatic sync templates (none/cron/launchagent/n8n/all)", "none")
 
@@ -940,6 +1024,9 @@ def interactive_setup(argv_config: dict[str, Any]) -> AgentSetupConfig:
         install_embedding_model=install_embedding_choice,
         obsidian_vault=Path(obsidian_vault).expanduser() if obsidian_vault else None,
         import_obsidian=import_obsidian,
+        obsidian_rules_path=Path(obsidian_rules_path).expanduser() if obsidian_rules_path else None,
+        obsidian_write_default_rules=obsidian_write_default_rules,
+        obsidian_review_inbox=obsidian_review_inbox,
         sync_targets=sync_targets,
         sync_interval_minutes=int(argv_config.get("sync_interval_minutes") or 15),
         supabase_sync_targets=supabase_sync_targets,
@@ -1022,6 +1109,13 @@ def _interactive_consumer_setup(argv_config: dict[str, Any], *, agent: str, audi
         tool_profile=str(argv_config.get("tool_profile") or "core"),
         obsidian_vault=Path(obsidian_vault).expanduser() if obsidian_vault else None,
         import_obsidian=bool(argv_config.get("import_obsidian", False)),
+        obsidian_rules_path=(
+            Path(argv_config["obsidian_rules_path"]).expanduser()
+            if argv_config.get("obsidian_rules_path")
+            else None
+        ),
+        obsidian_write_default_rules=bool(argv_config.get("obsidian_write_default_rules", wants_obsidian)),
+        obsidian_review_inbox=bool(argv_config.get("obsidian_review_inbox", wants_obsidian)),
         sync_targets="cron" if wants_obsidian else "none",
         supabase_setup_mode="simple" if wants_supabase else "none",
         supabase_sync_targets="cron" if wants_supabase else "none",

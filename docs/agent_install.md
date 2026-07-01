@@ -236,6 +236,8 @@ vault setup-agent \
   --agent-project-dir ~/Vaults/project-memory \
   --features core,mcp,obsidian_import \
   --obsidian-vault /path/to/ObsidianVault \
+  --obsidian-write-default-rules \
+  --obsidian-review-inbox \
   --obsidian-sync all \
   --json
 ```
@@ -255,6 +257,18 @@ These jobs are incremental: Vault records Obsidian source hashes in
 `.vault/obsidian-import-manifest.json`, updates changed notes, and reports
 missing source notes. Missing notes are not pruned from `raw/` unless the command
 explicitly uses `--prune-missing`.
+
+For agent-led setup, prefer `--obsidian-write-default-rules` and
+`--obsidian-review-inbox`:
+
+- `--obsidian-write-default-rules` creates
+  `.vault/obsidian-folder-rules.yaml` with conservative defaults.
+- `--obsidian-review-inbox` makes generated sync templates export the Daily
+  Report, Memory Candidates, and Sync Status back to
+  `00-Vault-Knowledge/_Inbox/`.
+
+That means a normal user can keep using Obsidian as the human-facing notebook,
+while Agents keep using Vault as the governed memory core.
 
 Obsidian folder rules can map human folder structure into Vault governance
 metadata. Create `.vault/obsidian-folder-rules.yaml` in the Vault project:

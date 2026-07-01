@@ -61,6 +61,51 @@ def test_run_agent_setup_imports_obsidian_and_writes_templates(tmp_path):
     assert workflow["nodes"][1]["type"] == "n8n-nodes-base.executeCommand"
 
 
+def test_run_agent_setup_obsidian_rules_and_review_inbox_schedule(tmp_path):
+    from vault.agent_setup import AgentSetupConfig, run_agent_setup
+
+    project = tmp_path / "agent-project"
+    obsidian = tmp_path / "ObsidianVault"
+    (obsidian / "Personal").mkdir(parents=True)
+    (obsidian / "Personal" / "Journal.md").write_text(
+        "# Journal\n\nRestricted personal note for the profile agent.\n",
+        encoding="utf-8",
+    )
+
+    result = run_agent_setup(
+        AgentSetupConfig(
+            project_dir=project,
+            scope="private",
+            agent="profile-agent",
+            features=["core", "mcp", "obsidian_import"],
+            obsidian_vault=obsidian,
+            import_obsidian=True,
+            obsidian_write_default_rules=True,
+            obsidian_review_inbox=True,
+            sync_targets="cron",
+            template_dir=tmp_path / "templates",
+        )
+    )
+
+    rules_path = project / ".vault" / "obsidian-folder-rules.yaml"
+    assert rules_path.exists()
+    assert result["obsidian"]["folder_rules"]["path"] == str(rules_path)
+    assert result["obsidian"]["review_inbox"]["target_dir"].endswith("00-Vault-Knowledge/_Inbox")
+    assert result["obsidian"]["import"]["paths"][0].endswith("raw/obsidian/Personal/Journal.md")
+
+    imported = (project / "raw" / "obsidian" / "Personal" / "Journal.md").read_text(encoding="utf-8")
+    assert "scope: private" in imported
+    assert "sensitivity: high" in imported
+
+    cron = (tmp_path / "templates" / "obsidian-sync.cron").read_text(encoding="utf-8")
+    readme = (tmp_path / "templates" / "README.md").read_text(encoding="utf-8")
+    assert "vault import obsidian" in cron
+    assert "--obsidian-rules" in cron
+    assert "vault export obsidian" in cron
+    assert "--include-review-inbox" in cron
+    assert "Review inbox export command" in readme
+
+
 def test_run_agent_setup_consumer_audience_writes_daily_report_guide_and_safe_schedule(tmp_path):
     from vault.agent_setup import AgentSetupConfig, current_vault_executable, run_agent_setup
 
@@ -804,6 +849,8 @@ def test_setup_agent_cli_non_interactive(tmp_path, capsys):
             "--obsidian-vault",
             str(obsidian),
             "--import-obsidian",
+            "--obsidian-write-default-rules",
+            "--obsidian-review-inbox",
             "--obsidian-sync",
             "cron",
             "--json",
@@ -815,8 +862,12 @@ def test_setup_agent_cli_non_interactive(tmp_path, capsys):
     assert payload["agent"] == "hermes"
     assert payload["language"] == "zh-Hant"
     assert payload["obsidian"]["import"]["added"] == 1
+    assert payload["obsidian"]["folder_rules"]["status"] == "created"
+    assert payload["obsidian"]["review_inbox"]["enabled"] is True
     assert "cron" in payload["sync_templates"]
     assert (project / "raw" / "obsidian" / "Note.md").exists()
+    cron = Path(payload["sync_templates"]["cron"]).read_text(encoding="utf-8")
+    assert "vault export obsidian" in cron
 
 
 def test_setup_agent_cli_agent_preset_applies_safe_defaults(tmp_path, capsys):

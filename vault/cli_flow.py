@@ -678,6 +678,9 @@ def cmd_setup_agent(args):
             install_embedding_model=args.install_embedding_model,
             obsidian_vault=Path(args.obsidian_vault).expanduser() if args.obsidian_vault else None,
             import_obsidian=bool(args.import_obsidian),
+            obsidian_rules_path=Path(args.obsidian_rules).expanduser() if args.obsidian_rules else None,
+            obsidian_write_default_rules=bool(args.obsidian_write_default_rules),
+            obsidian_review_inbox=bool(args.obsidian_review_inbox),
             sync_targets=args.obsidian_sync,
             sync_interval_minutes=args.sync_interval_minutes,
             supabase_sync_targets=args.supabase_sync,
@@ -725,6 +728,7 @@ def cmd_setup_agent(args):
             "install_optional_deps": args.install_optional_deps,
             "install_embedding_model": args.install_embedding_model,
             "obsidian_vault": args.obsidian_vault,
+            "obsidian_rules_path": args.obsidian_rules,
             "supabase_setup_mode": args.supabase_setup,
             "remote_reader_query": args.remote_reader_query,
             "agent_roster": args.agent_roster,
@@ -743,6 +747,10 @@ def cmd_setup_agent(args):
         setup_values["agent_access_overrides"] = _agent_access_overrides_from_args()
         if args.import_obsidian:
             setup_values["import_obsidian"] = True
+        if args.obsidian_write_default_rules:
+            setup_values["obsidian_write_default_rules"] = True
+        if args.obsidian_review_inbox:
+            setup_values["obsidian_review_inbox"] = True
         if args.obsidian_sync != "none":
             setup_values["sync_targets"] = args.obsidian_sync
         if args.supabase_sync != "none":
@@ -801,6 +809,10 @@ def cmd_setup_agent(args):
                 "  obsidian_import: "
                 f"added={imported.get('added')} updated={imported.get('updated')} skipped={imported.get('skipped')}"
             )
+        if obsidian.get("folder_rules"):
+            print(f"  obsidian_folder_rules: {obsidian['folder_rules'].get('path')}")
+        if obsidian.get("review_inbox"):
+            print(f"  obsidian_review_inbox: {obsidian['review_inbox'].get('target_dir')}")
     if payload.get("sync_templates"):
         print("  sync_templates:")
         for name, path in payload["sync_templates"].items():

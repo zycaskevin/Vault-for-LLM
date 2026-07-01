@@ -39,6 +39,12 @@ def _arg_value(args, name: str, default=None):
     return vars(args).get(name, default)
 
 
+def _json_flags(args) -> tuple[bool, bool]:
+    """Return explicit JSON/pretty flags for argparse-like namespaces."""
+    pretty = _arg_value(args, "pretty", False) is True
+    return (_arg_value(args, "json", False) is True or pretty, pretty)
+
+
 def _extract_project_dir_arg(argv: list[str]) -> tuple[list[str], str | None]:
     """Extract --project-dir from anywhere in the CLI command.
 

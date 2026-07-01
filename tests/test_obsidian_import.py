@@ -281,5 +281,7 @@ def test_cmd_import_obsidian_json_output_is_machine_readable(tmp_path, monkeypat
 
     cmd_import(args)
     payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["status"] == "ok"
     assert payload["import"]["added"] == 1
     assert payload["import"]["manifest_path"]

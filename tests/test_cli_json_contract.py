@@ -100,6 +100,36 @@ def test_map_and_graph_json_contracts_are_parseable(tmp_path, capsys):
     assert isinstance(graph["edges"], list)
 
 
+def test_gateway_and_obsidian_export_json_contracts_are_parseable(tmp_path, capsys):
+    project = _make_project(tmp_path, capsys)
+
+    main(["gateway", "health", "--project-dir", str(project), "--json"])
+    gateway = _read_json(capsys)
+    assert gateway["ok"] is True
+    assert gateway["status"] == "ok"
+    assert gateway["gateway"]["candidate_first_writes"] is True
+
+    obsidian = tmp_path / "ObsidianVault"
+    main(
+        [
+            "export",
+            "obsidian",
+            "--vault",
+            str(obsidian),
+            "--project-dir",
+            str(project),
+            "--dry-run",
+            "--json",
+        ]
+    )
+    exported = _read_json(capsys)
+    assert exported["ok"] is True
+    assert exported["status"] == "ok"
+    assert exported["dry_run"] is True
+    assert exported["matched"] == 1
+    assert "paths" in exported
+
+
 def test_setup_agent_json_has_stable_top_level_status(tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("VAULT_AGENT_REGISTRY_DIR", str(tmp_path / "registry"))
     monkeypatch.setenv("VAULT_AGENT_PRIVATE_ROOT", str(tmp_path / "private-root"))

@@ -237,8 +237,10 @@ def cmd_import(args):
             print(f"❌ 外部記憶匯入失敗: {e}")
             raise SystemExit(2) from e
 
-        if getattr(args, "json", False) or getattr(args, "pretty", False):
-            _json_print(payload, pretty=getattr(args, "pretty", False))
+        json_output = _arg_value(args, "json", False) is True or _arg_value(args, "pretty", False) is True
+        pretty_output = _arg_value(args, "pretty", False) is True
+        if json_output:
+            _json_print(payload, pretty=pretty_output)
         else:
             print("🧳 外部記憶搬家結果:")
             print(f"  來源: {payload['source']}")
@@ -300,8 +302,10 @@ def cmd_import(args):
             print(f"❌ OKF 匯入失敗: {e}")
             raise SystemExit(2) from e
 
-        if getattr(args, "json", False) or getattr(args, "pretty", False):
-            _json_print(payload, pretty=getattr(args, "pretty", False))
+        json_output = _arg_value(args, "json", False) is True or _arg_value(args, "pretty", False) is True
+        pretty_output = _arg_value(args, "pretty", False) is True
+        if json_output:
+            _json_print(payload, pretty=pretty_output)
         else:
             print("📦 OKF 匯入結果:")
             print(f"  Bundle: {payload['bundle_dir']}")
@@ -345,8 +349,14 @@ def cmd_import(args):
             print(f"❌ Obsidian 匯入失敗: {e}")
             raise SystemExit(2) from e
 
-        if getattr(args, "json", False) or getattr(args, "pretty", False):
-            payload = {"import": result}
+        json_output = _arg_value(args, "json", False) is True or _arg_value(args, "pretty", False) is True
+        pretty_output = _arg_value(args, "pretty", False) is True
+        if json_output:
+            payload = {
+                "ok": not bool(result.get("errors")),
+                "status": "ok" if not result.get("errors") else "warning",
+                "import": result,
+            }
             if not args.dry_run and args.compile:
                 import argparse
                 from .cli_core import cmd_compile
@@ -360,7 +370,7 @@ def cmd_import(args):
                 with contextlib.redirect_stdout(captured):
                     cmd_compile(compile_args)
                 payload["compile_output"] = captured.getvalue()
-            _json_print(payload, pretty=getattr(args, "pretty", False))
+            _json_print(payload, pretty=pretty_output)
             return
 
         print("📥 Obsidian 匯入結果:")
@@ -690,8 +700,10 @@ def cmd_skill_versions(args):
     db = VaultDB(str(project_dir / "vault.db")).connect()
     try:
         payload = {"ok": True, "name": args.name, "versions": db.list_skill_versions(args.name)}
-        if getattr(args, "json", False) or getattr(args, "pretty", False):
-            print(json.dumps(payload, ensure_ascii=False, indent=2 if getattr(args, "pretty", False) else None))
+        json_output = _arg_value(args, "json", False) is True or _arg_value(args, "pretty", False) is True
+        pretty_output = _arg_value(args, "pretty", False) is True
+        if json_output:
+            print(json.dumps(payload, ensure_ascii=False, indent=2 if pretty_output else None))
             return
         if not payload["versions"]:
             print(f"📭 技能 '{args.name}' 沒有版本紀錄")
@@ -711,8 +723,10 @@ def cmd_skill_diff(args):
     db = VaultDB(str(project_dir / "vault.db")).connect()
     try:
         payload = db.diff_skill_versions(args.name, args.from_version, args.to_version)
-        if getattr(args, "json", False) or getattr(args, "pretty", False):
-            print(json.dumps(payload, ensure_ascii=False, indent=2 if getattr(args, "pretty", False) else None))
+        json_output = _arg_value(args, "json", False) is True or _arg_value(args, "pretty", False) is True
+        pretty_output = _arg_value(args, "pretty", False) is True
+        if json_output:
+            print(json.dumps(payload, ensure_ascii=False, indent=2 if pretty_output else None))
             return
         if not payload.get("ok"):
             print(f"❌ {payload.get('error')}: {args.name}")
@@ -754,8 +768,10 @@ def cmd_skill_upgrade_plan(args):
     db = VaultDB(str(project_dir / "vault.db")).connect()
     try:
         payload = db.skill_upgrade_plan(installed=installed)
-        if getattr(args, "json", False) or getattr(args, "pretty", False):
-            print(json.dumps(payload, ensure_ascii=False, indent=2 if getattr(args, "pretty", False) else None))
+        json_output = _arg_value(args, "json", False) is True or _arg_value(args, "pretty", False) is True
+        pretty_output = _arg_value(args, "pretty", False) is True
+        if json_output:
+            print(json.dumps(payload, ensure_ascii=False, indent=2 if pretty_output else None))
             return
         counts = payload.get("status_counts", {})
         print(f"🛠️  Skill upgrade plan: {payload['upgrade_count']} upgrades / {payload['skill_count']} skills")

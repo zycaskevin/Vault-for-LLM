@@ -471,6 +471,13 @@ candidate-only 或 report-only。
 
 整合文件入口：[docs/agent_integrations.md](docs/agent_integrations.md)。
 
+如果多個本機 Agent 或 workflow 想走同一個 HTTP 入口，可以先做 readiness 檢查，再啟動 Gateway：
+
+```bash
+vault gateway health --project-dir ~/Vaults/my-project --json
+vault gateway serve --project-dir ~/Vaults/my-project
+```
+
 ## 可選：Supabase 共享
 
 SQLite 仍然是 source of truth。Supabase 是可選的共享層。
@@ -498,6 +505,7 @@ vault import obsidian --vault ~/Documents/ObsidianVault --project-dir ~/Vaults/m
 匯出 Vault 知識給 Obsidian 閱讀：
 
 ```bash
+vault export obsidian --project-dir ~/Vaults/my-project --vault ~/Documents/ObsidianVault --dry-run --json
 vault export obsidian --project-dir ~/Vaults/my-project --vault ~/Documents/ObsidianVault
 ```
 

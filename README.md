@@ -671,6 +671,7 @@ For many agents on one machine, or for runtimes that prefer HTTP over stdio
 MCP, start a small Gateway:
 
 ```bash
+vault gateway health --project-dir ~/Vaults/my-project --json
 vault gateway serve --project-dir ~/Vaults/my-project
 ```
 
@@ -749,6 +750,7 @@ missing notes unless you explicitly pass `--prune-missing`.
 Export compiled Vault knowledge back into Obsidian-readable notes:
 
 ```bash
+vault export obsidian --project-dir ~/Vaults/my-project --vault ~/Documents/ObsidianVault --dry-run --json
 vault export obsidian --project-dir ~/Vaults/my-project --vault ~/Documents/ObsidianVault
 ```
 

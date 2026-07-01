@@ -203,6 +203,8 @@ def main(argv: list[str] | None = None):
     p.add_argument("--source", default="cli", help="來源標籤或檔案路徑")
     p.add_argument("--allow-private", action="store_true", help="允許含秘密模式的內容直接寫入本機 vault")
     add_governance_args(p)
+    p.add_argument("--json", action="store_true", help="輸出 JSON")
+    p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     # remember/promote — safe memory curator workflow
     p = sub.add_parser("remember", help="提出記憶候選（預設不寫入 active knowledge）")

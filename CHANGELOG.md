@@ -1,5 +1,36 @@
 # CHANGELOG
 
+## [0.7.21] - 2026-07-01
+
+### Added
+
+- Added a unified GUI human-review inbox that combines daily report cards,
+  candidate memories, sync conflicts, and directed Task Ledger handoffs into
+  one compact "daily 5%" review surface.
+- Added explicit GUI Task Handoff claiming with confirmation tokens so a
+  receiving agent can take over handoff work without writing to L0-L3 memory.
+
+### Changed
+
+- Moved the local GUI HTML out of the Python module and into a packaged
+  `vault/assets/gui_app.html` asset, keeping `vault.gui_app.APP_HTML` as the
+  compatibility loader while reducing `vault/gui_app.py` from the size ceiling
+  to a tiny asset loader.
+
+### Safety
+
+- Kept the unified review inbox metadata-only by default: raw candidate
+  content, sync-conflict content, and handoff Markdown stay hidden until the
+  user opens the specific detail view.
+- Kept sync-conflict decisions separated as `keep_local`, `accept_remote`, and
+  `manual`; accepting remote promotes the reviewed candidate and archives the
+  old local row instead of silently overwriting it.
+
+### Validation
+
+- Verified GUI, Task Ledger, and multi-host sync tests locally.
+- Verified module-size gate, wheel build, and packaged GUI asset inclusion.
+
 ## [0.7.20] - 2026-07-01
 
 ### Added

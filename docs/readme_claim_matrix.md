@@ -1,7 +1,7 @@
 # README Claim Matrix
 
 Generated: 2026-06-25
-Scope: public README feature/capability claims for the v0.7.20 Agent Knowledge Platform patch release. Localized README files should mirror the same maturity and non-goal language.
+Scope: public README feature/capability claims for the v0.7.21 Agent Knowledge Platform patch release. Localized README files should mirror the same maturity and non-goal language.
 
 ## Maturity Tiers
 
@@ -18,7 +18,7 @@ Scope: public README feature/capability claims for the v0.7.20 Agent Knowledge P
 | C01 | Vault-for-LLM is local-first project memory for AI agents. | stable | Base storage is Markdown plus SQLite; `vault init/add/compile/search` works locally. | README command smoke passes. |
 | C02 | Vault does not replace models, wikis, Obsidian, or hosted memory systems. | positioning | README and docs frame Vault as the governed layer between human notes and agent access. | Product positioning only. |
 | C03 | Agent-driven install is the recommended path. | usable | `vault setup-agent` and `vault install-agent` generate project setup, optional feature guidance, Agent Access Presets, stable venv scripts, sync templates, local agent registry entries, hybrid vault layout manifests, MCP startup guides, update-status install packs, update rollout health scripts, runtime update playbooks, common Agent adapter startup templates with fleet-aware handoff contracts, startup contract doctor checks, safe runtime-template apply commands, optional low-risk auto-promote policy files, and smoke-test next steps. | `tests/test_agent_setup.py` and `tests/test_agent_registry.py` pass; PyPI smoke is part of release closeout. |
-| C04 | Manual quickstart works from PyPI. | stable | `vault-for-llm[mcp]==0.7.20` installs and exposes `vault`. | Clean Python 3.11 PyPI install smoke is part of release closeout. |
+| C04 | Manual quickstart works from PyPI. | stable | `vault-for-llm[mcp]==0.7.21` installs and exposes `vault`. | Clean Python 3.11 PyPI install smoke is part of release closeout. |
 | C05 | MCP lets agents start from status/activity/brief/handoff, search, read bounded ranges, propose memory, inspect stats, and diagnose update rollout health. | usable | `vault-mcp` exposes the core tool profile: `vault_search`, `vault_read_range`, `vault_memory_propose`, `vault_stats`, `vault_update_status`, `vault_automation_activity`, `vault_automation_brief`, `vault_automation_handoff`. `vault_update_status` includes per-Agent update notices from the local registry, can read existing `update-status.json` with `read_status=true`, can return `current_agent_notice` plus `startup_checklist` when `agent_id` is provided, and can run the update-distribution health check with `doctor=true` without adding another MCP tool. `vault_automation_activity` reads recent closed-loop automation activity without raw candidate content. `vault_automation_brief` joins learning hints, explainable memory importance, forgetting pressure, agent health, and the 5% human-review queue without raw candidate content. `vault_automation_handoff` keeps cycle/inbox content stable and exposes `fleet_health_content`, `pipeline_receipt_content`, `review_summary_content`, and `learning_health_content` as read-only startup prefaces when present. MCP calls are rate-limited in-process with configurable environment variables, and deployments can opt into HMAC-signed agent identity. | MCP tests and README command smoke pass. |
 | C06 | L0-L3 are depth layers, not access-control boundaries by themselves. | stable docs / usable implementation | Schema supports `layer`; governance metadata handles `scope`, `sensitivity`, `owner_agent`, `allowed_agents`, `memory_type`, and expiry. Read filters apply to search/map/range. MCP write-side governance requires explicit `allow_*` capability flags for shared/public, private, high, and restricted writes. | Access-policy and MCP/read/write tests pass. |
 | C07 | Usage counters can influence ranking only as a small boost. | usable-alpha | Search uses `access_count`, `citation_count`, and `last_accessed_at` as a saturated rerank signal. | Usage/rerank tests pass. |
@@ -40,6 +40,8 @@ Scope: public README feature/capability claims for the v0.7.20 Agent Knowledge P
 | C23 | Humans do not need to memorize the full CLI surface. | usable docs / stable CLI | `vault guide` prints the small human entrypoints and MCP profile guidance. `vault guide --intent ...` narrows the map for install, daily use, memory proposal, tasks, Skill upgrade review, and maintenance. `docs/agent_first_usage.md` separates human intent from agent/maintenance command surfaces. | CLI guide tests and README smoke pass. |
 | C24 | Common Agent roles can be installed through safe presets instead of hand-picking every access flag. | usable docs / usable implementation | `vault setup-agent --agent-preset` supports `personal-agent`, `work-agent`, `review-agent`, `automation-agent`, `remote-readonly-agent`, and `admin-agent`. Advanced installers can override max sensitivity, candidate writes, promote, shared/private writes, private-memory marker, and remote-reader marker; customized artifacts keep `base_preset` and list `overrides`. Setup output writes `agent-access-preset.json`, `AGENT_ACCESS_PRESETS.md`, and roster/env templates that preserve the preset and manual permission fields. Presets are documented as defaults, not authentication. | Agent setup preset/override tests and py_compile pass. |
 | C25 | Multi-host memory contribution is candidate-first, with local revision, conflict, and audit visibility. | usable-alpha | `vault remote submit-candidate` lets remote hosts submit reviewable memory requests; `vault remote pull-candidates --apply` imports them into local candidates; `vault sync revisions/conflicts/audit` exposes the local revision graph, conflict queue, and audit log. GUI Sync Health and MCP `vault_sync_status` expose the same read-only state for dashboards and agents. `vault sync resolve-conflict` supports `keep_local`, `manual`, and guarded `accept_remote --apply-memory-change`; accepting remote promotes the candidate and archives the conflicting local row instead of overwriting it. This is not full multi-master active-knowledge sync. | Remote candidate sync, low-risk auto-merge, DB migration/backup, multi-host sync, GUI, and MCP sync-status tests pass. |
+| C26 | Normal users can start from one daily 5% review inbox instead of learning the full CLI. | usable-alpha | GUI `/api/overview` exposes `review_inbox`, combining daily report cards, candidate memories, sync conflicts, and directed Task Ledger handoffs into metadata-only cards. The browser review queue opens candidate, sync-conflict, or task details based on item kind. | GUI tests cover candidate, sync-conflict, and task-handoff inbox items without raw candidate/conflict/handoff content. |
+| C27 | GUI Task Handoff claiming is explicit and separate from long-term memory writes. | usable-alpha | `POST /api/task-handoff/<id>/claim` claims a directed Task Ledger handoff with a confirmation token. It updates handoff state only and does not promote content into L0-L3 memory. | GUI and Task Ledger tests cover confirmation-required and claimed states. |
 
 ## Public Boundary Notes
 
@@ -55,14 +57,14 @@ Recent release and README cleanup verification used:
 ```bash
 python scripts/readme_command_smoke.py
 python scripts/public_pr_gate.py
-python scripts/check_release_parity.py --tag v0.7.20
+python scripts/check_release_parity.py --tag v0.7.21
 python -m pytest tests/test_session_capture.py tests/test_agent_setup.py tests/test_automation.py tests/test_cli_project_dir.py tests/test_release_parity.py -q
 ```
 
-For release v0.7.20, clean Python 3.11 PyPI install closeout should verify:
+For release v0.7.21, clean Python 3.11 PyPI install closeout should verify:
 
-- `vault-for-llm[mcp]==0.7.20` installs from PyPI.
-- `vault --version` returns `vault-for-llm 0.7.20`.
+- `vault-for-llm[mcp]==0.7.21` installs from PyPI.
+- `vault --version` returns `vault-for-llm 0.7.21`.
 - `vault guide`, `vault guide --mode agent --json`, and `vault guide --mode all --pretty` expose the compact human/agent/maintenance command map.
 - `vault add "Title" --content "..."` is the documented active-memory add shape.
 - `vault map read <knowledge_id> --lines START-END` is the documented bounded-read CLI shape.
@@ -77,6 +79,9 @@ For release v0.7.20, clean Python 3.11 PyPI install closeout should verify:
 - `vault task handoff release-hardening` returns compact continuation Markdown for the next agent.
 - MCP `vault_task_start`, `vault_task_status`, `vault_task_update`, `vault_task_handoff`, and `vault_task_complete` are available in review/maintenance/full profiles and hidden from the core profile.
 - GUI `/api/tasks` and `/api/task/<id>` return compact Task Ledger rows and handoff Markdown without raw candidate bodies or private memory dumps.
+- GUI `/api/overview` returns `review_inbox` as the unified daily review surface without raw candidate content, sync-conflict content, or handoff Markdown.
+- `POST /api/task-handoff/<id>/claim` requires a confirmation token and updates the directed handoff state without writing L0-L3 memory.
+- Installed wheels include `vault/assets/gui_app.html`, and `vault.gui_app.APP_HTML` can load the packaged GUI asset.
 - `vault automation cycle --write-workspace --pretty` includes a `Task Ledger` section in the compact handoff while leaving active memory unchanged.
 - `vault setup-agent --automation-schedule all` generates cron, LaunchAgent, and n8n templates that run `vault memory pipeline --write-report`, `vault memory reflection`, `vault automation cycle`, `vault automation inbox --write-handoff`, `vault automation review-summary --write-summary`, and `vault automation learning-health --write-health`.
 - MCP `vault_capture_discover` is available in review/maintenance profiles, hidden from the core profile, and returns a `capture_path` that can feed MCP `vault_capture_session`.

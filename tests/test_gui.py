@@ -29,7 +29,7 @@ from vault.gui import (
     gui_tasks,
     make_gui_handler,
 )
-from vault.task_ledger import start_task, update_task
+from vault.task_ledger import create_task_handoff, start_task, update_task
 from vault.multi_host import detect_candidate_conflicts, record_memory_revision
 
 
@@ -78,6 +78,15 @@ def _make_project(tmp_path):
             owner_agent="gui-agent",
         )
         update_task(db, "task-gui", completed=["task API ready"], hard_decisions=["read-only GUI first"])
+        create_task_handoff(
+            db,
+            "task-gui",
+            handoff_id="handoff-gui",
+            from_agent="codex",
+            to_agent="hermes",
+            message="Please review the GUI Task Ledger panel.",
+            source_ref="tests/test_gui.py",
+        )
     return project, kid
 
 
@@ -116,6 +125,10 @@ def test_gui_overview_search_entry_and_read(tmp_path):
     assert overview["daily_report"]["language"] == "zh-CN"
     assert overview["daily_report"]["review_cards"]
     assert overview["agent_dashboard"]["status"] == "ok"
+    inbox = overview["review_inbox"]
+    assert inbox["safety"]["content_hidden_by_default"] is True
+    assert {"candidate", "task_handoff"} <= {item["kind"] for item in inbox["items"]}
+    assert "Task Snapshot" not in str(inbox)
 
     daily = gui_daily_report(project)
     assert daily["status"] == "completed"
@@ -169,6 +182,8 @@ def test_gui_app_exposes_document_map_panel():
     assert "openConflicts" in APP_HTML
     assert "sync-conflict" in APP_HTML
     assert "dashboard-subhead" in APP_HTML
+    assert "review_inbox" in APP_HTML
+    assert "task_handoff" in APP_HTML
     assert "Multi-Agent Dashboard" in APP_HTML
     assert "多 Agent Dashboard" in APP_HTML
     assert "languageSelect" in APP_HTML
@@ -259,6 +274,9 @@ def test_gui_sync_status_shows_open_conflicts_without_content(tmp_path):
     assert payload["open_conflicts"][0]["conflict_type"] == "same_title_content_mismatch"
     assert "Remote content differs" not in str(payload)
     assert dashboard["sync_health"]["counts"]["open_conflicts"] == 1
+    review_inbox = dashboard["human_review"]["unified_inbox"]
+    assert any(item["kind"] == "sync_conflict" for item in review_inbox["items"])
+    assert "Remote content differs" not in str(review_inbox)
 
 
 def test_gui_sync_conflict_detail_and_resolution(tmp_path):

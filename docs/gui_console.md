@@ -46,6 +46,12 @@ same read-only daily report as `vault daily-report`, shows only the decisions
 that truly need human attention, and reminds the user that Vault will not
 silently promote, archive, or delete memory.
 
+The review inbox is the single "daily 5%" surface for normal users. It combines
+daily report cards, candidate memories, sync conflicts, and directed Task
+Ledger handoffs into compact metadata-only cards. Raw candidate content,
+conflict content, and handoff Markdown stay hidden until the user opens the
+specific detail view.
+
 Daily report cards are not decision buttons. Each card should explain what the
 human is deciding and then open the detailed candidate/evidence view. The actual
 actions stay separated there, such as keep, reject, or block.

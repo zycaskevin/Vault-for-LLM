@@ -567,9 +567,10 @@ APP_HTML = r"""<!doctype html>
       }
       node.innerHTML = items.map(item => {
         const itemId = item.id || item.candidate_id || "";
-        const isCandidate = String(itemId).startsWith("mem_") || item.kind === "candidate";
+        const kind = item.kind || (String(itemId).startsWith("mem_") ? "candidate" : "memory");
+        const isCandidate = kind === "candidate";
         return `
-        <div class="item" data-id="${esc(itemId)}" data-kind="${isCandidate ? "candidate" : "memory"}">
+        <div class="item" data-id="${esc(itemId)}" data-target-id="${esc(item.target_id || "")}" data-kind="${esc(kind)}">
           <h3>${esc(item.title || item.kind || "Untitled")}</h3>
           <div class="subtle">${esc(item.reason || item.summary || item.safe_action || "")}</div>
           <div class="meta">
@@ -580,12 +581,10 @@ APP_HTML = r"""<!doctype html>
         </div>
       `}).join("");
       node.querySelectorAll("[data-id]").forEach(el => {
-        if (el.dataset.kind === "candidate") {
-          el.addEventListener("click", () => loadCandidate(el.dataset.id));
-        } else {
-          const idValue = Number(el.dataset.id || 0);
-          if (idValue) el.addEventListener("click", () => loadEntry(idValue));
-        }
+        if (el.dataset.kind === "candidate") el.addEventListener("click", () => loadCandidate(el.dataset.id));
+        else if (el.dataset.kind === "sync_conflict") el.addEventListener("click", () => loadSyncConflict(el.dataset.id));
+        else if (el.dataset.kind === "task_handoff" && el.dataset.targetId) el.addEventListener("click", () => loadTask(el.dataset.targetId));
+        else { const idValue = Number(el.dataset.id || 0); if (idValue) el.addEventListener("click", () => loadEntry(idValue)); }
       });
     }
 
@@ -602,7 +601,7 @@ APP_HTML = r"""<!doctype html>
       const syncCounts = syncHealth.counts || {};
       const openConflicts = syncHealth.open_conflicts || [];
       const candidates = dashboard.recent_candidates || [];
-      const reviewItems = dashboard.human_review?.items || dashboard.human_review?.human_review_5_percent?.items || [];
+      const reviewItems = dashboard.human_review?.unified_inbox?.items || dashboard.human_review?.items || dashboard.human_review?.human_review_5_percent?.items || [];
       const agentHtml = agents.length ? agents.slice(0, 4).map(agent => `
         <div class="item">
           <h3>${esc(agent.agent_id || "agent")}</h3>
@@ -1145,7 +1144,7 @@ APP_HTML = r"""<!doctype html>
       renderAgentDashboard(overview.agent_dashboard || {});
       renderTaskList(overview.tasks || []);
       renderDailyReport(overview.daily_report || {});
-      renderList("reviewQueue", overview.candidates || overview.inbox?.review_queue || overview.inbox?.review_digest?.items || [], "No review items");
+      renderList("reviewQueue", overview.review_inbox?.items || overview.candidates || overview.inbox?.review_queue || overview.inbox?.review_digest?.items || [], "No review items");
       await loadDocuments();
       renderMemoryControlCenter(overview);
       renderSidePanel();

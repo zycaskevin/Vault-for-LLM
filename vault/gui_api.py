@@ -30,7 +30,7 @@ from .gui_format import (
     timeline_for,
     usage_for,
 )
-from .task_ledger import get_task, list_tasks, task_handoff
+from .task_ledger import get_task, list_task_handoffs, list_tasks, task_handoff
 
 
 def _clean_filter(value: str | None) -> str:
@@ -146,6 +146,110 @@ def _report_sync_items(project: Path) -> list[dict[str, Any]]:
     return items
 
 
+def _review_item(
+    *,
+    kind: str,
+    item_id: str,
+    title: str,
+    reason: str = "",
+    status: str = "review",
+    action: str = "open",
+    target_id: str = "",
+    target_kind: str = "",
+    sensitivity: str = "low",
+    source: str = "",
+) -> dict[str, Any]:
+    return {
+        "kind": kind,
+        "id": item_id,
+        "title": title,
+        "reason": reason,
+        "status": status,
+        "safe_action": action,
+        "target_id": target_id,
+        "target_kind": target_kind or kind,
+        "sensitivity": sensitivity or "low",
+        "source": source,
+    }
+
+
+def _build_gui_review_inbox(
+    *,
+    review: dict[str, Any],
+    recent_candidates: list[dict[str, Any]],
+    sync_health: dict[str, Any],
+    handoffs: list[dict[str, Any]],
+    limit: int,
+) -> dict[str, Any]:
+    """Return the consumer 5% review inbox without raw memory content."""
+    items: list[dict[str, Any]] = []
+    for card in (review.get("cards") or [])[:limit]:
+        cid = str(card.get("id") or "")
+        items.append(_review_item(
+            kind=str(card.get("kind") or "daily_card"),
+            item_id=cid,
+            title=str(card.get("title") or card.get("kind") or "Review item"),
+            reason=str(card.get("reason") or card.get("safe_action") or ""),
+            action=str(card.get("suggested_decision") or card.get("recommended_action") or "review"),
+            target_id=cid,
+            sensitivity=str(card.get("sensitivity") or "low"),
+            source="daily_report",
+        ))
+    for candidate in recent_candidates[:limit]:
+        cid = str(candidate.get("id") or "")
+        items.append(_review_item(
+            kind="candidate",
+            item_id=cid,
+            title=str(candidate.get("title") or "Candidate memory"),
+            reason=str(candidate.get("reason") or candidate.get("source_ref") or "Review candidate memory."),
+            action="review_candidate",
+            target_id=cid,
+            sensitivity=str(candidate.get("sensitivity") or "low"),
+            source=str(candidate.get("source") or "candidate"),
+        ))
+    for conflict in (sync_health.get("open_conflicts") or [])[:limit]:
+        cid = str(conflict.get("id") or "")
+        items.append(_review_item(
+            kind="sync_conflict",
+            item_id=cid,
+            title="Remote memory candidate needs review",
+            reason=str(conflict.get("reason") or conflict.get("conflict_type") or "Resolve sync conflict."),
+            action="resolve_sync_conflict",
+            target_id=cid,
+            sensitivity="low",
+            source="multi_host_sync",
+        ))
+    for handoff in handoffs[:limit]:
+        hid = str(handoff.get("id") or "")
+        agent = str(handoff.get("to_agent") or handoff.get("from_agent") or "agent")
+        items.append(_review_item(
+            kind="task_handoff",
+            item_id=hid,
+            title=f"Task handoff for {agent}",
+            reason=str(handoff.get("message") or "Review task handoff."),
+            status=str(handoff.get("status") or "pending"),
+            action="open_task",
+            target_id=str(handoff.get("task_id") or ""),
+            target_kind="task",
+            sensitivity=str(handoff.get("sensitivity") or "low"),
+            source="task_ledger",
+        ))
+    summary = {
+        "total": len(items),
+        "daily_cards": min(len(review.get("cards") or []), limit),
+        "candidates": min(len(recent_candidates), limit),
+        "sync_conflicts": min(len(sync_health.get("open_conflicts") or []), limit),
+        "task_handoffs": min(len(handoffs), limit),
+    }
+    return {
+        "status": "ok",
+        "summary": summary,
+        "items": items[:limit],
+        "safety": {"content_hidden_by_default": True, "open_details_before_decision": True},
+        "next_action": "Open the top review item only when a human decision is needed.",
+    }
+
+
 def gui_agent_dashboard(
     project_dir: str | Path,
     *,
@@ -195,6 +299,14 @@ def gui_agent_dashboard(
 
     with VaultDB(db_path) as db:
         sync_health = sync_status(db, limit=limit_i)
+        handoffs = list_task_handoffs(db, status="pending", limit=limit_i)
+    review_inbox = _build_gui_review_inbox(
+        review=review,
+        recent_candidates=recent_candidates,
+        sync_health=sync_health,
+        handoffs=handoffs,
+        limit=limit_i,
+    )
 
     sync_items = [
         {
@@ -233,6 +345,7 @@ def gui_agent_dashboard(
         "human_review": {
             "summary": (review.get("summary") or {}),
             "items": (review.get("cards") or [])[:limit_i],
+            "unified_inbox": review_inbox,
             "human_review_5_percent": brief.get("human_review_5_percent", {}),
             "next_action": review.get("next_action", "") or brief.get("next_action", ""),
         },
@@ -375,18 +488,20 @@ def gui_overview(project_dir: str | Path, *, limit: int = 5, language: str = "en
         precomputed_brief=brief,
         precomputed_review=review,
     )
+    dashboard = gui_agent_dashboard(
+        project,
+        limit=limit,
+        language=language,
+        precomputed_brief=brief,
+        precomputed_review=review,
+        precomputed_candidates=candidates,
+    )
     return {
         "status": "ok",
         "project_dir": str(project),
         "stats": stats,
-        "agent_dashboard": gui_agent_dashboard(
-            project,
-            limit=limit,
-            language=language,
-            precomputed_brief=brief,
-            precomputed_review=review,
-            precomputed_candidates=candidates,
-        ),
+        "agent_dashboard": dashboard,
+        "review_inbox": dashboard.get("human_review", {}).get("unified_inbox", {}),
         "brief": compact_brief(brief),
         "inbox": compact_inbox(inbox),
         "daily_report": daily_report,

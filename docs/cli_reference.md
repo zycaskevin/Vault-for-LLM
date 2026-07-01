@@ -21,6 +21,7 @@ See also: [`docs/agent_first_usage.md`](agent_first_usage.md).
 | Install or connect an agent | `vault setup-agent` |
 | See the small command map | `vault guide` |
 | Browse locally | `vault gui` |
+| Give agents one safe HTTP entrypoint | `vault gateway serve` |
 | Search memory | `vault search "query"` |
 | Propose memory safely | `vault remember "Title" --content "..." --reason "..."` |
 | Continue a task | `vault task start/update/handoff` |
@@ -54,6 +55,9 @@ scheduled jobs, or explicit maintenance sessions.
 | `vault search "query" --exclude-expired` | Search currently valid temporal facts while keeping past facts available through temporal list |
 | `vault map read <id> --lines 10-30` | Read a bounded source range for citation |
 | `vault gui` | Start the local read-only Vault Console |
+| `vault gateway serve` | Start the token-protected HTTP Gateway for agent search, bounded read, and candidate-first memory submission |
+| `vault gateway serve --auth-token "$VAULT_GATEWAY_TOKEN"` | Use a stable token instead of printing a generated token at startup |
+| `vault gateway serve --allow-shared-candidates` | Allow agents to submit shared-scope candidates; they still do not write active knowledge |
 | `vault security doctor` | Check local GUI/MCP security posture, including GUI token and MCP HMAC settings |
 | `vault remote status --json` | Offline check for local source-of-truth, Supabase read-copy/candidate-inbox setup, sync freshness hints, and Agent sharing policy files |
 | `vault remote smoke --agent-id remote-agent --query "deployment SOP" --json` | Verify Supabase remote reader credentials and the `vault_search_readable` RPC |
@@ -91,6 +95,12 @@ scheduled jobs, or explicit maintenance sessions.
 
 Prefer `vault remember` over `vault add` for autonomous agents or unreviewed
 memory.
+
+Prefer `vault gateway serve` when many local agents or scripts need the same
+memory access pattern. Gateway keeps the public surface small:
+`/search`, `/read-range`, `/submit-candidate`, and `/health`. It requires
+`agent_id`, hides private memory by default, writes only candidates, and records
+compact audit rows in `reports/gateway/audit.jsonl`.
 
 Use `vault import memory` when moving memory from another product, an exported
 chat transcript, a JSON/CSV archive, or a folder of Markdown notes. The import

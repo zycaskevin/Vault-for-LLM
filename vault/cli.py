@@ -94,6 +94,7 @@ from .cli_quality import (
 )
 from .cli_sync import cmd_sync
 from .gui import DEFAULT_HOST, DEFAULT_PORT, cmd_gui
+from .gateway import DEFAULT_GATEWAY_HOST, DEFAULT_GATEWAY_PORT, cmd_gateway
 
 
 # ── 專案偵測 ─────────────────────────────────────────────
@@ -189,6 +190,19 @@ def main(argv: list[str] | None = None):
     p.add_argument("--language", choices=["en", "zh-Hant", "zh-CN"], default="en", help="日報語言")
     p.add_argument("--json", action="store_true", help="輸出 JSON")
     p.add_argument("--pretty", action="store_true", help="輸出 pretty JSON")
+
+    # gateway
+    p = sub.add_parser("gateway", help="啟動 Agent 統一記憶入口（HTTP Gateway）")
+    gateway_sub = p.add_subparsers(dest="gateway_action")
+    gp = gateway_sub.add_parser("serve", help="啟動薄 Gateway：search/read-range/submit-candidate/health")
+    gp.add_argument("--host", default=DEFAULT_GATEWAY_HOST, help="綁定 host；預設 127.0.0.1")
+    gp.add_argument("--port", type=int, default=DEFAULT_GATEWAY_PORT, help="綁定 port；預設 8789")
+    gp.add_argument("--auth-token", default=None, help="Gateway token；也可用 VAULT_GATEWAY_TOKEN")
+    gp.add_argument("--no-auth", action="store_true", help="只允許 localhost 綁定時關閉 token")
+    gp.add_argument("--allow-shared-candidates", action="store_true", help="允許 Gateway submit-candidate 寫入 shared/public 候選")
+    gp.add_argument("--allow-private-candidates", action="store_true", help="允許 Gateway submit-candidate 寫入 private 候選")
+    gp.add_argument("--allow-high-sensitivity-candidates", action="store_true", help="允許 Gateway submit-candidate 寫入 high 候選")
+    gp.add_argument("--allow-restricted-candidates", action="store_true", help="允許 Gateway submit-candidate 寫入 restricted 候選")
 
     # init
     p = sub.add_parser("init", help="初始化專案")
@@ -1126,6 +1140,7 @@ def main(argv: list[str] | None = None):
         "init": cmd_init,
         "guide": cmd_guide,
         "daily-report": cmd_daily_report,
+        "gateway": cmd_gateway,
         "add": cmd_add,
         "remember": cmd_remember,
         "promote": cmd_promote,

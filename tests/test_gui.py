@@ -194,6 +194,7 @@ def test_gui_app_exposes_document_map_panel():
     assert "activityHealth" in APP_HTML
     assert "obsidianConflicts" in APP_HTML
     assert "syncHealth" in APP_HTML
+    assert "blocked_or_failed_events" in APP_HTML
     assert "openConflicts" in APP_HTML
     assert "sync-conflict" in APP_HTML
     assert "dashboard-subhead" in APP_HTML
@@ -208,6 +209,8 @@ def test_gui_app_exposes_document_map_panel():
     assert "zh-CN" in APP_HTML
     assert "English" in APP_HTML
     assert "reviewPrompt" in APP_HTML
+    assert "reviewAttentionHeadline" in APP_HTML
+    assert "今天有幾件事需要你看一下" in APP_HTML
     assert "viewBeforeDecision" in APP_HTML
     assert "candidateDecisionQuestion" in APP_HTML
     assert "keepMemory" in APP_HTML
@@ -237,6 +240,12 @@ def test_gui_agent_dashboard_lists_agents_sync_and_review(tmp_path, monkeypatch)
         '{"version":1,"updated_at":"2026-07-01T00:00:00+00:00","raw_subdir":"obsidian","notes":{"A.md":{"status":"active"},"B.md":{"status":"missing"},"C.md":{"status":"conflict","raw_path":"raw/obsidian/C.md"}}}',
         encoding="utf-8",
     )
+    audit = project / "reports" / "gateway" / "audit.jsonl"
+    audit.parent.mkdir(parents=True, exist_ok=True)
+    audit.write_text(
+        '{"created_at":"2026-07-01T00:02:00+00:00","event":"request_blocked","status":"rate_limited","agent_id":"codex","client_ip":"127.0.0.1","endpoint":"/search","method":"POST","reason":"rate_limited"}\n',
+        encoding="utf-8",
+    )
 
     dashboard = gui_agent_dashboard(project, limit=5)
 
@@ -245,6 +254,11 @@ def test_gui_agent_dashboard_lists_agents_sync_and_review(tmp_path, monkeypatch)
     assert dashboard["agents"]["items"][0]["agent_id"] == "codex"
     assert dashboard["recent_candidates"][0]["id"] == candidate_id
     obsidian = next(item for item in dashboard["recent_sync"] if item["kind"] == "obsidian")
+    gateway = next(item for item in dashboard["recent_sync"] if item["kind"] == "gateway")
+    assert gateway["status"] == "needs_review"
+    assert gateway["summary"]["total_events"] == 1
+    assert gateway["summary"]["blocked_or_failed_events"] == 1
+    assert gateway["safety"]["rate_limit_supported"] is True
     assert obsidian["status"] == "needs_review"
     assert obsidian["summary"]["active_notes"] == 1
     assert obsidian["summary"]["missing_notes"] == 1

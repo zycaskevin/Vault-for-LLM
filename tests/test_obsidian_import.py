@@ -161,9 +161,12 @@ def test_sync_obsidian_vault_writes_conflict_inbox_note(tmp_path):
     inbox_path = obsidian / "00-Vault-Knowledge" / "_Inbox" / "Obsidian Import Conflicts.md"
     assert result["conflict_inbox_path"] == str(inbox_path)
     text = inbox_path.read_text(encoding="utf-8")
-    assert "Vault Obsidian Import Conflicts" in text
-    assert "`Shared.md` -> `raw/obsidian/Shared.md`" in text
-    assert "Vault did not overwrite either side" in text
+    assert "Vault 每日筆記審核" in text
+    assert "**Shared.md**" in text
+    assert "接受 Obsidian" in text
+    assert "接受 Vault" in text
+    assert "保留兩份" in text
+    assert "Vault 沒有偷偷覆蓋任何一邊" in text
     assert "Obsidian-side edit." not in text
     assert "Vault-side edit." not in text
 

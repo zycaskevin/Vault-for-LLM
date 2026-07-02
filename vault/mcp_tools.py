@@ -552,8 +552,42 @@ TOOLS = [
                     "default": False,
                     "description": "Delete raw copies for Obsidian notes no longer present in the source vault. Defaults false.",
                 },
+                "conflict_inbox": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Write generated Obsidian _Inbox conflict review notes when two-sided edits are detected.",
+                },
             },
             "required": ["vault_dir"]
+        }
+    },
+    {
+        "name": "vault_obsidian_resolve_conflict",
+        "description": "Resolve an Obsidian import conflict with an explicit user-approved choice: accept Obsidian, accept Vault, or keep both.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "vault_dir": {"type": "string", "description": "Obsidian vault directory"},
+                "source_path": {"type": "string", "description": "Conflicted Obsidian note path, relative to the Obsidian vault"},
+                "resolution": {
+                    "type": "string",
+                    "enum": ["accept-obsidian", "accept-vault", "keep-both"],
+                    "description": "Which side should win, or whether both should be kept.",
+                },
+                "dry_run": {"type": "boolean", "default": False},
+                "compile": {"type": "boolean", "default": False},
+                "category": {"type": "string", "default": "obsidian"},
+                "tags": {"type": "string", "default": "obsidian"},
+                "layer": {"type": "string", "enum": ["L0", "L1", "L2", "L3"], "default": "L3"},
+                "trust": {"type": "number", "default": 0.5},
+                "allow_private": {"type": "boolean", "default": False},
+                "conflict_inbox": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Refresh generated Obsidian _Inbox conflict review notes after resolving.",
+                },
+            },
+            "required": ["vault_dir", "source_path", "resolution"]
         }
     },
     {
@@ -921,6 +955,7 @@ TOOL_PROFILES = {
         *MCP_MEMORY_LOOP_TOOL_NAMES,
         "vault_cold_store_expired",
         "vault_obsidian_import",
+        "vault_obsidian_resolve_conflict",
         "vault_dream_run",
         "vault_converge",
         "vault_freshness",

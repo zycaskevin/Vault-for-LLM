@@ -276,6 +276,7 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     dry_run=dry_run,
                     allow_private=bool(arguments.get("allow_private", False)),
                     prune_missing=bool(arguments.get("prune_missing", False)),
+                    conflict_inbox=bool(arguments.get("conflict_inbox", False)),
                 ),
             }
             if bool(arguments.get("compile", False)) and not dry_run:
@@ -293,6 +294,47 @@ def handle_tool_call(name: str, arguments: dict) -> dict:
                     },
                     "instruction": "Run only after the user confirms the dry-run result.",
                 }
+            return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
+
+        if name == "vault_obsidian_resolve_conflict":
+            from vault.agent_setup import compile_project
+            from vault.import_obsidian import resolve_obsidian_conflict
+
+            project_dir = Path(DB_PATH).resolve().parent
+            dry_run = bool(arguments.get("dry_run", False))
+            resolution_payload = resolve_obsidian_conflict(
+                project_dir=project_dir,
+                vault_dir=arguments.get("vault_dir", ""),
+                source_path=arguments.get("source_path", ""),
+                resolution=arguments.get("resolution", ""),
+                category=arguments.get("category", "obsidian"),
+                tags=arguments.get("tags", "obsidian"),
+                layer=arguments.get("layer", "L3"),
+                trust=float(arguments.get("trust", 0.5)),
+                allow_private=bool(arguments.get("allow_private", False)),
+                dry_run=dry_run,
+                conflict_inbox=bool(arguments.get("conflict_inbox", True)),
+            )
+            payload = {
+                "project_dir": str(project_dir),
+                "vault_dir": arguments.get("vault_dir", ""),
+                "resolution": resolution_payload,
+                "next_action": {
+                    "tool": "vault_obsidian_import",
+                    "arguments": {
+                        "vault_dir": arguments.get("vault_dir", ""),
+                        "dry_run": False,
+                        "compile": True,
+                        "conflict_inbox": True,
+                    },
+                    "instruction": "Re-run Obsidian import after resolving conflicts so the manifest and compiled knowledge stay fresh.",
+                },
+            }
+            if bool(arguments.get("compile", False)) and not dry_run:
+                payload["compile"] = compile_project(
+                    project_dir,
+                    allow_private=bool(arguments.get("allow_private", False)),
+                )
             return {"result": json.dumps(payload, ensure_ascii=False, indent=2)}
 
         elif name == "vault_stats":

@@ -37,6 +37,28 @@ Vault-for-LLM is built for that practical gap. It gives agents a place to ask:
 > What has this project already learned, where did it come from, and am I
 > allowed to use it?
 
+## Memory Governance Demo
+
+Vault-for-LLM is a local-first memory governance layer for agents. It is not
+just another RAG database: it shows how shared agent memory moves through a
+reviewable lifecycle.
+
+Run the demo:
+
+```bash
+vault demo agent-governance --json
+```
+
+It simulates Codex, Claude Code, and Hermes sharing one Vault:
+
+```text
+propose -> review -> promote -> search -> bounded read -> rollback -> audit
+```
+
+The command writes a Markdown report and runtime startup snippets so teams can
+turn the proof into a real shared-memory workflow. See
+[`docs/articles/agents-need-memory-governance-not-just-rag.md`](docs/articles/agents-need-memory-governance-not-just-rag.md).
+
 ## What You Get
 
 - **Local-first memory** - Markdown and SQLite by default. No cloud service is
@@ -81,7 +103,7 @@ app, or an automatic conversation memory product.
 For most users, the right path is to ask an agent to install consumer mode:
 
 ```text
-Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.23.
+Install Vault-for-LLM for this project. Use vault-for-llm[mcp]==0.7.27.
 Use consumer mode. Ask me only:
 1. Traditional Chinese, Simplified Chinese, or English?
 2. Independent vault or shared vault?
@@ -95,7 +117,7 @@ The agent should use the guided installer:
 ```bash
 python3.10 -m venv .venv
 source .venv/bin/activate
-pip install "vault-for-llm[mcp]==0.7.23"
+pip install "vault-for-llm[mcp]==0.7.27"
 
 vault setup-agent --audience consumer
 ```
@@ -236,7 +258,7 @@ to verify the candidate-first propose path.
 ### Manual Quickstart
 
 ```bash
-pip install "vault-for-llm[mcp]==0.7.23"
+pip install "vault-for-llm[mcp]==0.7.27"
 
 vault init ~/Vaults/demo
 vault add "First lesson" \
@@ -745,7 +767,7 @@ may be an integer or a Supabase UUID.
 Before handing a vault to another agent, check the sharing boundary locally:
 
 ```bash
-pip install "vault-for-llm[supabase]==0.7.23"
+pip install "vault-for-llm[supabase]==0.7.27"
 vault remote status --project-dir ~/Vaults/my-project
 python -m scripts.sync_to_supabase --db ~/Vaults/my-project/vault.db --document-map --health
 ```

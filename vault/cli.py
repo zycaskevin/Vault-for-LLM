@@ -82,6 +82,7 @@ from .cli_flow import (
 )
 from .cli_guide import cmd_guide as _cmd_guide_impl
 from .cli_daily_report import cmd_daily_report as _cmd_daily_report_impl
+from .cli_demo import add_demo_parser, cmd_demo as _cmd_demo_impl
 from .cli_gateway import add_gateway_parsers
 from .cli_map_remote import add_remote_parser, cmd_map, cmd_remote, _parse_map_line_range, _positive_int
 from .cli_okf import add_okf_parser, cmd_okf
@@ -143,6 +144,15 @@ def cmd_daily_report(args):
     return _cmd_daily_report_impl(
         args,
         find_project_dir=find_project_dir,
+        json_print=lambda payload, pretty: _json_print(payload, pretty=pretty),
+    )
+
+
+def cmd_demo(args):
+    """Dispatch runnable product demos."""
+    return _cmd_demo_impl(
+        args,
+        project_dir_override=get_project_dir_override(),
         json_print=lambda payload, pretty: _json_print(payload, pretty=pretty),
     )
 
@@ -1003,6 +1013,7 @@ def main(argv: list[str] | None = None):
     add_automation_parser(sub)
     add_memory_parser(sub)
     add_okf_parser(sub)
+    add_demo_parser(sub)
     args = parser.parse_args(normalized_argv)
 
     previous_project_dir_override = get_project_dir_override()
@@ -1011,6 +1022,8 @@ def main(argv: list[str] | None = None):
             args.project_dir = explicit_project_dir
         elif args.command in {"setup-agent", "install-agent"}:
             args.agent_project_dir = explicit_project_dir
+        elif args.command == "demo":
+            set_project_dir_override(Path(explicit_project_dir).expanduser().resolve())
         else:
             project_dir = Path(explicit_project_dir).expanduser().resolve()
             os.chdir(project_dir)
@@ -1020,6 +1033,7 @@ def main(argv: list[str] | None = None):
         "init": cmd_init,
         "guide": cmd_guide,
         "daily-report": cmd_daily_report,
+        "demo": cmd_demo,
         "gateway": cmd_gateway,
         "remote-server": cmd_gateway,
         "add": cmd_add,

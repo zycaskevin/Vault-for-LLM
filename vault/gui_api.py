@@ -13,6 +13,7 @@ from .automation_inbox import automation_inbox
 from .daily_report import build_daily_report
 from .db import VaultDB
 from .db_knowledge import escape_like_pattern
+from .gateway_audit import gateway_audit_report
 from .memory import promote_candidate, review_candidate
 from .memory_migration import migrate_memory_source
 from .multi_host import resolve_conflict, sync_status
@@ -130,6 +131,35 @@ def _obsidian_sync_item(project: Path) -> dict[str, Any]:
                 else ""
             ),
             "raw_subdir": manifest.get("raw_subdir", ""),
+        },
+    }
+
+
+def _gateway_sync_item(project: Path) -> dict[str, Any]:
+    audit = gateway_audit_report(project, limit=5)
+    summary = audit.get("summary") if isinstance(audit.get("summary"), dict) else {}
+    blocked = int(summary.get("blocked_or_failed_events") or 0)
+    total = int(summary.get("total_events") or 0)
+    status = "needs_review" if blocked else ("ok" if total else "idle")
+    return {
+        "kind": "gateway",
+        "label": "Gateway / Remote access",
+        "status": status,
+        "updated_at": (audit.get("recent_events") or [{}])[-1].get("created_at", "") if audit.get("recent_events") else "",
+        "path": str(audit.get("audit_path") or ""),
+        "next_action": str(audit.get("next_action") or "No Gateway audit events yet."),
+        "summary": {
+            "total_events": total,
+            "blocked_or_failed_events": blocked,
+            "unique_client_ips": int(summary.get("unique_client_ips") or 0),
+            "rotated_log_count": int(((audit.get("rotation") or {}).get("rotated_log_count")) or 0),
+            "security_label": "review blocked access" if blocked else ("gateway quiet" if not total else "gateway healthy"),
+        },
+        "safety": {
+            "token_required_by_default": True,
+            "rate_limit_supported": True,
+            "tls_supported": True,
+            "audit_log_supported": True,
         },
     }
 
@@ -431,6 +461,7 @@ def gui_agent_dashboard(
             "summary": {"agents": len(all_agents), "connected_agents": len(connected_agents)},
             "error": agent_error,
         },
+        _gateway_sync_item(project),
         _obsidian_sync_item(project),
         *_report_sync_items(project),
     ]

@@ -74,6 +74,13 @@ remote-candidate conflict count, Obsidian note conflicts, revision count, and
 audit event count. It does not show raw candidate content, raw Obsidian note
 bodies, or private memory in the dashboard cards.
 
+The dashboard also includes a Gateway / Remote access card when Gateway audit
+logs exist. This card is intentionally small: it shows total Gateway events,
+blocked or failed events, unique client IP count, and the next safe action.
+It is not a request log browser. If blocked events appear, the user should
+review Gateway token, rate-limit, TLS, and IP policy before exposing Vault to
+more agents or machines.
+
 Obsidian note conflicts use human-friendly language. A card should read like
 "this note changed in both Obsidian and Vault" instead of exposing manifest
 hashes or internal conflict codes. Opening the card shows the Obsidian version
@@ -86,6 +93,12 @@ and Vault version side by side, then presents three separate choices:
 Those choices use the same explicit resolver as CLI/MCP and require a
 confirmation token. The dashboard only aggregates what needs attention.
 Resolution happens in the detail view.
+
+When `vault import obsidian --conflict-inbox` writes back into Obsidian, the
+generated note is titled `Vault 每日筆記審核`. It lists only paths, safe action
+choices, and short hash breadcrumbs. It deliberately does not include the
+conflicting note bodies, so Obsidian can act as a human-readable inbox without
+turning private notes into a generated report.
 
 The Map tab is the first structured-reading slice. It shows Document Map
 sections and visible claims for the selected memory. Clicking a section opens
@@ -142,6 +155,10 @@ explicit candidate review endpoint, which is separated as a `POST` action:
   raw-copy decision. `accept-obsidian`, `accept-vault`, and `keep-both` are
   separate buttons and require confirmation. The dashboard and review inbox use
   gentle labels; technical reasons remain in API payloads for agents and debug.
+- Gateway / Remote access health is read-only in the GUI. The safe default is
+  token auth plus localhost binding. For cross-host access, enable TLS or place
+  the Gateway behind a trusted reverse proxy, keep rate limits enabled, and
+  watch blocked audit events before increasing access.
 - Private or restricted data should not be exposed by binding the GUI to a
   public network interface. If a broader bind is needed, keep token auth enabled
   and put the GUI behind a trusted local tunnel or reverse proxy.

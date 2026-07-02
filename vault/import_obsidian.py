@@ -117,35 +117,41 @@ def _render_conflict_inbox(conflicts: list[dict[str, Any]], *, generated_at: str
     for item in conflicts:
         lines.append(
             "- [ ] "
-            f"`{item.get('source_path', '')}` -> `{item.get('raw_path', '')}`\n"
-            f"  - Reason: `{item.get('reason', 'obsidian_source_and_vault_raw_both_changed')}`\n"
-            f"  - Previous source hash: `{_short_hash(item.get('previous_source_hash'))}`\n"
-            f"  - Current source hash: `{_short_hash(item.get('current_source_hash'))}`\n"
-            f"  - Previous Vault raw hash: `{_short_hash(item.get('previous_raw_hash'))}`\n"
-            f"  - Current Vault raw hash: `{_short_hash(item.get('current_raw_hash'))}`\n"
-            "  - Next action: compare the Obsidian note and Vault raw copy, then re-run the import after resolving one side."
+            f"**{item.get('source_path', '')}**\n"
+            "  - 狀態：這篇筆記在 Obsidian 和 Vault 都被改過，Vault 沒有自動覆蓋任何一邊。\n"
+            "  - 請選一個決定：接受 Obsidian、接受 Vault，或保留兩份。\n"
+            f"  - Obsidian 筆記：`{item.get('source_path', '')}`\n"
+            f"  - Vault 版本：`{item.get('raw_path', '')}`\n"
+            f"  - 技術追蹤：source `{_short_hash(item.get('previous_source_hash'))}` -> `{_short_hash(item.get('current_source_hash'))}`，vault `{_short_hash(item.get('previous_raw_hash'))}` -> `{_short_hash(item.get('current_raw_hash'))}`"
         )
     conflict_lines = "\n\n".join(lines) or "- No active Obsidian import conflicts."
     return f"""---
-title: "Vault Obsidian Import Conflicts"
+title: "Vault 每日筆記審核"
 generated_by: "vault-for-llm"
 generated_at: "{generated_at}"
 ---
 
-# Vault Obsidian Import Conflicts
+# Vault 每日筆記審核
 
-This generated note is a review surface. It does not contain the conflicting
-note bodies, and it does not resolve conflicts automatically.
+這是 Vault 幫你整理的 Obsidian 筆記審核清單。它只列出需要選擇的筆記，
+不會顯示筆記正文，也不會自動改掉任何內容。
 
-## Conflicts
+## 今天需要選擇的筆記
 
 {conflict_lines}
 
-## Safety
+## 可以怎麼處理
 
-- Vault did not overwrite either side.
-- Resolve the note manually, then run `vault import obsidian` again.
-- Keep generated notes inside `00-Vault-Knowledge/`.
+- 接受 Obsidian：以 Obsidian 筆記為準，更新 Vault 版本。
+- 接受 Vault：以 Vault 版本為準，更新 Obsidian 筆記。
+- 保留兩份：保留兩邊內容，另外建立一份衝突備份。
+
+## 安全保證
+
+- Vault 沒有偷偷覆蓋任何一邊。
+- 這份清單不包含衝突筆記正文。
+- 在 GUI 或 agent resolver 裡做選擇時，每次都需要明確確認。
+- Generated notes stay inside `00-Vault-Knowledge/`.
 """
 
 

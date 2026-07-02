@@ -31,6 +31,7 @@ from .gui_format import (
     timeline_for,
     usage_for,
 )
+from .gui_obsidian import list_obsidian_conflicts
 from .task_ledger import claim_task_handoff, get_task, get_task_handoff, list_task_handoffs, list_tasks, task_handoff
 
 
@@ -105,16 +106,29 @@ def _obsidian_sync_item(project: Path) -> dict[str, Any]:
         key for key, value in notes.items()
         if isinstance(value, dict) and value.get("status") == "conflict"
     ]
+    conflict_items = list_obsidian_conflicts(project, limit=5)
     return {
         "kind": "obsidian",
         "label": "Obsidian incremental import",
         "status": "needs_review" if conflicts else ("ok" if manifest else "not_configured"),
         "updated_at": manifest.get("updated_at", "") or _file_updated_at(manifest_path),
         "path": str(manifest_path),
+        "next_action": (
+            "Open each note conflict and choose Accept Obsidian, Accept Vault, or Keep both."
+            if conflicts
+            else "No Obsidian note conflict needs human review."
+        ),
         "summary": {
             "active_notes": max(0, len(notes) - len(missing) - len(conflicts)),
             "missing_notes": len(missing),
             "conflict_notes": len(conflicts),
+            "conflict_paths": conflicts[:5],
+            "conflict_items": conflict_items,
+            "review_label": (
+                f"{len(conflicts)} notes changed in both Obsidian and Vault"
+                if conflicts
+                else ""
+            ),
             "raw_subdir": manifest.get("raw_subdir", ""),
         },
     }
@@ -173,7 +187,10 @@ def _dashboard_activity_health(
             obsidian_conflicts = int((item.get("summary") or {}).get("conflict_notes") or 0)
 
     review_count = int((review_inbox.get("summary") or {}).get("total") or 0)
-    if open_sync_conflicts or obsidian_conflicts:
+    if obsidian_conflicts and not open_sync_conflicts:
+        status = "needs_review"
+        next_action = "Open the Obsidian note review and choose which version to keep."
+    elif open_sync_conflicts or obsidian_conflicts:
         status = "needs_review"
         next_action = "Review sync conflicts before changing shared memory."
     elif review_count:
@@ -195,6 +212,11 @@ def _dashboard_activity_health(
         "open_sync_conflicts": open_sync_conflicts,
         "obsidian_conflicts": obsidian_conflicts,
         "sync_report_warnings": stale_sync_items,
+        "review_breakdown": {
+            "memory_candidates": len(recent_candidates),
+            "remote_sync_conflicts": open_sync_conflicts,
+            "obsidian_note_conflicts": obsidian_conflicts,
+        },
         "next_action": next_action,
         "safety": {
             "read_only": True,
@@ -252,6 +274,7 @@ def _build_gui_review_inbox(
     review: dict[str, Any],
     recent_candidates: list[dict[str, Any]],
     sync_health: dict[str, Any],
+    obsidian_conflicts: list[dict[str, Any]],
     handoffs: list[dict[str, Any]],
     limit: int,
 ) -> dict[str, Any]:
@@ -293,6 +316,19 @@ def _build_gui_review_inbox(
             sensitivity="low",
             source="multi_host_sync",
         ))
+    for conflict in obsidian_conflicts[:limit]:
+        source_path = str(conflict.get("source_path") or conflict.get("id") or "")
+        items.append(_review_item(
+            kind="obsidian_conflict",
+            item_id=source_path,
+            title=str(conflict.get("title") or f"筆記兩邊都改過：{source_path}"),
+            reason=str(conflict.get("reason") or "請打開詳情後選擇要保留哪一邊。"),
+            action="resolve_obsidian_conflict",
+            target_id=source_path,
+            target_kind="obsidian_note",
+            sensitivity="low",
+            source="obsidian_sync",
+        ))
     for handoff in handoffs[:limit]:
         hid = str(handoff.get("id") or "")
         agent = str(handoff.get("to_agent") or handoff.get("from_agent") or "agent")
@@ -313,6 +349,7 @@ def _build_gui_review_inbox(
         "daily_cards": min(len(review.get("cards") or []), limit),
         "candidates": min(len(recent_candidates), limit),
         "sync_conflicts": min(len(sync_health.get("open_conflicts") or []), limit),
+        "obsidian_conflicts": min(len(obsidian_conflicts), limit),
         "task_handoffs": min(len(handoffs), limit),
     }
     return {
@@ -374,10 +411,12 @@ def gui_agent_dashboard(
     with VaultDB(db_path) as db:
         sync_health = sync_status(db, limit=limit_i)
         handoffs = list_task_handoffs(db, status="pending", limit=limit_i)
+    obsidian_conflicts = list_obsidian_conflicts(project, limit=limit_i)
     review_inbox = _build_gui_review_inbox(
         review=review,
         recent_candidates=recent_candidates,
         sync_health=sync_health,
+        obsidian_conflicts=obsidian_conflicts,
         handoffs=handoffs,
         limit=limit_i,
     )

@@ -69,10 +69,23 @@ memory. Selecting a task shows plan, completed work, decisions, blockers, next
 actions, evidence refs, recent task events, and compact handoff Markdown. It is
 read-only in the GUI; use CLI/MCP to update task state.
 
-The Multi-Agent Dashboard includes a read-only Sync Health card. It shows open
-conflict count, revision count, and audit event count for remote candidate sync.
-It does not show raw candidate content or private memory. Use CLI/MCP to resolve
-conflicts after reviewing the relevant candidate and source evidence.
+The Multi-Agent Dashboard includes read-only sync health. It shows open
+remote-candidate conflict count, Obsidian note conflicts, revision count, and
+audit event count. It does not show raw candidate content, raw Obsidian note
+bodies, or private memory in the dashboard cards.
+
+Obsidian note conflicts use human-friendly language. A card should read like
+"this note changed in both Obsidian and Vault" instead of exposing manifest
+hashes or internal conflict codes. Opening the card shows the Obsidian version
+and Vault version side by side, then presents three separate choices:
+
+- accept Obsidian;
+- accept Vault;
+- keep both.
+
+Those choices use the same explicit resolver as CLI/MCP and require a
+confirmation token. The dashboard only aggregates what needs attention.
+Resolution happens in the detail view.
 
 The Map tab is the first structured-reading slice. It shows Document Map
 sections and visible claims for the selected memory. Clicking a section opens
@@ -93,6 +106,8 @@ explicit candidate review endpoint, which is separated as a `POST` action:
 | `/api/overview` | Stats, automation brief, review inbox, recent memory |
 | `/api/agent-dashboard` | Connected Agents, recent sync artifacts, review cards, and Sync Health |
 | `/api/sync-status` | Read-only local revision/conflict/audit summary for multi-host candidate sync |
+| `/api/obsidian-conflict/<path>` | One Obsidian note conflict with side-by-side Obsidian and Vault content |
+| `POST /api/obsidian-conflict/<path>/resolve` | Resolve an Obsidian note conflict with accept-Obsidian, accept-Vault, or keep-both |
 | `/api/tasks?status=active` | Compact Task Ledger list |
 | `/api/task/<id>` | One Task Ledger item with handoff Markdown |
 | `POST /api/task-handoff/<id>/claim` | Claim a directed Task Ledger handoff with explicit confirmation |
@@ -123,6 +138,10 @@ explicit candidate review endpoint, which is separated as a `POST` action:
   candidate decision. `keep_local`, `accept_remote`, and `manual` are separate
   buttons; accepting remote promotes the candidate and archives the old local
   row instead of silently overwriting it.
+- Obsidian conflict review is shown as a side-by-side Obsidian note vs Vault
+  raw-copy decision. `accept-obsidian`, `accept-vault`, and `keep-both` are
+  separate buttons and require confirmation. The dashboard and review inbox use
+  gentle labels; technical reasons remain in API payloads for agents and debug.
 - Private or restricted data should not be exposed by binding the GUI to a
   public network interface. If a broader bind is needed, keep token auth enabled
   and put the GUI behind a trusted local tunnel or reverse proxy.

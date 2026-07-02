@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import secrets
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 import webbrowser
 
 from .daily_report import normalize_report_language
@@ -34,6 +34,7 @@ from .gui_api import (
 )
 from .gui_app import APP_HTML
 from .gui_format import _int_arg, _path_int, _path_str, _str_arg
+from .gui_obsidian import gui_obsidian_conflict, gui_resolve_obsidian_conflict
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -192,6 +193,10 @@ def make_gui_handler(project_dir: Path, *, auth_token: str = "", language: str =
             if path.startswith("/api/sync-conflict/"):
                 self._send_json(gui_sync_conflict(project, _path_str(path, "/api/sync-conflict/")))
                 return
+            if path.startswith("/api/obsidian-conflict/"):
+                source_path = unquote(_path_str(path, "/api/obsidian-conflict/"))
+                self._send_json(gui_obsidian_conflict(project, source_path))
+                return
             if path.startswith("/api/task/"):
                 self._send_json(gui_task(project, _path_str(path, "/api/task/")))
                 return
@@ -237,6 +242,18 @@ def make_gui_handler(project_dir: Path, *, auth_token: str = "", language: str =
                         resolution=str(body.get("resolution", "")),
                         reason=str(body.get("reason", "")),
                         agent_id=str(body.get("agent_id", "gui-reviewer")),
+                        confirm=str(body.get("confirm", "")),
+                    )
+                )
+                return
+            if path.startswith("/api/obsidian-conflict/") and path.endswith("/resolve"):
+                source_path = unquote(path[len("/api/obsidian-conflict/") : -len("/resolve")].strip("/"))
+                body = self._read_json_body()
+                self._send_json(
+                    gui_resolve_obsidian_conflict(
+                        project,
+                        source_path,
+                        resolution=str(body.get("resolution", "")),
                         confirm=str(body.get("confirm", "")),
                     )
                 )

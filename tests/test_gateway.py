@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import http.client
-from http.server import ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
@@ -17,6 +17,7 @@ from vault.cli import main
 from vault.db import VaultDB
 from vault.docmap import build_document_map_for_entry
 from vault.gateway import (
+    BoundedThreadPoolHTTPServer,
     gateway_read_range,
     gateway_openapi,
     gateway_search,
@@ -24,6 +25,8 @@ from vault.gateway import (
     make_gateway_handler,
     run_gateway,
 )
+from vault.gateway_audit import gateway_audit_report
+from vault.gateway_security import GatewaySecurityPolicy
 from vault.agent_setup_remote_server import write_remote_server_deploy_templates
 
 
@@ -209,6 +212,63 @@ def test_gateway_openapi_contract_documents_safe_adapter_boundary():
     assert safety["search_returns_raw_content"] is False
     assert safety["writes_active_knowledge"] is False
     assert safety["candidate_first_writes"] is True
+    assert safety["tls_supported"] is True
+    assert safety["bounded_worker_pool_supported"] is True
+
+
+def test_gateway_bounded_worker_pool_rejects_excess_requests():
+    entered = threading.Event()
+    release = threading.Event()
+
+    class BlockingHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/hold":
+                entered.set()
+                release.wait(timeout=5)
+            body = b'{"ok": true}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, _format, *args):
+            return
+
+    server = BoundedThreadPoolHTTPServer(("127.0.0.1", 0), BlockingHandler, max_workers=1)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    first_thread = None
+    first_conn = None
+    try:
+        host, port = server.server_address
+        first_conn = http.client.HTTPConnection(host, port, timeout=5)
+
+        def hold_request():
+            assert first_conn is not None
+            first_conn.request("GET", "/hold")
+            response = first_conn.getresponse()
+            response.read()
+
+        first_thread = threading.Thread(target=hold_request)
+        first_thread.start()
+        assert entered.wait(timeout=5)
+
+        second = http.client.HTTPConnection(host, port, timeout=5)
+        second.request("GET", "/health")
+        response = second.getresponse()
+        payload = json.loads(response.read().decode("utf-8"))
+        second.close()
+        assert response.status == 503
+        assert payload["error"] == "gateway_overloaded"
+    finally:
+        release.set()
+        if first_thread is not None:
+            first_thread.join(timeout=5)
+        if first_conn is not None:
+            first_conn.close()
+        server.shutdown()
+        server.server_close()
 
 
 def test_gateway_http_search_submit_and_audit(tmp_path):
@@ -250,6 +310,220 @@ def test_gateway_http_search_submit_and_audit(tmp_path):
     lines = audit.read_text(encoding="utf-8").splitlines()
     assert any('"event": "search"' in line for line in lines)
     assert any('"event": "submit_candidate"' in line for line in lines)
+    parsed = [json.loads(line) for line in lines]
+    assert all(row.get("client_ip") == "127.0.0.1" for row in parsed)
+    assert all("endpoint" in row for row in parsed)
+
+
+def test_gateway_ip_denylist_blocks_request_and_audits(tmp_path):
+    project, _public_id, _private_id = _project(tmp_path)
+    handler = make_gateway_handler(
+        project,
+        auth_token="secret",
+        security_policy=GatewaySecurityPolicy(ip_denylist="127.0.0.1"),
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        host, port = server.server_address
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("GET", "/health", headers={"Authorization": "Bearer secret", "User-Agent": "vault-test"})
+        denied = conn.getresponse()
+        body = json.loads(denied.read().decode("utf-8"))
+        conn.close()
+        assert denied.status == 403
+        assert body["error"] == "ip_denied"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    audit = project / "reports" / "gateway" / "audit.jsonl"
+    row = json.loads(audit.read_text(encoding="utf-8").splitlines()[-1])
+    assert row["event"] == "request_blocked"
+    assert row["reason"] == "ip_denied"
+    assert row["client_ip"] == "127.0.0.1"
+    assert row["user_agent"] == "vault-test"
+
+
+def test_gateway_rate_limit_blocks_excess_requests(tmp_path):
+    project, _public_id, _private_id = _project(tmp_path)
+    handler = make_gateway_handler(
+        project,
+        auth_token="secret",
+        security_policy=GatewaySecurityPolicy(rate_limit_per_minute=1, token_rate_limit_per_minute=0),
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        host, port = server.server_address
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("GET", "/health", headers={"Authorization": "Bearer secret"})
+        first = conn.getresponse()
+        first.read()
+        conn.close()
+        assert first.status == 200
+
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("GET", "/health", headers={"Authorization": "Bearer secret"})
+        limited = conn.getresponse()
+        body = json.loads(limited.read().decode("utf-8"))
+        conn.close()
+        assert limited.status == 429
+        assert body["error"] == "rate_limited"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_gateway_auth_failure_lockout(tmp_path):
+    project, _public_id, _private_id = _project(tmp_path)
+    handler = make_gateway_handler(
+        project,
+        auth_token="secret",
+        security_policy=GatewaySecurityPolicy(rate_limit_per_minute=0, auth_failure_limit=1, auth_lockout_seconds=60),
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        host, port = server.server_address
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("GET", "/health", headers={"Authorization": "Bearer wrong"})
+        denied = conn.getresponse()
+        denied_body = json.loads(denied.read().decode("utf-8"))
+        conn.close()
+        assert denied.status == 429
+        assert denied_body["error"] == "auth_locked"
+
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("GET", "/health", headers={"Authorization": "Bearer secret"})
+        locked = conn.getresponse()
+        locked_body = json.loads(locked.read().decode("utf-8"))
+        conn.close()
+        assert locked.status == 429
+        assert locked_body["error"] == "auth_locked"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_gateway_audit_report_summarizes_blocked_events(tmp_path):
+    project = tmp_path / "project"
+    audit = project / "reports" / "gateway" / "audit.jsonl"
+    audit.parent.mkdir(parents=True)
+    audit.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "created_at": "2026-07-02T00:00:00Z",
+                        "event": "health",
+                        "status": "ok",
+                        "agent_id": "",
+                        "client_ip": "127.0.0.1",
+                        "endpoint": "/health",
+                        "method": "GET",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "created_at": "2026-07-02T00:01:00Z",
+                        "event": "auth_failed",
+                        "status": "error",
+                        "agent_id": "",
+                        "client_ip": "10.0.0.5",
+                        "user_agent": "bad-client",
+                        "endpoint": "/search",
+                        "method": "POST",
+                        "reason": "auth_locked",
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    payload = gateway_audit_report(project, limit=5)
+
+    assert payload["status"] == "needs_review"
+    assert payload["summary"]["total_events"] == 2
+    assert payload["summary"]["blocked_or_failed_events"] == 1
+    assert payload["summary"]["top_reasons"]["auth_locked"] == 1
+    assert payload["recent_events"][-1]["user_agent"] == "bad-client"
+    assert "Review auth_failed" in payload["next_action"]
+
+
+def test_gateway_audit_log_rotates_when_size_limit_is_reached(tmp_path, monkeypatch):
+    project, _public_id, _private_id = _project(tmp_path)
+    audit = project / "reports" / "gateway" / "audit.jsonl"
+    audit.parent.mkdir(parents=True, exist_ok=True)
+    audit.write_text("x" * 64, encoding="utf-8")
+    monkeypatch.setenv("VAULT_GATEWAY_AUDIT_MAX_BYTES", "32")
+    monkeypatch.setenv("VAULT_GATEWAY_AUDIT_BACKUPS", "2")
+    handler = make_gateway_handler(project, auth_token="secret")
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        host, port = server.server_address
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("GET", "/health", headers={"Authorization": "Bearer secret"})
+        response = conn.getresponse()
+        response.read()
+        conn.close()
+        assert response.status == 200
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    rotated = sorted(audit.parent.glob("audit-*.jsonl"))
+    assert len(rotated) == 1
+    assert rotated[0].read_text(encoding="utf-8") == "x" * 64
+    current_rows = [json.loads(line) for line in audit.read_text(encoding="utf-8").splitlines()]
+    assert current_rows[-1]["event"] == "health"
+    report = gateway_audit_report(project)
+    assert report["rotation"]["rotated_log_count"] == 1
+
+
+def test_gateway_audit_cli_and_mcp_return_safe_summary(tmp_path, capsys):
+    from vault.cli import main
+    from vault.mcp import _set_project_dir, handle_tool_call
+
+    project, _public_id, _private_id = _project(tmp_path)
+    audit = project / "reports" / "gateway" / "audit.jsonl"
+    audit.parent.mkdir(parents=True, exist_ok=True)
+    audit.write_text(
+        json.dumps(
+            {
+                "created_at": "2026-07-02T00:02:00Z",
+                "event": "request_blocked",
+                "status": "rate_limited",
+                "agent_id": "codex",
+                "client_ip": "127.0.0.1",
+                "user_agent": "vault-test",
+                "endpoint": "/search",
+                "method": "POST",
+                "reason": "rate_limited",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    main(["gateway", "audit", "--project-dir", str(project), "--json"])
+    cli_payload = json.loads(capsys.readouterr().out)
+    assert cli_payload["summary"]["blocked_or_failed_events"] == 1
+    assert cli_payload["recent_events"][0]["reason"] == "rate_limited"
+
+    _set_project_dir(project)
+    result = handle_tool_call("vault_gateway_audit", {"limit": 5})
+    mcp_payload = json.loads(result["result"])
+    assert mcp_payload["ok"] is True
+    assert mcp_payload["status"] == "needs_review"
+    assert mcp_payload["recent_events"][0]["agent_id"] == "codex"
 
 
 def test_gateway_http_tolerates_bad_numeric_fields(tmp_path):
@@ -289,6 +563,13 @@ def test_gateway_http_tolerates_bad_numeric_fields(tmp_path):
 def test_gateway_no_auth_requires_localhost(tmp_path):
     with pytest.raises(ValueError):
         run_gateway(tmp_path, host="0.0.0.0", no_auth=True)
+
+
+def test_gateway_tls_requires_cert_and_key(tmp_path):
+    with pytest.raises(ValueError, match="TLS requires both"):
+        run_gateway(tmp_path, no_auth=True, tls_cert=tmp_path / "cert.pem")
+    with pytest.raises(FileNotFoundError, match="TLS certificate not found"):
+        run_gateway(tmp_path, no_auth=True, tls_cert=tmp_path / "missing-cert.pem", tls_key=tmp_path / "missing-key.pem")
 
 
 def test_remote_server_cli_and_generated_validation_script_end_to_end(tmp_path):

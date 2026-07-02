@@ -6,6 +6,7 @@ import hashlib
 import json
 import uuid
 from datetime import datetime, timezone
+from difflib import unified_diff
 from pathlib import Path
 from typing import Any
 
@@ -239,6 +240,64 @@ def list_audit_log(db: VaultDB, *, limit: int = 20) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def preview_conflict(db: VaultDB, conflict_id: str, *, context_lines: int = 2) -> dict[str, Any]:
+    """Return a compact, read-only conflict preview for review UIs and agents."""
+    row = db.conn.execute("SELECT * FROM memory_conflicts WHERE id=?", (conflict_id,)).fetchone()
+    if not row:
+        raise KeyError(f"conflict not found: {conflict_id}")
+    conflict = dict(row)
+    knowledge = db.get_knowledge(int(conflict["knowledge_id"])) if conflict.get("knowledge_id") is not None else None
+    candidate = db.get_memory_candidate(str(conflict.get("candidate_id") or "")) if conflict.get("candidate_id") else None
+    local_content = str((knowledge or {}).get("content_raw") or "")
+    remote_content = str((candidate or {}).get("content") or "")
+    local_title = str((knowledge or {}).get("title") or "")
+    remote_title = str((candidate or {}).get("title") or "")
+    return {
+        "ok": True,
+        "status": "needs_review" if conflict.get("status") == "open" else str(conflict.get("status") or ""),
+        "conflict": _compact_conflict(conflict),
+        "local": {
+            "type": "active_knowledge",
+            "id": conflict.get("knowledge_id"),
+            "title": local_title,
+            "status": str((knowledge or {}).get("status") or ""),
+            "content_hash": content_digest(local_content) if local_content else "",
+            "content_preview": _preview_text(local_content),
+        },
+        "remote": {
+            "type": "remote_candidate",
+            "id": conflict.get("candidate_id") or "",
+            "title": remote_title,
+            "status": str((candidate or {}).get("status") or ""),
+            "trust": float((candidate or {}).get("trust") or 0.0),
+            "scope": str((candidate or {}).get("scope") or ""),
+            "sensitivity": str((candidate or {}).get("sensitivity") or ""),
+            "source_ref": str((candidate or {}).get("source_ref") or ""),
+            "content_hash": content_digest(remote_content) if remote_content else "",
+            "content_preview": _preview_text(remote_content),
+        },
+        "diff": _content_diff(local_content, remote_content, context_lines=context_lines),
+        "available_resolutions": [
+            {
+                "resolution": "keep_local",
+                "effect": "Reject the remote candidate and keep active local knowledge unchanged.",
+                "requires_apply_memory_change": False,
+            },
+            {
+                "resolution": "manual",
+                "effect": "Mark this conflict reviewed after a human or trusted agent writes a separate merged memory.",
+                "requires_apply_memory_change": False,
+            },
+            {
+                "resolution": "accept_remote",
+                "effect": "Promote the remote candidate and archive the conflicting local knowledge row.",
+                "requires_apply_memory_change": True,
+            },
+        ],
+        "recommendation": _conflict_recommendation(conflict, knowledge or {}, candidate or {}),
+    }
+
+
 def sync_status(db: VaultDB, *, limit: int = 5) -> dict[str, Any]:
     """Return a compact, read-only multi-host sync health summary."""
     limit_i = max(1, min(int(limit or 5), 20))
@@ -278,6 +337,84 @@ def sync_status(db: VaultDB, *, limit: int = 5) -> dict[str, Any]:
             "candidate_first": True,
         },
         "next_action": next_action,
+    }
+
+
+def _compact_conflict(conflict: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": conflict.get("id", ""),
+        "status": conflict.get("status", ""),
+        "conflict_type": conflict.get("conflict_type", ""),
+        "reason": conflict.get("reason", ""),
+        "knowledge_id": conflict.get("knowledge_id"),
+        "candidate_id": conflict.get("candidate_id", ""),
+        "left_revision_id": conflict.get("left_revision_id", ""),
+        "right_revision_id": conflict.get("right_revision_id", ""),
+        "created_at": conflict.get("created_at", ""),
+        "updated_at": conflict.get("updated_at", ""),
+    }
+
+
+def _preview_text(text: str, *, max_len: int = 600) -> str:
+    compact = " ".join(str(text or "").split())
+    if len(compact) <= max_len:
+        return compact
+    return compact[: max_len - 3].rstrip() + "..."
+
+
+def _content_diff(local: str, remote: str, *, context_lines: int = 2, max_lines: int = 80) -> list[str]:
+    local_lines = str(local or "").splitlines()
+    remote_lines = str(remote or "").splitlines()
+    diff = list(
+        unified_diff(
+            local_lines,
+            remote_lines,
+            fromfile="local_active",
+            tofile="remote_candidate",
+            lineterm="",
+            n=max(0, min(int(context_lines or 2), 5)),
+        )
+    )
+    return diff[: max(1, min(int(max_lines or 80), 200))]
+
+
+def _conflict_recommendation(
+    conflict: dict[str, Any],
+    knowledge: dict[str, Any],
+    candidate: dict[str, Any],
+) -> dict[str, Any]:
+    trust = float(candidate.get("trust") or 0.0)
+    if str(conflict.get("status") or "") != "open":
+        return {
+            "safe_action": "none",
+            "reason": "Conflict is already resolved.",
+            "command": "",
+        }
+    if not candidate:
+        return {
+            "safe_action": "keep_local",
+            "reason": "Remote candidate is missing, so active local knowledge should be preserved.",
+            "command": f"vault sync resolve-conflict {conflict.get('id', '')} --resolution keep_local",
+        }
+    if trust >= 0.85 and str(candidate.get("sensitivity") or "low") == "low":
+        return {
+            "safe_action": "review_accept_remote",
+            "reason": "Remote candidate is low sensitivity and high trust; review the preview before applying.",
+            "command": (
+                f"vault sync resolve-conflict {conflict.get('id', '')} "
+                "--resolution accept_remote --apply-memory-change"
+            ),
+        }
+    if knowledge and candidate:
+        return {
+            "safe_action": "manual_review",
+            "reason": "Both local and remote sides exist. Prefer manual review or a merged candidate.",
+            "command": f"vault sync resolve-conflict {conflict.get('id', '')} --resolution manual --reason reviewed",
+        }
+    return {
+        "safe_action": "keep_local",
+        "reason": "Default safe action is to keep local active memory until a reviewer decides otherwise.",
+        "command": f"vault sync resolve-conflict {conflict.get('id', '')} --resolution keep_local",
     }
 
 

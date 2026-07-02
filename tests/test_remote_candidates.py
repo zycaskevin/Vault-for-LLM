@@ -11,6 +11,7 @@ from vault.remote_candidates import (
     pull_remote_candidate_requests,
     submit_remote_candidate_request,
 )
+from vault.sync_integrity import sign_sync_payload
 
 
 class _FakeResponse:
@@ -130,6 +131,25 @@ def test_submit_remote_candidate_request_calls_guarded_rpc():
     assert "content" not in payload["request"]
 
 
+def test_submit_remote_candidate_request_can_sign_payload():
+    client = _FakeSupabaseClient()
+
+    payload = submit_remote_candidate_request(
+        sb_client=client,
+        hmac_secret="sync-secret",
+        title="Signed remote sync lesson",
+        content="Remote candidate sync payloads should carry HMAC metadata when a shared secret is configured.",
+        from_agent="remote-agent",
+        trust=0.8,
+    )
+
+    assert payload["ok"] is True
+    params = client.rpc_calls[0][1]
+    assert params["p_hmac_algorithm"] == "hmac-sha256-v1"
+    assert len(params["p_payload_hash"]) == 64
+    assert len(params["p_hmac_signature"]) == 64
+
+
 def test_pull_remote_candidate_requests_imports_into_local_candidate_queue(tmp_path):
     project = tmp_path / "project"
     project.mkdir()
@@ -179,6 +199,63 @@ def test_pull_remote_candidate_requests_imports_into_local_candidate_queue(tmp_p
         assert db.conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0] == 0
     finally:
         db.close()
+
+
+def test_pull_remote_candidate_requests_requires_valid_hmac_before_import(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    db = VaultDB(project / "vault.db").connect()
+    db.close()
+    good = build_remote_candidate_request(
+        title="Signed candidate sync rule",
+        content="Decision: signed remote candidates can be imported because HMAC verifies payload integrity.",
+        from_agent="remote-agent",
+        reason="multi-host safety",
+        category="decision",
+        tags=["remote", "hmac"],
+        trust=0.88,
+        scope="shared",
+        sensitivity="low",
+    )
+    good.update(sign_sync_payload(good, "sync-secret"))
+    bad = dict(good)
+    bad.update(
+        {
+            "idempotency_key": "tampered-request",
+            "title": "Tampered candidate sync rule",
+            "content": "Decision: this content was changed after signing.",
+        }
+    )
+    client = _FakeSupabaseClient(
+        [
+            {"id": "req-signed", "status": "submitted", "created_at": "2026-07-01T00:00:00Z", **good},
+            {"id": "req-tampered", "status": "submitted", "created_at": "2026-07-01T00:00:01Z", **bad},
+        ]
+    )
+
+    payload = pull_remote_candidate_requests(
+        project,
+        sb_client=client,
+        apply=True,
+        hmac_secret="sync-secret",
+        require_hmac=True,
+    )
+
+    assert payload["integrity"]["hmac_required"] is True
+    assert payload["integrity"]["verified_count"] == 1
+    assert payload["integrity"]["invalid_count"] == 1
+    assert payload["imported_count"] == 1
+    assert payload["skipped_count"] == 1
+    signed = next(item for item in payload["requests"] if item["id"] == "req-signed")
+    tampered = next(item for item in payload["requests"] if item["id"] == "req-tampered")
+    assert signed["integrity"]["status"] == "verified"
+    assert tampered["status"] == "signature_invalid"
+    assert tampered["integrity"]["error"] in {"payload_hash_mismatch", "hmac_signature_mismatch"}
+    assert any(row["status"] == "signature_invalid" for row in client.updates)
+    with VaultDB(project / "vault.db") as db:
+        rows = db.list_memory_candidates()
+    assert len(rows) == 1
+    assert rows[0]["title"] == "Signed candidate sync rule"
 
 
 def test_pull_remote_candidate_requests_can_auto_promote_only_imported_low_risk_items(tmp_path):

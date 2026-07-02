@@ -48,6 +48,7 @@ Implemented now:
 - `vault sync revisions`
 - `vault sync conflicts`
 - `vault sync audit`
+- `vault sync preview-conflict`
 - `vault sync resolve-conflict`
 
 Conflict resolution supports three reviewed decisions:
@@ -61,6 +62,11 @@ Conflict resolution supports three reviewed decisions:
 `accept_remote` is deliberately guarded by an explicit flag because it changes
 active memory. It still does not silently overwrite rows; the old local content
 remains archived for audit and restore.
+
+Before resolving, operators and agents should use `vault sync preview-conflict
+<conflict_id>` to see a compact local-vs-remote summary, short diff, available
+resolution choices, and a safe recommended next command. The preview is
+read-only and intentionally does not return full raw memory dumps.
 
 Not implemented yet:
 

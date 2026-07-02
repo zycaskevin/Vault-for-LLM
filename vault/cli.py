@@ -83,7 +83,7 @@ from .cli_flow import (
 from .cli_guide import cmd_guide as _cmd_guide_impl
 from .cli_daily_report import cmd_daily_report as _cmd_daily_report_impl
 from .cli_gateway import add_gateway_parsers
-from .cli_map_remote import cmd_map, cmd_remote, _parse_map_line_range, _positive_int
+from .cli_map_remote import add_remote_parser, cmd_map, cmd_remote, _parse_map_line_range, _positive_int
 from .cli_okf import add_okf_parser, cmd_okf
 from .cli_quality import (
     cmd_config,
@@ -93,7 +93,7 @@ from .cli_quality import (
     cmd_freshness,
     cmd_search_qa,
 )
-from .cli_sync import cmd_sync
+from .cli_sync import add_sync_parser, cmd_sync
 from .gui import DEFAULT_HOST, DEFAULT_PORT, cmd_gui
 from .gateway import cmd_gateway
 
@@ -772,129 +772,9 @@ def main(argv: list[str] | None = None):
     mp.add_argument("--json", action="store_true", help="輸出 JSON")
     mp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
-    # remote — optional Supabase read navigation and candidate request sync
-    p = sub.add_parser("remote", help="Supabase 遠端讀取與候選同步")
-    remote_sub = p.add_subparsers(dest="remote_action", help="Remote 子命令")
+    add_remote_parser(sub)
 
-    def add_remote_output_args(rp):
-        rp.add_argument("--json", action="store_true", help="輸出 JSON")
-        rp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
-
-    rp = remote_sub.add_parser("status", help="離線檢查本機主庫、Supabase 副本、同步模板與 Agent 權限狀態")
-    rp.add_argument("--agent-id", default="", help="聚焦特定 Agent/remote reader")
-    rp.add_argument("--max-sync-age-minutes", type=_positive_int, default=24 * 60,
-                    help="判定 sync report 過期的分鐘數")
-    add_remote_output_args(rp)
-
-    rp = remote_sub.add_parser("search", help="透過 Supabase vault_search_readable RPC 搜尋")
-    rp.add_argument("query", nargs="?", default="", help="搜尋文字；省略時回傳最新可讀記憶")
-    rp.add_argument("--agent-id", default="", help="Agent 身份，用於 owner/allowed_agents 過濾")
-    rp.add_argument("--include-private", action="store_true", help="允許讀取此 agent 被授權的 private 記憶")
-    rp.add_argument("--max-sensitivity", choices=["low", "medium", "high", "restricted"], default="medium")
-    rp.add_argument("--limit", "-n", type=_positive_int, default=10)
-    rp.add_argument("--compact", action=argparse.BooleanOptionalAction, default=True, help="回傳精簡欄位")
-    add_remote_output_args(rp)
-
-    rp = remote_sub.add_parser("map", help="讀取 Supabase 同步的 Document Map")
-    rp.add_argument("knowledge_id", help="遠端知識 ID；可為正整數或 Supabase UUID")
-    rp.add_argument("--compact", action=argparse.BooleanOptionalAction, default=False, help="回傳精簡節點欄位")
-    rp.add_argument("--agent-id", default="", help="Agent 身份，用於 owner/allowed_agents 過濾")
-    rp.add_argument("--include-private", action="store_true", help="允許讀取此 agent 被授權的 private 記憶")
-    rp.add_argument("--max-sensitivity", choices=["low", "medium", "high", "restricted"], default="medium")
-    add_remote_output_args(rp)
-
-    rp = remote_sub.add_parser("read", help="讀取 Supabase 同步的 bounded range")
-    rp.add_argument("knowledge_id", help="遠端知識 ID；可為正整數或 Supabase UUID")
-    rp.add_argument("--node-uid", default="", help="Document Map node_uid；可單獨指定")
-    rp.add_argument("--lines", help="行號範圍，例如 1-40")
-    rp.add_argument("--max-lines", type=_positive_int, default=80, help="最大讀取行數")
-    rp.add_argument("--agent-id", default="", help="Agent 身份，用於 owner/allowed_agents 過濾")
-    rp.add_argument("--include-private", action="store_true", help="允許讀取此 agent 被授權的 private 記憶")
-    rp.add_argument("--max-sensitivity", choices=["low", "medium", "high", "restricted"], default="medium")
-    add_remote_output_args(rp)
-
-    rp = remote_sub.add_parser("smoke", help="檢查 Supabase remote reader RPC 是否可用")
-    rp.add_argument("--query", default="deployment SOP", help="測試查詢文字")
-    rp.add_argument("--agent-id", default="", help="Agent 身份，用於 owner/allowed_agents 過濾")
-    rp.add_argument("--include-private", action="store_true", help="允許讀取此 agent 被授權的 private 記憶")
-    rp.add_argument("--max-sensitivity", choices=["low", "medium", "high", "restricted"], default="medium")
-    rp.add_argument("--limit", "-n", type=_positive_int, default=3)
-    add_remote_output_args(rp)
-
-    rp = remote_sub.add_parser("doctor", help="診斷 Supabase remote reader search/map/read 閉環")
-    rp.add_argument("--query", default="deployment SOP", help="測試查詢文字")
-    rp.add_argument("--agent-id", default="", help="Agent 身份，用於 owner/allowed_agents 過濾")
-    rp.add_argument("--include-private", action="store_true", help="允許讀取此 agent 被授權的 private 記憶")
-    rp.add_argument("--max-sensitivity", choices=["low", "medium", "high", "restricted"], default="medium")
-    rp.add_argument("--limit", "-n", type=_positive_int, default=3)
-    add_remote_output_args(rp)
-
-    rp = remote_sub.add_parser(
-        "submit-candidate",
-        help="送出遠端記憶候選請求；不會直接寫入正式知識",
-    )
-    rp.add_argument("--title", required=True, help="候選記憶標題")
-    rp.add_argument("--content", required=True, help="候選記憶內容")
-    rp.add_argument("--reason", default="", help="為什麼值得記住")
-    rp.add_argument("--from-agent", default="", help="提交此候選的 Agent ID")
-    rp.add_argument("--category", default="general", help="分類")
-    rp.add_argument("--tags", default="", help="標籤，逗號分隔")
-    rp.add_argument("--trust", type=float, default=0.5, help="遠端候選信任分數 0.0-1.0")
-    rp.add_argument("--scope", choices=["project", "shared", "public"], default="project")
-    rp.add_argument("--sensitivity", choices=["low", "medium"], default="low")
-    rp.add_argument("--owner-agent", default="", help="建議 owner Agent")
-    rp.add_argument("--allowed-agents", default="", help="授權 Agent，逗號分隔")
-    rp.add_argument("--memory-type", default="remote_candidate", help="候選記憶類型")
-    rp.add_argument("--source-ref", default="", help="外部來源引用")
-    rp.add_argument("--idempotency-key", default="", help="避免重複提交的穩定鍵")
-    add_remote_output_args(rp)
-
-    rp = remote_sub.add_parser(
-        "pull-candidates",
-        help="從 Supabase 拉回遠端候選請求；預設只預覽，--apply 才寫入本機候選池",
-    )
-    rp.add_argument("--agent-id", default="", help="執行拉取的本機/授權 Agent ID")
-    rp.add_argument("--limit", "-n", type=_positive_int, default=20)
-    rp.add_argument("--apply", action="store_true", help="寫入本機 memory_candidates")
-    rp.add_argument(
-        "--auto-promote-low-risk",
-        action="store_true",
-        help="拉回後依 automation_policy.yaml 只自動 promote 低風險候選；需搭配 --apply",
-    )
-    add_remote_output_args(rp)
-
-    # sync — local revision/conflict/audit safety surfaces
-    p = sub.add_parser("sync", help="多主機同步安全狀態：revision、conflict、audit")
-    sync_sub = p.add_subparsers(dest="sync_action", help="Sync 子命令")
-
-    def add_sync_output_args(sp):
-        sp.add_argument("--json", action="store_true", help="輸出 JSON")
-        sp.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
-
-    sp = sync_sub.add_parser("revisions", help="列出本機 revision graph 事件")
-    sp.add_argument("--limit", "-n", type=_positive_int, default=20)
-    add_sync_output_args(sp)
-
-    sp = sync_sub.add_parser("conflicts", help="列出待處理或已處理的同步衝突")
-    sp.add_argument("--status", choices=["open", "resolved", ""], default="open")
-    sp.add_argument("--limit", "-n", type=_positive_int, default=20)
-    add_sync_output_args(sp)
-
-    sp = sync_sub.add_parser("audit", help="列出同步/合併 audit log")
-    sp.add_argument("--limit", "-n", type=_positive_int, default=20)
-    add_sync_output_args(sp)
-
-    sp = sync_sub.add_parser("resolve-conflict", help="標記同步衝突已被人工處理")
-    sp.add_argument("conflict_id", help="conflict id")
-    sp.add_argument("--resolution", choices=["keep_local", "accept_remote", "manual"], required=True)
-    sp.add_argument("--reason", default="", help="解決原因")
-    sp.add_argument("--agent-id", default="", help="處理此衝突的 Agent ID")
-    sp.add_argument(
-        "--apply-memory-change",
-        action="store_true",
-        help="允許 accept_remote 實際 promote 遠端候選並歸檔本地舊知識；manual/keep_local 不需要",
-    )
-    add_sync_output_args(sp)
+    add_sync_parser(sub)
 
     # skill — 本機跨 Agent 技能登錄（實驗性）
     p = sub.add_parser("skill", help="本機技能登錄（實驗性）")

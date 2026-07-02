@@ -34,6 +34,9 @@ create table if not exists public.vault_memory_write_requests (
   allowed_agents jsonb not null default '[]'::jsonb,
   memory_type text not null default 'remote_candidate',
   source_ref text not null default '',
+  hmac_algorithm text not null default '',
+  payload_hash text not null default '',
+  hmac_signature text not null default '',
   local_candidate_id text not null default '',
   error text not null default ''
 );
@@ -42,6 +45,9 @@ create index if not exists vault_memory_write_requests_status_idx
   on public.vault_memory_write_requests (status, created_at);
 create index if not exists vault_memory_write_requests_from_agent_idx
   on public.vault_memory_write_requests (from_agent, created_at);
+create index if not exists vault_memory_write_requests_payload_hash_idx
+  on public.vault_memory_write_requests (payload_hash)
+  where payload_hash <> '';
 create unique index if not exists vault_memory_write_requests_idempotency_idx
   on public.vault_memory_write_requests (idempotency_key)
   where idempotency_key <> '';
@@ -113,6 +119,7 @@ drop function if exists public.vault_claims_readable(text, text, boolean, text);
 drop function if exists public.vault_content_readable(text, text, boolean, text);
 drop function if exists public.vault_submit_memory_request(text, text, text, text, text, jsonb, text, text, text, jsonb, text, text, text);
 drop function if exists public.vault_submit_memory_request(text, text, text, text, text, jsonb, real, text, text, text, jsonb, text, text, text);
+drop function if exists public.vault_submit_memory_request(text, text, text, text, text, jsonb, real, text, text, text, jsonb, text, text, text, text, text, text);
 
 create or replace function public.vault_submit_memory_request(
   p_title text,
@@ -128,7 +135,10 @@ create or replace function public.vault_submit_memory_request(
   p_allowed_agents jsonb default '[]'::jsonb,
   p_memory_type text default 'remote_candidate',
   p_source_ref text default '',
-  p_idempotency_key text default ''
+  p_idempotency_key text default '',
+  p_hmac_algorithm text default '',
+  p_payload_hash text default '',
+  p_hmac_signature text default ''
 )
 returns table (
   id text,
@@ -187,7 +197,10 @@ begin
     owner_agent,
     allowed_agents,
     memory_type,
-    source_ref
+    source_ref,
+    hmac_algorithm,
+    payload_hash,
+    hmac_signature
   )
   values (
     v_idempotency_key,
@@ -203,7 +216,10 @@ begin
     left(coalesce(p_owner_agent, ''), 80),
     v_allowed_agents,
     left(coalesce(nullif(trim(p_memory_type), ''), 'remote_candidate'), 80),
-    left(coalesce(p_source_ref, ''), 500)
+    left(coalesce(p_source_ref, ''), 500),
+    left(coalesce(p_hmac_algorithm, ''), 40),
+    left(coalesce(p_payload_hash, ''), 128),
+    left(coalesce(p_hmac_signature, ''), 256)
   )
   returning vault_memory_write_requests.id, vault_memory_write_requests.status, vault_memory_write_requests.created_at
     into v_id, v_status, v_created_at;

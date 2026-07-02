@@ -7,6 +7,7 @@ from vault.mcp_memory import (
     MCP_MEMORY_LOOP_TOOL_NAMES,
     MCP_MEMORY_LOOP_TOOLS,
 )
+from vault.mcp_gateway import MCP_GATEWAY_TOOL_NAMES, MCP_GATEWAY_TOOLS
 from vault.mcp_search import MCP_SEARCH_MAX_LIMIT, MCP_SEARCH_MAX_OFFSET
 from vault.mcp_skill import (
     MCP_SKILL_READ_TOOL_NAMES,
@@ -496,6 +497,7 @@ TOOLS = [
     *MCP_MEMORY_LOOP_TOOLS,
     *MCP_TASK_TOOLS,
     *MCP_SKILL_TOOLS,
+    *MCP_GATEWAY_TOOLS,
     {
         "name": "vault_cold_store_expired",
         "description": "Preview or apply summarize-then-cold-store for expired-but-used memories. Defaults to dry-run; skips private, high/restricted, and L0/L1 memories.",
@@ -871,6 +873,7 @@ TOOL_PROFILES = {
         "vault_memory_review",
         "vault_memory_candidates",
         *MCP_SYNC_TOOL_NAMES,
+        *MCP_GATEWAY_TOOL_NAMES,
         *MCP_TASK_TOOL_NAMES,
         *MCP_SKILL_READ_TOOL_NAMES,
         *MCP_SKILL_SYNC_TOOL_NAMES,
@@ -892,6 +895,7 @@ TOOL_PROFILES = {
         "vault_remote_search",
         "vault_remote_map_show",
         "vault_remote_read_range",
+        *MCP_GATEWAY_TOOL_NAMES,
     ],
     "maintenance": [
         "vault_search",
@@ -906,6 +910,7 @@ TOOL_PROFILES = {
         "vault_memory_review",
         "vault_memory_candidates",
         *MCP_SYNC_TOOL_NAMES,
+        *MCP_GATEWAY_TOOL_NAMES,
         *MCP_TASK_TOOL_NAMES,
         *MCP_SKILL_READ_TOOL_NAMES,
         *MCP_SKILL_SYNC_TOOL_NAMES,

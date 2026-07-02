@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -9,11 +10,14 @@ import json
 import os
 from pathlib import Path
 import secrets
+import ssl
+import threading
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from .access_policy import can_write_memory, normalize_write_policy
 from .db import VaultDB
+from .gateway_security import GatewaySecurityPolicy, GatewaySecurityState
 from .gui_format import compact_knowledge
 from .mcp_read import _vault_read_range_payload
 from .memory import create_candidate
@@ -23,9 +27,72 @@ from .search_utils import normalize_search_limit
 
 DEFAULT_GATEWAY_HOST = "127.0.0.1"
 DEFAULT_GATEWAY_PORT = 8789
+DEFAULT_GATEWAY_MAX_WORKERS = 32
+DEFAULT_GATEWAY_AUDIT_MAX_BYTES = 5 * 1024 * 1024
+DEFAULT_GATEWAY_AUDIT_BACKUPS = 5
 LOCALHOSTS = {"127.0.0.1", "localhost", "::1"}
 GATEWAY_CONTRACT_VERSION = "2026-07-02"
 GATEWAY_ENDPOINTS = ["/health", "/openapi.json", "/search", "/read-range", "/submit-candidate"]
+
+
+class BoundedThreadPoolHTTPServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer variant with a hard cap on active request workers."""
+
+    daemon_threads = True
+
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        request_handler_class: type[BaseHTTPRequestHandler],
+        *,
+        max_workers: int,
+    ):
+        super().__init__(server_address, request_handler_class)
+        self.max_workers = max(1, int(max_workers or DEFAULT_GATEWAY_MAX_WORKERS))
+        self._executor = ThreadPoolExecutor(max_workers=self.max_workers, thread_name_prefix="vault-gateway")
+        self._worker_slots = threading.BoundedSemaphore(self.max_workers)
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        if not self._worker_slots.acquire(blocking=False):
+            self._reject_overloaded(request)
+            return
+        try:
+            self._executor.submit(self._process_request_with_slot, request, client_address)
+        except RuntimeError:
+            self._worker_slots.release()
+            self.shutdown_request(request)
+
+    def server_close(self) -> None:
+        try:
+            super().server_close()
+        finally:
+            self._executor.shutdown(wait=True, cancel_futures=False)
+
+    def _process_request_with_slot(self, request: Any, client_address: Any) -> None:
+        try:
+            self.process_request_thread(request, client_address)
+        finally:
+            self._worker_slots.release()
+
+    def _reject_overloaded(self, request: Any) -> None:
+        body = json.dumps(
+            {
+                "ok": False,
+                "status": "blocked",
+                "error": "gateway_overloaded",
+                "message": "Gateway worker pool is full; retry later.",
+            }
+        ).encode("utf-8")
+        try:
+            request.sendall(
+                b"HTTP/1.1 503 Service Unavailable\r\n"
+                b"Connection: close\r\n"
+                b"Content-Type: application/json; charset=utf-8\r\n"
+                + f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
+                + body
+            )
+        finally:
+            self.shutdown_request(request)
 
 
 def gateway_health(project_dir: str | Path) -> dict[str, Any]:
@@ -48,12 +115,20 @@ def gateway_health(project_dir: str | Path) -> dict[str, Any]:
             "contract_version": GATEWAY_CONTRACT_VERSION,
             "role": "unified_agent_memory_entrypoint",
             "transport": "http_json",
+            "tls_supported": True,
             "source_of_truth": "local_sqlite_vault",
             "adapter_boundary": True,
             "writes_active_knowledge": False,
             "candidate_first_writes": True,
             "default_read_max_sensitivity": "low",
             "default_include_private": False,
+            "max_workers_supported": True,
+            "default_max_workers": DEFAULT_GATEWAY_MAX_WORKERS,
+            "audit_rotation": {
+                "supported": True,
+                "default_max_bytes": DEFAULT_GATEWAY_AUDIT_MAX_BYTES,
+                "default_backups": DEFAULT_GATEWAY_AUDIT_BACKUPS,
+            },
             "openapi": "/openapi.json",
             "endpoints": GATEWAY_ENDPOINTS,
             "remote_ready": {
@@ -198,6 +273,15 @@ def gateway_openapi(*, title: str = "Vault Gateway") -> dict[str, Any]:
             "search_returns_raw_content": False,
             "writes_active_knowledge": False,
             "candidate_first_writes": True,
+            "rate_limit_supported": True,
+            "ip_policy_supported": True,
+            "auth_lockout_supported": True,
+            "tls_supported": True,
+            "bounded_worker_pool_supported": True,
+            "default_max_workers": DEFAULT_GATEWAY_MAX_WORKERS,
+            "audit_rotation_supported": True,
+            "default_audit_max_bytes": DEFAULT_GATEWAY_AUDIT_MAX_BYTES,
+            "default_audit_backups": DEFAULT_GATEWAY_AUDIT_BACKUPS,
             "audit_path": "reports/gateway/audit.jsonl",
         },
     }
@@ -395,6 +479,8 @@ def make_gateway_handler(
     project_dir: str | Path,
     *,
     auth_token: str = "",
+    security_policy: GatewaySecurityPolicy | None = None,
+    tls_enabled: bool = False,
     allow_shared_candidates: bool = False,
     allow_private_candidates: bool = False,
     allow_high_sensitivity_candidates: bool = False,
@@ -403,32 +489,46 @@ def make_gateway_handler(
     """Create a small JSON HTTP handler for the Gateway."""
     project = Path(project_dir).expanduser().resolve()
     token = str(auth_token or "")
+    security = GatewaySecurityState(security_policy)
 
     class VaultGatewayHandler(BaseHTTPRequestHandler):
         server_version = "VaultGateway/0.1"
 
         def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
             parsed = urlparse(self.path)
-            if not self._is_authorized(parsed):
-                self._send_unauthorized()
+            guard = self._transport_guard(parsed)
+            if guard is not None:
+                self._send_json(guard[0], status=guard[1])
                 return
+            if not self._is_authorized(parsed):
+                self._send_unauthorized(parsed)
+                return
+            security.record_auth_success(self._client_ip())
             if parsed.path == "/health":
                 payload = gateway_health(project)
-                _append_audit(project, "health", _request_agent({}, parsed), payload.get("status", "ok"))
+                payload["gateway"]["transport"] = "https_json" if tls_enabled else "http_json"
+                payload["gateway"]["tls_enabled"] = bool(tls_enabled)
+                payload["gateway"]["security"] = security.status()
+                _append_audit(project, "health", _request_agent({}, parsed), payload.get("status", "ok"), **self._audit_context(parsed))
                 self._send_json(payload)
                 return
             if parsed.path == "/openapi.json":
                 payload = gateway_openapi()
-                _append_audit(project, "openapi", _request_agent({}, parsed), "ok")
+                _append_audit(project, "openapi", _request_agent({}, parsed), "ok", **self._audit_context(parsed))
                 self._send_json(payload)
                 return
             self._send_json(_error("not_found", "unknown endpoint"), status=HTTPStatus.NOT_FOUND)
 
         def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
             parsed = urlparse(self.path)
-            if not self._is_authorized(parsed):
-                self._send_unauthorized()
+            guard = self._transport_guard(parsed)
+            if guard is not None:
+                self._send_json(guard[0], status=guard[1])
                 return
+            if not self._is_authorized(parsed):
+                self._send_unauthorized(parsed)
+                return
+            security.record_auth_success(self._client_ip())
             body = self._read_json_body()
             agent = _request_agent(body, parsed)
             if parsed.path == "/search":
@@ -441,7 +541,7 @@ def make_gateway_handler(
                     include_private=_bool_value(body.get("include_private"), False),
                     max_sensitivity=str(body.get("max_sensitivity", "low") or "low"),
                 )
-                _append_audit(project, "search", agent, payload.get("status", "ok"), query=str(body.get("query", "")))
+                _append_audit(project, "search", agent, payload.get("status", "ok"), query=str(body.get("query", "")), **self._audit_context(parsed))
                 self._send_json(payload)
                 return
             if parsed.path == "/read-range":
@@ -456,7 +556,7 @@ def make_gateway_handler(
                     include_private=_bool_value(body.get("include_private"), False),
                     max_sensitivity=str(body.get("max_sensitivity", "low") or "low"),
                 )
-                _append_audit(project, "read_range", agent, payload.get("status", "ok"), knowledge_id=body.get("knowledge_id", 0))
+                _append_audit(project, "read_range", agent, payload.get("status", "ok"), knowledge_id=body.get("knowledge_id", 0), **self._audit_context(parsed))
                 self._send_json(payload)
                 return
             if parsed.path == "/submit-candidate":
@@ -489,6 +589,7 @@ def make_gateway_handler(
                     payload.get("status", "ok"),
                     candidate_id=candidate.get("candidate_id", ""),
                     title=str(body.get("title", "")),
+                    **self._audit_context(parsed),
                 )
                 self._send_json(payload)
                 return
@@ -508,8 +609,54 @@ def make_gateway_handler(
             query = parse_qs(parsed.query)
             return bool(query.get("token") and str(query["token"][0]) == token)
 
-        def _send_unauthorized(self) -> None:
-            self._send_json(_error("unauthorized", "valid gateway token required"), status=HTTPStatus.UNAUTHORIZED)
+        def _transport_guard(self, parsed) -> tuple[dict[str, Any], HTTPStatus] | None:
+            client_ip = self._client_ip()
+            allowed, reason = security.check_ip_policy(client_ip)
+            if not allowed:
+                payload = _error(reason, "client IP is not allowed")
+                _append_audit(project, "request_blocked", _request_agent({}, parsed), payload["status"], reason=reason, **self._audit_context(parsed))
+                return payload, HTTPStatus.FORBIDDEN
+            allowed, reason = security.check_auth_lockout(client_ip)
+            if not allowed:
+                payload = _error(reason, "too many failed authentication attempts")
+                _append_audit(project, "request_blocked", _request_agent({}, parsed), payload["status"], reason=reason, **self._audit_context(parsed))
+                return payload, HTTPStatus.TOO_MANY_REQUESTS
+            allowed, reason = security.check_rate_limit(client_ip=client_ip, token_hint=self._presented_token(parsed))
+            if not allowed:
+                payload = _error(reason, "Gateway rate limit exceeded")
+                _append_audit(project, "request_blocked", _request_agent({}, parsed), payload["status"], reason=reason, **self._audit_context(parsed))
+                return payload, HTTPStatus.TOO_MANY_REQUESTS
+            return None
+
+        def _send_unauthorized(self, parsed) -> None:
+            _ok, reason = security.record_auth_failure(self._client_ip())
+            status = HTTPStatus.TOO_MANY_REQUESTS if reason == "auth_locked" else HTTPStatus.UNAUTHORIZED
+            _append_audit(project, "auth_failed", _request_agent({}, parsed), "error", reason=reason, **self._audit_context(parsed))
+            self._send_json(_error(reason, "valid gateway token required"), status=status)
+
+        def _client_ip(self) -> str:
+            try:
+                return str(self.client_address[0] or "")
+            except (AttributeError, IndexError, TypeError):
+                return ""
+
+        def _presented_token(self, parsed) -> str:
+            header_token = str(self.headers.get("X-Vault-Gateway-Token", "") or "")
+            if header_token:
+                return header_token
+            auth = str(self.headers.get("Authorization", "") or "")
+            if auth.startswith("Bearer "):
+                return auth.removeprefix("Bearer ").strip()
+            query = parse_qs(parsed.query)
+            return str((query.get("token") or [""])[0])
+
+        def _audit_context(self, parsed) -> dict[str, Any]:
+            return {
+                "client_ip": self._client_ip(),
+                "user_agent": str(self.headers.get("User-Agent", "") or "")[:200],
+                "endpoint": parsed.path,
+                "method": self.command,
+            }
 
         def _send_json(self, payload: dict[str, Any], *, status: HTTPStatus = HTTPStatus.OK) -> None:
             data = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
@@ -541,8 +688,12 @@ def run_gateway(
     *,
     host: str = DEFAULT_GATEWAY_HOST,
     port: int = DEFAULT_GATEWAY_PORT,
+    max_workers: int = DEFAULT_GATEWAY_MAX_WORKERS,
     auth_token: str | None = None,
     no_auth: bool = False,
+    security_policy: GatewaySecurityPolicy | None = None,
+    tls_cert: str | Path | None = None,
+    tls_key: str | Path | None = None,
     server_label: str = "Vault Gateway",
     allow_shared_candidates: bool = False,
     allow_private_candidates: bool = False,
@@ -554,17 +705,26 @@ def run_gateway(
     if no_auth and host_text not in LOCALHOSTS:
         raise ValueError("--no-auth is only allowed for localhost binds")
     token = "" if no_auth else (auth_token or os.environ.get("VAULT_GATEWAY_TOKEN", "").strip() or secrets.token_urlsafe(24))
+    tls_paths = _resolve_tls_paths(tls_cert, tls_key)
     handler = make_gateway_handler(
         project_dir,
         auth_token=token,
+        security_policy=security_policy,
+        tls_enabled=bool(tls_paths),
         allow_shared_candidates=allow_shared_candidates,
         allow_private_candidates=allow_private_candidates,
         allow_high_sensitivity_candidates=allow_high_sensitivity_candidates,
         allow_restricted_candidates=allow_restricted_candidates,
     )
-    server = ThreadingHTTPServer((host_text, int(port)), handler)
-    print(f"{server_label}: http://{host_text}:{int(port)}")
+    workers = _gateway_max_workers(max_workers)
+    server = BoundedThreadPoolHTTPServer((host_text, int(port)), handler, max_workers=workers)
+    scheme = "https" if tls_paths else "http"
+    if tls_paths:
+        server.socket = _wrap_gateway_tls(server.socket, certfile=tls_paths[0], keyfile=tls_paths[1])
+    print(f"{server_label}: {scheme}://{host_text}:{int(port)}")
     print(f"Auth: {'enabled' if token else 'disabled'}")
+    print(f"TLS: {'enabled' if tls_paths else 'disabled'}")
+    print(f"Max workers: {workers}")
     if token:
         print(f"Token: {token}")
     print(f"Project: {Path(project_dir).expanduser().resolve()}")
@@ -596,8 +756,34 @@ def cmd_gateway(args: Any) -> None:
         payload.setdefault("ok", True)
         _json_print(payload, pretty=_arg_value(args, "pretty", False) is True)
         return
+    if action == "audit":
+        from .gateway_audit import gateway_audit_report
+
+        payload = gateway_audit_report(
+            find_project_dir(),
+            limit=_arg_int_or_default(args, "limit", 20),
+            event=str(getattr(args, "event", "") or ""),
+        )
+        if getattr(args, "json", False) or getattr(args, "pretty", False):
+            _json_print(payload, pretty=_arg_value(args, "pretty", False) is True)
+            return
+        summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+        print(
+            f"Gateway audit: {payload.get('status', 'idle')} "
+            f"events={summary.get('total_events', 0)} "
+            f"blocked={summary.get('blocked_or_failed_events', 0)} "
+            f"unique_ips={summary.get('unique_client_ips', 0)}"
+        )
+        for row in payload.get("recent_events", []):
+            print(
+                f"  - {row.get('created_at', '')} {row.get('event', '')} "
+                f"{row.get('status', '')} {row.get('client_ip', '')} {row.get('endpoint', '')} "
+                f"{row.get('reason', '')}"
+            )
+        print(f"Next: {payload.get('next_action', '')}")
+        return
     if action != "serve":
-        print("用法: vault gateway {serve|health|openapi} 或 vault remote-server {serve|health|openapi}")
+        print("用法: vault gateway {serve|health|openapi|audit} 或 vault remote-server {serve|health|openapi|audit}")
         raise SystemExit(2)
     if profile == "remote_server" and not _has_stable_gateway_token(args):
         print(
@@ -605,12 +791,24 @@ def cmd_gateway(args: Any) -> None:
             "or pass --auth-token before binding a remote server."
         )
         raise SystemExit(2)
+    base_policy = GatewaySecurityPolicy.from_env()
     run_gateway(
         find_project_dir(),
         host=str(getattr(args, "host", DEFAULT_GATEWAY_HOST) or DEFAULT_GATEWAY_HOST),
         port=int(getattr(args, "port", DEFAULT_GATEWAY_PORT) or DEFAULT_GATEWAY_PORT),
+        max_workers=_arg_int_or_default(args, "max_workers", _gateway_max_workers(None)),
         auth_token=getattr(args, "auth_token", None),
         no_auth=bool(getattr(args, "no_auth", False)),
+        security_policy=GatewaySecurityPolicy(
+            rate_limit_per_minute=_arg_int_or_default(args, "rate_limit_per_minute", base_policy.rate_limit_per_minute),
+            token_rate_limit_per_minute=_arg_int_or_default(args, "token_rate_limit_per_minute", base_policy.token_rate_limit_per_minute),
+            auth_failure_limit=_arg_int_or_default(args, "auth_failure_limit", base_policy.auth_failure_limit),
+            auth_lockout_seconds=_arg_int_or_default(args, "auth_lockout_seconds", base_policy.auth_lockout_seconds),
+            ip_allowlist=str(getattr(args, "ip_allowlist", "") or base_policy.ip_allowlist),
+            ip_denylist=str(getattr(args, "ip_denylist", "") or base_policy.ip_denylist),
+        ),
+        tls_cert=str(getattr(args, "tls_cert", "") or os.environ.get("VAULT_GATEWAY_TLS_CERT", "") or ""),
+        tls_key=str(getattr(args, "tls_key", "") or os.environ.get("VAULT_GATEWAY_TLS_KEY", "") or ""),
         server_label="Vault Remote Server" if profile == "remote_server" else "Vault Gateway",
         allow_shared_candidates=bool(getattr(args, "allow_shared_candidates", False)),
         allow_private_candidates=bool(getattr(args, "allow_private_candidates", False)),
@@ -642,6 +840,21 @@ def _float_value(value: Any, default: float) -> float:
         return float(default)
 
 
+def _gateway_max_workers(value: Any) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        env_value = os.environ.get("VAULT_GATEWAY_MAX_WORKERS", "")
+        if env_value:
+            try:
+                parsed = int(env_value)
+            except ValueError:
+                parsed = DEFAULT_GATEWAY_MAX_WORKERS
+        else:
+            parsed = DEFAULT_GATEWAY_MAX_WORKERS
+    return max(1, min(parsed, 256))
+
+
 def _bool_value(value: Any, default: bool) -> bool:
     if isinstance(value, bool):
         return value
@@ -655,8 +868,41 @@ def _bool_value(value: Any, default: bool) -> bool:
     return bool(default)
 
 
+def _arg_int_or_default(args: Any, name: str, default: int) -> int:
+    value = getattr(args, name, None)
+    if value is None:
+        return int(default)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(default)
+
+
 def _error(code: str, message: str, *, status: str = "error") -> dict[str, Any]:
     return {"status": status, "error": code, "message": message}
+
+
+def _resolve_tls_paths(tls_cert: str | Path | None, tls_key: str | Path | None) -> tuple[str, str] | None:
+    cert_text = str(tls_cert or "").strip()
+    key_text = str(tls_key or "").strip()
+    if not cert_text and not key_text:
+        return None
+    if not cert_text or not key_text:
+        raise ValueError("TLS requires both --tls-cert and --tls-key")
+    cert = Path(cert_text).expanduser().resolve()
+    key = Path(key_text).expanduser().resolve()
+    if not cert.is_file():
+        raise FileNotFoundError(f"TLS certificate not found: {cert}")
+    if not key.is_file():
+        raise FileNotFoundError(f"TLS key not found: {key}")
+    return str(cert), str(key)
+
+
+def _wrap_gateway_tls(sock: Any, *, certfile: str, keyfile: str) -> Any:
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.load_cert_chain(certfile=certfile, keyfile=keyfile)
+    return context.wrap_socket(sock, server_side=True)
 
 
 def _has_stable_gateway_token(args: Any) -> bool:
@@ -692,6 +938,7 @@ def _append_audit(project_dir: Path, event: str, agent_id: str, status: str, **e
     path = project_dir / "reports" / "gateway" / "audit.jsonl"
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
+        _rotate_audit_if_needed(path)
         row = {
             "created_at": datetime.now(timezone.utc).isoformat(),
             "event": event,
@@ -703,3 +950,68 @@ def _append_audit(project_dir: Path, event: str, agent_id: str, status: str, **e
             handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
     except OSError:
         return
+
+
+def _rotate_audit_if_needed(path: Path) -> None:
+    max_bytes = _gateway_audit_max_bytes(None)
+    if max_bytes <= 0 or not path.exists():
+        return
+    try:
+        if path.stat().st_size < max_bytes:
+            return
+    except OSError:
+        return
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    rotated = path.with_name(f"audit-{timestamp}.jsonl")
+    suffix = 1
+    while rotated.exists():
+        rotated = path.with_name(f"audit-{timestamp}-{suffix}.jsonl")
+        suffix += 1
+    try:
+        path.replace(rotated)
+    except OSError:
+        return
+    _prune_audit_backups(path.parent)
+
+
+def _prune_audit_backups(directory: Path) -> None:
+    keep = _gateway_audit_backup_count(None)
+    if keep < 0:
+        return
+    backups = sorted(directory.glob("audit-*.jsonl"), key=lambda item: item.stat().st_mtime, reverse=True)
+    for old in backups[keep:]:
+        try:
+            old.unlink()
+        except OSError:
+            continue
+
+
+def _gateway_audit_max_bytes(value: Any) -> int:
+    return _int_from_value_or_env(
+        value,
+        "VAULT_GATEWAY_AUDIT_MAX_BYTES",
+        DEFAULT_GATEWAY_AUDIT_MAX_BYTES,
+        minimum=0,
+        maximum=1024 * 1024 * 1024,
+    )
+
+
+def _gateway_audit_backup_count(value: Any) -> int:
+    return _int_from_value_or_env(
+        value,
+        "VAULT_GATEWAY_AUDIT_BACKUPS",
+        DEFAULT_GATEWAY_AUDIT_BACKUPS,
+        minimum=0,
+        maximum=100,
+    )
+
+
+def _int_from_value_or_env(value: Any, env_name: str, default: int, *, minimum: int, maximum: int) -> int:
+    raw = value
+    if raw is None:
+        raw = os.environ.get(env_name, "")
+    try:
+        parsed = int(raw)
+    except (TypeError, ValueError):
+        parsed = int(default)
+    return max(minimum, min(parsed, maximum))

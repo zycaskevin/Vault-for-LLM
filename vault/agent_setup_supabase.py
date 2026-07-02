@@ -44,6 +44,9 @@ create table if not exists public.vault_memory_write_requests (
   allowed_agents jsonb not null default '[]'::jsonb,
   memory_type text not null default 'remote_candidate',
   source_ref text not null default '',
+  hmac_algorithm text not null default '',
+  payload_hash text not null default '',
+  hmac_signature text not null default '',
   local_candidate_id text not null default '',
   error text not null default ''
 );
@@ -52,6 +55,9 @@ create index if not exists vault_memory_write_requests_status_idx
   on public.vault_memory_write_requests (status, created_at);
 create index if not exists vault_memory_write_requests_from_agent_idx
   on public.vault_memory_write_requests (from_agent, created_at);
+create index if not exists vault_memory_write_requests_payload_hash_idx
+  on public.vault_memory_write_requests (payload_hash)
+  where payload_hash <> '';
 create unique index if not exists vault_memory_write_requests_idempotency_idx
   on public.vault_memory_write_requests (idempotency_key)
   where idempotency_key <> '';
@@ -123,6 +129,7 @@ drop function if exists public.vault_claims_readable(text, text, boolean, text);
 drop function if exists public.vault_content_readable(text, text, boolean, text);
 drop function if exists public.vault_submit_memory_request(text, text, text, text, text, jsonb, text, text, text, jsonb, text, text, text);
 drop function if exists public.vault_submit_memory_request(text, text, text, text, text, jsonb, real, text, text, text, jsonb, text, text, text);
+drop function if exists public.vault_submit_memory_request(text, text, text, text, text, jsonb, real, text, text, text, jsonb, text, text, text, text, text, text);
 
 create or replace function public.vault_submit_memory_request(
   p_title text,
@@ -138,7 +145,10 @@ create or replace function public.vault_submit_memory_request(
   p_allowed_agents jsonb default '[]'::jsonb,
   p_memory_type text default 'remote_candidate',
   p_source_ref text default '',
-  p_idempotency_key text default ''
+  p_idempotency_key text default '',
+  p_hmac_algorithm text default '',
+  p_payload_hash text default '',
+  p_hmac_signature text default ''
 )
 returns table (
   id text,
@@ -197,7 +207,10 @@ begin
     owner_agent,
     allowed_agents,
     memory_type,
-    source_ref
+    source_ref,
+    hmac_algorithm,
+    payload_hash,
+    hmac_signature
   )
   values (
     v_idempotency_key,
@@ -213,7 +226,10 @@ begin
     left(coalesce(p_owner_agent, ''), 80),
     v_allowed_agents,
     left(coalesce(nullif(trim(p_memory_type), ''), 'remote_candidate'), 80),
-    left(coalesce(p_source_ref, ''), 500)
+    left(coalesce(p_source_ref, ''), 500),
+    left(coalesce(p_hmac_algorithm, ''), 40),
+    left(coalesce(p_payload_hash, ''), 128),
+    left(coalesce(p_hmac_signature, ''), 256)
   )
   returning vault_memory_write_requests.id, vault_memory_write_requests.status, vault_memory_write_requests.created_at
     into v_id, v_status, v_created_at;
@@ -587,6 +603,7 @@ def _render_supabase_setup_guide_en(*, mode: str, project_path: Path, agent: str
         "- Scheduled sync may use `SUPABASE_SERVICE_ROLE_KEY`.",
         "- Normal agents, Coze, and n8n should not receive the service role key.",
         "- For hosted readers, prefer a read-only API, RPC, Edge Function, or RLS-backed token.",
+        "- For remote candidate writes, set `VAULT_SYNC_HMAC_SECRET` on trusted submitters and the trusted pull host to verify payload integrity.",
     ]
     if mode == "advanced":
         lines.extend(
@@ -612,6 +629,7 @@ def _render_supabase_setup_guide_en(*, mode: str, project_path: Path, agent: str
                 "- medium-sensitivity summaries require `allowed_agents` membership",
                 "- normal agents can propose candidates but cannot directly write active shared memory",
                 "- service role is reserved for reviewed sync jobs or backend functions",
+                "- HMAC verification is separate from Supabase auth; use `VAULT_SYNC_HMAC_SECRET` for candidate payload integrity",
                 "",
                 "This installer also writes `supabase-read-policy.sql` in advanced mode. Paste it into the Supabase SQL editor after the minimal schema to create a read-only RPC named `vault_search_readable`.",
                 "",
@@ -667,6 +685,7 @@ def _render_supabase_setup_guide_zh_hant(*, mode: str, project_path: Path, agent
         "- 排程同步可以使用 `SUPABASE_SERVICE_ROLE_KEY`。",
         "- 一般 Agent、Coze、n8n 不應該拿到 service role key。",
         "- hosted reader 建議透過 read-only API、RPC、Edge Function，或 RLS-backed token。",
+        "- 遠端候選寫入建議在可信任提交端與可信任拉取主機設定 `VAULT_SYNC_HMAC_SECRET`，用來驗證同步包沒有被竄改。",
     ]
     if mode == "advanced":
         lines.extend(
@@ -692,6 +711,7 @@ def _render_supabase_setup_guide_zh_hant(*, mode: str, project_path: Path, agent
                 "- medium sensitivity 摘要需要檢查 `allowed_agents`",
                 "- 一般 Agent 只能 propose candidate，不直接寫 active shared memory",
                 "- service role 只給審核過的同步工作或後端函式",
+                "- HMAC 驗證和 Supabase auth 分開；候選同步包完整性使用 `VAULT_SYNC_HMAC_SECRET`",
                 "",
                 "advanced 模式也會產生 `supabase-read-policy.sql`。建立 minimal schema 後，把它貼到 Supabase SQL editor，可建立名為 `vault_search_readable` 的 read-only RPC。",
                 "",

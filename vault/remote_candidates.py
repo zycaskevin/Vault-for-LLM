@@ -16,6 +16,7 @@ from typing import Any
 from .db import VaultDB
 from .memory import create_candidate
 from .multi_host import detect_candidate_conflicts, record_memory_revision
+from .sync_integrity import sign_sync_payload, sync_hmac_secret_from_env, verify_sync_payload
 
 REMOTE_CANDIDATE_TABLE = "vault_memory_write_requests"
 REMOTE_CANDIDATE_RPC = "vault_submit_memory_request"
@@ -149,6 +150,7 @@ def _response_rows(response: Any) -> list[dict[str, Any]]:
 def submit_remote_candidate_request(
     *,
     sb_client: Any | None = None,
+    hmac_secret: str | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Submit a memory candidate request through the guarded Supabase RPC."""
@@ -159,6 +161,9 @@ def submit_remote_candidate_request(
             "error": "invalid_request",
             "message": "remote candidate requests require non-empty title and content",
         }
+    signature = sign_sync_payload(payload, hmac_secret if hmac_secret is not None else sync_hmac_secret_from_env())
+    if signature:
+        payload.update(signature)
 
     client = sb_client or _get_supabase_client(service_role=False)
     if client is None:
@@ -210,6 +215,8 @@ def pull_remote_candidate_requests(
     limit: int = 20,
     apply: bool = False,
     auto_promote_low_risk: bool = False,
+    hmac_secret: str | None = None,
+    require_hmac: bool | None = None,
     sb_client: Any | None = None,
 ) -> dict[str, Any]:
     """Pull submitted remote requests into the local candidate queue."""
@@ -234,6 +241,7 @@ def pull_remote_candidate_requests(
             "would_promote_count": 0,
             "promoted_count": 0,
         },
+        "integrity": _integrity_summary(rows, hmac_secret=hmac_secret, require_hmac=require_hmac),
         "requests": [],
     }
     if not apply:
@@ -250,6 +258,24 @@ def pull_remote_candidate_requests(
             source_ref = str(row.get("source_ref") or "").strip() or _source_ref_for_request(request_id)
             item = _preview_request(row)
             try:
+                integrity = _verify_request_integrity(
+                    row,
+                    hmac_secret=hmac_secret,
+                    require_hmac=require_hmac,
+                )
+                item["integrity"] = integrity
+                if not integrity.get("ok", False):
+                    payload["skipped_count"] += 1
+                    item["status"] = "signature_invalid"
+                    item["error"] = str(integrity.get("error") or "signature_invalid")
+                    payload["requests"].append(item)
+                    if request_id:
+                        _update_remote_request(
+                            client,
+                            request_id,
+                            {"status": "signature_invalid", "error": item["error"][:500]},
+                        )
+                    continue
                 if _local_candidate_exists(db, source_ref):
                     payload["skipped_count"] += 1
                     item["status"] = "already_imported"
@@ -394,4 +420,41 @@ def _preview_request(row: dict[str, Any]) -> dict[str, Any]:
         "memory_type": row.get("memory_type", "remote_candidate"),
         "source_ref": row.get("source_ref", ""),
         "reason": row.get("reason", ""),
+        "integrity": _verify_request_integrity(row),
+    }
+
+
+def _verify_request_integrity(
+    row: dict[str, Any],
+    *,
+    hmac_secret: str | None = None,
+    require_hmac: bool | None = None,
+) -> dict[str, Any]:
+    secret = hmac_secret if hmac_secret is not None else sync_hmac_secret_from_env()
+    require = bool(secret) if require_hmac is None else bool(require_hmac)
+    return verify_sync_payload(row, secret or "", require_signature=require)
+
+
+def _integrity_summary(
+    rows: list[dict[str, Any]],
+    *,
+    hmac_secret: str | None = None,
+    require_hmac: bool | None = None,
+) -> dict[str, Any]:
+    checks = [
+        _verify_request_integrity(row, hmac_secret=hmac_secret, require_hmac=require_hmac)
+        for row in rows
+    ]
+    verified = sum(1 for item in checks if item.get("status") == "verified")
+    unsigned = sum(1 for item in checks if item.get("status") == "unsigned")
+    invalid = sum(1 for item in checks if not item.get("ok", False))
+    secret = hmac_secret if hmac_secret is not None else sync_hmac_secret_from_env()
+    require = bool(secret) if require_hmac is None else bool(require_hmac)
+    return {
+        "hmac_supported": True,
+        "hmac_required": require,
+        "secret_configured": bool(secret),
+        "verified_count": verified,
+        "unsigned_count": unsigned,
+        "invalid_count": invalid,
     }

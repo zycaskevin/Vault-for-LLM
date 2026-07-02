@@ -247,9 +247,13 @@ def test_run_agent_setup_writes_supabase_sync_templates(tmp_path):
     assert "進階 Multi-Agent / RLS" in guide
     assert "supabase-read-policy.sql" in guide
     assert "service role key" in guide
+    assert "VAULT_SYNC_HMAC_SECRET" in guide
     assert "vault_search_readable" in policy
     assert "security definer" in policy
     assert "allowed_agents" in policy
+    assert "hmac_signature" in policy
+    assert "p_hmac_signature" in policy
+    assert "payload_hash" in policy
     assert "? p_agent_id" in policy
     search_policy = policy.split(
         "create or replace function public.vault_search_readable", 1
@@ -509,11 +513,21 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     hardening_text = remote_server_hardening.read_text(encoding="utf-8")
     assert "Vault Remote Server Hardening" in hardening_text
     assert "Rotate the Gateway token" in hardening_text
+    assert "auth_failed" in hardening_text
+    assert "vault remote-server audit --json" in hardening_text
+    assert "vault_gateway_audit" in hardening_text
+    assert "Built-in HTTPS" in hardening_text
+    assert "Reverse Proxy TLS" in hardening_text
     assert "candidate-first" in hardening_text
     remote_launchagent_text = remote_server_launchagent.read_text(encoding="utf-8")
     assert "KeepAlive" in remote_launchagent_text
     assert "VAULT_GATEWAY_TOKEN" in remote_launchagent_text
-    assert "VAULT_GATEWAY_TOKEN" in remote_server_env.read_text(encoding="utf-8")
+    remote_env_text = remote_server_env.read_text(encoding="utf-8")
+    assert "VAULT_GATEWAY_TOKEN" in remote_env_text
+    assert "VAULT_GATEWAY_TLS_CERT" in remote_env_text
+    assert "VAULT_GATEWAY_TLS_KEY" in remote_env_text
+    assert "VAULT_GATEWAY_RATE_LIMIT_PER_MINUTE" in remote_env_text
+    assert "VAULT_GATEWAY_IP_ALLOWLIST" in remote_env_text
     assert "EnvironmentFile=" in remote_server_systemd.read_text(encoding="utf-8")
     assert "NoNewPrivileges=true" in remote_server_systemd.read_text(encoding="utf-8")
     assert "vault remote-server serve" in remote_server_compose.read_text(encoding="utf-8")

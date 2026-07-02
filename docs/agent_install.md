@@ -313,6 +313,22 @@ Resolution choices:
 Agents should present these as three separate choices. Do not auto-resolve
 two-sided edits.
 
+MCP agents can use the same resolver through the maintenance profile:
+
+```json
+{
+  "tool": "vault_obsidian_resolve_conflict",
+  "arguments": {
+    "vault_dir": "/path/to/ObsidianVault",
+    "source_path": "Projects/Decision.md",
+    "resolution": "keep-both",
+    "conflict_inbox": true
+  }
+}
+```
+
+This tool is intentionally outside the core MCP profile.
+
 For agent-led setup, prefer `--obsidian-write-default-rules` and
 `--obsidian-review-inbox`:
 

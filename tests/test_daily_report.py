@@ -177,6 +177,7 @@ def test_cli_daily_report_json_and_write_report(tmp_path, capsys):
     main(["--project-dir", str(project), "daily-report", "--write-report", "--json"])
 
     payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
     assert payload["action"] == "daily-report"
     assert payload["paths"]["json"] == "reports/daily/daily-report-latest.json"
     assert (project / "reports" / "daily" / "daily-report-latest.md").exists()

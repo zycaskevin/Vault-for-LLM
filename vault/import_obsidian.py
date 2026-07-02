@@ -32,6 +32,7 @@ DEFAULT_OBSIDIAN_EXCLUDES = {
 _SCOPE_RANK = {"public": 0, "shared": 1, "project": 2, "private": 3}
 _SENSITIVITY_RANK = {"low": 0, "medium": 1, "high": 2, "restricted": 3}
 _WIKILINK_RE = re.compile(r"(?<!!)\[\[([^\]\n]+)\]\]")
+OBSIDIAN_CONFLICT_RESOLUTIONS = {"accept-obsidian", "accept-vault", "keep-both"}
 
 
 @dataclass
@@ -158,6 +159,78 @@ def _write_conflict_inbox(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(_render_conflict_inbox(conflicts, generated_at=generated_at), encoding="utf-8")
     return path
+
+
+def _resolve_obsidian_relative(root: Path, relative_text: str) -> Path:
+    relative = Path(str(relative_text or ""))
+    if not str(relative_text or "").strip() or relative.is_absolute():
+        raise ValueError("Obsidian conflict source path must be relative")
+    path = (root / relative).resolve()
+    path.relative_to(root.resolve())
+    if path.suffix.lower() != ".md":
+        raise ValueError("Obsidian conflict source path must be a Markdown note")
+    return path
+
+
+def _resolve_raw_relative(project_path: Path, raw_path: str) -> Path:
+    relative = Path(str(raw_path or ""))
+    if not str(raw_path or "").strip() or relative.is_absolute():
+        raise ValueError("Conflict raw path must be relative")
+    path = (project_path / relative).resolve()
+    path.relative_to((project_path / "raw").resolve())
+    if path.suffix.lower() != ".md":
+        raise ValueError("Conflict raw path must be a Markdown note")
+    return path
+
+
+def _raw_body_for_obsidian(raw_text: str, *, fallback_title: str = "Vault Conflict Copy") -> str:
+    _metadata, body = extract_frontmatter(raw_text or "")
+    text = body.strip()
+    if not text:
+        text = f"# {fallback_title}"
+    return text + "\n"
+
+
+def _unique_conflict_copy_path(source_file: Path, *, generated_at: str) -> Path:
+    stamp = re.sub(r"[^0-9A-Za-z]+", "-", generated_at).strip("-")[:20] or "resolved"
+    base = source_file.with_name(f"{source_file.stem} (Vault conflict copy {stamp}){source_file.suffix}")
+    if not base.exists():
+        return base
+    for index in range(2, 100):
+        candidate = source_file.with_name(
+            f"{source_file.stem} (Vault conflict copy {stamp}-{index}){source_file.suffix}"
+        )
+        if not candidate.exists():
+            return candidate
+    raise FileExistsError("Unable to choose a unique Obsidian conflict copy path")
+
+
+def _active_manifest_entry(
+    *,
+    source_hash: str,
+    raw_hash: str,
+    raw_path: str,
+    imported_at: str,
+    folder_rule: str = "",
+) -> dict[str, Any]:
+    return {
+        "source_hash": source_hash,
+        "raw_hash": raw_hash,
+        "raw_path": raw_path,
+        "last_seen_at": imported_at,
+        "status": "active",
+        "folder_rule": folder_rule,
+    }
+
+
+def _manifest_conflicts(notes: dict[str, Any]) -> list[dict[str, Any]]:
+    conflicts: list[dict[str, Any]] = []
+    for path, item in sorted(notes.items()):
+        if isinstance(item, dict) and item.get("status") == "conflict":
+            conflict = dict(item)
+            conflict.setdefault("source_path", path)
+            conflicts.append(conflict)
+    return conflicts
 
 
 def _normalize_tags(value: Any) -> list[str]:
@@ -387,6 +460,147 @@ def render_vault_raw_note(
         sort_keys=False,
     )
     return f"---\n{rendered_frontmatter}---\n\n{body.strip()}\n", source_hash
+
+
+def resolve_obsidian_conflict(
+    *,
+    project_dir: str | Path,
+    vault_dir: str | Path,
+    source_path: str,
+    resolution: str,
+    category: str = "obsidian",
+    tags: str | list[str] = "obsidian",
+    layer: str = "L3",
+    trust: float = 0.5,
+    allow_private: bool = False,
+    folder_rules_path: str | Path | None = None,
+    dry_run: bool = False,
+    conflict_inbox: bool = False,
+) -> dict[str, Any]:
+    """Resolve a two-sided Obsidian import conflict with an explicit choice."""
+    action = str(resolution or "").strip().lower()
+    if action not in OBSIDIAN_CONFLICT_RESOLUTIONS:
+        raise ValueError(f"Unsupported Obsidian conflict resolution: {resolution}")
+
+    project_path = Path(project_dir)
+    obsidian_root = Path(vault_dir).expanduser().resolve()
+    if not obsidian_root.is_dir():
+        raise FileNotFoundError(f"Obsidian vault not found: {obsidian_root}")
+
+    manifest = _load_manifest(project_path)
+    notes = dict(manifest.get("notes") or {})
+    relative_text = Path(str(source_path or "")).as_posix()
+    entry = notes.get(relative_text)
+    if not isinstance(entry, dict) or entry.get("status") != "conflict":
+        raise ValueError(f"No open Obsidian import conflict for {relative_text}")
+
+    source_file = _resolve_obsidian_relative(obsidian_root, relative_text)
+    raw_file = _resolve_raw_relative(project_path, str(entry.get("raw_path") or ""))
+    if not source_file.exists():
+        raise FileNotFoundError(f"Obsidian source note not found: {relative_text}")
+    if not raw_file.exists():
+        raise FileNotFoundError(f"Vault raw copy not found: {entry.get('raw_path', '')}")
+
+    source_text = source_file.read_text(encoding="utf-8")
+    raw_text = raw_file.read_text(encoding="utf-8")
+    source_hash = _content_hash(source_text)
+    raw_hash = _content_hash(raw_text)
+    expected_source_hash = str(entry.get("pending_source_hash") or entry.get("current_source_hash") or "")
+    expected_raw_hash = str(entry.get("current_raw_hash") or "")
+    if expected_source_hash and source_hash != expected_source_hash:
+        raise ValueError("Obsidian source changed after the conflict was recorded; re-run import first")
+    if expected_raw_hash and raw_hash != expected_raw_hash:
+        raise ValueError("Vault raw copy changed after the conflict was recorded; re-run import first")
+
+    imported_at = datetime.now(timezone.utc).isoformat()
+    import_tags = _normalize_tags(tags)
+    folder_rules = load_obsidian_folder_rules(project_path, folder_rules_path)
+    folder_rule = str(entry.get("folder_rule") or _folder_policy_for(relative_text, folder_rules).get("pattern", ""))
+    planned: dict[str, Any] = {
+        "source_path": relative_text,
+        "raw_path": str(entry.get("raw_path") or ""),
+        "resolution": action,
+        "dry_run": dry_run,
+        "written": [],
+        "manifest_path": str(_manifest_path(project_path)),
+        "conflict_inbox_path": "",
+    }
+
+    if action in {"accept-obsidian", "keep-both"}:
+        content, accepted_source_hash = render_vault_raw_note(
+            source_path=source_file,
+            obsidian_root=obsidian_root,
+            category=category,
+            tags=import_tags,
+            layer=layer,
+            trust=trust,
+            imported_at=imported_at,
+            folder_rules=folder_rules,
+        )
+        if not allow_private:
+            from vault.privacy import scan_privacy
+
+            privacy = scan_privacy(content)
+            if privacy.get("status") == "fail":
+                kinds = ", ".join(
+                    sorted({str(item.get("type", "secret")) for item in privacy.get("findings", [])})
+                )
+                raise ValueError(f"Obsidian conflict resolution blocked by privacy gate ({kinds})")
+
+        if action == "keep-both":
+            copy_path = _unique_conflict_copy_path(source_file, generated_at=imported_at)
+            planned["vault_copy_path"] = str(copy_path)
+            planned["written"].append(str(copy_path))
+            if not dry_run:
+                copy_path.write_text(_raw_body_for_obsidian(raw_text, fallback_title=source_file.stem), encoding="utf-8")
+
+        accepted_raw_hash = _content_hash(content)
+        planned["written"].append(str(raw_file))
+        if not dry_run:
+            raw_file.parent.mkdir(parents=True, exist_ok=True)
+            raw_file.write_text(content, encoding="utf-8")
+        notes[relative_text] = _active_manifest_entry(
+            source_hash=accepted_source_hash,
+            raw_hash=accepted_raw_hash,
+            raw_path=str(entry.get("raw_path") or ""),
+            imported_at=imported_at,
+            folder_rule=folder_rule,
+        )
+    else:
+        accepted_body = _raw_body_for_obsidian(raw_text, fallback_title=source_file.stem)
+        accepted_source_hash = _content_hash(accepted_body)
+        planned["written"].append(str(source_file))
+        if not dry_run:
+            source_file.write_text(accepted_body, encoding="utf-8")
+        notes[relative_text] = _active_manifest_entry(
+            source_hash=accepted_source_hash,
+            raw_hash=raw_hash,
+            raw_path=str(entry.get("raw_path") or ""),
+            imported_at=imported_at,
+            folder_rule=folder_rule,
+        )
+
+    if not dry_run:
+        manifest.update(
+            {
+                "version": 1,
+                "vault_dir": str(obsidian_root),
+                "updated_at": imported_at,
+                "notes": notes,
+            }
+        )
+        planned["manifest_path"] = str(_write_manifest(project_path, manifest))
+        if conflict_inbox:
+            remaining = _manifest_conflicts(notes)
+            planned["conflict_inbox_path"] = str(
+                _write_conflict_inbox(
+                    obsidian_root=obsidian_root,
+                    conflicts=remaining,
+                    generated_at=imported_at,
+                )
+            )
+    planned["status"] = "resolved"
+    return planned
 
 
 def sync_obsidian_vault(

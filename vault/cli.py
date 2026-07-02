@@ -680,6 +680,12 @@ def main(argv: list[str] | None = None):
     p.add_argument("--watch-interval", type=float, default=5.0, help="watch 模式每輪間隔秒數")
     p.add_argument("--watch-iterations", type=int, default=0, help="watch 模式最多跑幾輪；0 表示直到 Ctrl+C")
     p.add_argument("--conflict-inbox", action="store_true", help="Obsidian 匯入遇到雙邊衝突時輸出 _Inbox 審查筆記")
+    p.add_argument("--resolve-conflict", help="解析指定 Obsidian 衝突來源路徑，例如 Shared.md")
+    p.add_argument(
+        "--resolution",
+        choices=["accept-obsidian", "accept-vault", "keep-both"],
+        help="Obsidian 衝突解析策略：接受 Obsidian、接受 Vault raw、或保留兩份",
+    )
     p.add_argument("--dry-run", action="store_true", help="Obsidian 匯入時只列出新增/更新，不寫入")
     p.add_argument("--compile", action="store_true", help="Obsidian 匯入完成後立刻執行 vault compile")
     p.add_argument("--json", action="store_true", help="輸出 JSON；OKF/Obsidian 匯入支援")

@@ -21,6 +21,7 @@ from .gui_api import (
     gui_task,
     gui_tasks,
 )
+from .gui_obsidian import gui_obsidian_conflict, gui_resolve_obsidian_conflict
 from .gui_server import DEFAULT_HOST, DEFAULT_PORT, make_gui_handler, run_gui
 
 
@@ -51,9 +52,11 @@ __all__ = [
     "gui_documents",
     "gui_entry",
     "gui_memory_migration",
+    "gui_obsidian_conflict",
     "gui_overview",
     "gui_read_range",
     "gui_review_candidate",
+    "gui_resolve_obsidian_conflict",
     "gui_search",
     "gui_resolve_sync_conflict",
     "gui_sync_conflict",

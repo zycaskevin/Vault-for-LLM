@@ -370,6 +370,9 @@
         conflictReview: "同步衝突審核", localMemory: "本地正式記憶", remoteSuggestion: "遠端候選建議",
         keepLocal: "保留本地", acceptRemote: "接受遠端", manualResolution: "已手動處理",
         conflictResolved: "同步衝突已處理", conflictDecisionNote: "接受遠端會先收進正式記憶，並把本地舊記憶移到歸檔，不會直接覆蓋。",
+        obsidianConflictReview: "Obsidian 筆記衝突", obsidianSourceNote: "Obsidian 版本", vaultRawCopy: "Vault 版本",
+        acceptObsidian: "接受 Obsidian", acceptVault: "接受 Vault", keepBoth: "保留兩份",
+        obsidianConflictResolved: "Obsidian 衝突已處理", obsidianConflictDecisionNote: "請選擇要保留哪一份；保留兩份會另外建立一份衝突備份，不會偷偷覆蓋。",
         actionAuditNote: "按下前會再次確認，並記錄這次選擇。",
         readOnly: "唯讀報告",
         tokenProtected: "GUI token 保護",
@@ -454,6 +457,9 @@
         conflictReview: "同步冲突审核", localMemory: "本地正式记忆", remoteSuggestion: "远端候选建议",
         keepLocal: "保留本地", acceptRemote: "接受远端", manualResolution: "已手动处理",
         conflictResolved: "同步冲突已处理", conflictDecisionNote: "接受远端会先收进正式记忆，并把本地旧记忆移到归档，不会直接覆盖。",
+        obsidianConflictReview: "Obsidian 笔记冲突", obsidianSourceNote: "Obsidian 版本", vaultRawCopy: "Vault 版本",
+        acceptObsidian: "接受 Obsidian", acceptVault: "接受 Vault", keepBoth: "保留两份",
+        obsidianConflictResolved: "Obsidian 冲突已处理", obsidianConflictDecisionNote: "请选择要保留哪一份；保留两份会另外建立一份冲突备份，不会偷偷覆盖。",
         actionAuditNote: "按下前会再次确认，并记录这次选择。",
         readOnly: "只读报告",
         tokenProtected: "GUI token 保护",
@@ -543,6 +549,9 @@
         conflictReview: "Sync conflict review", localMemory: "Local official memory", remoteSuggestion: "Remote candidate suggestion",
         keepLocal: "Keep local", acceptRemote: "Accept remote", manualResolution: "Handled manually",
         conflictResolved: "Sync conflict resolved", conflictDecisionNote: "Accept remote promotes the candidate and archives the old local memory; it does not overwrite silently.",
+        obsidianConflictReview: "Obsidian note conflict", obsidianSourceNote: "Obsidian version", vaultRawCopy: "Vault version",
+        acceptObsidian: "Accept Obsidian", acceptVault: "Accept Vault", keepBoth: "Keep both",
+        obsidianConflictResolved: "Obsidian conflict resolved", obsidianConflictDecisionNote: "Choose which version to keep. Keep both creates a separate conflict copy and never overwrites silently.",
         actionAuditNote: "You will confirm before it runs, and this choice will be recorded.",
         readOnly: "read-only report",
         tokenProtected: "GUI token protected",
@@ -653,6 +662,7 @@
       node.querySelectorAll("[data-id]").forEach(el => {
         if (el.dataset.kind === "candidate") el.addEventListener("click", () => loadCandidate(el.dataset.id));
         else if (el.dataset.kind === "sync_conflict") el.addEventListener("click", () => loadSyncConflict(el.dataset.id));
+        else if (el.dataset.kind === "obsidian_conflict") el.addEventListener("click", () => loadObsidianConflict(el.dataset.targetId || el.dataset.id));
         else if (el.dataset.kind === "task_handoff" && el.dataset.targetId) el.addEventListener("click", () => loadTask(el.dataset.targetId));
         else { const idValue = Number(el.dataset.id || 0); if (idValue) el.addEventListener("click", () => loadEntry(idValue)); }
       });
@@ -1025,6 +1035,46 @@
       $("manualConflict").addEventListener("click", () => resolveSyncConflict(conflict.id, "manual"));
     }
 
+    async function loadObsidianConflict(sourcePath) {
+      const payload = await api(`/api/obsidian-conflict/${encodeURIComponent(sourcePath)}`);
+      if (payload.status !== "ok") {
+        $("results").innerHTML = `<div class="empty">${esc(payload.error || payload.reason || "Unable to load Obsidian conflict")}</div>`;
+        return;
+      }
+      const conflict = payload.conflict || {};
+      const obsidian = conflict.obsidian || {};
+      const vault = conflict.vault || {};
+      currentTask = null;
+      currentEntry = null;
+      $("evidence").hidden = true;
+      const notePanel = (title, item) => `<div class="panel"><h3>${esc(title)}</h3><div class="subtle">${esc(item.path || "")}</div><pre>${esc(item.content || "")}</pre></div>`;
+      $("results").innerHTML = `
+        <article class="result">
+          <h3>${esc(ui().obsidianConflictReview)}</h3>
+          <div class="subtle">${esc(conflict.reason || "")}</div>
+          <div class="meta">${pill(conflict.source_path || "")}${pill(conflict.status || "conflict", "warn")}</div>
+        </article>
+        <div class="compare-grid">
+          ${notePanel(ui().obsidianSourceNote, obsidian)}
+          ${notePanel(ui().vaultRawCopy, vault)}
+        </div>
+        <div class="panel">
+          <h3>${esc(ui().reviewReason)}</h3>
+          <div class="subtle">${esc(ui().obsidianConflictDecisionNote)}</div>
+          <div class="actions">
+            <button id="acceptObsidianConflict" type="button">${esc(ui().acceptObsidian)}</button>
+            <button id="acceptVaultConflict" class="warn" type="button">${esc(ui().acceptVault)}</button>
+            <button id="keepBothConflict" class="secondary" type="button">${esc(ui().keepBoth)}</button>
+          </div>
+          <div class="subtle">${esc(ui().actionAuditNote)}</div>
+        </div>
+      `;
+      $("sidePanel").innerHTML = `<div class="panel"><h3>${esc(ui().obsidianConflictReview)}</h3><div class="subtle">${esc(conflict.source_path || "")}</div></div><div class="kv"><span>Obsidian</span><strong>${esc(obsidian.content_length || 0)} chars</strong></div><div class="kv"><span>Vault</span><strong>${esc(vault.content_length || 0)} chars</strong></div><div class="kv"><span>raw</span><strong>${esc(conflict.raw_path || "")}</strong></div>`;
+      $("acceptObsidianConflict").addEventListener("click", () => resolveObsidianConflict(conflict.source_path, "accept-obsidian"));
+      $("acceptVaultConflict").addEventListener("click", () => resolveObsidianConflict(conflict.source_path, "accept-vault"));
+      $("keepBothConflict").addEventListener("click", () => resolveObsidianConflict(conflict.source_path, "keep-both"));
+    }
+
     async function loadTask(id) {
       const payload = await api(`/api/task/${encodeURIComponent(id)}`);
       if (payload.status !== "ok") { $("results").innerHTML = `<div class="empty">${esc(payload.error || payload.reason || "Unable to load task")}</div>`; return; }
@@ -1069,6 +1119,15 @@
       const payload = await postApi(`/api/sync-conflict/${encodeURIComponent(id)}/resolve`, {resolution, reason, agent_id: "gui-reviewer", confirm: token});
       if (payload.status !== "ok") { window.alert(payload.error || payload.reason || ui().reviewFailed); return; }
       window.alert(`${ui().conflictResolved}: ${resolution}`);
+      await boot();
+    }
+
+    async function resolveObsidianConflict(sourcePath, resolution) {
+      const token = `${sourcePath}:${resolution}`;
+      if (!window.confirm(`${ui().confirmAction}\\n\\n${ui().confirmToken}: ${token}`)) return;
+      const payload = await postApi(`/api/obsidian-conflict/${encodeURIComponent(sourcePath)}/resolve`, {resolution, confirm: token});
+      if (payload.status !== "ok") { window.alert(payload.error || payload.reason || ui().reviewFailed); return; }
+      window.alert(`${ui().obsidianConflictResolved}: ${resolution}`);
       await boot();
     }
 

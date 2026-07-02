@@ -20,9 +20,11 @@ from vault.gui import (
     gui_documents,
     gui_entry,
     gui_memory_migration,
+    gui_obsidian_conflict,
     gui_overview,
     gui_read_range,
     gui_review_candidate,
+    gui_resolve_obsidian_conflict,
     gui_resolve_sync_conflict,
     gui_search,
     gui_sync_conflict,
@@ -352,10 +354,65 @@ def test_gui_sync_conflict_detail_and_resolution(tmp_path):
         assert db.get_knowledge(promoted_id)["status"] == "active"
 
 
+def test_gui_obsidian_conflict_detail_and_resolution(tmp_path):
+    from vault.import_obsidian import sync_obsidian_vault
+
+    project = tmp_path / "project"
+    project.mkdir()
+    with VaultDB(project / "vault.db"):
+        pass
+    obsidian = tmp_path / "ObsidianVault"
+    obsidian.mkdir()
+    note = obsidian / "Shared.md"
+    note.write_text("# Shared\n\nOriginal note.\n", encoding="utf-8")
+    sync_obsidian_vault(project_dir=project, vault_dir=obsidian, conflict_inbox=True)
+    raw_note = project / "raw" / "obsidian" / "Shared.md"
+    raw_note.write_text(raw_note.read_text(encoding="utf-8") + "\nVault-side edit.\n", encoding="utf-8")
+    note.write_text("# Shared\n\nObsidian-side edit.\n", encoding="utf-8")
+    sync_obsidian_vault(project_dir=project, vault_dir=obsidian, conflict_inbox=True)
+
+    dashboard = gui_agent_dashboard(project, limit=5)
+    review_inbox = dashboard["human_review"]["unified_inbox"]
+    assert review_inbox["summary"]["obsidian_conflicts"] == 1
+    assert any(item["kind"] == "obsidian_conflict" for item in review_inbox["items"])
+
+    detail = gui_obsidian_conflict(project, "Shared.md")
+    assert detail["status"] == "ok"
+    assert "Obsidian-side edit." in detail["conflict"]["obsidian"]["content"]
+    assert "Vault-side edit." in detail["conflict"]["vault"]["content"]
+    assert detail["conflict"]["confirmation"]["accept-obsidian"] == "Shared.md:accept-obsidian"
+
+    blocked = gui_resolve_obsidian_conflict(
+        project,
+        "Shared.md",
+        resolution="accept-obsidian",
+        confirm="",
+    )
+    assert blocked["error"] == "confirmation_required"
+
+    resolved = gui_resolve_obsidian_conflict(
+        project,
+        "Shared.md",
+        resolution="accept-obsidian",
+        confirm="Shared.md:accept-obsidian",
+    )
+    assert resolved["status"] == "ok"
+    assert "Obsidian-side edit." in raw_note.read_text(encoding="utf-8")
+    assert gui_obsidian_conflict(project, "Shared.md")["error"] == "not_found"
+
+
 def test_gui_app_exposes_graph_visual_panel():
     assert "graph-canvas" in APP_HTML
     assert "graph-node linked" in APP_HTML
     assert "data-open-node" in APP_HTML
+
+
+def test_gui_app_exposes_obsidian_conflict_resolver_buttons():
+    assert "loadObsidianConflict" in APP_HTML
+    assert "resolveObsidianConflict" in APP_HTML
+    assert "acceptObsidianConflict" in APP_HTML
+    assert "acceptVaultConflict" in APP_HTML
+    assert "keepBothConflict" in APP_HTML
 
 
 def test_gui_documents_filters_and_facets(tmp_path):

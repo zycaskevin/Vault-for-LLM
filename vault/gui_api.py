@@ -31,6 +31,7 @@ from .gui_format import (
     timeline_for,
     usage_for,
 )
+from .gui_obsidian import list_obsidian_conflicts
 from .task_ledger import claim_task_handoff, get_task, get_task_handoff, list_task_handoffs, list_tasks, task_handoff
 
 
@@ -252,6 +253,7 @@ def _build_gui_review_inbox(
     review: dict[str, Any],
     recent_candidates: list[dict[str, Any]],
     sync_health: dict[str, Any],
+    obsidian_conflicts: list[dict[str, Any]],
     handoffs: list[dict[str, Any]],
     limit: int,
 ) -> dict[str, Any]:
@@ -293,6 +295,19 @@ def _build_gui_review_inbox(
             sensitivity="low",
             source="multi_host_sync",
         ))
+    for conflict in obsidian_conflicts[:limit]:
+        source_path = str(conflict.get("source_path") or conflict.get("id") or "")
+        items.append(_review_item(
+            kind="obsidian_conflict",
+            item_id=source_path,
+            title=f"Obsidian note conflict: {source_path}",
+            reason=str(conflict.get("reason") or "Choose which side should be kept."),
+            action="resolve_obsidian_conflict",
+            target_id=source_path,
+            target_kind="obsidian_note",
+            sensitivity="low",
+            source="obsidian_sync",
+        ))
     for handoff in handoffs[:limit]:
         hid = str(handoff.get("id") or "")
         agent = str(handoff.get("to_agent") or handoff.get("from_agent") or "agent")
@@ -313,6 +328,7 @@ def _build_gui_review_inbox(
         "daily_cards": min(len(review.get("cards") or []), limit),
         "candidates": min(len(recent_candidates), limit),
         "sync_conflicts": min(len(sync_health.get("open_conflicts") or []), limit),
+        "obsidian_conflicts": min(len(obsidian_conflicts), limit),
         "task_handoffs": min(len(handoffs), limit),
     }
     return {
@@ -374,10 +390,12 @@ def gui_agent_dashboard(
     with VaultDB(db_path) as db:
         sync_health = sync_status(db, limit=limit_i)
         handoffs = list_task_handoffs(db, status="pending", limit=limit_i)
+    obsidian_conflicts = list_obsidian_conflicts(project, limit=limit_i)
     review_inbox = _build_gui_review_inbox(
         review=review,
         recent_candidates=recent_candidates,
         sync_health=sync_health,
+        obsidian_conflicts=obsidian_conflicts,
         handoffs=handoffs,
         limit=limit_i,
     )

@@ -190,6 +190,7 @@ def build_daily_report(
     decision_cards = [card for card in cards_all if card.get("requires_human_decision", True)]
     quiet_actions = _quiet_actions(brief_summary)
     payload = {
+        "ok": True,
         "action": "daily-report",
         "language": lang,
         "generated_at": generated_at,

@@ -42,10 +42,13 @@ class ObsidianImportResult:
     skipped: int = 0
     deleted: int = 0
     missing: int = 0
+    conflicts: int = 0
     ignored: int = 0
     errors: list[str] = field(default_factory=list)
     paths: list[str] = field(default_factory=list)
     missing_paths: list[str] = field(default_factory=list)
+    conflict_paths: list[str] = field(default_factory=list)
+    conflict_items: list[dict[str, Any]] = field(default_factory=list)
     manifest_path: str = ""
     dry_run: bool = False
 
@@ -57,10 +60,13 @@ class ObsidianImportResult:
             "skipped": self.skipped,
             "deleted": self.deleted,
             "missing": self.missing,
+            "conflicts": self.conflicts,
             "ignored": self.ignored,
             "errors": self.errors,
             "paths": self.paths,
             "missing_paths": self.missing_paths,
+            "conflict_paths": self.conflict_paths,
+            "conflict_items": self.conflict_items,
             "manifest_path": self.manifest_path,
             "dry_run": self.dry_run,
         }
@@ -400,14 +406,48 @@ def sync_obsidian_vault(
                     continue
 
             existing_hash = ""
+            existing_text = ""
+            existing_raw_hash = ""
             if destination.exists():
-                existing_metadata, _ = extract_frontmatter(destination.read_text(encoding="utf-8"))
+                existing_text = destination.read_text(encoding="utf-8")
+                existing_metadata, _ = extract_frontmatter(existing_text)
                 existing_hash = str(existing_metadata.get("obsidian_source_hash", ""))
+                existing_raw_hash = _content_hash(existing_text)
+
+            previous = previous_notes.get(relative_text) if isinstance(previous_notes.get(relative_text), dict) else {}
+            previous_source_hash = str(previous.get("source_hash") or "")
+            previous_raw_hash = str(previous.get("raw_hash") or "")
+            raw_changed_since_import = bool(previous_raw_hash and existing_raw_hash and existing_raw_hash != previous_raw_hash)
+            source_changed_since_import = bool(previous_source_hash and previous_source_hash != source_hash)
+
+            if destination.exists() and raw_changed_since_import and source_changed_since_import:
+                result.conflicts += 1
+                result.conflict_paths.append(str(destination))
+                conflict = {
+                    "source_path": relative_text,
+                    "raw_path": str(destination.relative_to(project_path)),
+                    "status": "conflict",
+                    "reason": "obsidian_source_and_vault_raw_both_changed",
+                    "previous_source_hash": previous_source_hash,
+                    "current_source_hash": source_hash,
+                    "previous_raw_hash": previous_raw_hash,
+                    "current_raw_hash": existing_raw_hash,
+                    "last_seen_at": imported_at,
+                    "folder_rule": _folder_policy_for(relative_text, folder_rules).get("pattern", ""),
+                }
+                result.conflict_items.append(conflict)
+                current_notes[relative_text] = {
+                    **conflict,
+                    "source_hash": previous_source_hash,
+                    "pending_source_hash": source_hash,
+                }
+                continue
 
             if existing_hash == source_hash:
                 result.skipped += 1
                 current_notes[relative_text] = {
                     "source_hash": source_hash,
+                    "raw_hash": existing_raw_hash or _content_hash(content),
                     "raw_path": str(destination.relative_to(project_path)),
                     "last_seen_at": imported_at,
                     "status": "active",
@@ -421,8 +461,10 @@ def sync_obsidian_vault(
                 result.added += 1
 
             result.paths.append(str(destination))
+            rendered_hash = _content_hash(content)
             current_notes[relative_text] = {
                 "source_hash": source_hash,
+                "raw_hash": rendered_hash,
                 "raw_path": str(destination.relative_to(project_path)),
                 "last_seen_at": imported_at,
                 "status": "active",

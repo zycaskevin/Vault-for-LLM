@@ -306,6 +306,10 @@ def _render_review_inbox(
         path for path, item in notes.items()
         if isinstance(item, dict) and item.get("status") == "missing"
     )
+    obsidian_conflicts = sorted(
+        (path, item) for path, item in notes.items()
+        if isinstance(item, dict) and item.get("status") == "conflict"
+    )
     folder_preview, unmatched_count = _folder_rule_preview(notes)
 
     candidate_lines = "\n\n".join(_render_candidate_row(row) for row in candidates) or "No pending memory candidates."
@@ -315,6 +319,11 @@ def _render_review_inbox(
         for row in recent
     ) or "- No active knowledge yet."
     missing_lines = "\n".join(f"- `{path}`" for path in missing[:30]) or "- No missing Obsidian source notes."
+    obsidian_conflict_lines = "\n".join(
+        f"- [ ] `{path}` -> `{item.get('raw_path', '')}`\n"
+        f"  - Reason: {item.get('reason', 'obsidian_source_and_vault_raw_both_changed')}"
+        for path, item in obsidian_conflicts[:20]
+    ) or "- No Obsidian mirror conflicts."
     sync_counts = sync_health.get("counts") or {}
     open_conflicts = sync_health.get("open_conflicts") or []
     conflict_lines = "\n".join(
@@ -337,6 +346,7 @@ generated_at: "{generated_at}"
 
 - Pending memory candidates: **{len(candidates)}**
 - Missing Obsidian source notes: **{len(missing)}**
+- Obsidian mirror conflicts: **{len(obsidian_conflicts)}**
 - Open remote sync conflicts: **{int(sync_counts.get('open_conflicts') or 0)}**
 - Imported active Obsidian notes: **{active_count}**
 
@@ -382,6 +392,7 @@ generated_at: "{generated_at}"
 - Raw subdir: `{manifest.get('raw_subdir', '')}`
 - Folder rules: **{manifest.get('folder_rules_count', 0)}**
 - Folder-rule unmatched active notes: **{unmatched_count}**
+- Obsidian mirror conflicts: **{len(obsidian_conflicts)}**
 
 ## Remote Candidate Sync
 
@@ -395,6 +406,10 @@ generated_at: "{generated_at}"
 ## Open Remote Sync Conflicts
 
 {conflict_lines}
+
+## Obsidian Mirror Conflicts
+
+{obsidian_conflict_lines}
 
 ## Missing Source Notes
 

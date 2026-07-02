@@ -14,6 +14,14 @@
 - Added `setup-agent` Obsidian options for writing conservative default folder
   rules, exporting the review inbox, and generating a short
   `README-obsidian-human-gui.md` guide.
+- Added Obsidian two-sided conflict detection: if the source note and Vault raw
+  copy both changed since the last import, Vault keeps the raw note unchanged
+  and records a metadata-only conflict for review.
+- Added generated Vault Remote Server hardening files:
+  `vault-remote-server.env.example` and `REMOTE_SERVER_HARDENING.md`.
+- Added a compact multi-Agent GUI `activity_health` card for connected agents,
+  pending candidates, sync conflicts, Obsidian mirror conflicts, and human 5%
+  review pressure.
 
 ### Changed
 
@@ -23,6 +31,10 @@
   export the review inbox back to `00-Vault-Knowledge/_Inbox/`.
 - Obsidian Sync Status now reports unmatched active notes so users can tune
   folder rules without learning the full CLI.
+- Obsidian Sync Status now reports Obsidian mirror conflicts separately from
+  remote candidate sync conflicts.
+- Generated systemd and Docker Compose Remote Server templates now point to an
+  env-file workflow for stable token handling.
 
 ### Safety
 
@@ -34,6 +46,10 @@
   folders.
 - Sync conflict cards remain metadata-only and do not expose raw conflicting
   memory content.
+- Obsidian mirror conflicts do not overwrite either side; operators can review
+  source and raw paths before deciding what to keep.
+- Remote Server hardening guidance keeps public exposure, token rotation,
+  backups, audit review, and candidate-first remote writes explicit.
 
 ### Validation
 

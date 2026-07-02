@@ -189,6 +189,8 @@ def test_gui_app_exposes_document_map_panel():
     assert "Daily Report" in APP_HTML
     assert "dailyReport" in APP_HTML
     assert "agentDashboard" in APP_HTML
+    assert "activityHealth" in APP_HTML
+    assert "obsidianConflicts" in APP_HTML
     assert "syncHealth" in APP_HTML
     assert "openConflicts" in APP_HTML
     assert "sync-conflict" in APP_HTML
@@ -230,7 +232,7 @@ def test_gui_agent_dashboard_lists_agents_sync_and_review(tmp_path, monkeypatch)
     manifest_dir = project / ".vault"
     manifest_dir.mkdir()
     (manifest_dir / "obsidian-import-manifest.json").write_text(
-        '{"version":1,"updated_at":"2026-07-01T00:00:00+00:00","raw_subdir":"obsidian","notes":{"A.md":{"status":"active"},"B.md":{"status":"missing"}}}',
+        '{"version":1,"updated_at":"2026-07-01T00:00:00+00:00","raw_subdir":"obsidian","notes":{"A.md":{"status":"active"},"B.md":{"status":"missing"},"C.md":{"status":"conflict","raw_path":"raw/obsidian/C.md"}}}',
         encoding="utf-8",
     )
 
@@ -241,10 +243,17 @@ def test_gui_agent_dashboard_lists_agents_sync_and_review(tmp_path, monkeypatch)
     assert dashboard["agents"]["items"][0]["agent_id"] == "codex"
     assert dashboard["recent_candidates"][0]["id"] == candidate_id
     obsidian = next(item for item in dashboard["recent_sync"] if item["kind"] == "obsidian")
+    assert obsidian["status"] == "needs_review"
     assert obsidian["summary"]["active_notes"] == 1
     assert obsidian["summary"]["missing_notes"] == 1
+    assert obsidian["summary"]["conflict_notes"] == 1
     assert dashboard["sync_health"]["status"] == "idle"
     assert dashboard["sync_health"]["safety"]["read_only"] is True
+    assert dashboard["activity_health"]["connected_agents"] == 1
+    assert dashboard["activity_health"]["pending_candidates"] == 1
+    assert dashboard["activity_health"]["obsidian_conflicts"] == 1
+    assert dashboard["activity_health"]["status"] == "needs_review"
+    assert dashboard["activity_health"]["safety"]["read_only"] is True
     assert dashboard["human_review"]["items"]
 
 

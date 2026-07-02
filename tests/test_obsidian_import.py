@@ -108,6 +108,37 @@ def test_sync_obsidian_vault_marks_and_prunes_missing_notes(tmp_path):
     assert "DeletedLater.md" not in manifest["notes"]
 
 
+def test_sync_obsidian_vault_detects_two_sided_conflict_without_overwrite(tmp_path):
+    from vault.import_obsidian import sync_obsidian_vault
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    obsidian = tmp_path / "ObsidianVault"
+    obsidian.mkdir()
+    note = obsidian / "Shared.md"
+    note.write_text("# Shared\n\nOriginal note.\n", encoding="utf-8")
+
+    first = sync_obsidian_vault(project_dir=project_dir, vault_dir=obsidian)
+    assert first["added"] == 1
+    raw_note = project_dir / "raw" / "obsidian" / "Shared.md"
+    original_raw = raw_note.read_text(encoding="utf-8")
+
+    raw_note.write_text(original_raw + "\nVault-side edit.\n", encoding="utf-8")
+    note.write_text("# Shared\n\nObsidian-side edit.\n", encoding="utf-8")
+
+    second = sync_obsidian_vault(project_dir=project_dir, vault_dir=obsidian)
+    assert second["conflicts"] == 1
+    assert second["updated"] == 0
+    assert second["conflict_items"][0]["source_path"] == "Shared.md"
+    assert "Vault-side edit." in raw_note.read_text(encoding="utf-8")
+    assert "Obsidian-side edit." not in raw_note.read_text(encoding="utf-8")
+
+    manifest = json.loads((project_dir / ".vault" / "obsidian-import-manifest.json").read_text(encoding="utf-8"))
+    entry = manifest["notes"]["Shared.md"]
+    assert entry["status"] == "conflict"
+    assert entry["pending_source_hash"] == second["conflict_items"][0]["current_source_hash"]
+
+
 def test_sync_obsidian_vault_applies_folder_rules_and_wikilinks(tmp_path):
     from vault.import_obsidian import sync_obsidian_vault
 

@@ -101,15 +101,20 @@ def _obsidian_sync_item(project: Path) -> dict[str, Any]:
         key for key, value in notes.items()
         if isinstance(value, dict) and value.get("status") == "missing"
     ]
+    conflicts = [
+        key for key, value in notes.items()
+        if isinstance(value, dict) and value.get("status") == "conflict"
+    ]
     return {
         "kind": "obsidian",
         "label": "Obsidian incremental import",
-        "status": "ok" if manifest else "not_configured",
+        "status": "needs_review" if conflicts else ("ok" if manifest else "not_configured"),
         "updated_at": manifest.get("updated_at", "") or _file_updated_at(manifest_path),
         "path": str(manifest_path),
         "summary": {
-            "active_notes": max(0, len(notes) - len(missing)),
+            "active_notes": max(0, len(notes) - len(missing) - len(conflicts)),
             "missing_notes": len(missing),
+            "conflict_notes": len(conflicts),
             "raw_subdir": manifest.get("raw_subdir", ""),
         },
     }
@@ -145,6 +150,58 @@ def _report_sync_items(project: Path) -> list[dict[str, Any]]:
             }
         )
     return items
+
+
+def _dashboard_activity_health(
+    *,
+    connected_agents: list[dict[str, Any]],
+    all_agents: list[dict[str, Any]],
+    recent_candidates: list[dict[str, Any]],
+    sync_health: dict[str, Any],
+    sync_items: list[dict[str, Any]],
+    review_inbox: dict[str, Any],
+) -> dict[str, Any]:
+    """Return one compact status card for humans and dashboard agents."""
+    sync_counts = sync_health.get("counts") or {}
+    open_sync_conflicts = int(sync_counts.get("open_conflicts") or 0)
+    obsidian_conflicts = 0
+    stale_sync_items = 0
+    for item in sync_items:
+        if item.get("status") in {"needs_review", "warning"}:
+            stale_sync_items += 1
+        if item.get("kind") == "obsidian":
+            obsidian_conflicts = int((item.get("summary") or {}).get("conflict_notes") or 0)
+
+    review_count = int((review_inbox.get("summary") or {}).get("total") or 0)
+    if open_sync_conflicts or obsidian_conflicts:
+        status = "needs_review"
+        next_action = "Review sync conflicts before changing shared memory."
+    elif review_count:
+        status = "review"
+        next_action = "Open the smallest human review queue; keep routine work agent-handled."
+    elif stale_sync_items:
+        status = "warning"
+        next_action = "Check sync/report freshness before trusting the dashboard."
+    else:
+        status = "ok"
+        next_action = "No urgent memory control action is needed."
+
+    return {
+        "status": status,
+        "connected_agents": len(connected_agents),
+        "registered_agents": len(all_agents),
+        "pending_candidates": len(recent_candidates),
+        "human_review_items": review_count,
+        "open_sync_conflicts": open_sync_conflicts,
+        "obsidian_conflicts": obsidian_conflicts,
+        "sync_report_warnings": stale_sync_items,
+        "next_action": next_action,
+        "safety": {
+            "read_only": True,
+            "content_hidden_by_default": True,
+            "writes_active_memory": False,
+        },
+    }
 
 
 def _review_item(
@@ -343,6 +400,14 @@ def gui_agent_dashboard(
         key=lambda item: str(item.get("updated_at") or ""),
         reverse=True,
     )[:limit_i]
+    activity_health = _dashboard_activity_health(
+        connected_agents=connected_agents,
+        all_agents=all_agents,
+        recent_candidates=recent_candidates,
+        sync_health=sync_health,
+        sync_items=sync_items,
+        review_inbox=review_inbox,
+    )
 
     return {
         "status": "ok",
@@ -357,6 +422,7 @@ def gui_agent_dashboard(
             "all_items": all_agents,
         },
         "recent_sync": sync_items,
+        "activity_health": activity_health,
         "sync_health": sync_health,
         "recent_candidates": recent_candidates,
         "human_review": {

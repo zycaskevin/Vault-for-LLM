@@ -481,6 +481,8 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     remote_server_launchagent = tmp_path / "templates" / "vault-remote-server.launchagent.plist"
     remote_server_systemd = tmp_path / "templates" / "vault-remote-server.service"
     remote_server_compose = tmp_path / "templates" / "vault-remote-server.compose.yaml"
+    remote_server_env = tmp_path / "templates" / "vault-remote-server.env.example"
+    remote_server_hardening = tmp_path / "templates" / "REMOTE_SERVER_HARDENING.md"
     remote_client_readme = tmp_path / "templates" / "README-remote-clients.md"
     remote_client_config = tmp_path / "templates" / "vault-remote-client-config.json"
     remote_client_openapi = tmp_path / "templates" / "coze-vault-remote-openapi.json"
@@ -491,6 +493,8 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     assert remote_server_launchagent.exists()
     assert remote_server_systemd.exists()
     assert remote_server_compose.exists()
+    assert remote_server_env.exists()
+    assert remote_server_hardening.exists()
     assert remote_client_readme.exists()
     assert remote_client_config.exists()
     assert remote_client_openapi.exists()
@@ -501,11 +505,19 @@ def test_run_agent_setup_writes_memory_automation_schedule_templates(tmp_path):
     remote_readme_text = remote_server_readme.read_text(encoding="utf-8")
     assert "set a stable token" in remote_readme_text
     assert "no offline active multi-master sync yet" in remote_readme_text
+    assert "REMOTE_SERVER_HARDENING.md" in remote_readme_text
+    hardening_text = remote_server_hardening.read_text(encoding="utf-8")
+    assert "Vault Remote Server Hardening" in hardening_text
+    assert "Rotate the Gateway token" in hardening_text
+    assert "candidate-first" in hardening_text
     remote_launchagent_text = remote_server_launchagent.read_text(encoding="utf-8")
     assert "KeepAlive" in remote_launchagent_text
     assert "VAULT_GATEWAY_TOKEN" in remote_launchagent_text
-    assert "VAULT_GATEWAY_TOKEN" in remote_server_systemd.read_text(encoding="utf-8")
+    assert "VAULT_GATEWAY_TOKEN" in remote_server_env.read_text(encoding="utf-8")
+    assert "EnvironmentFile=" in remote_server_systemd.read_text(encoding="utf-8")
+    assert "NoNewPrivileges=true" in remote_server_systemd.read_text(encoding="utf-8")
     assert "vault remote-server serve" in remote_server_compose.read_text(encoding="utf-8")
+    assert "env_file:" in remote_server_compose.read_text(encoding="utf-8")
     remote_client_payload = json.loads(remote_client_config.read_text(encoding="utf-8"))
     assert sorted(remote_client_payload["clients"]) == ["claude_code", "codex", "coze", "hermes", "n8n", "openclaw"]
     assert remote_client_payload["safety"]["candidate_first_writes"] is True

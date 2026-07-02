@@ -48,6 +48,21 @@ def write_remote_server_deploy_templates(
     launchagent_path = out / "vault-remote-server.launchagent.plist"
     launchagent_path.write_text(_render_remote_server_launchagent(command), encoding="utf-8")
 
+    env_path = out / "vault-remote-server.env.example"
+    env_path.write_text(
+        "\n".join(
+            [
+                "# Copy to a private env file, chmod 600, then replace the token.",
+                "VAULT_GATEWAY_TOKEN=replace-with-stable-secret",
+                "# Keep the server on a private network unless a reverse proxy adds TLS/auth/rate limits.",
+                "VAULT_REMOTE_SERVER_BIND=127.0.0.1",
+                "VAULT_REMOTE_SERVER_PORT=8789",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
     systemd_path = out / "vault-remote-server.service"
     systemd_path.write_text(
         "\n".join(
@@ -59,10 +74,13 @@ def write_remote_server_deploy_templates(
                 "",
                 "[Service]",
                 "Type=simple",
-                "Environment=VAULT_GATEWAY_TOKEN=replace-with-stable-secret",
+                f"EnvironmentFile={env_path}",
                 f"ExecStart={shell_join(command)}",
                 "Restart=on-failure",
                 "RestartSec=5",
+                "NoNewPrivileges=true",
+                "PrivateTmp=true",
+                "ProtectSystem=full",
                 "",
                 "[Install]",
                 "WantedBy=multi-user.target",
@@ -90,6 +108,8 @@ def write_remote_server_deploy_templates(
                 "      - \"8789:8789\"",
                 "    environment:",
                 "      VAULT_GATEWAY_TOKEN: ${VAULT_GATEWAY_TOKEN:?set a stable token}",
+                "    env_file:",
+                f"      - {env_path.name}",
                 "    volumes:",
                 f"      - {str(project_path)}:/vault-project",
                 "",
@@ -135,10 +155,12 @@ def write_remote_server_deploy_templates(
                 "",
                 "Generated deployment templates:",
                 "",
+                f"- environment example: `{env_path.name}`",
                 f"- macOS LaunchAgent example: `{launchagent_path.name}`",
                 f"- systemd service example: `{systemd_path.name}`",
                 f"- Docker Compose example: `{compose_path.name}`",
                 "- remote client examples: `README-remote-clients.md`",
+                "- long-term hardening checklist: `REMOTE_SERVER_HARDENING.md`",
                 "",
                 "Network guidance:",
                 "",
@@ -150,9 +172,13 @@ def write_remote_server_deploy_templates(
         ),
         encoding="utf-8",
     )
+    hardening_path = out / "REMOTE_SERVER_HARDENING.md"
+    hardening_path.write_text(_render_remote_server_hardening(), encoding="utf-8")
     remote_client_templates = _write_remote_client_templates(out)
     return {
         "readme": str(readme_path),
+        "env_example": str(env_path),
+        "hardening": str(hardening_path),
         "health_command": shell_join(health_command),
         "openapi_command": shell_join(openapi_command),
         "serve_command": shell_join(command),
@@ -161,6 +187,49 @@ def write_remote_server_deploy_templates(
         "docker_compose": str(compose_path),
         "remote_clients": remote_client_templates,
     }
+
+
+def _render_remote_server_hardening() -> str:
+    return "\n".join(
+        [
+            "# Vault Remote Server Hardening",
+            "",
+            "This server is a shared memory doorway. Treat it like a small private database endpoint, not a public website.",
+            "",
+            "## Safe Defaults",
+            "",
+            "- Keep `VAULT_GATEWAY_TOKEN` outside prompts, repository files, and workflow JSON.",
+            "- Prefer `127.0.0.1`, LAN-only, Tailscale, WireGuard, or another private network.",
+            "- Put TLS, IP allowlists, and request-rate limits in front of any internet-facing endpoint.",
+            "- Rotate the Gateway token when an Agent machine is lost or a workflow is shared.",
+            "- Back up `vault.db` with `vault db backup` before upgrades and before changing sync topology.",
+            "",
+            "## Memory Safety Boundary",
+            "",
+            "- Remote search returns compact metadata and snippets, not raw full memory dumps.",
+            "- Remote reads should use bounded `/read-range` evidence after search.",
+            "- Remote writes are candidate-first: they go to `/submit-candidate` and do not create active knowledge directly.",
+            "- Promote candidates only from a trusted local review flow or a narrowly scoped automation policy.",
+            "- This is centralized sharing, not offline active multi-master merge.",
+            "",
+            "## Deployment Checklist",
+            "",
+            "- [ ] Copy `vault-remote-server.env.example` to a private path and run `chmod 600`.",
+            "- [ ] Replace `replace-with-stable-secret` with a long random token.",
+            "- [ ] Run `vault remote-server health --json` before opening client access.",
+            "- [ ] Run the generated `validate-vault-remote-client.py` from at least one client machine.",
+            "- [ ] Confirm logs do not print tokens.",
+            "- [ ] Confirm backups and restore verification exist.",
+            "- [ ] Review `reports/gateway/audit.jsonl` during the first rollout week.",
+            "",
+            "## When Not To Use It",
+            "",
+            "- If all Agents run on one machine, local `vault-mcp` or `vault gateway` may be simpler.",
+            "- If devices must write offline for days and later merge active memory, wait for the future revision/conflict resolver flow.",
+            "- If hosted platforms cannot keep tokens private, expose only read-only remote reader paths.",
+            "",
+        ]
+    )
 
 
 def _write_remote_client_templates(out: Path) -> dict[str, str]:

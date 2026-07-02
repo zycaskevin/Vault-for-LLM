@@ -59,6 +59,13 @@ The command writes a Markdown report and runtime startup snippets so teams can
 turn the proof into a real shared-memory workflow. See
 [`docs/articles/agents-need-memory-governance-not-just-rag.md`](docs/articles/agents-need-memory-governance-not-just-rag.md).
 
+The product strategy is captured in
+[`docs/strategy/`](docs/strategy/): positioning, product architecture, the
+governed shared-memory demo, 90-day validation gates, and the enterprise
+feature map. The short version: Vault is not trying to be another RAG database.
+It is trying to become the local-first governance layer for what agents
+remember, trust, share, forget, and roll back.
+
 ## What You Get
 
 - **Local-first memory** - Markdown and SQLite by default. No cloud service is

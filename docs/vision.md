@@ -241,6 +241,11 @@ The north star:
 > the brain that keeps continuity; agents are the hands that act; models are the
 > compute tools that reason over reviewed memory.
 
+The product strategy for turning this vision into an open-source core,
+self-host team layer, optional cloud, and enterprise governance platform lives
+in [docs/strategy/](strategy/). Use those documents before making large
+roadmap, pricing, cloud, or enterprise-scope decisions.
+
 If this approach works, Vault-for-LLM can become a practical reference design
 for future user-owned memory vaults: databases that do not merely store facts,
 but help users review, connect, compress, forget, recover, and carry their

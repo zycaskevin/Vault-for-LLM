@@ -291,6 +291,28 @@ the last import. The generated note includes paths, reasons, and short hashes,
 but not the conflicting note bodies. It is a review surface, not an automatic
 resolver.
 
+Resolve a listed conflict only after the user chooses which side should win:
+
+```bash
+vault import obsidian \
+  --vault /path/to/ObsidianVault \
+  --project-dir ~/Vaults/project-memory \
+  --resolve-conflict "Projects/Decision.md" \
+  --resolution accept-obsidian \
+  --conflict-inbox \
+  --json
+```
+
+Resolution choices:
+
+- `accept-obsidian`: the Obsidian note updates Vault's imported raw copy.
+- `accept-vault`: Vault's imported raw copy updates the Obsidian note.
+- `keep-both`: the Obsidian note updates Vault, and Vault's previous raw body
+  is saved as a sibling conflict copy in Obsidian.
+
+Agents should present these as three separate choices. Do not auto-resolve
+two-sided edits.
+
 For agent-led setup, prefer `--obsidian-write-default-rules` and
 `--obsidian-review-inbox`:
 

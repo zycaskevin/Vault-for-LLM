@@ -1,5 +1,6 @@
 from argparse import Namespace
 import json
+from pathlib import Path
 
 
 def test_sync_obsidian_vault_imports_notes_idempotently(tmp_path):
@@ -165,6 +166,124 @@ def test_sync_obsidian_vault_writes_conflict_inbox_note(tmp_path):
     assert "Vault did not overwrite either side" in text
     assert "Obsidian-side edit." not in text
     assert "Vault-side edit." not in text
+
+
+def _make_obsidian_conflict(tmp_path):
+    from vault.import_obsidian import sync_obsidian_vault
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    obsidian = tmp_path / "ObsidianVault"
+    obsidian.mkdir()
+    note = obsidian / "Shared.md"
+    note.write_text("# Shared\n\nOriginal note.\n", encoding="utf-8")
+    sync_obsidian_vault(project_dir=project_dir, vault_dir=obsidian)
+    raw_note = project_dir / "raw" / "obsidian" / "Shared.md"
+    raw_note.write_text(raw_note.read_text(encoding="utf-8") + "\nVault-side edit.\n", encoding="utf-8")
+    note.write_text("# Shared\n\nObsidian-side edit.\n", encoding="utf-8")
+    sync_obsidian_vault(project_dir=project_dir, vault_dir=obsidian, conflict_inbox=True)
+    return project_dir, obsidian, note, raw_note
+
+
+def test_resolve_obsidian_conflict_accepts_obsidian_into_vault_raw(tmp_path):
+    from vault.import_obsidian import resolve_obsidian_conflict
+
+    project_dir, obsidian, _note, raw_note = _make_obsidian_conflict(tmp_path)
+
+    result = resolve_obsidian_conflict(
+        project_dir=project_dir,
+        vault_dir=obsidian,
+        source_path="Shared.md",
+        resolution="accept-obsidian",
+    )
+
+    assert result["status"] == "resolved"
+    text = raw_note.read_text(encoding="utf-8")
+    assert "Obsidian-side edit." in text
+    assert "Vault-side edit." not in text
+    manifest = json.loads((project_dir / ".vault" / "obsidian-import-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["notes"]["Shared.md"]["status"] == "active"
+
+
+def test_resolve_obsidian_conflict_accepts_vault_into_obsidian_note(tmp_path):
+    from vault.import_obsidian import resolve_obsidian_conflict
+
+    project_dir, obsidian, note, raw_note = _make_obsidian_conflict(tmp_path)
+
+    result = resolve_obsidian_conflict(
+        project_dir=project_dir,
+        vault_dir=obsidian,
+        source_path="Shared.md",
+        resolution="accept-vault",
+    )
+
+    assert result["status"] == "resolved"
+    assert "Vault-side edit." in note.read_text(encoding="utf-8")
+    assert "Obsidian-side edit." not in note.read_text(encoding="utf-8")
+    assert "Vault-side edit." in raw_note.read_text(encoding="utf-8")
+    manifest = json.loads((project_dir / ".vault" / "obsidian-import-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["notes"]["Shared.md"]["status"] == "active"
+
+
+def test_resolve_obsidian_conflict_keep_both_copies_vault_side(tmp_path):
+    from vault.import_obsidian import resolve_obsidian_conflict
+
+    project_dir, obsidian, _note, raw_note = _make_obsidian_conflict(tmp_path)
+
+    result = resolve_obsidian_conflict(
+        project_dir=project_dir,
+        vault_dir=obsidian,
+        source_path="Shared.md",
+        resolution="keep-both",
+    )
+
+    text = raw_note.read_text(encoding="utf-8")
+    assert "Obsidian-side edit." in text
+    assert "Vault-side edit." not in text
+    copy_path = Path(result["vault_copy_path"])
+    assert copy_path.exists()
+    assert "Vault-side edit." in copy_path.read_text(encoding="utf-8")
+    manifest = json.loads((project_dir / ".vault" / "obsidian-import-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["notes"]["Shared.md"]["status"] == "active"
+
+
+def test_cmd_import_obsidian_resolve_conflict_json(tmp_path, monkeypatch, capsys):
+    from vault.cli import cmd_import
+
+    project_dir, obsidian, _note, _raw_note = _make_obsidian_conflict(tmp_path)
+    monkeypatch.chdir(project_dir)
+    args = Namespace(
+        file="obsidian",
+        vault=str(obsidian),
+        resolve_conflict="Shared.md",
+        resolution="accept-obsidian",
+        category="general",
+        tags="agent",
+        layer="L3",
+        trust=0.5,
+        obsidian_raw_subdir="obsidian",
+        obsidian_rules=None,
+        exclude=[],
+        prune_missing=False,
+        watch=False,
+        watch_interval=5.0,
+        watch_iterations=0,
+        conflict_inbox=True,
+        dry_run=False,
+        compile=False,
+        no_embed=True,
+        allow_private=False,
+        json=True,
+        pretty=False,
+    )
+
+    cmd_import(args)
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["status"] == "resolved"
+    assert payload["resolution"]["source_path"] == "Shared.md"
+    assert payload["resolution"]["resolution"] == "accept-obsidian"
+    assert payload["resolution"]["conflict_inbox_path"].endswith("Obsidian Import Conflicts.md")
 
 
 def test_sync_obsidian_vault_applies_folder_rules_and_wikilinks(tmp_path):

@@ -331,6 +331,47 @@ def cmd_import(args):
 
         json_output = _arg_value(args, "json", False) is True or _arg_value(args, "pretty", False) is True
         pretty_output = _arg_value(args, "pretty", False) is True
+        if getattr(args, "resolve_conflict", None):
+            if not getattr(args, "resolution", None):
+                print("❌ --resolve-conflict 需要搭配 --resolution。")
+                raise SystemExit(2)
+            try:
+                from vault.import_obsidian import resolve_obsidian_conflict
+
+                payload = resolve_obsidian_conflict(
+                    project_dir=project_dir,
+                    vault_dir=args.vault,
+                    source_path=args.resolve_conflict,
+                    resolution=args.resolution,
+                    category=args.category,
+                    tags=args.tags,
+                    layer=args.layer,
+                    trust=args.trust,
+                    allow_private=getattr(args, "allow_private", False),
+                    folder_rules_path=getattr(args, "obsidian_rules", None),
+                    dry_run=getattr(args, "dry_run", False),
+                    conflict_inbox=getattr(args, "conflict_inbox", False),
+                )
+            except Exception as e:
+                print(f"❌ Obsidian 衝突解析失敗: {e}")
+                raise SystemExit(2) from e
+            result = {
+                "ok": True,
+                "status": payload.get("status", "resolved"),
+                "resolution": payload,
+            }
+            if json_output:
+                _json_print(result, pretty=pretty_output)
+                return
+            print("🧭 Obsidian 衝突解析結果:")
+            print(f"  來源: {payload['source_path']}")
+            print(f"  策略: {payload['resolution']}")
+            print(f"  模式: {'dry-run' if payload.get('dry_run') else 'applied'}")
+            for path in payload.get("written", [])[:10]:
+                print(f"  寫入: {path}")
+            if payload.get("conflict_inbox_path"):
+                print(f"  Inbox: {payload['conflict_inbox_path']}")
+            return
         if getattr(args, "watch", False):
             if json_output and int(getattr(args, "watch_iterations", 0) or 0) <= 0:
                 print("❌ --json 搭配 --watch 時需要 --watch-iterations，避免 agent 卡在無限輸出。")

@@ -1,5 +1,26 @@
 # CHANGELOG
 
+## [0.7.25] - 2026-07-02
+
+### Added
+
+- Added stable `--json` and `--pretty` output for `vault init`, including
+  created directory metadata, `vault.db` path, `.gitignore` path, and
+  machine-readable next actions.
+- Added stable `--json` and `--pretty` output for `vault compile`, including
+  compile stats, dry-run/no-embed flags, and captured compiler progress
+  messages without mixing human text into stdout.
+
+### Safety
+
+- `vault compile --json` now captures compiler progress output into the JSON
+  payload so agents can parse the command reliably.
+
+### Validation
+
+- Added regression coverage for `vault init --json`, `vault compile --json`,
+  and `vault compile --pretty`.
+
 ## [0.7.24] - 2026-07-02
 
 ### Added

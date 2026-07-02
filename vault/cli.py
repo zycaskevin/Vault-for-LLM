@@ -188,6 +188,8 @@ def main(argv: list[str] | None = None):
     # init
     p = sub.add_parser("init", help="初始化專案")
     p.add_argument("project_dir", nargs="?", default=".")
+    p.add_argument("--json", action="store_true", help="輸出 JSON")
+    p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     # add
     from vault.cli_common import add_governance_args
@@ -292,6 +294,8 @@ def main(argv: list[str] | None = None):
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--no-embed", action="store_true", help="跳過嵌入生成")
     p.add_argument("--allow-private", action="store_true", help="允許含秘密模式的 raw/ 檔案進入編譯")
+    p.add_argument("--json", action="store_true", help="輸出 JSON")
+    p.add_argument("--pretty", action="store_true", help="縮排 JSON 輸出")
 
     # search — 加入 --graph-expand
     p = sub.add_parser("search", help="搜尋知識")

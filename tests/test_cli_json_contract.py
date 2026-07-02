@@ -61,6 +61,45 @@ def test_core_agent_commands_accept_json_and_emit_parseable_payloads(tmp_path, c
     assert candidates["candidates"][0]["id"]
 
 
+def test_init_and_compile_json_contracts_are_parseable(tmp_path, capsys):
+    project = tmp_path / "json-project"
+
+    main(["init", str(project), "--json"])
+    initialized = _read_json(capsys)
+    assert initialized["ok"] is True
+    assert initialized["status"] == "ok"
+    assert initialized["project_dir"] == str(project.resolve())
+    assert initialized["db_path"].endswith("vault.db")
+    assert {entry["name"] for entry in initialized["dirs"]} >= {"raw", "compiled"}
+
+    main(
+        [
+            "add",
+            "Compile JSON note",
+            "--content",
+            "Compile JSON output should stay parseable for agents.",
+            "--project-dir",
+            str(project),
+            "--json",
+        ]
+    )
+    added = _read_json(capsys)
+    assert added["ok"] is True
+
+    main(["compile", "--project-dir", str(project), "--no-embed", "--json"])
+    compiled = _read_json(capsys)
+    assert compiled["ok"] is True
+    assert compiled["status"] == "ok"
+    assert compiled["project_dir"] == str(project.resolve())
+    assert compiled["stats"]["total_files"] == 1
+    assert isinstance(compiled["messages"], list)
+
+    main(["compile", "--project-dir", str(project), "--no-embed", "--pretty"])
+    pretty = _read_json(capsys)
+    assert pretty["ok"] is True
+    assert pretty["stats"]["total_files"] == 1
+
+
 def test_map_and_graph_json_contracts_are_parseable(tmp_path, capsys):
     project = _make_project(tmp_path, capsys)
 

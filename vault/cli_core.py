@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import importlib.util
+import contextlib
 import hashlib
+import io
 import json
 import os
 import re
@@ -18,11 +20,18 @@ from .cli_search import temporal_search_kwargs
 def cmd_init(args):
     """初始化 Vault-for-LLM 專案。"""
     project_dir = Path(args.project_dir or ".")
+    pretty_output = _arg_value(args, "pretty", False) is True
+    json_output = _arg_value(args, "json", False) is True or pretty_output
     dirs = ["raw", "compiled", "L0-identity", "L1-core-facts", "L2-context", "L3-knowledge"]
+    dir_payloads: list[dict[str, object]] = []
 
     for d in dirs:
-        (project_dir / d).mkdir(parents=True, exist_ok=True)
-        print(f"  ✅ {d}/")
+        path = project_dir / d
+        existed = path.exists()
+        path.mkdir(parents=True, exist_ok=True)
+        dir_payloads.append({"path": str(path), "name": d, "existed": existed})
+        if not json_output:
+            print(f"  ✅ {d}/")
 
     # 初始化資料庫
     from vault.db import VaultDB
@@ -44,6 +53,23 @@ def cmd_init(args):
             gi_lines.append(a)
     gitignore.write_text("\n".join(gi_lines) + "\n", encoding="utf-8")
 
+    payload = {
+        "ok": True,
+        "status": "ok",
+        "project_dir": str(project_dir.resolve()),
+        "db_path": str(db_path.resolve()),
+        "dirs": dir_payloads,
+        "gitignore": str(gitignore.resolve()),
+        "next_action": [
+            "Add Markdown files under raw/ or use vault add.",
+            f"vault compile --project-dir {project_dir.resolve()}",
+            f"vault search \"query\" --project-dir {project_dir.resolve()} --json",
+        ],
+    }
+    if json_output:
+        _json_print(payload, pretty=pretty_output)
+        return
+
     print(f"\n✅ 專案初始化完成: {project_dir.resolve()}")
     print("下一步：")
     print("  1. 在 raw/ 放入 .md 知識檔案")
@@ -56,8 +82,8 @@ def cmd_add(args):
     from vault.db import VaultDB, normalize_governance_metadata
 
     project_dir = find_project_dir()
-    json_output = _arg_value(args, "json", False) is True
     pretty_output = _arg_value(args, "pretty", False) is True
+    json_output = _arg_value(args, "json", False) is True or pretty_output
 
     # 如果指定 --file，讀取檔案內容。省略 --content 才讀 stdin；
     # 明確傳入 --content "" 時要快速失敗，避免 n8n/agent subprocess 卡住。
@@ -176,6 +202,9 @@ def cmd_compile(args):
 
     project_dir = find_project_dir()
     db_path = project_dir / "vault.db"
+    pretty_output = _arg_value(args, "pretty", False) is True
+    json_output = _arg_value(args, "json", False) is True or pretty_output
+    messages: list[str] = []
 
     # 載入嵌入（如果啟用）
     embed = None
@@ -189,9 +218,15 @@ def cmd_compile(args):
             db_temp.close()
             if provider_name != "none":
                 embed = create_embedding_provider(provider=provider_name, model_key=model_key)
-                print(f"[compile] 嵌入: {provider_name} ({model_key})")
+                message = f"[compile] 嵌入: {provider_name} ({model_key})"
+                messages.append(message)
+                if not json_output:
+                    print(message)
         except Exception as e:
-            print(f"[compile] ⚠️ 嵌入未啟用: {e}")
+            message = f"[compile] ⚠️ 嵌入未啟用: {e}"
+            messages.append(message)
+            if not json_output:
+                print(message)
 
     db = VaultDB(str(db_path))
     db.connect()
@@ -201,8 +236,32 @@ def cmd_compile(args):
         embed_provider=embed,
         allow_private=getattr(args, "allow_private", False),
     )
-    stats = compiler.compile(dry_run=args.dry_run)
+    if json_output:
+        captured = io.StringIO()
+        with contextlib.redirect_stdout(captured):
+            stats = compiler.compile(dry_run=args.dry_run)
+        messages.extend(line for line in captured.getvalue().splitlines() if line.strip())
+    else:
+        stats = compiler.compile(dry_run=args.dry_run)
     db.close()
+
+    if json_output:
+        _json_print(
+            {
+                "ok": stats.get("errors", 0) == 0,
+                "status": "ok" if stats.get("errors", 0) == 0 else "warning",
+                "project_dir": str(project_dir.resolve()),
+                "db_path": str(db_path.resolve()),
+                "dry_run": bool(args.dry_run),
+                "embed_enabled": embed is not None,
+                "no_embed": bool(args.no_embed),
+                "stats": stats,
+                "messages": messages,
+                "next_action": "Run vault search --json to verify retrieval.",
+            },
+            pretty=pretty_output,
+        )
+        return
 
     print("\n📊 編譯結果:")
     print(f"  檔案: {stats['total_files']}")

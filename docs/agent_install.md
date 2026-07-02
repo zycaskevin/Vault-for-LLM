@@ -249,7 +249,8 @@ Apply import only after the user confirms the preview:
 vault import obsidian \
   --vault /path/to/ObsidianVault \
   --project-dir ~/Vaults/project-memory \
-  --compile
+  --compile \
+  --conflict-inbox
 ```
 
 Generated sync templates can include cron, macOS LaunchAgent, and n8n workflow
@@ -269,7 +270,8 @@ vault import obsidian \
   --compile \
   --no-embed \
   --watch \
-  --watch-interval 5
+  --watch-interval 5 \
+  --conflict-inbox
 ```
 
 Agent-run automation should prefer a bounded form so JSON output cannot hang:
@@ -282,6 +284,12 @@ vault import obsidian \
   --watch-iterations 2 \
   --json
 ```
+
+`--conflict-inbox` writes `00-Vault-Knowledge/_Inbox/Obsidian Import Conflicts.md`
+when both the Obsidian source note and Vault's imported raw copy changed since
+the last import. The generated note includes paths, reasons, and short hashes,
+but not the conflicting note bodies. It is a review surface, not an automatic
+resolver.
 
 For agent-led setup, prefer `--obsidian-write-default-rules` and
 `--obsidian-review-inbox`:
@@ -347,6 +355,8 @@ This writes generated notes under `00-Vault-Knowledge/_Inbox/`:
 - `Daily Memory Report.md`
 - `Memory Candidates.md`
 - `Sync Status.md`
+- `Obsidian Import Conflicts.md` when `vault import obsidian --conflict-inbox`
+  detects a two-sided edit conflict
 - `Folder Rules Preview.md`
 
 These notes are review surfaces only. They do not promote candidates, prune

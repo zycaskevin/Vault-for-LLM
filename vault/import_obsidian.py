@@ -50,6 +50,7 @@ class ObsidianImportResult:
     conflict_paths: list[str] = field(default_factory=list)
     conflict_items: list[dict[str, Any]] = field(default_factory=list)
     manifest_path: str = ""
+    conflict_inbox_path: str = ""
     dry_run: bool = False
 
     def as_dict(self) -> dict[str, Any]:
@@ -68,6 +69,7 @@ class ObsidianImportResult:
             "conflict_paths": self.conflict_paths,
             "conflict_items": self.conflict_items,
             "manifest_path": self.manifest_path,
+            "conflict_inbox_path": self.conflict_inbox_path,
             "dry_run": self.dry_run,
         }
 
@@ -101,6 +103,60 @@ def _write_manifest(project_dir: Path, payload: dict[str, Any]) -> Path:
     path = _manifest_path(project_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
+def _short_hash(value: Any) -> str:
+    text = str(value or "").strip()
+    return text[:12] if text else ""
+
+
+def _render_conflict_inbox(conflicts: list[dict[str, Any]], *, generated_at: str) -> str:
+    lines: list[str] = []
+    for item in conflicts:
+        lines.append(
+            "- [ ] "
+            f"`{item.get('source_path', '')}` -> `{item.get('raw_path', '')}`\n"
+            f"  - Reason: `{item.get('reason', 'obsidian_source_and_vault_raw_both_changed')}`\n"
+            f"  - Previous source hash: `{_short_hash(item.get('previous_source_hash'))}`\n"
+            f"  - Current source hash: `{_short_hash(item.get('current_source_hash'))}`\n"
+            f"  - Previous Vault raw hash: `{_short_hash(item.get('previous_raw_hash'))}`\n"
+            f"  - Current Vault raw hash: `{_short_hash(item.get('current_raw_hash'))}`\n"
+            "  - Next action: compare the Obsidian note and Vault raw copy, then re-run the import after resolving one side."
+        )
+    conflict_lines = "\n\n".join(lines) or "- No active Obsidian import conflicts."
+    return f"""---
+title: "Vault Obsidian Import Conflicts"
+generated_by: "vault-for-llm"
+generated_at: "{generated_at}"
+---
+
+# Vault Obsidian Import Conflicts
+
+This generated note is a review surface. It does not contain the conflicting
+note bodies, and it does not resolve conflicts automatically.
+
+## Conflicts
+
+{conflict_lines}
+
+## Safety
+
+- Vault did not overwrite either side.
+- Resolve the note manually, then run `vault import obsidian` again.
+- Keep generated notes inside `00-Vault-Knowledge/`.
+"""
+
+
+def _write_conflict_inbox(
+    *,
+    obsidian_root: Path,
+    conflicts: list[dict[str, Any]],
+    generated_at: str,
+) -> Path:
+    path = obsidian_root / "00-Vault-Knowledge" / "_Inbox" / "Obsidian Import Conflicts.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_render_conflict_inbox(conflicts, generated_at=generated_at), encoding="utf-8")
     return path
 
 
@@ -347,6 +403,7 @@ def sync_obsidian_vault(
     allow_private: bool = False,
     prune_missing: bool = False,
     folder_rules_path: str | Path | None = None,
+    conflict_inbox: bool = False,
 ) -> dict[str, Any]:
     """Sync Obsidian Markdown notes into ``raw/<raw_subdir>/``.
 
@@ -520,5 +577,13 @@ def sync_obsidian_vault(
             }
         )
         result.manifest_path = str(_write_manifest(project_path, manifest))
+        if conflict_inbox and result.conflict_items:
+            result.conflict_inbox_path = str(
+                _write_conflict_inbox(
+                    obsidian_root=obsidian_root,
+                    conflicts=result.conflict_items,
+                    generated_at=imported_at,
+                )
+            )
 
     return result.as_dict()

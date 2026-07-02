@@ -139,6 +139,34 @@ def test_sync_obsidian_vault_detects_two_sided_conflict_without_overwrite(tmp_pa
     assert entry["pending_source_hash"] == second["conflict_items"][0]["current_source_hash"]
 
 
+def test_sync_obsidian_vault_writes_conflict_inbox_note(tmp_path):
+    from vault.import_obsidian import sync_obsidian_vault
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    obsidian = tmp_path / "ObsidianVault"
+    obsidian.mkdir()
+    note = obsidian / "Shared.md"
+    note.write_text("# Shared\n\nOriginal note.\n", encoding="utf-8")
+
+    sync_obsidian_vault(project_dir=project_dir, vault_dir=obsidian)
+    raw_note = project_dir / "raw" / "obsidian" / "Shared.md"
+    raw_note.write_text(raw_note.read_text(encoding="utf-8") + "\nVault-side edit.\n", encoding="utf-8")
+    note.write_text("# Shared\n\nObsidian-side edit.\n", encoding="utf-8")
+
+    result = sync_obsidian_vault(project_dir=project_dir, vault_dir=obsidian, conflict_inbox=True)
+
+    assert result["conflicts"] == 1
+    inbox_path = obsidian / "00-Vault-Knowledge" / "_Inbox" / "Obsidian Import Conflicts.md"
+    assert result["conflict_inbox_path"] == str(inbox_path)
+    text = inbox_path.read_text(encoding="utf-8")
+    assert "Vault Obsidian Import Conflicts" in text
+    assert "`Shared.md` -> `raw/obsidian/Shared.md`" in text
+    assert "Vault did not overwrite either side" in text
+    assert "Obsidian-side edit." not in text
+    assert "Vault-side edit." not in text
+
+
 def test_sync_obsidian_vault_applies_folder_rules_and_wikilinks(tmp_path):
     from vault.import_obsidian import sync_obsidian_vault
 

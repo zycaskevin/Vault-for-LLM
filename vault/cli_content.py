@@ -484,6 +484,7 @@ def _run_obsidian_import_once(args, project_dir: Path) -> dict:
         allow_private=getattr(args, "allow_private", False),
         prune_missing=getattr(args, "prune_missing", False),
         folder_rules_path=getattr(args, "obsidian_rules", None),
+        conflict_inbox=getattr(args, "conflict_inbox", False),
     )
 
 

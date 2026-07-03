@@ -88,6 +88,11 @@ Run:
 vault demo agent-governance --json
 ```
 
+The external demo pack lives in
+[docs/demo/agent-governance-demo-pack.md](../demo/agent-governance-demo-pack.md).
+It explains how to run, record, and verify the proof without private data or
+cloud services.
+
 The demo should stay aligned with this lifecycle:
 
 ```text

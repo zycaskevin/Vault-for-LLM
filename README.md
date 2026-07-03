@@ -58,6 +58,8 @@ propose -> review -> promote -> search -> bounded read -> rollback -> audit
 The command writes a Markdown report and runtime startup snippets so teams can
 turn the proof into a real shared-memory workflow. See
 [`docs/articles/agents-need-memory-governance-not-just-rag.md`](docs/articles/agents-need-memory-governance-not-just-rag.md).
+The external demo pack is
+[`docs/demo/agent-governance-demo-pack.md`](docs/demo/agent-governance-demo-pack.md).
 
 The product strategy is captured in
 [`docs/strategy/`](docs/strategy/): positioning, product architecture, the

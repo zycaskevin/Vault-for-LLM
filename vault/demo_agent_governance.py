@@ -228,10 +228,18 @@ def _write_demo_artifacts(
     md_path = reports / "demo-report.md"
     md_path.write_text(_render_demo_markdown(payload), encoding="utf-8")
 
+    script_path = reports / "public-demo-script.md"
+    script_path.write_text(_render_public_demo_script(project, agents), encoding="utf-8")
+
+    checklist_path = reports / "acceptance-checklist.md"
+    checklist_path.write_text(_render_acceptance_checklist(), encoding="utf-8")
+
     snippet_paths = _write_agent_snippets(snippets, project, agents)
     return {
         "report_md": str(md_path),
         "report_json": str(json_path),
+        "public_demo_script": str(script_path),
+        "acceptance_checklist": str(checklist_path),
         "snippet_dir": str(snippets),
         **snippet_paths,
     }
@@ -270,6 +278,68 @@ def _render_demo_markdown(payload: dict[str, Any]) -> str:
             "`propose -> review -> promote -> search -> bounded read -> rollback -> audit`",
             "",
             "That lifecycle is the difference between a memory database and an agent memory governance layer.",
+            "",
+        ]
+    )
+
+
+def _render_public_demo_script(project: Path, agents: list[str]) -> str:
+    codex, claude_code, hermes = agents
+    return "\n".join(
+        [
+            "# Public Demo Script: Governed Shared Memory",
+            "",
+            "Use this script when recording or presenting the demo. The goal is to show",
+            "memory governance, not only search quality.",
+            "",
+            "## Setup",
+            "",
+            "```bash",
+            f"vault demo agent-governance --project-dir {project} --json",
+            "```",
+            "",
+            "Open:",
+            "",
+            f"- `{project / 'reports' / 'demo' / 'demo-report.md'}`",
+            f"- `{project / 'agent-config-snippets'}`",
+            "",
+            "## Talk Track",
+            "",
+            "1. Introduce the problem: three agents can work on the same repo, but shared",
+            "   memory becomes dangerous if every agent writes directly into active context.",
+            f"2. `{codex}` proposes a lesson as a candidate. It exists, but it is not active",
+            "   shared memory yet.",
+            f"3. `{claude_code}` reviews and promotes the candidate only after gates pass.",
+            f"4. `{hermes}` searches the shared vault, then uses bounded read before citing.",
+            "5. Show the verified backup and audit events. The memory can be rolled back or",
+            "   deprecated instead of silently lingering forever.",
+            "",
+            "## One-Sentence Close",
+            "",
+            "Vault is not another place for agents to dump notes. It is the governance",
+            "layer that controls what agents remember, trust, share, forget, and roll back.",
+            "",
+        ]
+    )
+
+
+def _render_acceptance_checklist() -> str:
+    return "\n".join(
+        [
+            "# Acceptance Checklist",
+            "",
+            "A public demo is successful when it proves these points:",
+            "",
+            "- [ ] A memory starts as a candidate, not active shared knowledge.",
+            "- [ ] Gate and review steps are visible before promotion.",
+            "- [ ] A different agent can search the promoted memory.",
+            "- [ ] The answer path uses bounded read with a citation.",
+            "- [ ] A verified backup or rollback path exists.",
+            "- [ ] Audit events show the lifecycle, not just the final text.",
+            "- [ ] The demo does not require private data, cloud services, or hidden state.",
+            "- [ ] The talk track says \"memory governance\", not \"better RAG\".",
+            "",
+            "If any item fails, fix the demo before using it as an external proof.",
             "",
         ]
     )
